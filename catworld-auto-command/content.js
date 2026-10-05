@@ -14,7 +14,21 @@ let captchaCount = 0;
 const NO_REPLY_MS = 8000;
 let watchdogTimer = null;
 let lastCommand = '';
-// 驗證碼是多行「只含同一種符號（@ $ # 等）與空白」的 ASCII 圖，不依賴提示文字；
+const BLOCK = '█';
+// 新增節點轉成可逐行判斷的文字：以背景色（B1~B7）空白 span 拼成的圖沒有可見字元，
+// 改用實心方塊代表，才能和 @ $ 等符號圖用同一套規則偵測
+function artText(node) {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+  if (node.nodeType !== Node.ELEMENT_NODE) return '';
+  if (node.tagName === 'BR') return '\n';
+  const text = node.textContent || '';
+  if (!node.children.length && /\bB\d\b/.test(node.getAttribute('class') || '') && /^ +$/.test(text)) {
+    return BLOCK.repeat(text.length);
+  }
+  const inner = Array.from(node.childNodes, artText).join('');
+  return /^(DIV|P|PRE)$/.test(node.tagName) && !inner.endsWith('\n') ? `${inner}\n` : inner;
+}
+// 驗證碼是多行「只含同一種符號（@ $ # █ 等）與空白」的圖，不依賴提示文字；
 // 圖可能與前一段回覆接在同一批文字，所以逐行找連續的同符號行（空白行不中斷）
 function looksLikeAsciiArt(text) {
   let run = 0;
@@ -22,7 +36,7 @@ function looksLikeAsciiArt(text) {
   for (const line of (text || '').split('\n')) {
     const chars = line.replace(/\s/g, '');
     if (!chars) continue;
-    const match = /^([@$#%&*])\1*$/.exec(chars);
+    const match = new RegExp(`^([@$#%&*${BLOCK}])\\1*$`).exec(chars);
     if (!match) { run = 0; continue; }
     run = match[1] === symbol ? run + 1 : 1;
     symbol = match[1];
@@ -58,11 +72,11 @@ const captchaObserver = new MutationObserver(records => {
   if (!running) return;
   const addedTexts = records.flatMap(record => record.type === 'characterData'
     ? [record.target.textContent || '']
-    : Array.from(record.addedNodes, node => node.textContent || ''));
+    : Array.from(record.addedNodes, artText));
   if (addedTexts.some(text => text.trim() && !isCommandEcho(text.trim()))) {
     if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
   }
-  if (looksLikeAsciiArt(addedTexts.join('\n'))) {
+  if (looksLikeAsciiArt(addedTexts.join(''))) {
     stop('偵測到驗證碼圖形，已停止；請完成驗證後再按開始');
     return;
   }
