@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CatWorld Auto Command</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; width: 320px; margin: 0; padding: 16px; color: #222; }
+    h2 { margin: 0 0 14px; font-size: 18px; }
+    h2 small { font-size: 11px; font-weight: 400; color: #777; }
+    label { display:block; font-size:12px; margin: 10px 0 5px; color:#555; }
+    textarea,input { box-sizing:border-box; width:100%; border:1px solid #ccc; border-radius:7px; padding:8px; font:inherit; }
+    textarea { min-height:72px; resize:vertical; }
+    .row { display:flex; gap:8px; }
+    .row > div { flex:1; }
+    .buttons { display:flex; gap:8px; margin-top:14px; }
+    button { flex:1; border:0; border-radius:8px; padding:9px; cursor:pointer; font-weight:600; }
+    #start { background:#222; color:white; }
+    #stop { background:#eee; color:#222; }
+    #test { margin-top:8px; width:100%; background:#f4f4f4; }
+    #status { margin-top:12px; font-size:13px; padding:8px; border-radius:7px; background:#f6f6f6; }
+    .hint { font-size:11px; color:#777; margin-top:8px; line-height:1.4; }
+  </style>
+</head>
+<body>
+  <h2>CatWorld Auto Command <small id="version"></small></h2>
+  <label>固定指令（一行一個，每輪全部依序送出）</label>
+  <textarea id="commands">ps
+px</textarea>
+  <div class="row">
+    <div><label>固定：最短秒數</label><input id="minSeconds" type="number" min="1" value="30"></div>
+    <div><label>固定：最長秒數</label><input id="maxSeconds" type="number" min="1" value="40"></div>
+  </div>
+  <label>指令間隔（毫秒）</label>
+  <input id="commandDelayMs" type="number" min="0" value="500">
+  <label>隨機指令（一行一個，每次只隨機挑 1 個，獨立計時）</label>
+  <textarea id="randomCommands"></textarea>
+  <div class="row">
+    <div><label>隨機：最短秒數</label><input id="randomMinSeconds" type="number" min="1" value="30"></div>
+    <div><label>隨機：最長秒數</label><input id="randomMaxSeconds" type="number" min="1" value="40"></div>
+  </div>
+  <div class="buttons">
+    <button id="start">開始</button><button id="stop">停止</button>
+  </div>
+  <button id="test">測試送出 ps</button>
+  <div id="status">狀態：讀取中…</div>
+  <div class="hint">新出現「請輸入上面的數字」或「請輸入上方的數字」會立即停止。請先手動完成驗證，再按開始；舊紀錄不會重複觸發。需在 CatWorld Web 分頁使用。重新整理遊戲頁後會自動停止，避免意外持續執行。</div>
+  <script src="popup.js"></script>
+</body>
+</html>
