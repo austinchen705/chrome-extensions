@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CatWorld Auto Command",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Configurable commands with immediate stop on verification prompts.",
   "permissions": [
     "storage",

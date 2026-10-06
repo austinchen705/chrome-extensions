@@ -15,6 +15,7 @@ const NO_REPLY_MS = 8000;
 let watchdogTimer = null;
 let lastCommand = '';
 const BLOCK = '█';
+const NOISE_MARK = '\u0001';
 // 新增節點轉成可逐行判斷的文字：以背景色（B1~B7）空白 span 拼成的圖沒有可見字元，
 // 改用實心方塊代表，才能和 @ $ 等符號圖用同一套規則偵測
 function artText(node) {
@@ -22,8 +23,11 @@ function artText(node) {
   if (node.nodeType !== Node.ELEMENT_NODE) return '';
   if (node.tagName === 'BR') return '\n';
   const text = node.textContent || '';
-  if (!node.children.length && /\bB\d\b/.test(node.getAttribute('class') || '') && /^ +$/.test(text)) {
-    return BLOCK.repeat(text.length);
+  if (!node.children.length && /\bB\d\b/.test(node.getAttribute('class') || '') && /^[ \n]+$/.test(text) && text.includes(' ')) {
+    return text.replace(/ /g, BLOCK);
+  }
+  if (!node.children.length && /\bB\d\b/.test(node.getAttribute('class') || '') && text.trim()) {
+    return NOISE_MARK + text;
   }
   const inner = Array.from(node.childNodes, artText).join('');
   return /^(DIV|P|PRE)$/.test(node.tagName) && !inner.endsWith('\n') ? `${inner}\n` : inner;
@@ -41,6 +45,24 @@ function looksLikeAsciiArt(text) {
     run = match[1] === symbol ? run + 1 : 1;
     symbol = match[1];
     if (run >= 5) return true;
+  }
+  return false;
+}
+// 另一種驗證碼：一大塊隨機英數字亂碼，其中少數字元以背景色（B1 等）標出，沒有提示文字；
+// 連續 8 行以上只含英數字與空白的長行，且帶背景色標記的字元至少 8 個
+function looksLikeNoiseCaptcha(text) {
+  let run = 0;
+  let marks = 0;
+  for (const line of (text || '').split('\n')) {
+    if (!line.trim()) continue;
+    if (line.length >= 30 && /^[A-Za-z0-9 \u0001]+$/.test(line)) {
+      run += 1;
+      marks += line.split(NOISE_MARK).length - 1;
+      if (run >= 8 && marks >= 8) return true;
+    } else {
+      run = 0;
+      marks = 0;
+    }
   }
   return false;
 }
@@ -76,7 +98,8 @@ const captchaObserver = new MutationObserver(records => {
   if (addedTexts.some(text => text.trim() && !isCommandEcho(text.trim()))) {
     if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
   }
-  if (looksLikeAsciiArt(addedTexts.join(''))) {
+  const addedText = addedTexts.join('');
+  if (looksLikeAsciiArt(addedText) || looksLikeNoiseCaptcha(addedText)) {
     stop('偵測到驗證碼圖形，已停止；請完成驗證後再按開始');
     return;
   }
