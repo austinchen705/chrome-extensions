@@ -68,24 +68,26 @@ function looksLikeNoiseCaptcha(text) {
 }
 // 自動停止時提醒使用者：系統通知（由 background 建立）、提示音、分頁標題閃爍
 let titleTimer = null;
-function beep() {
-  try {
-    const ctx = new AudioContext();
-    ctx.resume();
-    [0, 0.3, 0.6].forEach(offset => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.value = 880;
-      gain.gain.value = 0.2;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(ctx.currentTime + offset);
-      osc.stop(ctx.currentTime + offset + 0.2);
-    });
-    setTimeout(() => ctx.close(), 1500);
-  } catch {
-    // 頁面尚無使用者互動時，瀏覽器的自動播放限制可能拒絕發聲，不影響其他提醒
+// 回傳是否真的發聲；頁面尚無使用者互動時，瀏覽器的自動播放限制會讓 AudioContext 停在 suspended
+async function beep() {
+  const ctx = new AudioContext();
+  await Promise.race([ctx.resume(), new Promise(resolve => setTimeout(resolve, 200))]);
+  if (ctx.state !== 'running') {
+    ctx.close();
+    return false;
   }
+  [0, 0.3, 0.6].forEach(offset => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = 880;
+    gain.gain.value = 0.2;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime + offset);
+    osc.stop(ctx.currentTime + offset + 0.2);
+  });
+  setTimeout(() => ctx.close(), 1500);
+  return true;
 }
 function flashTitle(text) {
   if (titleTimer) return;
@@ -284,6 +286,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message.type === 'TEST') {
     sendResponse(sendCommand(message.command || 'ps'));
+  }
+  if (message.type === 'TEST_BEEP') {
+    beep().then(played => sendResponse({ played }));
+    return true;
   }
 });
 

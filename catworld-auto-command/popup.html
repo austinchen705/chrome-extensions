@@ -17,7 +17,7 @@
     button { flex:1; border:0; border-radius:8px; padding:9px; cursor:pointer; font-weight:600; }
     #start { background:#222; color:white; }
     #stop { background:#eee; color:#222; }
-    #test { margin-top:8px; width:100%; background:#f4f4f4; }
+    #test, #beep { margin-top:8px; width:100%; background:#f4f4f4; }
     #status { margin-top:12px; font-size:13px; padding:8px; border-radius:7px; background:#f6f6f6; }
     .hint { font-size:11px; color:#777; margin-top:8px; line-height:1.4; }
   </style>
@@ -43,6 +43,7 @@ px</textarea>
     <button id="start">開始</button><button id="stop">停止</button>
   </div>
   <button id="test">測試送出 ps</button>
+  <button id="beep">測試提示音</button>
   <div id="status">狀態：讀取中…</div>
   <div class="hint">新出現「請輸入上面的數字」或「請輸入上方的數字」會立即停止。請先手動完成驗證，再按開始；舊紀錄不會重複觸發。需在 CatWorld Web 分頁使用。重新整理遊戲頁後會自動停止，避免意外持續執行。</div>
   <script src="popup.js"></script>

@@ -68,6 +68,13 @@ $('test').addEventListener('click', async () => {
   } catch (e) { setStatus(e.message); }
 });
 
+$('beep').addEventListener('click', async () => {
+  try {
+    const result = await send({ type: 'TEST_BEEP' });
+    setStatus(result?.played ? '提示音已播放' : '瀏覽器擋住聲音：請先在遊戲分頁點一下或輸入任何內容，再試一次');
+  } catch (e) { setStatus(e.message); }
+});
+
 (async () => {
   const data = await chrome.storage.local.get(['settings']);
   if (data.settings) {
