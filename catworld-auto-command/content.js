@@ -66,12 +66,58 @@ function looksLikeNoiseCaptcha(text) {
   }
   return false;
 }
+// 自動停止時提醒使用者：系統通知（由 background 建立）、提示音、分頁標題閃爍
+let titleTimer = null;
+function beep() {
+  try {
+    const ctx = new AudioContext();
+    ctx.resume();
+    [0, 0.3, 0.6].forEach(offset => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 880;
+      gain.gain.value = 0.2;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + offset);
+      osc.stop(ctx.currentTime + offset + 0.2);
+    });
+    setTimeout(() => ctx.close(), 1500);
+  } catch {
+    // 頁面尚無使用者互動時，瀏覽器的自動播放限制可能拒絕發聲，不影響其他提醒
+  }
+}
+function flashTitle(text) {
+  if (titleTimer) return;
+  const original = document.title;
+  let on = false;
+  titleTimer = setInterval(() => {
+    on = !on;
+    document.title = on ? text : original;
+  }, 800);
+  const clear = () => {
+    clearInterval(titleTimer);
+    titleTimer = null;
+    document.title = original;
+    ['focus', 'pointerdown', 'keydown'].forEach(name => window.removeEventListener(name, clear));
+    document.removeEventListener('visibilitychange', onVisible);
+  };
+  const onVisible = () => { if (!document.hidden) clear(); };
+  ['focus', 'pointerdown', 'keydown'].forEach(name => window.addEventListener(name, clear));
+  document.addEventListener('visibilitychange', onVisible);
+}
+function stopAndAlert(reason) {
+  beep();
+  flashTitle('⚠ 需要驗證');
+  chrome.runtime.sendMessage({ type: 'ALERT', reason });
+  return stop(reason);
+}
 // 指令送出後遊戲通常會回覆；超時沒新輸出視為需要驗證
 function armWatchdog() {
   if (watchdogTimer) clearTimeout(watchdogTimer);
   watchdogTimer = setTimeout(() => {
     watchdogTimer = null;
-    if (running) stop(`送出指令後 ${NO_REPLY_MS / 1000} 秒沒有收到遊戲回應，疑似需要驗證，已停止；請完成驗證後再按開始`);
+    if (running) stopAndAlert(`送出指令後 ${NO_REPLY_MS / 1000} 秒沒有收到遊戲回應，疑似需要驗證，已停止；請完成驗證後再按開始`);
   }, NO_REPLY_MS);
 }
 function isCommandEcho(text) {
@@ -84,7 +130,7 @@ function countCaptcha() {
 function checkCaptcha() {
   const count = countCaptcha();
   if (running && count > captchaCount) {
-    stop('偵測到「請輸入上面的數字／請輸入上方的數字」，已停止；請完成驗證後再按開始');
+    stopAndAlert('偵測到「請輸入上面的數字／請輸入上方的數字」，已停止；請完成驗證後再按開始');
     return true;
   }
   captchaCount = count;
@@ -100,7 +146,7 @@ const captchaObserver = new MutationObserver(records => {
   }
   const addedText = addedTexts.join('');
   if (looksLikeAsciiArt(addedText) || looksLikeNoiseCaptcha(addedText)) {
-    stop('偵測到驗證碼圖形，已停止；請完成驗證後再按開始');
+    stopAndAlert('偵測到驗證碼圖形，已停止；請完成驗證後再按開始');
     return;
   }
   const addedPrompt = records.some(record => {
@@ -111,7 +157,7 @@ const captchaObserver = new MutationObserver(records => {
     return Array.from(record.addedNodes).some(node =>
       hasCaptchaText(node.textContent));
   });
-  if (addedPrompt) stop('偵測到「請輸入上面的數字／請輸入上方的數字」，已停止；請完成驗證後再按開始');
+  if (addedPrompt) stopAndAlert('偵測到「請輸入上面的數字／請輸入上方的數字」，已停止；請完成驗證後再按開始');
   else checkCaptcha();
 });
 captchaObserver.observe(document.body, {
