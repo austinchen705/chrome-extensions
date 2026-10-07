@@ -18,12 +18,13 @@
     #start { background:#222; color:white; }
     #stop { background:#eee; color:#222; }
     #test, #beep { margin-top:8px; width:100%; background:#f4f4f4; }
-    #status { margin-top:12px; font-size:13px; padding:8px; border-radius:7px; background:#f6f6f6; }
+    #status { margin-bottom:4px; font-size:13px; padding:8px; border-radius:7px; background:#f6f6f6; }
     .hint { font-size:11px; color:#777; margin-top:8px; line-height:1.4; }
   </style>
 </head>
 <body>
   <h2>CatWorld Auto Command <small id="version"></small></h2>
+  <div id="status">狀態：讀取中…</div>
   <label>固定指令（一行一個，每輪全部依序送出）</label>
   <textarea id="commands">ps
 px</textarea>
@@ -44,7 +45,6 @@ px</textarea>
   </div>
   <button id="test">測試送出 ps</button>
   <button id="beep">測試提示音</button>
-  <div id="status">狀態：讀取中…</div>
   <div class="hint">新出現「請輸入上面的數字」或「請輸入上方的數字」會立即停止。請先手動完成驗證，再按開始；舊紀錄不會重複觸發。需在 CatWorld Web 分頁使用。重新整理遊戲頁後會自動停止，避免意外持續執行。</div>
   <script src="popup.js"></script>
 </body>
