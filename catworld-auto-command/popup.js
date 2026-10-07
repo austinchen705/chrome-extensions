@@ -75,6 +75,18 @@ $('beep').addEventListener('click', async () => {
   } catch (e) { setStatus(e.message); }
 });
 
+// popup 失焦就會關閉，清單改在獨立分頁開啟；已開著就直接切過去，不重複開
+$('skills').addEventListener('click', async () => {
+  const url = chrome.runtime.getURL('skills.html');
+  const [existing] = await chrome.tabs.query({ url });
+  if (existing) {
+    await chrome.tabs.update(existing.id, { active: true });
+    await chrome.windows.update(existing.windowId, { focused: true });
+  } else {
+    await chrome.tabs.create({ url });
+  }
+});
+
 (async () => {
   const data = await chrome.storage.local.get(['settings']);
   if (data.settings) {

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>悟招清單</title>
+  <style>
+    :root {
+      --bg: #fafafa; --card: #fff; --text: #222; --muted: #777; --line: #e3e3e3;
+      --accent: #b42318; --chip: #f0f0f0; --chip-on: #222; --chip-on-text: #fff; --warn: #fff7e6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #17181a; --card: #1f2023; --text: #e6e6e6; --muted: #999; --line: #34363a;
+        --accent: #ff8a7a; --chip: #2a2c30; --chip-on: #e6e6e6; --chip-on-text: #17181a; --warn: #2b2618;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 20px 16px 60px; background: var(--bg); color: var(--text);
+      font: 14px/1.5 system-ui, -apple-system, "Microsoft JhengHei", sans-serif; }
+    main { max-width: 1100px; margin: 0 auto; }
+    h1 { margin: 0 0 4px; font-size: 22px; }
+    .sub { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+    .note { background: var(--warn); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+      font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+    .note b { color: var(--text); }
+    .controls { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 8px 0 10px;
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+    input[type=search], select { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
+      background: var(--card); color: var(--text); font: inherit; }
+    input[type=search] { flex: 1 1 200px; min-width: 160px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip, button { border: 0; border-radius: 999px; padding: 5px 12px; background: var(--chip); color: var(--text);
+      font: inherit; cursor: pointer; }
+    .chip[aria-pressed=true] { background: var(--chip-on); color: var(--chip-on-text); }
+    #count { color: var(--muted); font-size: 12px; margin-left: auto; }
+    details { background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; }
+    summary { cursor: pointer; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
+    summary .title { font-weight: 700; font-size: 15px; }
+    summary .meta { color: var(--muted); font-size: 12px; }
+    .badge { display: inline-block; border-radius: 4px; padding: 0 6px; font-size: 11px; background: var(--chip); color: var(--text); }
+    .badge.warn { background: var(--accent); color: #fff; }
+    .body { padding: 0 12px 12px; }
+    .req { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
+    .scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 500; font-size: 12px; white-space: nowrap; }
+    td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    td.name { font-weight: 600; white-space: nowrap; }
+    td.desc { color: var(--muted); font-size: 12px; min-width: 260px; }
+    code { font-size: 11px; background: var(--chip); padding: 0 4px; border-radius: 4px; }
+    .empty { color: var(--muted); padding: 30px 0; text-align: center; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>悟招清單</h1>
+  <div class="sub" id="source"></div>
+  <div class="note">
+    <b>悟招機制：</b>
+    技能達到門檻、內功達標、並把 <code>force</code> 與對應武功都裝備成同一組後，每次練功都有機會抽中「悟招」，
+    判定為 <code>random(N) + random(N) &lt; diminishing(悟性, 30)</code>，<b>N 越小越容易</b>，天賦只看<b>悟性（int）</b>。
+    悟到之後，出招時有 <code>已悟招數 × 50 ÷ 總招數</code> % 的機率改用悟招，並從已悟的招式中隨機挑一招。
+    各武功的「傷害」與「內力加成」是兩種不同的數值，不同武功之間不一定能直接比較。
+  </div>
+  <div class="controls">
+    <input type="search" id="q" placeholder="搜尋武功、招式名、內功…">
+    <div class="chips" id="types"></div>
+    <select id="sort">
+      <option value="default">排序：類型</option>
+      <option value="roll">排序：悟招容易度（易→難）</option>
+      <option value="power">排序：最高傷害（高→低）</option>
+    </select>
+    <button id="toggle" type="button">全部展開</button>
+    <span id="count"></span>
+  </div>
+  <div id="list"></div>
+</main>
+<script src="skills-data.js"></script>
+<script src="skills.js"></script>
+</body>
+</html>
