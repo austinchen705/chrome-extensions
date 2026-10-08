@@ -13,6 +13,8 @@ const captchaPattern = /請輸入上(?:方|面)的數字/g;
 function hasCaptchaText(text) { return /請輸入上(?:方|面)的數字/.test(text || ''); }
 let captchaCount = 0;
 const NO_REPLY_MS = 8000;
+const REPEAT_BEEP_MS = 10 * 1000;
+const REPEAT_BEEP_MAX_MS = 5 * 60 * 1000;
 let watchdogTimer = null;
 let lastCommand = '';
 const BLOCK = '█';
@@ -70,6 +72,7 @@ function looksLikeNoiseCaptcha(text) {
 }
 // 自動停止時提醒使用者：系統通知（由 background 建立）、提示音、分頁標題閃爍
 let titleTimer = null;
+let repeatBeepTimer = null;
 // 回傳是否真的發聲；頁面尚無使用者互動時，瀏覽器的自動播放限制會讓 AudioContext 停在 suspended
 async function beep() {
   const ctx = new AudioContext();
@@ -91,6 +94,18 @@ async function beep() {
   setTimeout(() => ctx.close(), 1500);
   return true;
 }
+// 首響之後每 REPEAT_BEEP_MS 再響一次，最久持續 REPEAT_BEEP_MAX_MS，直到使用者回到頁面互動或重新開始
+function startRepeatBeep() {
+  const startedAt = Date.now();
+  repeatBeepTimer = setInterval(() => {
+    if (Date.now() - startedAt >= REPEAT_BEEP_MAX_MS) stopRepeatBeep();
+    else beep();
+  }, REPEAT_BEEP_MS);
+}
+function stopRepeatBeep() {
+  clearInterval(repeatBeepTimer);
+  repeatBeepTimer = null;
+}
 function flashTitle(text) {
   if (titleTimer) return;
   const original = document.title;
@@ -102,6 +117,7 @@ function flashTitle(text) {
   const clear = () => {
     clearInterval(titleTimer);
     titleTimer = null;
+    stopRepeatBeep();
     document.title = original;
     ['focus', 'pointerdown', 'keydown'].forEach(name => window.removeEventListener(name, clear));
     document.removeEventListener('visibilitychange', onVisible);
@@ -111,7 +127,9 @@ function flashTitle(text) {
   document.addEventListener('visibilitychange', onVisible);
 }
 function stopAndAlert(reason) {
+  stopRepeatBeep();
   beep();
+  startRepeatBeep();
   flashTitle('⚠ 需要驗證');
   chrome.runtime.sendMessage({ type: 'ALERT', reason });
   return stop(reason);
@@ -259,6 +277,7 @@ function runRandomCommand() {
 }
 
 async function start(newSettings) {
+  stopRepeatBeep();
   clearTimers();
   settings = { ...settings, ...newSettings };
   captchaObserver.takeRecords();
