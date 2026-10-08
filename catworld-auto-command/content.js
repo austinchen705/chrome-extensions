@@ -8,6 +8,7 @@ let randomTimer = null;
 const queue = [];
 let lastSentAt = 0;
 let stopReason = '';
+let nextRunAt = null;
 const captchaPattern = /請輸入上(?:方|面)的數字/g;
 function hasCaptchaText(text) { return /請輸入上(?:方|面)的數字/.test(text || ''); }
 let captchaCount = 0;
@@ -193,6 +194,7 @@ function sendCommand(command) {
 }
 
 function clearTimers() {
+  nextRunAt = null;
   if (loopTimer) clearTimeout(loopTimer);
   if (queueTimer) clearTimeout(queueTimer);
   if (randomTimer) clearTimeout(randomTimer);
@@ -210,7 +212,8 @@ function scheduleNextRound() {
   const max = Math.max(min, Number(settings.maxSeconds) || min);
   const delay = (min + Math.random() * (max - min)) * 1000;
   loopTimer = setTimeout(runRound, delay);
-  chrome.storage.local.set({ nextRunAt: Date.now() + delay });
+  nextRunAt = Date.now() + delay;
+  chrome.storage.local.set({ nextRunAt });
 }
 
 // 固定與隨機兩條循環共用同一個送出佇列，任兩次送出至少間隔 commandDelayMs
@@ -235,6 +238,7 @@ function pumpQueue() {
 
 function runRound() {
   if (!running) return;
+  nextRunAt = null;
   chrome.storage.local.set({ nextRunAt: null });
   settings.commands.filter(cmd => cmd.trim()).forEach(enqueue);
   scheduleNextRound();
@@ -264,13 +268,142 @@ async function start(newSettings) {
   await chrome.storage.local.set({ running: true, settings, nextRunAt: null, stopReason: '' });
   if (settings.commands.length) runRound();
   if (settings.randomCommands.length) scheduleRandomCommand();
+  renderPanel();
 }
 
 async function stop(reason = '已停止') {
   stopReason = reason;
   running = false;
   clearTimers();
+  renderPanel();
   await chrome.storage.local.set({ running: false, nextRunAt: null, stopReason });
+}
+
+// 浮動狀態面板：放在 shadow DOM 並掛在 <html> 下，頁面層級的 MutationObserver 與 body.textContent 都看不到它，
+// 面板更新文字不會被誤當成遊戲輸出或驗證碼提示
+const PANEL_UI_KEY = 'panelUi';
+let panel = null;
+function initPanel() {
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;';
+  const root = host.attachShadow({ mode: 'open' });
+  root.innerHTML = `
+    <style>
+      :host { all: initial; }
+      .panel { width: 210px; background: rgba(28,28,30,.93); color: #eee; border-radius: 10px;
+        font: 13px/1.5 system-ui, -apple-system, "Microsoft JhengHei", sans-serif;
+        box-shadow: 0 4px 16px rgba(0,0,0,.4); user-select: none; }
+      .head { display: flex; align-items: center; gap: 8px; padding: 7px 10px; cursor: move; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: #777; flex: none; }
+      .dot.on { background: #3ecf6e; }
+      .dot.alert { background: #ff5c4d; }
+      .label { flex: 1; font-weight: 600; white-space: nowrap; }
+      .toggle { all: unset; cursor: pointer; padding: 0 4px; color: #aaa; font-size: 15px; line-height: 1; }
+      .body { padding: 0 10px 10px; }
+      .detail { color: #bbb; font-size: 12px; min-height: 18px; word-break: break-all; }
+      .detail.alert { color: #ff8a7a; }
+      .buttons { display: flex; gap: 6px; margin-top: 8px; }
+      .buttons button { all: unset; flex: 1; text-align: center; padding: 5px 0; border-radius: 6px;
+        background: #3a3a3e; cursor: pointer; font-weight: 600; }
+      .buttons button.start { background: #2f7d4a; }
+      .buttons button[disabled] { opacity: .35; cursor: default; }
+      .collapsed .body { display: none; }
+    </style>
+    <div class="panel">
+      <div class="head"><span class="dot"></span><span class="label"></span><button class="toggle" title="收合／展開">–</button></div>
+      <div class="body">
+        <div class="detail"></div>
+        <div class="buttons"><button class="start">開始</button><button class="stop">停止</button></div>
+      </div>
+    </div>`;
+  const $ = selector => root.querySelector(selector);
+  panel = { box: $('.panel'), dot: $('.dot'), label: $('.label'), detail: $('.detail'), start: $('.start'), stop: $('.stop') };
+
+  // 點面板不要讓遊戲輸入框失去游標
+  root.addEventListener('mousedown', e => e.preventDefault());
+  panel.start.addEventListener('click', () => {
+    if (running) return;
+    if (!settings.commands.length && !settings.randomCommands.length) {
+      stop('尚未設定指令，請先在 popup 設定');
+      return;
+    }
+    start(settings);
+  });
+  panel.stop.addEventListener('click', () => { if (running) stop(); });
+
+  const saveUi = ui => chrome.storage.local.set({ [PANEL_UI_KEY]: { ...ui } });
+  const ui = { left: null, top: null, collapsed: false };
+  // 依面板目前的實際大小夾在可視範圍內（收合後尺寸會變）
+  const place = (left, top) => {
+    const { width, height } = host.getBoundingClientRect();
+    const maxLeft = Math.max(0, (document.documentElement.clientWidth || window.innerWidth) - width);
+    const maxTop = Math.max(0, (document.documentElement.clientHeight || window.innerHeight) - height);
+    host.style.left = `${Math.min(Math.max(0, left), maxLeft)}px`;
+    host.style.top = `${Math.min(Math.max(0, top), maxTop)}px`;
+    host.style.right = 'auto';
+  };
+  const replace = () => {
+    if (ui.left !== null && ui.top !== null) place(ui.left, ui.top);
+  };
+  panel.replace = replace;
+  window.addEventListener('resize', replace);
+  $('.toggle').addEventListener('click', () => {
+    ui.collapsed = !ui.collapsed;
+    panel.box.classList.toggle('collapsed', ui.collapsed);
+    $('.toggle').textContent = ui.collapsed ? '+' : '–';
+    replace();
+    saveUi(ui);
+  });
+  $('.head').addEventListener('pointerdown', e => {
+    if (e.target.closest('.toggle')) return;
+    const rect = host.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+    const head = e.currentTarget;
+    head.setPointerCapture(e.pointerId);
+    const move = ev => place(ev.clientX - offsetX, ev.clientY - offsetY);
+    const up = () => {
+      head.removeEventListener('pointermove', move);
+      head.removeEventListener('pointerup', up);
+      const moved = host.getBoundingClientRect();
+      ui.left = moved.left;
+      ui.top = moved.top;
+      saveUi(ui);
+    };
+    head.addEventListener('pointermove', move);
+    head.addEventListener('pointerup', up);
+  });
+
+  chrome.storage.local.get(PANEL_UI_KEY).then(data => {
+    Object.assign(ui, data[PANEL_UI_KEY]);
+    if (ui.left !== null && ui.top !== null) place(ui.left, ui.top);
+    panel.box.classList.toggle('collapsed', ui.collapsed);
+    $('.toggle').textContent = ui.collapsed ? '+' : '–';
+  });
+
+  document.documentElement.append(host);
+  setInterval(renderPanel, 1000);
+  renderPanel();
+}
+
+function renderPanel() {
+  if (!panel) return;
+  const alerting = !running && /驗證/.test(stopReason);
+  panel.dot.className = `dot ${running ? 'on' : alerting ? 'alert' : ''}`;
+  panel.label.textContent = running ? '執行中' : '已停止';
+  let detail = '';
+  if (running) {
+    detail = nextRunAt ? `下一輪：${Math.max(0, Math.ceil((nextRunAt - Date.now()) / 1000))} 秒後` : '指令送出中…';
+  } else if (stopReason && stopReason !== '已停止') {
+    detail = stopReason;
+  }
+  if (panel.detail.textContent !== detail) {
+    panel.detail.textContent = detail;
+    panel.replace();
+  }
+  panel.detail.classList.toggle('alert', alerting);
+  panel.start.disabled = running;
+  panel.stop.disabled = !running;
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -299,6 +432,9 @@ chrome.storage.local.get(['running', 'settings']).then(data => {
   // Safety choice: a page reload does not silently resume automation.
   running = false;
   if (data.running) chrome.storage.local.set({ running: false, nextRunAt: null, stopReason });
+  renderPanel();
 });
+
+initPanel();
 
 })();
