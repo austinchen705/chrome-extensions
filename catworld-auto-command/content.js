@@ -50,14 +50,15 @@ function looksLikeAsciiArt(text) {
 }
 // 另一種驗證碼：一大塊隨機英數字亂碼，其中少數字元以背景色（B1 等）標出，沒有提示文字；
 // 連續 8 行以上只含英數字與空白的長行，且帶背景色標記的字元至少 8 個
+// （背景色 span 內容是空白時已轉成 █，同樣算標記）
 function looksLikeNoiseCaptcha(text) {
   let run = 0;
   let marks = 0;
   for (const line of (text || '').split('\n')) {
     if (!line.trim()) continue;
-    if (line.length >= 30 && /^[A-Za-z0-9 \u0001]+$/.test(line)) {
+    if (line.length >= 30 && new RegExp(`^[A-Za-z0-9 ${NOISE_MARK}${BLOCK}]+$`).test(line)) {
       run += 1;
-      marks += line.split(NOISE_MARK).length - 1;
+      marks += (line.match(new RegExp(`[${NOISE_MARK}${BLOCK}]`, 'g')) || []).length;
       if (run >= 8 && marks >= 8) return true;
     } else {
       run = 0;
