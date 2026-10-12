@@ -1,0 +1,12 @@
+{
+  "name": "chrome-extensions",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Personal Chrome extensions and a one-line installer",
+  "bin": {
+    "install-extension": "bin/install-extension.js"
+  },
+  "engines": {
+    "node": ">=16.7"
+  }
+}
