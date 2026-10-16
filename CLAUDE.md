@@ -9,6 +9,10 @@
   - `bin/install-extension.js`（`package.json` 的 `bin`，`npx github:austinchen705/chrome-extensions`）：給已有 Node 與 git 的人。
 - 三者都會安裝任一含 `manifest.json` 的子資料夾，新增 extension 不需要改腳本；安裝方式寫在 `README.md` 與 `catworld-auto-command/help.html`。
 
+## 說明文件
+
+- 操作與驗證碼停止時機同時寫在 `README.md`（GitHub 上看）與 `catworld-auto-command/help.html`（extension 內建，GitHub 不會渲染 html），兩邊內容要一起改。說明用的截圖放在 `catworld-auto-command/help/`，兩處共用。
+
 ## 產生的資料
 
 - `catworld-auto-command/skills-data.js` 由 `node tools/gen-skills-data.js <the-cat-world repo 路徑>` 從 `jrealm/the-cat-world` 解析產生，不要手改；來源 repo 更新時重新產生。
