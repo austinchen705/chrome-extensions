@@ -46,14 +46,19 @@ function Install-ChromeExtension {
   try { Set-Clipboard -Value $target } catch { }
   if ($env:CHROME_EXT_NO_OPEN -ne '1') { try { Start-Process chrome 'chrome://extensions' } catch { } }
 
-  $step3 = if ($oldVersion) { '已安裝過：按該 extension 卡片上的「重新載入」' } else { "第一次安裝：按「載入未封裝項目」，選擇資料夾`n     $target`n     （路徑已複製到剪貼簿）" }
-  Write-Host @"
-
-接下來在 Chrome：
-  1. 開啟 chrome://extensions（沒自動開的話請手動輸入網址）
-  2. 右上角打開「開發人員模式」
-  3. $step3
-  4. 重新整理遊戲分頁，新版才會生效
-"@
+  Write-Host ''
+  Write-Host '接下來在 Chrome：'
+  Write-Host '  1. 開啟 chrome://extensions（沒自動開的話請手動輸入網址）'
+  Write-Host '  2. 右上角打開「開發人員模式」'
+  if ($oldVersion) {
+    Write-Host '  3. 已安裝過：按該 extension 卡片上的「重新載入」'
+  } else {
+    Write-Host '  3. 第一次安裝：按「載入未封裝項目」，選擇這個資料夾（可把路徑直接貼到選擇視窗）：'
+    Write-Host ''
+    Write-Host "     $target " -ForegroundColor Black -BackgroundColor Yellow
+    Write-Host ''
+    Write-Host '     （路徑已複製到剪貼簿）'
+  }
+  Write-Host '  4. 重新整理遊戲分頁，新版才會生效'
 }
 Install-ChromeExtension

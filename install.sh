@@ -59,18 +59,19 @@ if [ "${CHROME_EXT_NO_OPEN:-}" != "1" ]; then
   fi
 fi
 
+hi_on=''; hi_off=''
+if [ -t 1 ]; then hi_on="$(printf '\033[30;43m')"; hi_off="$(printf '\033[0m')"; fi
+echo
+echo '接下來在 Chrome：'
+echo '  1. 開啟 chrome://extensions（沒自動開的話請手動輸入網址）'
+echo '  2. 右上角打開「開發人員模式」'
 if [ -n "$old_version" ]; then
-  step3='已安裝過：按該 extension 卡片上的「重新載入」'
+  echo '  3. 已安裝過：按該 extension 卡片上的「重新載入」'
 else
-  step3="第一次安裝：按「載入未封裝項目」，選擇資料夾
-     $target
-     （路徑已複製到剪貼簿）"
+  echo '  3. 第一次安裝：按「載入未封裝項目」，選擇這個資料夾（可把路徑直接貼到選擇視窗）：'
+  echo
+  echo "     ${hi_on} $target ${hi_off}"
+  echo
+  echo '     （路徑已複製到剪貼簿）'
 fi
-cat <<EOF
-
-接下來在 Chrome：
-  1. 開啟 chrome://extensions（沒自動開的話請手動輸入網址）
-  2. 右上角打開「開發人員模式」
-  3. $step3
-  4. 重新整理遊戲分頁，新版才會生效
-EOF
+echo '  4. 重新整理遊戲分頁，新版才會生效'
