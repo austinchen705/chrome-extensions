@@ -75,9 +75,9 @@ $('beep').addEventListener('click', async () => {
   } catch (e) { setStatus(e.message); }
 });
 
-// popup 失焦就會關閉，清單改在獨立分頁開啟；已開著就直接切過去，不重複開
-$('skills').addEventListener('click', async () => {
-  const url = chrome.runtime.getURL('skills.html');
+// popup 失焦就會關閉，清單與說明改在獨立分頁開啟；已開著就直接切過去，不重複開
+async function openExtensionPage(file) {
+  const url = chrome.runtime.getURL(file);
   const [existing] = await chrome.tabs.query({ url });
   if (existing) {
     await chrome.tabs.update(existing.id, { active: true });
@@ -85,7 +85,9 @@ $('skills').addEventListener('click', async () => {
   } else {
     await chrome.tabs.create({ url });
   }
-});
+}
+$('skills').addEventListener('click', () => openExtensionPage('skills.html'));
+$('help').addEventListener('click', () => openExtensionPage('help.html'));
 
 (async () => {
   const data = await chrome.storage.local.get(['settings']);
