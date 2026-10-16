@@ -6,48 +6,125 @@
   <title>CatWorld Auto Command</title>
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; width: 320px; margin: 0; padding: 16px; color: #222; }
-    h2 { margin: 0 0 14px; font-size: 18px; }
+    h2 { margin: 0 0 10px; font-size: 18px; }
     h2 small { font-size: 11px; font-weight: 400; color: #777; }
     label { display:block; font-size:12px; margin: 10px 0 5px; color:#555; }
-    textarea,input { box-sizing:border-box; width:100%; border:1px solid #ccc; border-radius:7px; padding:8px; font:inherit; }
+    textarea,input,select { box-sizing:border-box; width:100%; border:1px solid #ccc; border-radius:7px; padding:8px; font:inherit; background:#fff; color:inherit; }
     textarea { min-height:72px; resize:vertical; }
     .row { display:flex; gap:8px; }
-    .row > div { flex:1; }
+    .row > div { flex:1; min-width:0; }
     .buttons { display:flex; gap:8px; margin-top:14px; }
     button { flex:1; border:0; border-radius:8px; padding:9px; cursor:pointer; font-weight:600; }
-    #start { background:#222; color:white; }
-    #stop { background:#eee; color:#222; }
-    #test, #beep, #skills, #help { margin-top:8px; width:100%; background:#f4f4f4; }
-    #status { margin-bottom:4px; font-size:13px; padding:8px; border-radius:7px; background:#f6f6f6; }
+    #start, #tstart { background:#222; color:white; }
+    #stop, #tstop { background:#eee; color:#222; }
+    #test, #beep, #skills { margin-top:8px; width:100%; background:#f4f4f4; }
+    .status { margin-bottom:4px; font-size:13px; padding:8px; border-radius:7px; background:#f6f6f6; }
     .hint { font-size:11px; color:#777; margin-top:8px; line-height:1.4; }
+    .hint.tight { margin-top:4px; }
+
+    .tabs { display:flex; gap:4px; background:#f0f0f0; border-radius:9px; padding:3px; margin-bottom:10px; }
+    .tabs button { padding:6px 0; background:transparent; color:#666; font-size:13px; }
+    .tabs button[aria-selected="true"] { background:#fff; color:#222; box-shadow:0 1px 3px rgba(0,0,0,.18); }
+    [data-pane][hidden] { display:none; }
+
+    .read { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:4px; }
+    .chip { background:#f3f4f6; border-radius:6px; padding:3px 6px; font-size:11px; line-height:1.35; font-variant-numeric:tabular-nums; }
+    .chip b { display:block; font-weight:600; color:#777; font-size:10px; }
+    .chip.na { opacity:.55; }
+
+    .rule { border:1px solid #ddd; border-radius:9px; padding:8px 10px 10px; margin-top:8px; }
+    .rule-head { display:flex; align-items:center; gap:6px; min-height:24px; }
+    .rule-head .grow { flex:1; }
+    .rule input[type="checkbox"], .safety input[type="checkbox"] { width:auto; }
+    .cond { display:grid; grid-template-columns:64px 50px minmax(0, 1fr) 72px; gap:6px; align-items:center; margin-top:6px; }
+    .cond select { padding:8px 4px; }
+    .pill { display:inline-block; border-radius:999px; padding:1px 9px; font-size:11px; font-weight:600; max-width:190px; }
+    .pill.ready { background:#dff3e6; color:#1f7a46; }
+    .pill.waiting { background:#fdecc8; color:#8a5a00; }
+    .pill.disabled { background:#fde2df; color:#b42318; }
+    .pill[hidden], .linkbtn[hidden] { display:none; }
+    .rearm { font-size:11px; color:#777; margin:6px 0 0; }
+    .linkbtn { flex:none; padding:2px 8px; font-size:12px; background:transparent; color:#555; }
+    .x { flex:none; padding:0 6px; background:transparent; color:#888; font-size:14px; }
+    #addRule { margin-top:8px; width:100%; background:#f4f4f4; }
+
+    .safety { border:1px solid #ecd9a0; border-radius:9px; padding:8px 10px 10px; margin-top:10px; background:#fff6dd; }
+    .safety h4 { margin:0 0 2px; font-size:13px; }
+    .safety .check { display:flex; gap:6px; align-items:flex-start; font-size:12px; color:#222; margin-top:8px; }
+    .safety .check input { margin-top:3px; }
+    .safety input:disabled { background:#eee; color:#aaa; }
   </style>
 </head>
 <body>
   <h2>CatWorld Auto Command <small id="version"></small></h2>
-  <div id="status">狀態：讀取中…</div>
-  <label>固定指令（一行一個，每輪全部依序送出）</label>
-  <textarea id="commands">ps
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-timer" data-tab="timer" aria-selected="true">定時送出</button>
+    <button role="tab" id="tab-trigger" data-tab="trigger" aria-selected="false">狀態觸發</button>
+  </div>
+
+  <div data-pane="timer">
+    <div class="status" id="status">狀態：讀取中…</div>
+    <label>固定指令（一行一個，每輪全部依序送出）</label>
+    <textarea id="commands">ps
 px</textarea>
-  <div class="row">
-    <div><label>固定：最短秒數</label><input id="minSeconds" type="number" min="1" value="30"></div>
-    <div><label>固定：最長秒數</label><input id="maxSeconds" type="number" min="1" value="40"></div>
+    <div class="row">
+      <div><label>固定：最短秒數</label><input id="minSeconds" type="number" min="1" value="30"></div>
+      <div><label>固定：最長秒數</label><input id="maxSeconds" type="number" min="1" value="40"></div>
+    </div>
+    <label>指令間隔（毫秒）</label>
+    <input id="commandDelayMs" type="number" min="0" value="500">
+    <label>隨機指令（一行一個，每次只隨機挑 1 個，獨立計時）</label>
+    <textarea id="randomCommands"></textarea>
+    <div class="row">
+      <div><label>隨機：最短秒數</label><input id="randomMinSeconds" type="number" min="1" value="30"></div>
+      <div><label>隨機：最長秒數</label><input id="randomMaxSeconds" type="number" min="1" value="40"></div>
+    </div>
+    <div class="buttons">
+      <button id="start">開始</button><button id="stop">停止</button>
+    </div>
   </div>
-  <label>指令間隔（毫秒）</label>
-  <input id="commandDelayMs" type="number" min="0" value="500">
-  <label>隨機指令（一行一個，每次只隨機挑 1 個，獨立計時）</label>
-  <textarea id="randomCommands"></textarea>
-  <div class="row">
-    <div><label>隨機：最短秒數</label><input id="randomMinSeconds" type="number" min="1" value="30"></div>
-    <div><label>隨機：最長秒數</label><input id="randomMaxSeconds" type="number" min="1" value="40"></div>
+
+  <div data-pane="trigger" hidden>
+    <div class="status" id="trigStatus">觸發未啟動</div>
+    <label>現在從遊戲頁讀到的數值（讀不到顯示 —，該項不會觸發）</label>
+    <div class="read" id="read"></div>
+
+    <label>觸發規則（各規則獨立判斷，同時成立就依序送出）</label>
+    <div id="rules"></div>
+    <button id="addRule" type="button">＋ 新增規則</button>
+
+    <div class="safety">
+      <h4>安全機制（預設全部關閉，要用再勾選）</h4>
+      <p class="hint tight">目的：避免指令沒效果時一直重複送。<b>全部關閉時，條件持續成立就每隔冷卻時間重送一次，不會自己停</b>（冷卻最少 3 秒）。</p>
+      <label class="check"><input id="limitFires" type="checkbox"> 限制每條規則的觸發次數</label>
+      <div class="row">
+        <div><label for="maxFires">最多（次）</label><input id="maxFires" type="number" min="1" value="5"></div>
+        <div><label for="windowMinutes">區間（分鐘）</label><input id="windowMinutes" type="number" min="1" value="5"></div>
+      </div>
+      <p class="hint tight">同一條規則在區間內最多觸發這麼多次，超過就停用該規則並警報。</p>
+      <label class="check"><input id="limitIneffective" type="checkbox"> 連續沒改善就停用（≤ 沒回升、≥ 沒回落）</label>
+      <label for="maxIneffective">連續幾次觸發後</label>
+      <input id="maxIneffective" type="number" min="1" value="3">
+      <p class="hint tight">例如飲水 ≤ 200 就送 drink，但附近沒有水：連續幾次沒效果就停用並提醒你。</p>
+      <label class="check"><input id="limitGlobal" type="checkbox"> 限制所有規則合計每分鐘送出的指令數</label>
+      <label for="globalPerMinute">每分鐘最多（個）</label>
+      <input id="globalPerMinute" type="number" min="1" value="6">
+      <p class="hint tight">超過只是延後，不停用規則。</p>
+      <label class="check"><input id="requireNormal" type="checkbox" checked> 角色狀態不是「正常」時不觸發（昏迷、死亡等）</label>
+      <p class="hint tight">每條規則的冷卻（最少 3 秒）與「回復緩衝」在規則裡設定。</p>
+    </div>
+
+    <div class="buttons">
+      <button id="tstart">開始觸發</button><button id="tstop">停止觸發</button>
+    </div>
+    <div class="hint">按開始時如果門檻已經達成，會立刻觸發一次；之後要等數值回升到「回復條件」之上才會再次觸發。修改規則後要重新按「開始觸發」才會套用。驗證碼停止、重新整理遊戲頁、按停止，觸發都會一併停止。</div>
   </div>
-  <div class="buttons">
-    <button id="start">開始</button><button id="stop">停止</button>
-  </div>
+
   <button id="test">測試送出 ps</button>
   <button id="beep">測試提示音</button>
   <button id="skills">悟招清單（新分頁開啟）</button>
-  <button id="help">使用說明（新分頁開啟）</button>
   <div class="hint">新出現「請輸入上面的數字」或「請輸入上方的數字」會立即停止。請先手動完成驗證，再按開始；舊紀錄不會重複觸發。需在 CatWorld Web 分頁使用。重新整理遊戲頁後會自動停止，避免意外持續執行。</div>
+  <script src="trigger-engine.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

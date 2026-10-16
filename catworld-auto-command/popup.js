@@ -1,5 +1,6 @@
 const $ = id => document.getElementById(id);
 $('version').textContent = `v${chrome.runtime.getManifest().version}`;
+const Engine = CatworldTriggerEngine;
 
 async function getTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -35,7 +36,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['content.js']
+        files: ['trigger-engine.js', 'content.js']
       });
       return await chrome.tabs.sendMessage(tab.id, message);
     }
@@ -75,9 +76,9 @@ $('beep').addEventListener('click', async () => {
   } catch (e) { setStatus(e.message); }
 });
 
-// popup 失焦就會關閉，清單與說明改在獨立分頁開啟；已開著就直接切過去，不重複開
-async function openExtensionPage(file) {
-  const url = chrome.runtime.getURL(file);
+// popup 失焦就會關閉，清單改在獨立分頁開啟；已開著就直接切過去，不重複開
+$('skills').addEventListener('click', async () => {
+  const url = chrome.runtime.getURL('skills.html');
   const [existing] = await chrome.tabs.query({ url });
   if (existing) {
     await chrome.tabs.update(existing.id, { active: true });
@@ -85,12 +86,175 @@ async function openExtensionPage(file) {
   } else {
     await chrome.tabs.create({ url });
   }
+});
+
+// ---- 分頁 ----
+function showTab(name) {
+  document.querySelectorAll('[data-tab]').forEach(tab => tab.setAttribute('aria-selected', String(tab.dataset.tab === name)));
+  document.querySelectorAll('[data-pane]').forEach(pane => { pane.hidden = pane.dataset.pane !== name; });
+  chrome.storage.local.set({ popupTab: name });
 }
-$('skills').addEventListener('click', () => openExtensionPage('skills.html'));
-$('help').addEventListener('click', () => openExtensionPage('help.html'));
+document.querySelectorAll('[data-tab]').forEach(tab => tab.addEventListener('click', () => showTab(tab.dataset.tab)));
+
+// ---- 狀態觸發 ----
+const STAT_NAMES = Object.keys(Engine.STATS);
+const D = Engine.DEFAULTS;
+const BLANK_RULE = { enabled: true, stat: '飲水', op: 'le', unit: 'abs', value: 200, commands: [], cooldown: D.cooldown, buffer: D.buffer };
+
+function element(tag, props = {}, ...children) {
+  const el = Object.assign(document.createElement(tag), props);
+  el.append(...children);
+  return el;
+}
+
+function ruleCard(rule) {
+  const field = (name, el) => { el.dataset.f = name; return el; };
+  const stat = field('stat', element('select', { title: '項目' }, ...STAT_NAMES.map(name => element('option', { value: name, textContent: name, selected: name === rule.stat }))));
+  const op = field('op', element('select', { title: '方向：≤ 目前值小於等於門檻就觸發，≥ 目前值大於等於門檻就觸發' },
+    element('option', { value: 'le', textContent: '≤', selected: rule.op !== 'ge' }),
+    element('option', { value: 'ge', textContent: '≥', selected: rule.op === 'ge' })));
+  const value = field('value', element('input', { type: 'number', min: 0, value: rule.value, title: '門檻' }));
+  const unit = field('unit', element('select', { title: '單位' },
+    element('option', { value: 'abs', textContent: '數值', selected: rule.unit !== 'pct' }),
+    element('option', { value: 'pct', textContent: '％', selected: rule.unit === 'pct' })));
+  const commands = field('commands', element('textarea', { value: (rule.commands || []).join('\n'), placeholder: '例：drink' }));
+  const cooldown = field('cooldown', element('input', { type: 'number', min: Engine.MIN_COOLDOWN_SEC, value: rule.cooldown }));
+  const buffer = field('buffer', element('input', { type: 'number', min: 0, value: rule.buffer }));
+  const enabled = field('enabled', element('input', { type: 'checkbox', checked: rule.enabled !== false, title: '啟用這條規則' }));
+  const pill = field('pill', element('span', { className: 'pill', hidden: true }));
+  const again = field('again', element('button', { type: 'button', className: 'linkbtn', textContent: '重新啟用', hidden: true }));
+  const remove = element('button', { type: 'button', className: 'x', textContent: '✕', title: '刪除這條規則' });
+  const rearm = element('p', { className: 'rearm' });
+
+  const card = element('div', { className: 'rule' },
+    element('div', { className: 'rule-head' }, enabled, element('span', { className: 'grow' }, pill), again, remove),
+    element('div', { className: 'cond' }, stat, op, value, unit),
+    element('label', { textContent: '送出的指令（一行一個，依序送出）' }), commands,
+    element('div', { className: 'row' },
+      element('div', {}, element('label', { textContent: '冷卻（秒，最少 3）' }), cooldown),
+      element('div', {}, element('label', { textContent: '回復緩衝（％）' }), buffer)),
+    rearm);
+
+  const updateRearm = () => {
+    const text = Engine.rearmText({ op: op.value, unit: unit.value, value: Number(value.value) || 0, buffer: Number(buffer.value) || 0 });
+    rearm.textContent = `回復條件：${stat.value} ${text} 才會重新武裝`;
+  };
+  card.addEventListener('input', updateRearm);
+  updateRearm();
+  remove.addEventListener('click', () => { card.remove(); saveTriggerUi(); });
+  again.addEventListener('click', async () => {
+    const index = [...$('rules').children].indexOf(card);
+    try { await send({ type: 'REARM_RULE', index }); refreshTriggers(); } catch (e) { holdTrigStatus(e.message); }
+  });
+  return card;
+}
+
+function readTriggerSettings() {
+  const get = (card, name) => card.querySelector(`[data-f="${name}"]`);
+  return {
+    rules: [...$('rules').children].map(card => ({
+      enabled: get(card, 'enabled').checked,
+      stat: get(card, 'stat').value,
+      op: get(card, 'op').value,
+      unit: get(card, 'unit').value,
+      value: Number(get(card, 'value').value),
+      commands: get(card, 'commands').value.split('\n').map(x => x.trim()).filter(Boolean),
+      cooldown: Number(get(card, 'cooldown').value),
+      buffer: Number(get(card, 'buffer').value),
+    })),
+    limitFires: $('limitFires').checked,
+    limitIneffective: $('limitIneffective').checked,
+    limitGlobal: $('limitGlobal').checked,
+    maxFires: Number($('maxFires').value),
+    windowMinutes: Number($('windowMinutes').value),
+    maxIneffective: Number($('maxIneffective').value),
+    globalPerMinute: Number($('globalPerMinute').value),
+    requireNormal: $('requireNormal').checked,
+  };
+}
+
+function saveTriggerUi() {
+  chrome.storage.local.set({ triggerSettings: readTriggerSettings() });
+}
+
+function renderTriggerSettings(saved) {
+  const config = saved || { rules: [BLANK_RULE] };
+  $('rules').replaceChildren(...(config.rules.length ? config.rules : [BLANK_RULE]).map(ruleCard));
+  $('limitFires').checked = config.limitFires === true;
+  $('limitIneffective').checked = config.limitIneffective === true;
+  $('limitGlobal').checked = config.limitGlobal === true;
+  syncLimitInputs();
+  $('maxFires').value = config.maxFires ?? D.maxFires;
+  $('windowMinutes').value = config.windowMinutes ?? D.windowMinutes;
+  $('maxIneffective').value = config.maxIneffective ?? D.maxIneffective;
+  $('globalPerMinute').value = config.globalPerMinute ?? D.globalPerMinute;
+  $('requireNormal').checked = config.requireNormal !== false;
+}
+
+// 沒勾選的限制，數字欄位反灰
+function syncLimitInputs() {
+  [['limitFires', ['maxFires', 'windowMinutes']], ['limitIneffective', ['maxIneffective']], ['limitGlobal', ['globalPerMinute']]]
+    .forEach(([switchId, inputs]) => inputs.forEach(id => { $(id).disabled = !$(switchId).checked; }));
+}
+document.querySelector('.safety').addEventListener('change', syncLimitInputs);
+
+$('addRule').addEventListener('click', () => { $('rules').append(ruleCard(BLANK_RULE)); saveTriggerUi(); });
+document.querySelector('[data-pane="trigger"]').addEventListener('change', saveTriggerUi);
+
+let trigHold = { text: '', until: 0 };
+function holdTrigStatus(text) {
+  trigHold = { text, until: Date.now() + 4000 };
+  $('trigStatus').textContent = text;
+}
+
+$('tstart').addEventListener('click', async () => {
+  try {
+    const config = readTriggerSettings();
+    if (!Engine.hasActiveRules(config)) throw new Error('至少要有一條完整的規則（項目、門檻、指令都要填）');
+    await chrome.storage.local.set({ triggerSettings: config });
+    const result = await send({ type: 'START_TRIGGER', config });
+    if (!result?.ok) throw new Error(result?.error || '啟動觸發失敗');
+    refreshTriggers();
+  } catch (e) { holdTrigStatus(e.message); }
+});
+
+$('tstop').addEventListener('click', async () => {
+  try { await send({ type: 'STOP_TRIGGER' }); refreshTriggers(); }
+  catch (e) { holdTrigStatus(e.message); }
+});
+
+function renderReadings(stats) {
+  $('read').replaceChildren(...STAT_NAMES.map(name => {
+    const stat = stats?.[name];
+    const max = stat && Number.isFinite(stat.max) ? `/${stat.max}` : '';
+    return element('div', { className: stat ? 'chip' : 'chip na' }, element('b', { textContent: name }), stat ? `${stat.value}${max}` : '—');
+  }));
+}
+
+// 每秒向遊戲頁要一次讀數與各規則的狀態；規則數量和遊戲頁正在跑的設定不同（剛改過還沒重新開始）時不顯示狀態
+async function refreshTriggers() {
+  let status;
+  try { status = await send({ type: 'STATUS' }); } catch { renderReadings(null); return; }
+  const triggers = status?.triggers;
+  renderReadings(triggers?.stats);
+  const cards = [...$('rules').children];
+  const states = triggers?.on && triggers.rules.length === cards.length ? triggers.rules : [];
+  cards.forEach((card, i) => {
+    const pill = card.querySelector('[data-f="pill"]');
+    const again = card.querySelector('[data-f="again"]');
+    const state = states[i];
+    pill.hidden = !state || state.phase === 'off';
+    again.hidden = !state || state.phase !== 'disabled';
+    if (state) { pill.textContent = state.text; pill.className = `pill ${state.phase}`; pill.title = state.text; }
+  });
+  if (Date.now() < trigHold.until) return;
+  $('trigStatus').textContent = triggers?.on
+    ? `觸發執行中（${triggers.rules.filter(rule => rule.phase !== 'off').length} 條規則）`
+    : (triggers?.note || '觸發未啟動');
+}
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings']);
+  const data = await chrome.storage.local.get(['settings', 'triggerSettings', 'popupTab']);
   if (data.settings) {
     $('commands').value = (data.settings.commands || ['ps','px']).join('\n');
     $('minSeconds').value = data.settings.minSeconds ?? 30;
@@ -100,10 +264,14 @@ $('help').addEventListener('click', () => openExtensionPage('help.html'));
     $('randomMinSeconds').value = data.settings.randomMinSeconds ?? 30;
     $('randomMaxSeconds').value = data.settings.randomMaxSeconds ?? 40;
   }
+  renderTriggerSettings(data.triggerSettings);
+  showTab(data.popupTab === 'trigger' ? 'trigger' : 'timer');
   try {
     const status = await send({ type: 'STATUS' });
     setStatus(status?.running ? '執行中' : (status?.stopReason || '已停止'));
   } catch { setStatus('請切到 CatWorld Web 分頁'); }
+  refreshTriggers();
+  setInterval(refreshTriggers, 1000);
 })();
 
 chrome.storage.onChanged.addListener((changes, area) => {
