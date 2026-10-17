@@ -2,7 +2,7 @@
 
 個人的 Chrome extension（Manifest V3）。目前有：
 
-- `catworld-auto-command`：小貓的世界自動指令，遇到驗證碼自動停止並提醒。
+- `catworld-auto-command`：小貓的世界自動指令，遇到驗證碼自動停止並提醒。版本紀錄見 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 安裝（不需要 Node / git）
 
