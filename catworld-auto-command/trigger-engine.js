@@ -1,7 +1,7 @@
 // 狀態觸發的規則引擎：只做判斷，不碰 DOM。讀數、時間、送出指令、停用警報都由呼叫端以 io 傳入，方便獨立測試。
 //
 // 每條規則的狀態機（每秒 tick 一次）：
-//   ready    待命。目前值 ≤ 門檻且已過冷卻 → 觸發（按開始時門檻已達成也在第一個 tick 立刻觸發），進入 waiting。
+//   ready    待命。目前值 ≤ 門檻且已過冷卻 → 觸發（按開始時門檻已達成也在第一個 tick 立刻命中；實際送出時間見下面的命中後延遲），進入 waiting。
 //   waiting  已觸發。
 //            · 目前值 > 回復條件（數值：門檻 ×(1+緩衝%)；％：門檻＋緩衝個百分點）→ 回到 ready，無效次數歸零。
 //            · 冷卻結束且目前值仍 ≤ 門檻 → 先判斷上次有沒有效果：目前值 > 觸發當下的值算有效（無效次數歸零），
@@ -14,9 +14,19 @@
 //   limitIneffective  連續無效次數上限，達到就停用該規則
 //   limitGlobal       所有規則合計每分鐘送出的指令數（只延後，不停用；單條規則一次要送的指令數超過它才停用）
 // 全部關閉時，條件持續成立就每隔冷卻時間（最少 3 秒）重送一次，不會自己停。
+// 命中後不會馬上送出：在 0～delayMax 秒之間隨機等一段時間（delayMax 為 0 就不延遲），由每秒一次的 tick 到時間才送，
+// 所以實際送出時間最多比預定晚一個 tick。命中當下就算一次觸發（次數上限、每分鐘上限），冷卻從實際送出的時間起算；
+// 延遲期間規則維持 waiting，不會重複命中。停止（引擎被丟掉）時尚未送出的指令一併作廢。
 // 「有效」只比較觸發當下與現在的數值；精、氣、神本來就會自然恢復，這個判斷對它們比較不準，不特別處理。
 // 規則方向 op：'le'（目前值 ≤ 門檻，預設）或 'ge'（目前值 ≥ 門檻）。'ge' 時上面所有「回升／高於」都鏡像成「回落／低於」：
 // 回復條件是低於「門檻 −緩衝」，有效是數值比觸發當下更低。
+//
+// 關鍵字規則（kind: 'keyword'）：新出現的遊戲文字含有關鍵字（不分大小寫的子字串）就送出指令，由呼叫端把新文字交給 onText。
+// 防迴圈（觸發 → 回覆又含關鍵字 → 再觸發）靠三件事，缺一不可：
+//   1. 只看「新出現」的文字：按開始時不掃歷史，也不會一開始就觸發。
+//   2. 冷卻期間（waiting）出現的關鍵字直接丟掉，不補送：冷卻結束後沒有新的關鍵字文字就不會再觸發。
+//   3. 以 > 開頭的行是指令回聲（自己或使用者打的指令），整行略過。
+// 關鍵字規則沒有「有沒有效果」可判斷，limitIneffective 不適用；三道限制關閉時，冷卻（最少 3 秒）是唯一的頻率限制。
 (() => {
 if (globalThis.CatworldTriggerEngine) return;
 
@@ -32,7 +42,7 @@ const STATS = {
   '飲水': { cur: 'water', max: 'max_water' },
 };
 const MIN_COOLDOWN_SEC = 3;
-const DEFAULTS = { cooldown: 10, buffer: 10, maxFires: 5, windowMinutes: 5, maxIneffective: 3, globalPerMinute: 6 };
+const DEFAULTS = { cooldown: 10, buffer: 10, maxFires: 5, windowMinutes: 5, maxIneffective: 3, globalPerMinute: 6, delayMax: 5 };
 
 function positive(value, fallback, min) {
   const n = Number(value);
@@ -42,9 +52,20 @@ function positive(value, fallback, min) {
 function normalizeRule(raw = {}) {
   const commands = (Array.isArray(raw.commands) ? raw.commands : String(raw.commands || '').split('\n'))
     .map(command => String(command).trim()).filter(Boolean);
+  if (raw.kind === 'keyword') {
+    const pattern = String(raw.pattern ?? '').trim();
+    return {
+      kind: 'keyword',
+      enabled: raw.enabled !== false && pattern !== '' && commands.length > 0,
+      pattern,
+      commands,
+      cooldown: positive(raw.cooldown, DEFAULTS.cooldown, MIN_COOLDOWN_SEC),
+    };
+  }
   const value = Number(raw.value);
   const valid = Boolean(STATS[raw.stat]) && Number.isFinite(value) && value >= 0 && commands.length > 0;
   return {
+    kind: 'stat',
     enabled: raw.enabled !== false && valid,
     stat: raw.stat,
     op: raw.op === 'ge' ? 'ge' : 'le',
@@ -66,6 +87,7 @@ function normalizeConfig(raw = {}) {
     windowMinutes: positive(raw.windowMinutes, DEFAULTS.windowMinutes, 1),
     maxIneffective: positive(raw.maxIneffective, DEFAULTS.maxIneffective, 1),
     globalPerMinute: positive(raw.globalPerMinute, DEFAULTS.globalPerMinute, 1),
+    delayMax: positive(raw.delayMax, DEFAULTS.delayMax, 0),
     requireNormal: raw.requireNormal !== false,
   };
 }
@@ -76,7 +98,9 @@ function hasActiveRules(raw) {
 
 const unitSuffix = rule => (rule.unit === 'pct' ? '％' : '');
 const isUpper = rule => rule.op === 'ge';
-const ruleLabel = rule => `${rule.stat} ${isUpper(rule) ? '≥' : '≤'} ${rule.value}${unitSuffix(rule)}`;
+const ruleLabel = rule => (rule.kind === 'keyword'
+  ? `關鍵字「${rule.pattern}」`
+  : `${rule.stat} ${isUpper(rule) ? '≥' : '≤'} ${rule.value}${unitSuffix(rule)}`);
 function rearmLevel(rule) {
   if (rule.unit === 'pct') return isUpper(rule) ? rule.value - rule.buffer : rule.value + rule.buffer;
   return isUpper(rule) ? Math.floor(rule.value * (1 - rule.buffer / 100)) : Math.ceil(rule.value * (1 + rule.buffer / 100));
@@ -86,7 +110,7 @@ const meets = (rule, current) => (isUpper(rule) ? current >= rule.value : curren
 const recovered = (rule, current) => (isUpper(rule) ? current < rearmLevel(rule) : current > rearmLevel(rule));
 const improved = (rule, current, from) => (isUpper(rule) ? current < from : current > from);
 
-// io: { now(), readStat(name) → { value, max } | null, isNormal() → true | false | null, send(commands), onDisable(index, label, reason) }
+// io: { now(), readStat(name) → { value, max } | null, isNormal() → true | false | null, send(commands), onDisable(index, label, reason), random?() }
 function createEngine(rawConfig, io) {
   const config = normalizeConfig(rawConfig);
   const runtime = config.rules.map(rule => ({
@@ -94,11 +118,13 @@ function createEngine(rawConfig, io) {
     fires: [],
     fireValue: null,
     cooldownUntil: 0,
+    pendingUntil: null,
     ineffective: 0,
     current: null,
     note: '',
   }));
   let sent = [];
+  let pending = [];
 
   function recentFires(state, now) {
     const windowMs = config.windowMinutes * 60 * 1000;
@@ -129,25 +155,70 @@ function createEngine(rawConfig, io) {
         return;
       }
     }
-    io.send(rule.commands);
+    const delayMs = Math.round((io.random ? io.random() : Math.random()) * config.delayMax * 1000);
+    const executeAt = now + delayMs;
     rule.commands.forEach(() => sent.push(now));
     state.fires.push(now);
     state.fireValue = current;
-    state.cooldownUntil = now + rule.cooldown * 1000;
+    state.cooldownUntil = executeAt + rule.cooldown * 1000;
     state.phase = 'waiting';
     state.note = '';
+    if (delayMs > 0) {
+      state.pendingUntil = executeAt;
+      pending.push({ index, at: executeAt });
+    } else {
+      io.send(rule.commands);
+    }
+  }
+
+  // 到時間的延遲指令才真的送出；這時角色狀態不是「正常」（預設會擋）就略過這一次
+  function runPending(now) {
+    const due = pending.filter(item => item.at <= now);
+    pending = pending.filter(item => item.at > now);
+    due.forEach(item => {
+      runtime[item.index].pendingUntil = null;
+      if (config.requireNormal && io.isNormal() !== true) return;
+      io.send(config.rules[item.index].commands);
+    });
+  }
+
+  // 關鍵字規則：冷卻結束就回到待命，狀態文字才不會一直停在「冷卻中」
+  function releaseKeywordRules(now) {
+    config.rules.forEach((rule, index) => {
+      const state = runtime[index];
+      if (rule.kind !== 'keyword') return;
+      if (state.phase === 'waiting' && now >= state.cooldownUntil) state.phase = 'ready';
+      if (state.phase === 'ready') state.note = '';
+    });
+  }
+
+  // 新出現的遊戲文字（可含多行）。只有待命中的關鍵字規則會看；冷卻中、已停用的直接略過，不補送
+  function onText(text) {
+    const now = io.now();
+    sent = sent.filter(time => now - time < 60 * 1000);
+    if (config.requireNormal && io.isNormal() !== true) return;
+    const lines = String(text ?? '').split('\n').filter(line => !/^\s*>/.test(line)).map(line => line.toLowerCase());
+    if (!lines.length) return;
+    releaseKeywordRules(now);
+    config.rules.forEach((rule, index) => {
+      if (rule.kind !== 'keyword' || runtime[index].phase !== 'ready') return;
+      const needle = rule.pattern.toLowerCase();
+      if (lines.some(line => line.includes(needle))) fire(index, null, now);
+    });
   }
 
   function tick() {
     const now = io.now();
     sent = sent.filter(time => now - time < 60 * 1000);
+    runPending(now);
+    releaseKeywordRules(now);
     if (config.requireNormal && io.isNormal() !== true) {
       runtime.forEach(state => { if (state.phase !== 'off' && state.phase !== 'disabled') state.note = '角色狀態不是「正常」，暫不觸發'; });
       return;
     }
     config.rules.forEach((rule, index) => {
       const state = runtime[index];
-      if (state.phase === 'off' || state.phase === 'disabled') return;
+      if (rule.kind === 'keyword' || state.phase === 'off' || state.phase === 'disabled') return;
       const stat = io.readStat(rule.stat);
       if (!stat || !Number.isFinite(stat.value)) { state.note = '讀不到數值'; return; }
       let current = stat.value;
@@ -179,7 +250,8 @@ function createEngine(rawConfig, io) {
   function rearm(index) {
     const state = runtime[index];
     if (!state || state.phase !== 'disabled') return;
-    Object.assign(state, { phase: 'ready', fires: [], fireValue: null, cooldownUntil: 0, ineffective: 0, note: '' });
+    Object.assign(state, { phase: 'ready', fires: [], fireValue: null, cooldownUntil: 0, pendingUntil: null, ineffective: 0, note: '' });
+    pending = pending.filter(item => item.index !== index);
   }
 
   const shown = (rule, value) => (value === null ? '—' : `${Math.round(value * 10) / 10}${unitSuffix(rule)}`);
@@ -190,17 +262,20 @@ function createEngine(rawConfig, io) {
       rules: config.rules.map((rule, index) => {
         const state = runtime[index];
         const fires = recentFires(state, now);
+        const keyword = rule.kind === 'keyword';
+        const count = config.limitFires ? `${fires}/${config.maxFires}` : `${fires} 次`;
         let text;
         if (state.phase === 'off') text = '未啟用';
         else if (state.phase === 'disabled') text = `已停用：${state.note}`;
-        else if (state.phase === 'waiting') text = `已觸發 ${config.limitFires ? `${fires}/${config.maxFires}` : `${fires} 次`}，等待回復 ${rearmText(rule)}`;
-        else text = state.note || `待命（目前 ${shown(rule, state.current)}）`;
-        return { label: ruleLabel(rule), phase: state.phase, text, rearm: rearmLevel(rule), fires };
+        else if (state.pendingUntil !== null) text = `命中，${Math.max(0, Math.ceil((state.pendingUntil - now) / 1000))} 秒後執行`;
+        else if (state.phase === 'waiting') text = keyword ? `已觸發 ${count}，冷卻中` : `已觸發 ${count}，等待回復 ${rearmText(rule)}`;
+        else text = state.note || (keyword ? '待命（等待關鍵字）' : `待命（目前 ${shown(rule, state.current)}）`);
+        return { label: ruleLabel(rule), kind: rule.kind, phase: state.phase, text, rearm: keyword ? null : rearmLevel(rule), fires };
       }),
     };
   }
 
-  return { tick, rearm, snapshot };
+  return { tick, onText, rearm, snapshot };
 }
 
 globalThis.CatworldTriggerEngine = { STATS, MIN_COOLDOWN_SEC, DEFAULTS, normalizeConfig, hasActiveRules, rearmLevel, rearmText, createEngine };

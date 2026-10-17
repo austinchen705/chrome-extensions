@@ -9,6 +9,7 @@ const queue = [];
 let lastSentAt = 0;
 let stopReason = '';
 let nextRunAt = null;
+let nextRandomAt = null;
 // 狀態觸發與定時循環各有獨立開關；驗證碼偵測、看門狗、送出佇列在任一個開著時都要作用
 let triggersOn = false;
 let triggerTimer = null;
@@ -171,14 +172,27 @@ function checkCaptcha() {
   captchaCount = count;
   return false;
 }
-// 遊戲頁的即時狀態區塊（#monitor）會一直更新數值，不是遊戲回覆，不能拿來清掉看門狗或當驗證碼內容
-function inMonitor(node) {
+// 遊戲頁的浮動視窗（狀態 #monitor、地圖 #map_table、巨集、設定）會一直重畫，不是遊戲回覆，
+// 不能拿來清掉看門狗、當驗證碼內容，也不能當關鍵字來源
+function closestOf(node, selector) {
   const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-  return Boolean(element?.closest('#monitor'));
+  return Boolean(element?.closest(selector));
+}
+const inGameWindow = node => closestOf(node, '#monitor, #map_table, #macro_table, #setting_table');
+const inContent = node => closestOf(node, '#content');
+// 關鍵字觸發只看遊戲輸出區（#content）裡「新出現」的文字
+function feedKeywords(records) {
+  const text = records
+    .filter(record => inContent(record.target))
+    .flatMap(record => (record.type === 'characterData'
+      ? [record.target.textContent || '']
+      : Array.from(record.addedNodes, node => node.textContent || '')))
+    .join('');
+  if (text.trim()) triggerEngine.onText(text);
 }
 const captchaObserver = new MutationObserver(allRecords => {
   if (!active()) return;
-  const records = allRecords.filter(record => !inMonitor(record.target));
+  const records = allRecords.filter(record => !inGameWindow(record.target));
   if (!records.length) return;
   const addedTexts = records.flatMap(record => record.type === 'characterData'
     ? [record.target.textContent || '']
@@ -201,6 +215,8 @@ const captchaObserver = new MutationObserver(allRecords => {
   });
   if (addedPrompt) stopAndAlert('偵測到「請輸入上面的數字／請輸入上方的數字」，已停止；請完成驗證後再按開始');
   else checkCaptcha();
+  // 驗證碼檢查放在前面：同一批含驗證碼時上面已經停止（triggersOn 變 false），不會再比對關鍵字或送指令
+  if (triggersOn && triggerEngine) feedKeywords(records);
 });
 captchaObserver.observe(document.body, {
   subtree: true, childList: true, characterData: true, characterDataOldValue: true
@@ -233,6 +249,7 @@ function sendCommand(command) {
 
 function clearTimers() {
   nextRunAt = null;
+  nextRandomAt = null;
   if (loopTimer) clearTimeout(loopTimer);
   if (queueTimer) clearTimeout(queueTimer);
   if (randomTimer) clearTimeout(randomTimer);
@@ -295,7 +312,9 @@ function scheduleRandomCommand() {
   if (!running) return;
   const min = Math.max(1, Number(settings.randomMinSeconds) || 30);
   const max = Math.max(min, Number(settings.randomMaxSeconds) || min);
-  randomTimer = setTimeout(runRandomCommand, (min + Math.random() * (max - min)) * 1000);
+  const delay = (min + Math.random() * (max - min)) * 1000;
+  randomTimer = setTimeout(runRandomCommand, delay);
+  nextRandomAt = Date.now() + delay;
 }
 
 function runRandomCommand() {
@@ -414,7 +433,9 @@ function initPanel() {
       .dot.on { background: #3ecf6e; }
       .dot.alert { background: #ff5c4d; }
       .label { flex: 1; font-weight: 600; white-space: nowrap; }
-      .toggle { all: unset; cursor: pointer; padding: 0 6px; color: #aaa; font-size: 20px; line-height: 1; }
+      .toggle, .gear { all: unset; cursor: pointer; padding: 0 6px; color: #aaa; font-size: 20px; line-height: 1; }
+      .gear { font-size: 18px; }
+      .gear:hover, .toggle:hover { color: #fff; }
       .body { padding: 0 12px 12px; }
       .line { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; }
       .line .t { font-weight: 600; min-width: 40px; padding-top: 3px; }
@@ -428,7 +449,7 @@ function initPanel() {
       .collapsed .body { display: none; }
     </style>
     <div class="panel">
-      <div class="head"><span class="dot"></span><span class="label"></span><button class="toggle" title="收合／展開">–</button></div>
+      <div class="head"><span class="dot"></span><span class="label"></span><button class="gear" title="開啟／關閉設定頁">⚙</button><button class="toggle" title="收合／展開">–</button></div>
       <div class="body">
         <div class="line"><span class="t">定時</span><span class="s timer-text"></span>
           <span class="mini"><button class="start">開始</button><button class="stop">停止</button></span></div>
@@ -464,6 +485,8 @@ function initPanel() {
     startTriggers(triggerConfig);
   });
   panel.tstop.addEventListener('click', () => { if (triggersOn) stopTriggers(); });
+  // ⚙：交給背景腳本在新分頁開啟設定頁，再按一次關閉
+  $('.gear').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'TOGGLE_SETTINGS' }));
 
   const saveUi = ui => chrome.storage.local.set({ [PANEL_UI_KEY]: { ...ui } });
   const ui = { left: null, top: null, collapsed: false };
@@ -523,7 +546,7 @@ function initPanel() {
     saveUi(ui);
   });
   $('.head').addEventListener('pointerdown', e => {
-    if (e.target.closest('.toggle')) return;
+    if (e.target.closest('.toggle, .gear')) return;
     const rect = host.getBoundingClientRect();
     const offsetX = e.clientX - rect.left;
     const offsetY = e.clientY - rect.top;
@@ -615,6 +638,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       running,
       settings,
       stopReason,
+      nextRunAt,
+      nextRandomAt,
       triggers: { on: triggersOn, note: triggerNote, rules: triggersOn ? triggerEngine.snapshot().rules : [], stats: readAllStats() },
     });
   }

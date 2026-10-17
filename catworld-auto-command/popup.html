@@ -46,8 +46,13 @@
     .rearm { font-size:11px; color:#777; margin:6px 0 0; }
     .linkbtn { flex:none; padding:2px 8px; font-size:12px; background:transparent; color:#555; }
     .x { flex:none; padding:0 6px; background:transparent; color:#888; font-size:14px; }
-    #addRule { margin-top:8px; width:100%; background:#f4f4f4; }
+    .addrow { display:flex; gap:8px; margin-top:8px; }
+    #addRule, #addKeyword { background:#f4f4f4; }
+    .kind { font-size:11px; color:#777; }
 
+    .delaybox { border:1px solid #ddd; border-radius:9px; padding:0 10px 10px; margin-top:10px; }
+    /* 面板的 ⚙ 把這一頁開在分頁裡：放寬、置中 */
+    body.page { width:460px; margin:0 auto; }
     .safety { border:1px solid #ecd9a0; border-radius:9px; padding:8px 10px 10px; margin-top:10px; background:#fff6dd; }
     .safety h4 { margin:0 0 2px; font-size:13px; }
     .safety .check { display:flex; gap:6px; align-items:flex-start; font-size:12px; color:#222; margin-top:8px; }
@@ -64,6 +69,7 @@
 
   <div data-pane="timer">
     <div class="status" id="status">狀態：讀取中…</div>
+    <div class="status" id="countdown">下一輪：—</div>
     <label>固定指令（一行一個，每輪全部依序送出）</label>
     <textarea id="commands">ps
 px</textarea>
@@ -91,7 +97,17 @@ px</textarea>
 
     <label>觸發規則（各規則獨立判斷，同時成立就依序送出）</label>
     <div id="rules"></div>
-    <button id="addRule" type="button">＋ 新增規則</button>
+    <div class="addrow">
+      <button id="addRule" type="button">＋ 數值規則</button>
+      <button id="addKeyword" type="button">＋ 關鍵字規則</button>
+    </div>
+    <p class="hint">數值規則：精氣神等數值達到門檻就送指令。關鍵字規則：遊戲輸出區<b>新出現</b>的文字含有關鍵字（不分大小寫）就送指令；不看開始前的舊紀錄，也不看以 &gt; 開頭的指令回聲，冷卻期間出現的不會補送。<b>其他玩家說的話也可能含有關鍵字</b>，請用不容易被別人說出的詞；安全機制沒勾選時，冷卻是唯一的頻率限制。</p>
+
+    <div class="delaybox">
+      <label for="delayMax">命中後隨機延遲（最多幾秒，預設 5，填 0 = 不延遲）</label>
+      <input id="delayMax" type="number" min="0" step="0.5" value="5">
+      <p class="hint tight">規則命中後不會馬上送出，會在 0～這個秒數之間隨機等一段時間再送，等待中會顯示倒數。冷卻從實際送出的時間起算。數值規則與關鍵字規則都適用。</p>
+    </div>
 
     <div class="safety">
       <h4>安全機制（預設全部關閉，要用再勾選）</h4>
@@ -102,7 +118,7 @@ px</textarea>
         <div><label for="windowMinutes">區間（分鐘）</label><input id="windowMinutes" type="number" min="1" value="5"></div>
       </div>
       <p class="hint tight">同一條規則在區間內最多觸發這麼多次，超過就停用該規則並警報。</p>
-      <label class="check"><input id="limitIneffective" type="checkbox"> 連續沒改善就停用（≤ 沒回升、≥ 沒回落）</label>
+      <label class="check"><input id="limitIneffective" type="checkbox"> 連續沒改善就停用（≤ 沒回升、≥ 沒回落；只適用數值規則）</label>
       <label for="maxIneffective">連續幾次觸發後</label>
       <input id="maxIneffective" type="number" min="1" value="3">
       <p class="hint tight">例如飲水 ≤ 200 就送 drink，但附近沒有水：連續幾次沒效果就停用並提醒你。</p>
@@ -117,7 +133,7 @@ px</textarea>
     <div class="buttons">
       <button id="tstart">開始觸發</button><button id="tstop">停止觸發</button>
     </div>
-    <div class="hint">按開始時如果門檻已經達成，會立刻觸發一次；之後要等數值回升到「回復條件」之上才會再次觸發。修改規則後要重新按「開始觸發」才會套用。驗證碼停止、重新整理遊戲頁、按停止，觸發都會一併停止。</div>
+    <div class="hint">按開始時如果門檻已經達成，會立刻命中一次（再依上面的延遲設定送出）；之後要等數值回升到「回復條件」之上才會再次觸發。修改規則後要重新按「開始觸發」才會套用。驗證碼停止、重新整理遊戲頁、按停止，觸發都會一併停止。</div>
   </div>
 
   <button id="test">測試送出 ps</button>
