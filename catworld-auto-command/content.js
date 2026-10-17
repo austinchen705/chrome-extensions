@@ -10,6 +10,7 @@ let lastSentAt = 0;
 let stopReason = '';
 let nextRunAt = null;
 let nextRandomAt = null;
+let nextRandomCommand = null;
 // 狀態觸發與定時循環各有獨立開關；驗證碼偵測、看門狗、送出佇列在任一個開著時都要作用
 let triggersOn = false;
 let triggerTimer = null;
@@ -225,11 +226,11 @@ let settings = {
   commands: ['ps', 'px'],
   minSeconds: 30,
   maxSeconds: 40,
-  commandDelayMs: 500,
-  randomCommands: [],
-  randomMinSeconds: 30,
-  randomMaxSeconds: 40
+  commandDelayMs: 500
+  // randomItems 不放預設值：沒有這個欄位時，normalizeRandomItems 才會去讀舊格式（randomCommands），
+  // 預設成空陣列會蓋掉升級前存下的隨機指令
 };
+const randomItems = () => CatworldTimer.normalizeRandomItems(settings);
 
 function sendCommand(command) {
   if (checkCaptcha()) return { ok: false, error: stopReason };
@@ -250,6 +251,7 @@ function sendCommand(command) {
 function clearTimers() {
   nextRunAt = null;
   nextRandomAt = null;
+  nextRandomCommand = null;
   if (loopTimer) clearTimeout(loopTimer);
   if (queueTimer) clearTimeout(queueTimer);
   if (randomTimer) clearTimeout(randomTimer);
@@ -308,19 +310,20 @@ function runRound() {
   scheduleNextRound();
 }
 
+// 隨機指令：先均勻隨機挑一個，再在「它自己的」最短～最長秒數之間隨機等一段時間，到時間才送出，然後再挑下一個
 function scheduleRandomCommand() {
   if (!running) return;
-  const min = Math.max(1, Number(settings.randomMinSeconds) || 30);
-  const max = Math.max(min, Number(settings.randomMaxSeconds) || min);
-  const delay = (min + Math.random() * (max - min)) * 1000;
-  randomTimer = setTimeout(runRandomCommand, delay);
+  const item = CatworldTimer.pickRandomItem(randomItems());
+  if (!item) return;
+  const delay = CatworldTimer.delayMs(item);
+  randomTimer = setTimeout(() => runRandomCommand(item.command), delay);
   nextRandomAt = Date.now() + delay;
+  nextRandomCommand = item.command;
 }
 
-function runRandomCommand() {
+function runRandomCommand(command) {
   if (!running) return;
-  const pool = settings.randomCommands;
-  enqueue(pool[Math.floor(Math.random() * pool.length)]);
+  enqueue(command);
   scheduleRandomCommand();
 }
 
@@ -342,7 +345,7 @@ async function start(newSettings) {
   running = true;
   await chrome.storage.local.set({ running: true, settings, nextRunAt: null, stopReason: '' });
   if (settings.commands.length) runRound();
-  if (settings.randomCommands.length) scheduleRandomCommand();
+  scheduleRandomCommand();
   renderPanel();
 }
 
@@ -439,7 +442,7 @@ function initPanel() {
       .body { padding: 0 12px 12px; }
       .line { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; }
       .line .t { font-weight: 600; min-width: 40px; padding-top: 3px; }
-      .line .s { flex: 1; min-width: 0; color: #bbb; font-size: 15px; overflow-wrap: anywhere; padding-top: 4px; }
+      .line .s { flex: 1; min-width: 0; color: #bbb; font-size: 15px; overflow-wrap: anywhere; white-space: pre-line; padding-top: 4px; }
       .line .s.alert { color: #ff8a7a; }
       .mini { display: flex; gap: 6px; flex: none; }
       .mini button { all: unset; text-align: center; padding: 3px 12px; border-radius: 6px;
@@ -468,7 +471,7 @@ function initPanel() {
   root.addEventListener('mousedown', e => e.preventDefault());
   panel.start.addEventListener('click', () => {
     if (running) return;
-    if (!settings.commands.length && !settings.randomCommands.length) {
+    if (!settings.commands.length && !randomItems().length) {
       stop('尚未設定指令，請先在 popup 設定');
       return;
     }
@@ -582,6 +585,11 @@ function triggerSummary() {
   const rules = triggerEngine.snapshot().rules.filter(rule => rule.phase !== 'off');
   const disabled = rules.filter(rule => rule.phase === 'disabled');
   if (disabled.length) return { text: `「${disabled[0].label}」${disabled[0].text}`, alert: true, disabled: disabled.length };
+  // 命中後等待延遲的規則：每條一行，顯示還有幾秒、要執行哪些指令
+  const pending = rules.filter(rule => rule.pendingSeconds !== null);
+  if (pending.length) {
+    return { text: pending.map(rule => `${rule.label} → ${rule.pendingSeconds} 秒後：${rule.commands.join(' → ')}`).join('\n'), alert: false, disabled: 0 };
+  }
   const waiting = rules.find(rule => rule.phase === 'waiting');
   if (waiting) return { text: `${waiting.label} → ${waiting.text}`, alert: false, disabled: 0 };
   return { text: `${rules.length} 條待命`, alert: false, disabled: 0 };
@@ -595,7 +603,13 @@ function renderPanel() {
   panel.label.textContent = trigger.alert ? `觸發已停用 ${trigger.disabled} 條` : active() ? '執行中' : '已停止';
   let timerText = stopReason || '未啟動';
   if (running) {
-    timerText = nextRunAt ? `下一輪：${Math.max(0, Math.ceil((nextRunAt - Date.now()) / 1000))} 秒後` : '指令送出中…';
+    // 倒數與「到時候要執行哪些指令」：固定指令一輪依序送出，隨機指令是被挑中的那一個
+    const left = at => `${Math.max(0, Math.ceil((at - Date.now()) / 1000))} 秒後`;
+    const fixed = settings.commands.map(command => command.trim()).filter(Boolean);
+    const lines = [];
+    if (fixed.length) lines.push(nextRunAt ? `固定 ${left(nextRunAt)}：${fixed.join(' → ')}` : '固定 送出中…');
+    if (nextRandomAt) lines.push(`隨機 ${left(nextRandomAt)}：${nextRandomCommand}`);
+    timerText = lines.join('\n') || '執行中';
   }
   if (panel.timerText.textContent !== timerText || panel.triggerText.textContent !== trigger.text) {
     panel.timerText.textContent = timerText;
@@ -640,6 +654,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       stopReason,
       nextRunAt,
       nextRandomAt,
+      nextRandomCommand,
       triggers: { on: triggersOn, note: triggerNote, rules: triggersOn ? triggerEngine.snapshot().rules : [], stats: readAllStats() },
     });
   }

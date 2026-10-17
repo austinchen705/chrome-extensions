@@ -18,13 +18,33 @@ async function getTab() {
   return tab;
 }
 
+// 隨機指令：每個指令一列（指令、最短、最長秒數）
+function randomRow(item) {
+  const command = element('input', { type: 'text', value: item.command, placeholder: '例：look', title: '指令' });
+  const min = element('input', { type: 'number', min: 1, value: item.minSeconds, title: '最短秒數' });
+  const max = element('input', { type: 'number', min: 1, value: item.maxSeconds, title: '最長秒數' });
+  const remove = element('button', { type: 'button', className: 'x', textContent: '✕', title: '刪除這個指令' });
+  const row = element('div', { className: 'ritem' }, field('command', command), field('min', min), field('max', max), remove);
+  remove.addEventListener('click', () => row.remove());
+  return row;
+}
+
+function renderRandomItems(items) {
+  $('randomItems').replaceChildren(...items.map(randomRow));
+}
+
+$('addRandom').addEventListener('click', () => {
+  $('randomItems').append(randomRow({ command: '', minSeconds: CatworldTimer.DEFAULT_MIN, maxSeconds: CatworldTimer.DEFAULT_MAX }));
+});
+
 function readSettings() {
   const lines = id => $(id).value.split('\n').map(x => x.trim()).filter(Boolean);
+  const get = (row, name) => row.querySelector(`[data-f="${name}"]`);
   return {
     commands: lines('commands'),
-    randomCommands: lines('randomCommands'),
-    randomMinSeconds: Number($('randomMinSeconds').value),
-    randomMaxSeconds: Number($('randomMaxSeconds').value),
+    randomItems: [...$('randomItems').children]
+      .map(row => ({ command: get(row, 'command').value.trim(), minSeconds: Number(get(row, 'min').value), maxSeconds: Number(get(row, 'max').value) }))
+      .filter(item => item.command),
     minSeconds: Number($('minSeconds').value),
     maxSeconds: Number($('maxSeconds').value),
     commandDelayMs: Number($('commandDelayMs').value)
@@ -47,7 +67,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'content.js']
       });
       return await chrome.tabs.sendMessage(tab.id, message);
     }
@@ -58,12 +78,13 @@ async function send(message) {
 $('start').addEventListener('click', async () => {
   try {
     const settings = readSettings();
-    if (!settings.commands.length && !settings.randomCommands.length) throw new Error('至少要有一個指令');
+    if (!settings.commands.length && !settings.randomItems.length) throw new Error('至少要有一個指令');
     if (settings.maxSeconds < settings.minSeconds) throw new Error('最長秒數不能小於最短秒數');
-    if (settings.randomMaxSeconds < settings.randomMinSeconds) throw new Error('隨機指令的最長秒數不能小於最短秒數');
+    const badRandom = settings.randomItems.find(item => item.maxSeconds < item.minSeconds);
+    if (badRandom) throw new Error(`隨機指令「${badRandom.command}」的最長秒數不能小於最短秒數`);
     await chrome.storage.local.set({ settings });
     await send({ type: 'START', settings });
-    const randomText = settings.randomCommands.length ? `；隨機：${settings.randomCommands.join(' / ')}` : '';
+    const randomText = settings.randomItems.length ? `；隨機：${settings.randomItems.map(item => item.command).join(' / ')}` : '';
     setStatus(`執行中：${settings.commands.join(' → ')}${randomText}`);
   } catch (e) { setStatus(e.message); }
 });
@@ -289,8 +310,10 @@ function renderCountdown(status) {
   const parts = [];
   if (status?.running) {
     const settings = status.settings || {};
-    if (settings.commands?.length) parts.push(`固定指令：${status.nextRunAt ? left(status.nextRunAt) : '送出中…'}`);
-    if (settings.randomCommands?.length) parts.push(`隨機指令：${status.nextRandomAt ? left(status.nextRandomAt) : '—'}`);
+    if (settings.commands?.length) parts.push(`固定指令（${settings.commands.join(' → ')}）：${status.nextRunAt ? left(status.nextRunAt) : '送出中…'}`);
+    if (CatworldTimer.normalizeRandomItems(settings).length) {
+      parts.push(`隨機指令：${status.nextRandomAt ? `${status.nextRandomCommand}，${left(status.nextRandomAt)}` : '—'}`);
+    }
   }
   $('countdown').textContent = `下一輪：${parts.length ? parts.join('　') : '—'}`;
 }
@@ -326,10 +349,9 @@ async function refreshLive() {
     $('minSeconds').value = data.settings.minSeconds ?? 30;
     $('maxSeconds').value = data.settings.maxSeconds ?? 40;
     $('commandDelayMs').value = data.settings.commandDelayMs ?? 500;
-    $('randomCommands').value = (data.settings.randomCommands || []).join('\n');
-    $('randomMinSeconds').value = data.settings.randomMinSeconds ?? 30;
-    $('randomMaxSeconds').value = data.settings.randomMaxSeconds ?? 40;
   }
+  // 舊格式（一行一個 + 共用秒數）由 normalizeRandomItems 轉成每個指令一列
+  renderRandomItems(CatworldTimer.normalizeRandomItems(data.settings));
   renderTriggerSettings(data.triggerSettings);
   showTab(data.popupTab === 'trigger' ? 'trigger' : 'timer');
   try {

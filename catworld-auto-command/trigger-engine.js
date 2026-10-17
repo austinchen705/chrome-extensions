@@ -264,13 +264,14 @@ function createEngine(rawConfig, io) {
         const fires = recentFires(state, now);
         const keyword = rule.kind === 'keyword';
         const count = config.limitFires ? `${fires}/${config.maxFires}` : `${fires} 次`;
+        const pendingSeconds = state.pendingUntil === null ? null : Math.max(0, Math.ceil((state.pendingUntil - now) / 1000));
         let text;
         if (state.phase === 'off') text = '未啟用';
         else if (state.phase === 'disabled') text = `已停用：${state.note}`;
-        else if (state.pendingUntil !== null) text = `命中，${Math.max(0, Math.ceil((state.pendingUntil - now) / 1000))} 秒後執行`;
+        else if (pendingSeconds !== null) text = `命中，${pendingSeconds} 秒後執行：${rule.commands.join(' → ')}`;
         else if (state.phase === 'waiting') text = keyword ? `已觸發 ${count}，冷卻中` : `已觸發 ${count}，等待回復 ${rearmText(rule)}`;
         else text = state.note || (keyword ? '待命（等待關鍵字）' : `待命（目前 ${shown(rule, state.current)}）`);
-        return { label: ruleLabel(rule), kind: rule.kind, phase: state.phase, text, rearm: keyword ? null : rearmLevel(rule), fires };
+        return { label: ruleLabel(rule), kind: rule.kind, phase: state.phase, text, rearm: keyword ? null : rearmLevel(rule), fires, commands: rule.commands, pendingSeconds };
       }),
     };
   }
