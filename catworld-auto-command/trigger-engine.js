@@ -209,13 +209,16 @@ function createEngine(rawConfig, io) {
     const now = io.now();
     sent = sent.filter(time => now - time < 60 * 1000);
     if (config.requireNormal && io.isNormal() !== true) return;
-    const lines = String(text ?? '').split('\n').filter(line => !/^\s*>/.test(line)).map(line => line.toLowerCase());
+    const lines = String(text ?? '').split('\n').filter(line => !/^\s*>/.test(line));
     if (!lines.length) return;
+    // 遊戲會把長句子在固定寬度硬斷行，所以比對時忽略換行與空白（關鍵字也一樣），跨行的句子才對得到
+    const squash = value => value.toLowerCase().replace(/\s+/g, '');
+    const haystack = squash(lines.join(''));
     releaseKeywordRules(now);
     config.rules.forEach((rule, index) => {
       if (rule.kind !== 'keyword' || runtime[index].phase !== 'ready') return;
-      const needle = rule.pattern.toLowerCase();
-      if (lines.some(line => line.includes(needle))) fire(index, null, now);
+      const needle = squash(rule.pattern);
+      if (needle && haystack.includes(needle)) fire(index, null, now);
     });
   }
 
