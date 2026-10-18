@@ -15,8 +15,8 @@
     .row > div { flex:1; min-width:0; }
     .buttons { display:flex; gap:8px; margin-top:14px; }
     button { flex:1; border:0; border-radius:8px; padding:9px; cursor:pointer; font-weight:600; }
-    #start, #tstart { background:#222; color:white; }
-    #stop, #tstop { background:#eee; color:#222; }
+    #start, .tstart-btn { background:#222; color:white; }
+    #stop, .tstop-btn { background:#eee; color:#222; }
     #test, #beep, #skills { margin-top:8px; width:100%; background:#f4f4f4; }
     .status { margin-bottom:4px; font-size:13px; padding:8px; border-radius:7px; background:#f6f6f6; }
     .hint { font-size:11px; color:#777; margin-top:8px; line-height:1.4; }
@@ -51,9 +51,12 @@
     .linkbtn { flex:none; padding:2px 8px; font-size:12px; background:transparent; color:#555; }
     .x { flex:none; padding:0 6px; background:transparent; color:#888; font-size:14px; }
     .addrow { display:flex; gap:8px; margin-top:8px; }
-    #addRule, #addKeyword { background:#f4f4f4; }
+    .add-rule, .add-keyword { background:#f4f4f4; }
     .kind { font-size:11px; color:#777; }
 
+    .alertbox { border:1px solid #ddd; border-radius:9px; padding:8px 10px 10px; margin-top:12px; }
+    .alertbox .check { display:flex; gap:6px; align-items:flex-start; font-size:12px; color:#222; margin:0; }
+    .alertbox .check input { width:auto; margin-top:3px; }
     .delaybox { border:1px solid #ddd; border-radius:9px; padding:0 10px 10px; margin-top:10px; }
     /* 面板的 ⚙ 把這一頁開在分頁裡：放寬、置中 */
     body.page { width:460px; margin:0 auto; }
@@ -68,7 +71,6 @@
   <h2>CatWorld Auto Command <small id="version"></small></h2>
   <div class="tabs" role="tablist">
     <button role="tab" id="tab-timer" data-tab="timer" aria-selected="true">定時送出</button>
-    <button role="tab" id="tab-trigger" data-tab="trigger" aria-selected="false">狀態觸發</button>
   </div>
 
   <div data-pane="timer">
@@ -93,52 +95,59 @@ px</textarea>
     </div>
   </div>
 
-  <div data-pane="trigger" hidden>
-    <div class="status" id="trigStatus">觸發未啟動</div>
-    <label>現在從遊戲頁讀到的數值（讀不到顯示 —，該項不會觸發）</label>
-    <div class="read" id="read"></div>
+  <div id="triggerPanes"></div>
 
-    <label>觸發規則（各規則獨立判斷，同時成立就依序送出）</label>
-    <div id="rules"></div>
-    <div class="addrow">
-      <button id="addRule" type="button">＋ 數值規則</button>
-      <button id="addKeyword" type="button">＋ 關鍵字規則</button>
-    </div>
-    <p class="hint">數值規則：精氣神等數值達到門檻就送指令。關鍵字規則：遊戲輸出區<b>新出現</b>的文字含有關鍵字（不分大小寫）就送指令；不看開始前的舊紀錄，也不看以 &gt; 開頭的指令回聲，冷卻期間出現的不會補送。<b>其他玩家說的話也可能含有關鍵字</b>，請用不容易被別人說出的詞；安全機制沒勾選時，冷卻是唯一的頻率限制。</p>
+  <!-- 觸發有兩組（戰鬥、練功），功能完全一樣；popup.js 依 trigger-engine.js 的 GROUPS 各複製一份，__G__ 換成組別 -->
+  <template id="triggerPaneTemplate">
+      <div class="status" id="trigStatus-__G__">觸發未啟動</div>
+      <label>現在從遊戲頁讀到的數值（讀不到顯示 —，該項不會觸發）</label>
+      <div class="read" id="read-__G__"></div>
 
-    <div class="delaybox">
-      <label for="delayMax">命中後隨機延遲（最多幾秒，預設 5，填 0 = 不延遲）</label>
-      <input id="delayMax" type="number" min="0" step="0.5" value="5">
-      <p class="hint tight">規則命中後不會馬上送出，會在 0～這個秒數之間隨機等一段時間再送，等待中會顯示倒數。冷卻從實際送出的時間起算。數值規則與關鍵字規則都適用。</p>
-    </div>
-
-    <div class="safety">
-      <h4>安全機制（預設全部關閉，要用再勾選）</h4>
-      <p class="hint tight">目的：避免指令沒效果時一直重複送。<b>全部關閉時，條件持續成立就每隔冷卻時間重送一次，不會自己停</b>（冷卻最少 3 秒）。</p>
-      <label class="check"><input id="limitFires" type="checkbox"> 限制每條規則的觸發次數</label>
-      <div class="row">
-        <div><label for="maxFires">最多（次）</label><input id="maxFires" type="number" min="1" value="5"></div>
-        <div><label for="windowMinutes">區間（分鐘）</label><input id="windowMinutes" type="number" min="1" value="5"></div>
+      <label>觸發規則（各規則獨立判斷，同時成立就依序送出）</label>
+      <div id="rules-__G__"></div>
+      <div class="addrow">
+        <button id="addRule-__G__" class="add-rule" type="button">＋ 數值規則</button>
+        <button id="addKeyword-__G__" class="add-keyword" type="button">＋ 關鍵字規則</button>
       </div>
-      <p class="hint tight">同一條規則在區間內最多觸發這麼多次，超過就停用該規則並警報。</p>
-      <label class="check"><input id="limitIneffective" type="checkbox"> 連續沒改善就停用（≤ 沒回升、≥ 沒回落；只適用數值規則）</label>
-      <label for="maxIneffective">連續幾次觸發後</label>
-      <input id="maxIneffective" type="number" min="1" value="3">
-      <p class="hint tight">例如飲水 ≤ 200 就送 drink，但附近沒有水：連續幾次沒效果就停用並提醒你。</p>
-      <label class="check"><input id="limitGlobal" type="checkbox"> 限制所有規則合計每分鐘送出的指令數</label>
-      <label for="globalPerMinute">每分鐘最多（個）</label>
-      <input id="globalPerMinute" type="number" min="1" value="6">
-      <p class="hint tight">超過只是延後，不停用規則。</p>
-      <label class="check"><input id="requireNormal" type="checkbox" checked> 角色狀態不是「正常」時不觸發（昏迷、死亡等）</label>
-      <p class="hint tight">每條規則的冷卻（最少 3 秒）與「回復緩衝」在規則裡設定。</p>
-    </div>
+      <p class="hint">數值規則：精氣神等數值達到門檻就送指令。關鍵字規則：遊戲輸出區<b>新出現</b>的文字含有關鍵字（不分大小寫）就送指令；不看開始前的舊紀錄，也不看以 &gt; 開頭的指令回聲，冷卻期間出現的不會補送。<b>其他玩家說的話也可能含有關鍵字</b>，請用不容易被別人說出的詞；安全機制沒勾選時，冷卻是唯一的頻率限制。</p>
 
-    <div class="buttons">
-      <button id="tstart">開始觸發</button><button id="tstop">停止觸發</button>
-    </div>
-    <div class="hint">按開始時如果門檻已經達成，會立刻命中一次（再依上面的延遲設定送出）；之後要等數值回升到「回復條件」之上才會再次觸發。修改規則後要重新按「開始觸發」才會套用。驗證碼停止、重新整理遊戲頁、按停止，觸發都會一併停止。</div>
+      <div class="delaybox">
+        <label for="delayMax-__G__">命中後隨機延遲（最多幾秒，預設 5，填 0 = 不延遲）</label>
+        <input id="delayMax-__G__" type="number" min="0" step="0.5" value="5">
+        <p class="hint tight">規則命中後不會馬上送出，會在 0～這個秒數之間隨機等一段時間再送，等待中會顯示倒數。冷卻從實際送出的時間起算。數值規則與關鍵字規則都適用。</p>
+      </div>
+
+      <div class="safety">
+        <h4>安全機制（預設全部關閉，要用再勾選）</h4>
+        <p class="hint tight">目的：避免指令沒效果時一直重複送。<b>全部關閉時，條件持續成立就每隔冷卻時間重送一次，不會自己停</b>（冷卻最少 3 秒）。</p>
+        <label class="check"><input id="limitFires-__G__" type="checkbox"> 限制每條規則的觸發次數</label>
+        <div class="row">
+          <div><label for="maxFires-__G__">最多（次）</label><input id="maxFires-__G__" type="number" min="1" value="5"></div>
+          <div><label for="windowMinutes-__G__">區間（分鐘）</label><input id="windowMinutes-__G__" type="number" min="1" value="5"></div>
+        </div>
+        <p class="hint tight">同一條規則在區間內最多觸發這麼多次，超過就停用該規則並警報。</p>
+        <label class="check"><input id="limitIneffective-__G__" type="checkbox"> 連續沒改善就停用（≤ 沒回升、≥ 沒回落；只適用數值規則）</label>
+        <label for="maxIneffective-__G__">連續幾次觸發後</label>
+        <input id="maxIneffective-__G__" type="number" min="1" value="3">
+        <p class="hint tight">例如飲水 ≤ 200 就送 drink，但附近沒有水：連續幾次沒效果就停用並提醒你。</p>
+        <label class="check"><input id="limitGlobal-__G__" type="checkbox"> 限制所有規則合計每分鐘送出的指令數</label>
+        <label for="globalPerMinute-__G__">每分鐘最多（個）</label>
+        <input id="globalPerMinute-__G__" type="number" min="1" value="6">
+        <p class="hint tight">超過只是延後，不停用規則。</p>
+        <label class="check"><input id="requireNormal-__G__" type="checkbox" checked> 角色狀態不是「正常」時不觸發（昏迷、死亡等）</label>
+        <p class="hint tight">每條規則的冷卻（最少 3 秒）與「回復緩衝」在規則裡設定。</p>
+      </div>
+
+      <div class="buttons">
+        <button id="tstart-__G__" class="tstart-btn">開始觸發</button><button id="tstop-__G__" class="tstop-btn">停止觸發</button>
+      </div>
+      <div class="hint">按開始時如果門檻已經達成，會立刻命中一次（再依上面的延遲設定送出）；之後要等數值回升到「回復條件」之上才會再次觸發。修改規則後要重新按「開始觸發」才會套用。驗證碼停止、重新整理遊戲頁、按停止，觸發都會一併停止。</div>
+  </template>
+
+  <div class="alertbox">
+    <label class="check"><input id="persistentAlert" type="checkbox"> 警報提示音一直響，按「確認」才停</label>
+    <p class="hint tight">預設關閉＝原本的行為：每 10 秒響一次、最多 5 分鐘，回到遊戲頁點一下、按鍵或按「開始」就停。開啟後不會自己停，要按遊戲頁面板標題列（或系統通知上）的「確認」才會停，標題也會一直閃。</p>
   </div>
-
   <button id="test">測試送出 ps</button>
   <button id="beep">測試提示音</button>
   <button id="skills">悟招清單（新分頁開啟）</button>

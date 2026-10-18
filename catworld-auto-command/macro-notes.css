@@ -1,0 +1,9 @@
+/* 巨集視窗多一欄「備註」：遊戲原本寬 435px（序號 25 + 按鍵 155 + 指令 250），加寬 255px 給備註（macro-notes.js 加的欄位） */
+/* 遊戲自己的樣式表比這個晚載入，同樣的優先權會被它蓋掉，所以多加一層 body */
+body #macro_table {
+  width: 690px;
+}
+
+#macro_table .note {
+  width: 250px;
+}

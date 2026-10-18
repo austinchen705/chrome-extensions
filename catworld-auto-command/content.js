@@ -12,18 +12,23 @@ let nextRunAt = null;
 let nextRandomAt = null;
 let nextRandomCommand = null;
 // 狀態觸發與定時循環各有獨立開關；驗證碼偵測、看門狗、送出佇列在任一個開著時都要作用
-let triggersOn = false;
-let triggerTimer = null;
-let triggerEngine = null;
-let triggerConfig = null;
-let triggerNote = '';
-function active() { return running || triggersOn; }
+// 觸發有兩組（戰鬥、練功），各有自己的規則、開關、引擎與計時器，功能完全一樣
+const triggerGroups = Object.fromEntries(CatworldTriggerEngine.GROUPS.map(({ id, name }) =>
+  [id, { id, name, on: false, timer: null, engine: null, config: null, note: '' }]));
+const groupList = Object.values(triggerGroups);
+const anyTriggerOn = () => groupList.some(group => group.on);
+// 遊戲巨集（含 @等待）正在執行的清單；執行中算「在跑」，驗證碼偵測與看門狗才會作用
+const macroRuns = new Set();
+let macroNote = null;
+function active() { return running || anyTriggerOn() || macroRuns.size > 0; }
 const captchaPattern = /請輸入上(?:方|面)的數字/g;
 function hasCaptchaText(text) { return /請輸入上(?:方|面)的數字/.test(text || ''); }
 let captchaCount = 0;
 const NO_REPLY_MS = 8000;
 const REPEAT_BEEP_MS = 10 * 1000;
 const REPEAT_BEEP_MAX_MS = 5 * 60 * 1000;
+// popup 的開關「警報提示音一直響，按確認才停」，預設關閉；存在 storage，改了馬上生效
+let persistentAlert = false;
 let watchdogTimer = null;
 let lastCommand = '';
 const BLOCK = '█';
@@ -103,11 +108,13 @@ async function beep() {
   setTimeout(() => ctx.close(), 1500);
   return true;
 }
-// 首響之後每 REPEAT_BEEP_MS 再響一次，最久持續 REPEAT_BEEP_MAX_MS，直到使用者回到頁面互動或重新開始
-function startRepeatBeep() {
+// 首響之後每 REPEAT_BEEP_MS 再響一次。
+// 開關「一直響到確認」關閉（預設，原本的行為）：最多持續 REPEAT_BEEP_MAX_MS，使用者回到頁面互動或按「開始」就停；
+// 開啟：沒有時間上限、點頁面或按「開始」都不會停，只有按「確認」（面板標題列或系統通知上的按鈕）才會停
+function startRepeatBeep(untilConfirm) {
   const startedAt = Date.now();
   repeatBeepTimer = setInterval(() => {
-    if (Date.now() - startedAt >= REPEAT_BEEP_MAX_MS) stopRepeatBeep();
+    if (!untilConfirm && Date.now() - startedAt >= REPEAT_BEEP_MAX_MS) stopRepeatBeep();
     else beep();
   }, REPEAT_BEEP_MS);
 }
@@ -115,8 +122,13 @@ function stopRepeatBeep() {
   clearInterval(repeatBeepTimer);
   repeatBeepTimer = null;
 }
-function flashTitle(text) {
-  if (titleTimer) return;
+// untilConfirm：驗證碼警報的閃爍要一直閃到按「確認」；一般的提醒（例如規則被停用）使用者回到頁面互動就停
+let stopFlash = null;
+function flashTitle(text, untilConfirm = false) {
+  if (titleTimer) {
+    if (!untilConfirm) return;
+    stopFlash();
+  }
   const original = document.title;
   let on = false;
   titleTimer = setInterval(() => {
@@ -126,21 +138,35 @@ function flashTitle(text) {
   const clear = () => {
     clearInterval(titleTimer);
     titleTimer = null;
-    stopRepeatBeep();
+    stopFlash = null;
+    // 原本的行為：使用者回到頁面互動，提示音也跟著停；「一直響到確認」開著（ringing）時不停
+    if (!ringing) stopRepeatBeep();
     document.title = original;
     ['focus', 'pointerdown', 'keydown'].forEach(name => window.removeEventListener(name, clear));
     document.removeEventListener('visibilitychange', onVisible);
   };
   const onVisible = () => { if (!document.hidden) clear(); };
-  ['focus', 'pointerdown', 'keydown'].forEach(name => window.addEventListener(name, clear));
-  document.addEventListener('visibilitychange', onVisible);
+  stopFlash = clear;
+  if (!untilConfirm) {
+    ['focus', 'pointerdown', 'keydown'].forEach(name => window.addEventListener(name, clear));
+    document.addEventListener('visibilitychange', onVisible);
+  }
+}
+// 驗證碼警報響鈴中（提示音與標題閃爍都還沒被「確認」）
+let ringing = false;
+function confirmAlert() {
+  stopRepeatBeep();
+  if (stopFlash) stopFlash();
+  ringing = false;
+  renderPanel();
 }
 function stopAndAlert(reason) {
   stopRepeatBeep();
   beep();
-  startRepeatBeep();
-  flashTitle('⚠ 需要驗證');
-  chrome.runtime.sendMessage({ type: 'ALERT', reason });
+  startRepeatBeep(persistentAlert);
+  flashTitle('⚠ 需要驗證', persistentAlert);
+  ringing = persistentAlert;
+  chrome.runtime.sendMessage({ type: 'ALERT', reason, confirmable: persistentAlert });
   return stopEverything(reason);
 }
 // 只有某條觸發規則被停用：響一次、閃標題、跳通知，其他功能照常；原因文字不含「驗證」，不會被當成驗證碼停止
@@ -189,7 +215,7 @@ function feedKeywords(records) {
       ? [record.target.textContent || '']
       : Array.from(record.addedNodes, node => node.textContent || '')))
     .join('');
-  if (text.trim()) triggerEngine.onText(text);
+  if (text.trim()) groupList.forEach(group => { if (group.on) group.engine.onText(text); });
 }
 const captchaObserver = new MutationObserver(allRecords => {
   if (!active()) return;
@@ -216,8 +242,8 @@ const captchaObserver = new MutationObserver(allRecords => {
   });
   if (addedPrompt) stopAndAlert('偵測到「請輸入上面的數字／請輸入上方的數字」，已停止；請完成驗證後再按開始');
   else checkCaptcha();
-  // 驗證碼檢查放在前面：同一批含驗證碼時上面已經停止（triggersOn 變 false），不會再比對關鍵字或送指令
-  if (triggersOn && triggerEngine) feedKeywords(records);
+  // 驗證碼檢查放在前面：同一批含驗證碼時上面已經停止（各組觸發都變 off），不會再比對關鍵字或送指令
+  if (anyTriggerOn()) feedKeywords(records);
 });
 captchaObserver.observe(document.body, {
   subtree: true, childList: true, characterData: true, characterDataOldValue: true
@@ -239,10 +265,17 @@ function sendCommand(command) {
   if (!input || !input.form) {
     return { ok: false, error: '找不到 CatWorld 指令輸入框 #input' };
   }
+  const typed = input.value;
+  const selection = [input.selectionStart, input.selectionEnd];
   input.focus();
   input.value = command;
   input.dispatchEvent(new Event('input', { bubbles: true }));
   input.form.requestSubmit();
+  // 遊戲送出後會清空輸入框或全選剛送出的指令，把使用者原本正在輸入的文字還回去
+  if (typed) {
+    input.value = typed;
+    input.setSelectionRange(selection[0], selection[1]);
+  }
   lastCommand = command.trim();
   if (active()) armWatchdog();
   return { ok: true };
@@ -277,8 +310,8 @@ function scheduleNextRound() {
 
 // 固定、隨機兩條循環與狀態觸發共用同一個送出佇列，任兩次送出至少間隔 commandDelayMs；
 // 每個項目記下來源，停掉定時時只丟掉定時的項目，不影響還在跑的觸發
-function enqueue(command, source = 'timer') {
-  queue.push({ command, source });
+function enqueue(command, source = 'timer', run = null) {
+  queue.push({ command, source, run });
   pumpQueue();
 }
 
@@ -295,9 +328,14 @@ function pumpQueue() {
   queueTimer = setTimeout(() => {
     queueTimer = null;
     if (!active() || checkCaptcha()) return;
-    const result = sendCommand(queue.shift().command);
+    const entry = queue.shift();
+    const result = sendCommand(entry.command);
     if (!result.ok) { stopEverything(result.error); return; }
     lastSentAt = Date.now();
+    if (entry.run) {
+      entry.run.pending -= 1;
+      finishMacroIfDone(entry.run);
+    }
     pumpQueue();
   }, wait);
 }
@@ -327,10 +365,10 @@ function runRandomCommand(command) {
   scheduleRandomCommand();
 }
 
-// 開始任何一個功能前：停掉重複提示音、清掉上一次的停止原因；兩個功能都還沒在跑時，
+// 開始任何一個功能前：停掉重複提示音（「一直響到確認」響鈴中除外，那只有「確認」能停）、清掉上一次的停止原因；沒有任何功能在跑時，
 // 以目前畫面上的驗證碼數量當基準，歷史紀錄裡的提示不會被當成新的
 function armDetection() {
-  stopRepeatBeep();
+  if (!ringing) stopRepeatBeep();
   if (!active()) {
     captchaObserver.takeRecords();
     captchaCount = countCaptcha();
@@ -377,45 +415,112 @@ function isStatusNormal() {
   return element ? element.textContent.trim() === '正常' : null;
 }
 
-async function startTriggers(config) {
+// 兩組觸發各自獨立；送出佇列的來源記成 trigger:<組>，停掉某一組只丟掉那一組還沒送的指令
+async function startTriggers(group, config) {
   if (!CatworldTriggerEngine.hasActiveRules(config)) {
-    triggerNote = '沒有可用的觸發規則（項目、門檻、指令都要填）';
+    group.note = '沒有可用的觸發規則（項目、門檻、指令都要填）';
     renderPanel();
-    return { ok: false, error: triggerNote };
+    return { ok: false, error: group.note };
   }
-  stopTriggers('');
+  stopTriggers(group, '');
   armDetection();
-  triggerConfig = config;
-  triggerNote = '';
-  triggerEngine = CatworldTriggerEngine.createEngine(config, {
+  group.config = config;
+  group.note = '';
+  group.engine = CatworldTriggerEngine.createEngine(config, {
     now: () => Date.now(),
     readStat,
     isNormal: isStatusNormal,
-    send: commands => commands.forEach(command => enqueue(command, 'trigger')),
-    onDisable: (index, label, reason) => alertOnly(`觸發規則「${label}」已停用：${reason}`),
+    send: commands => commands.forEach(command => enqueue(command, `trigger:${group.id}`)),
+    onDisable: (index, label, reason) => alertOnly(`${group.name}觸發規則「${label}」已停用：${reason}`),
   });
-  triggersOn = true;
-  await chrome.storage.local.set({ triggerSettings: config });
-  triggerEngine.tick();
-  triggerTimer = setInterval(() => triggerEngine.tick(), 1000);
+  group.on = true;
+  await saveGroupConfig(group.id, config);
+  group.engine.tick();
+  group.timer = setInterval(() => group.engine.tick(), 1000);
   renderPanel();
   return { ok: true };
 }
 
-function stopTriggers(note = '已停止') {
-  triggersOn = false;
-  clearInterval(triggerTimer);
-  triggerTimer = null;
-  dropQueue('trigger');
-  triggerNote = note;
+// 兩組的設定存在同一個 storage key，各寫各的那一組，不覆蓋另一組
+async function saveGroupConfig(id, config) {
+  const { triggerGroupSettings } = await chrome.storage.local.get('triggerGroupSettings');
+  await chrome.storage.local.set({ triggerGroupSettings: { ...triggerGroupSettings, [id]: config } });
+}
+
+function stopTriggers(group, note = '已停止') {
+  group.on = false;
+  clearInterval(group.timer);
+  group.timer = null;
+  dropQueue(`trigger:${group.id}`);
+  group.note = note;
   renderPanel();
 }
 
-// 驗證碼或送出失敗：定時與觸發一起停
+// 驗證碼或送出失敗：定時與兩組觸發、巨集一起停
 function stopEverything(reason) {
-  stopTriggers();
+  groupList.forEach(group => stopTriggers(group));
+  cancelMacros();
   return stop(reason);
 }
+
+// 遊戲巨集的 @等待：按下有等待的巨集鍵時，在遊戲處理之前攔下來，自己照順序執行。
+// 指令走同一個送出佇列（遵守指令間隔、驗證碼偵測、看門狗），等待時不擋住其他功能，別的來源的指令可以插進來。
+// 一個巨集的「執行」要到最後一個指令真的送出才算結束（active() 才不會在最後一個指令還在排隊時就變成 false）
+function startMacro(text) {
+  const parsed = CatworldMacro.parseSteps(text);
+  if (parsed.error) {
+    macroNote = { text: `巨集沒有執行：${parsed.error}`, until: Date.now() + 8000 };
+    renderPanel();
+    return;
+  }
+  armDetection();
+  macroNote = null;
+  const run = { steps: parsed.steps, index: 0, pending: 0, timer: null, waitUntil: null, nextCommand: null };
+  macroRuns.add(run);
+  advanceMacro(run);
+  renderPanel();
+}
+
+function advanceMacro(run) {
+  run.timer = null;
+  run.waitUntil = null;
+  while (run.index < run.steps.length) {
+    const step = run.steps[run.index++];
+    if (step.wait) {
+      const ms = CatworldMacro.waitMs(step.wait);
+      run.waitUntil = Date.now() + ms;
+      run.nextCommand = run.steps.slice(run.index).find(next => next.command !== undefined)?.command ?? null;
+      run.timer = setTimeout(() => advanceMacro(run), ms);
+      return;
+    }
+    run.pending += 1;
+    enqueue(step.command, 'macro', run);
+  }
+  finishMacroIfDone(run);
+}
+
+function finishMacroIfDone(run) {
+  if (run.index >= run.steps.length && run.pending === 0 && !run.timer) macroRuns.delete(run);
+}
+
+function cancelMacros() {
+  macroRuns.forEach(run => clearTimeout(run.timer));
+  macroRuns.clear();
+  dropQueue('macro');
+}
+
+// 捕獲階段（比遊戲掛在 body 上的處理早）：條件和遊戲一樣，只在焦點在指令輸入框或 body 時處理；
+// 沒有等待的巨集、不是巨集的按鍵一律不碰，交給遊戲
+window.addEventListener('keydown', event => {
+  if (event.target !== document.querySelector('#input') && event.target !== document.body) return;
+  const value = CatworldMacro.keyValue(event);
+  if (!value) return;
+  const command = CatworldMacro.findMacroCommand(document, value);
+  if (!command || !CatworldMacro.hasWait(command)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (!event.repeat) startMacro(command);
+}, true);
 
 // 浮動狀態面板：放在 shadow DOM 並掛在 <html> 下，頁面層級的 MutationObserver 與 body.textContent 都看不到它，
 // 面板更新文字不會被誤當成遊戲輸出或驗證碼提示
@@ -437,6 +542,9 @@ function initPanel() {
       .dot.alert { background: #ff5c4d; }
       .label { flex: 1; font-weight: 600; white-space: nowrap; }
       .toggle, .gear { all: unset; cursor: pointer; padding: 0 6px; color: #aaa; font-size: 20px; line-height: 1; }
+      .confirm { all: unset; cursor: pointer; padding: 2px 12px; border-radius: 6px; background: #d9382c; color: #fff; font-size: 14px; font-weight: 700; }
+      .confirm:hover { background: #ef4a3d; }
+      .confirm[hidden] { display: none; }
       .gear { font-size: 18px; }
       .gear:hover, .toggle:hover { color: #fff; }
       .body { padding: 0 12px 12px; }
@@ -449,22 +557,31 @@ function initPanel() {
         background: #3a3a3e; cursor: pointer; font-size: 14px; font-weight: 600; }
       .mini button.start, .mini button.tstart { background: #2f7d4a; }
       .mini button[disabled] { opacity: .35; cursor: default; }
+      .line[hidden] { display: none; }
       .collapsed .body { display: none; }
     </style>
     <div class="panel">
-      <div class="head"><span class="dot"></span><span class="label"></span><button class="gear" title="開啟／關閉設定頁">⚙</button><button class="toggle" title="收合／展開">–</button></div>
+      <div class="head"><span class="dot"></span><span class="label"></span><button class="confirm" hidden title="停止提示音與標題閃爍">確認</button><button class="gear" title="開啟／關閉設定頁">⚙</button><button class="toggle" title="收合／展開">–</button></div>
       <div class="body">
         <div class="line"><span class="t">定時</span><span class="s timer-text"></span>
           <span class="mini"><button class="start">開始</button><button class="stop">停止</button></span></div>
-        <div class="line"><span class="t">觸發</span><span class="s trigger-text"></span>
-          <span class="mini"><button class="tstart">開始</button><button class="tstop">停止</button></span></div>
+        ${groupList.map(group => `<div class="line" data-group="${group.id}"><span class="t">${group.name}</span><span class="s trigger-text"></span>
+          <span class="mini"><button class="tstart">開始</button><button class="tstop">停止</button></span></div>`).join('\n        ')}
+        <div class="line macro-line" hidden><span class="t">巨集</span><span class="s macro-text"></span>
+          <span class="mini"><button class="mstop">停止</button></span></div>
       </div>
     </div>`;
   const $ = selector => root.querySelector(selector);
   panel = {
     box: $('.panel'), dot: $('.dot'), label: $('.label'),
-    timerText: $('.timer-text'), triggerText: $('.trigger-text'),
-    start: $('.start'), stop: $('.stop'), tstart: $('.tstart'), tstop: $('.tstop'),
+    timerText: $('.timer-text'),
+    groups: Object.fromEntries(groupList.map(group => {
+      const row = $(`[data-group="${group.id}"]`);
+      return [group.id, { text: row.querySelector('.trigger-text'), start: row.querySelector('.tstart'), stop: row.querySelector('.tstop') }];
+    })),
+    start: $('.start'), stop: $('.stop'),
+    macroLine: $('.macro-line'), macroText: $('.macro-text'), mstop: $('.mstop'),
+    confirm: $('.confirm'),
   };
 
   // 點面板不要讓遊戲輸入框失去游標
@@ -478,16 +595,21 @@ function initPanel() {
     start(settings);
   });
   panel.stop.addEventListener('click', () => { if (running) stop(); });
-  panel.tstart.addEventListener('click', () => {
-    if (triggersOn) return;
-    if (!triggerConfig) {
-      triggerNote = '尚未設定觸發規則，請先在 popup 設定';
-      renderPanel();
-      return;
-    }
-    startTriggers(triggerConfig);
+  groupList.forEach(group => {
+    const row = panel.groups[group.id];
+    row.start.addEventListener('click', () => {
+      if (group.on) return;
+      if (!group.config) {
+        group.note = '尚未設定觸發規則，請先在 popup 設定';
+        renderPanel();
+        return;
+      }
+      startTriggers(group, group.config);
+    });
+    row.stop.addEventListener('click', () => { if (group.on) stopTriggers(group); });
   });
-  panel.tstop.addEventListener('click', () => { if (triggersOn) stopTriggers(); });
+  panel.mstop.addEventListener('click', () => { cancelMacros(); renderPanel(); });
+  panel.confirm.addEventListener('click', confirmAlert);
   // ⚙：交給背景腳本在新分頁開啟設定頁，再按一次關閉
   $('.gear').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'TOGGLE_SETTINGS' }));
 
@@ -549,7 +671,7 @@ function initPanel() {
     saveUi(ui);
   });
   $('.head').addEventListener('pointerdown', e => {
-    if (e.target.closest('.toggle, .gear')) return;
+    if (e.target.closest('.toggle, .gear, .confirm')) return;
     const rect = host.getBoundingClientRect();
     const offsetX = e.clientX - rect.left;
     const offsetY = e.clientY - rect.top;
@@ -580,9 +702,9 @@ function initPanel() {
   renderPanel();
 }
 
-function triggerSummary() {
-  if (!triggersOn) return { text: triggerNote || '未啟動', alert: false, disabled: 0 };
-  const rules = triggerEngine.snapshot().rules.filter(rule => rule.phase !== 'off');
+function triggerSummary(group) {
+  if (!group.on) return { text: group.note || '未啟動', alert: false, disabled: 0 };
+  const rules = group.engine.snapshot().rules.filter(rule => rule.phase !== 'off');
   const disabled = rules.filter(rule => rule.phase === 'disabled');
   if (disabled.length) return { text: `「${disabled[0].label}」${disabled[0].text}`, alert: true, disabled: disabled.length };
   // 命中後等待延遲的規則：每條一行，顯示還有幾秒、要執行哪些指令
@@ -595,12 +717,32 @@ function triggerSummary() {
   return { text: `${rules.length} 條待命`, alert: false, disabled: 0 };
 }
 
+// 巨集列：有巨集在跑就顯示「還有幾秒、下一個指令」，格式錯誤沒有執行時顯示原因 8 秒；都沒有就整列隱藏
+function macroSummary() {
+  if (!macroRuns.size) {
+    if (macroNote && Date.now() < macroNote.until) return { text: macroNote.text, alert: true };
+    macroNote = null;
+    return null;
+  }
+  const run = [...macroRuns][0];
+  const more = macroRuns.size > 1 ? `（共 ${macroRuns.size} 個巨集）` : '';
+  if (run.waitUntil) {
+    const left = Math.max(0, Math.ceil((run.waitUntil - Date.now()) / 1000));
+    return { text: `等待 ${left} 秒後${run.nextCommand === null ? '結束' : `：${run.nextCommand}`}${more}`, alert: false };
+  }
+  return { text: `送出中…${more}`, alert: false };
+}
+
 function renderPanel() {
   if (!panel) return;
   const captchaStopped = !active() && /驗證/.test(stopReason);
-  const trigger = triggerSummary();
-  panel.dot.className = `dot ${trigger.alert || captchaStopped ? 'alert' : active() ? 'on' : ''}`;
-  panel.label.textContent = trigger.alert ? `觸發已停用 ${trigger.disabled} 條` : active() ? '執行中' : '已停止';
+  const summaries = groupList.map(group => triggerSummary(group));
+  const anyAlert = summaries.some(summary => summary.alert);
+  const disabledTotal = summaries.reduce((total, summary) => total + summary.disabled, 0);
+  panel.dot.className = `dot ${anyAlert || captchaStopped ? 'alert' : active() ? 'on' : ''}`;
+  const label = anyAlert ? `觸發已停用 ${disabledTotal} 條` : active() ? '執行中' : '已停止';
+  panel.label.textContent = ringing ? `${label}・響鈴中` : label;
+  panel.confirm.hidden = !ringing;
   let timerText = stopReason || '未啟動';
   if (running) {
     // 倒數與「到時候要執行哪些指令」：固定指令一輪依序送出，隨機指令是被挑中的那一個
@@ -611,18 +753,29 @@ function renderPanel() {
     if (nextRandomAt) lines.push(`隨機 ${left(nextRandomAt)}：${nextRandomCommand}`);
     timerText = lines.join('\n') || '執行中';
   }
-  if (panel.timerText.textContent !== timerText || panel.triggerText.textContent !== trigger.text) {
-    panel.timerText.textContent = timerText;
-    panel.triggerText.textContent = trigger.text;
+  let changed = panel.timerText.textContent !== timerText;
+  panel.timerText.textContent = timerText;
+  groupList.forEach((group, index) => {
+    const row = panel.groups[group.id];
+    if (row.text.textContent !== summaries[index].text) changed = true;
+    row.text.textContent = summaries[index].text;
+    row.text.classList.toggle('alert', summaries[index].alert);
+    row.start.disabled = group.on;
+    row.stop.disabled = !group.on;
+  });
+  if (changed) panel.replace();
+  const macro = macroSummary();
+  panel.macroLine.hidden = !macro;
+  if (macro && panel.macroText.textContent !== macro.text) {
+    panel.macroText.textContent = macro.text;
     panel.replace();
   }
+  panel.macroText.classList.toggle('alert', Boolean(macro?.alert));
+  panel.mstop.disabled = !macroRuns.size;
   panel.avoidMap();
   panel.timerText.classList.toggle('alert', captchaStopped);
-  panel.triggerText.classList.toggle('alert', trigger.alert);
   panel.start.disabled = running;
   panel.stop.disabled = !running;
-  panel.tstart.disabled = triggersOn;
-  panel.tstop.disabled = !triggersOn;
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -634,28 +787,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     stop().then(() => sendResponse({ ok: true }));
     return true;
   }
+  // 觸發相關的訊息都要帶 group（combat／practice）
+  const group = triggerGroups[message.group];
   if (message.type === 'START_TRIGGER') {
-    startTriggers(message.config).then(sendResponse);
+    if (!group) { sendResponse({ ok: false, error: '未知的觸發組' }); return; }
+    startTriggers(group, message.config).then(sendResponse);
     return true;
   }
   if (message.type === 'STOP_TRIGGER') {
-    stopTriggers();
-    sendResponse({ ok: true });
+    if (group) stopTriggers(group);
+    sendResponse({ ok: Boolean(group) });
   }
   if (message.type === 'REARM_RULE') {
-    if (triggerEngine) triggerEngine.rearm(message.index);
+    if (group?.engine) group.engine.rearm(message.index);
     renderPanel();
+    sendResponse({ ok: Boolean(group) });
+  }
+  if (message.type === 'CONFIRM_ALERT') {
+    confirmAlert();
     sendResponse({ ok: true });
   }
   if (message.type === 'STATUS') {
     sendResponse({
       running,
+      ringing,
       settings,
       stopReason,
       nextRunAt,
       nextRandomAt,
       nextRandomCommand,
-      triggers: { on: triggersOn, note: triggerNote, rules: triggersOn ? triggerEngine.snapshot().rules : [], stats: readAllStats() },
+      macros: macroRuns.size,
+      stats: readAllStats(),
+      triggerGroups: Object.fromEntries(groupList.map(item => [item.id, { on: item.on, note: item.note, rules: item.on ? item.engine.snapshot().rules : [] }])),
     });
   }
   if (message.type === 'TEST') {
@@ -667,10 +830,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-chrome.storage.local.get(['running', 'settings', 'triggerSettings']).then(data => {
+// popup 改了「一直響到確認」開關，不用重新整理遊戲頁就生效
+chrome.storage.onChanged?.addListener((changes, area) => {
+  if (area === 'local' && changes.persistentAlert) persistentAlert = changes.persistentAlert.newValue === true;
+});
+
+chrome.storage.local.get(['running', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert']).then(data => {
+  persistentAlert = data.persistentAlert === true;
   if (data.settings) settings = { ...settings, ...data.settings };
-  // 規則設定會留著，但開關不會：重新整理遊戲頁後觸發不會自己恢復
-  if (data.triggerSettings) triggerConfig = data.triggerSettings;
+  // 規則設定會留著，但開關不會：重新整理遊戲頁後觸發不會自己恢復。舊版只有一組設定，升級時放進練功
+  const savedGroups = CatworldTriggerEngine.loadGroupSettings(data);
+  groupList.forEach(item => { item.config = savedGroups[item.id]; });
   // Safety choice: a page reload does not silently resume automation.
   running = false;
   if (data.running) chrome.storage.local.set({ running: false, nextRunAt: null, stopReason });

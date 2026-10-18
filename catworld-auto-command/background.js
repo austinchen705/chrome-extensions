@@ -39,8 +39,17 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     title: 'CatWorld 已停止',
     message: message.reason,
     priority: 2,
-    requireInteraction: true
+    requireInteraction: true,
+    // 警報響鈴中（提示音只有按「確認」才停）：通知上也放一顆確認，不用回到遊戲分頁
+    ...(message.confirmable ? { buttons: [{ title: '確認（停止提示音）' }] } : {})
   });
+});
+
+chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => {
+  if (buttonIndex !== 0) return;
+  const [, tabId] = id.split('-').map(Number);
+  chrome.tabs.sendMessage(tabId, { type: 'CONFIRM_ALERT' }).catch(() => {});
+  chrome.notifications.clear(id);
 });
 
 chrome.notifications.onClicked.addListener(id => {

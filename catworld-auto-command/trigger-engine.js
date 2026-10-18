@@ -44,6 +44,18 @@ const STATS = {
 const MIN_COOLDOWN_SEC = 3;
 const DEFAULTS = { cooldown: 10, buffer: 10, maxFires: 5, windowMinutes: 5, maxIneffective: 3, globalPerMinute: 6, delayMax: 5 };
 
+// 觸發有兩組，各有自己的規則清單、開始／停止、命中延遲與安全機制，功能完全一樣（順序也是 popup 分頁與面板的順序）
+const GROUPS = [{ id: 'combat', name: '戰鬥' }, { id: 'practice', name: '練功' }];
+
+// 已儲存的設定：triggerGroupSettings = { combat: 設定, practice: 設定 }。
+// 舊版只有一組，存在 triggerSettings；還沒有新格式時整份放進練功，戰鬥從空的開始
+function loadGroupSettings(stored = {}) {
+  const saved = stored.triggerGroupSettings;
+  const result = Object.fromEntries(GROUPS.map(({ id }) => [id, saved?.[id] || null]));
+  if (!saved && stored.triggerSettings) result.practice = stored.triggerSettings;
+  return result;
+}
+
 function positive(value, fallback, min) {
   const n = Number(value);
   return Number.isFinite(n) && n >= min ? n : fallback;
@@ -279,5 +291,5 @@ function createEngine(rawConfig, io) {
   return { tick, onText, rearm, snapshot };
 }
 
-globalThis.CatworldTriggerEngine = { STATS, MIN_COOLDOWN_SEC, DEFAULTS, normalizeConfig, hasActiveRules, rearmLevel, rearmText, createEngine };
+globalThis.CatworldTriggerEngine = { STATS, MIN_COOLDOWN_SEC, DEFAULTS, GROUPS, loadGroupSettings, normalizeConfig, hasActiveRules, rearmLevel, rearmText, createEngine };
 })();

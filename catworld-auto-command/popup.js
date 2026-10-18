@@ -67,8 +67,9 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'content.js']
       });
+      await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
     }
     throw e;
@@ -101,6 +102,11 @@ $('test').addEventListener('click', async () => {
   } catch (e) { setStatus(e.message); }
 });
 
+// 「一直響到確認」開關：存起來，遊戲頁的 content script 監聽 storage 變化，馬上生效
+$('persistentAlert').addEventListener('change', () => {
+  chrome.storage.local.set({ persistentAlert: $('persistentAlert').checked });
+});
+
 $('beep').addEventListener('click', async () => {
   try {
     const result = await send({ type: 'TEST_BEEP' });
@@ -126,9 +132,12 @@ function showTab(name) {
   document.querySelectorAll('[data-pane]').forEach(pane => { pane.hidden = pane.dataset.pane !== name; });
   chrome.storage.local.set({ popupTab: name });
 }
-document.querySelectorAll('[data-tab]').forEach(tab => tab.addEventListener('click', () => showTab(tab.dataset.tab)));
+document.querySelector('.tabs').addEventListener('click', event => {
+  const tab = event.target.closest('[data-tab]');
+  if (tab) showTab(tab.dataset.tab);
+});
 
-// ---- 狀態觸發 ----
+// ---- 觸發（戰鬥、練功兩組，各自獨立、功能完全一樣）----
 const STAT_NAMES = Object.keys(Engine.STATS);
 const D = Engine.DEFAULTS;
 const BLANK_RULE = { enabled: true, stat: '飲水', op: 'le', unit: 'abs', value: 200, commands: [], cooldown: D.cooldown, buffer: D.buffer };
@@ -141,168 +150,210 @@ function element(tag, props = {}, ...children) {
 
 const field = (name, el) => { el.dataset.f = name; return el; };
 
-// 每張規則卡片共用：刪除、重新啟用（按卡片在清單中的順序對應引擎裡的規則）
-function wireRuleControls(card, remove, again) {
-  remove.addEventListener('click', () => { card.remove(); saveTriggerUi(); });
-  again.addEventListener('click', async () => {
-    const index = [...$('rules').children].indexOf(card);
-    try { await send({ type: 'REARM_RULE', index }); refreshLive(); } catch (e) { holdTrigStatus(e.message); }
+// 每組一個分頁：標記來自 popup.html 的 <template id="triggerPaneTemplate">，裡面所有 id 都帶 -__G__，
+// 複製時換成組別，所以兩組不會撞 id。每組有自己的規則清單、開始／停止、命中延遲與安全機制，存在 triggerGroupSettings[組別]
+function createTriggerPane(group) {
+  const $g = name => document.getElementById(`${name}-${group.id}`);
+  const root = element('div');
+  root.dataset.pane = group.id;
+  root.hidden = true;
+  root.innerHTML = document.getElementById('triggerPaneTemplate').innerHTML.replaceAll('__G__', group.id);
+  document.getElementById('triggerPanes').append(root);
+  const tab = element('button', { type: 'button', textContent: `${group.name}觸發` });
+  tab.setAttribute('role', 'tab');
+  tab.setAttribute('aria-selected', 'false');
+  tab.dataset.tab = group.id;
+  document.querySelector('.tabs').append(tab);
+
+  let hold = { until: 0 };
+  const holdStatus = text => {
+    hold = { until: Date.now() + 4000 };
+    $g('trigStatus').textContent = text;
+  };
+
+  // 每張規則卡片共用：刪除、重新啟用（按卡片在清單中的順序對應引擎裡的規則）
+  function wireRuleControls(card, remove, again) {
+    remove.addEventListener('click', () => { card.remove(); save(); });
+    again.addEventListener('click', async () => {
+      const index = [...$g('rules').children].indexOf(card);
+      try { await send({ type: 'REARM_RULE', group: group.id, index }); refreshLive(); } catch (e) { holdStatus(e.message); }
+    });
+  }
+
+  function ruleCard(rule) {
+    const stat = field('stat', element('select', { title: '項目' }, ...STAT_NAMES.map(name => element('option', { value: name, textContent: name, selected: name === rule.stat }))));
+    const op = field('op', element('select', { title: '方向：≤ 目前值小於等於門檻就觸發，≥ 目前值大於等於門檻就觸發' },
+      element('option', { value: 'le', textContent: '≤', selected: rule.op !== 'ge' }),
+      element('option', { value: 'ge', textContent: '≥', selected: rule.op === 'ge' })));
+    const value = field('value', element('input', { type: 'number', min: 0, value: rule.value, title: '門檻' }));
+    const unit = field('unit', element('select', { title: '單位' },
+      element('option', { value: 'abs', textContent: '數值', selected: rule.unit !== 'pct' }),
+      element('option', { value: 'pct', textContent: '％', selected: rule.unit === 'pct' })));
+    const commands = field('commands', element('textarea', { value: (rule.commands || []).join('\n'), placeholder: '例：drink' }));
+    const cooldown = field('cooldown', element('input', { type: 'number', min: Engine.MIN_COOLDOWN_SEC, value: rule.cooldown }));
+    const buffer = field('buffer', element('input', { type: 'number', min: 0, value: rule.buffer }));
+    const enabled = field('enabled', element('input', { type: 'checkbox', checked: rule.enabled !== false, title: '啟用這條規則' }));
+    const pill = field('pill', element('span', { className: 'pill', hidden: true }));
+    const again = field('again', element('button', { type: 'button', className: 'linkbtn', textContent: '重新啟用', hidden: true }));
+    const remove = element('button', { type: 'button', className: 'x', textContent: '✕', title: '刪除這條規則' });
+    const rearm = element('p', { className: 'rearm' });
+
+    const card = element('div', { className: 'rule' },
+      element('div', { className: 'rule-head' }, enabled, element('span', { className: 'grow' }, pill), again, remove),
+      element('div', { className: 'cond' }, stat, op, value, unit),
+      element('label', { textContent: '送出的指令（一行一個，依序送出）' }), commands,
+      element('div', { className: 'row' },
+        element('div', {}, element('label', { textContent: '冷卻（秒，最少 3）' }), cooldown),
+        element('div', {}, element('label', { textContent: '回復緩衝（％）' }), buffer)),
+      rearm);
+
+    const updateRearm = () => {
+      const text = Engine.rearmText({ op: op.value, unit: unit.value, value: Number(value.value) || 0, buffer: Number(buffer.value) || 0 });
+      rearm.textContent = `回復條件：${stat.value} ${text} 才會重新武裝`;
+    };
+    card.addEventListener('input', updateRearm);
+    updateRearm();
+    card.dataset.kind = 'stat';
+    wireRuleControls(card, remove, again);
+    return card;
+  }
+
+  // 關鍵字規則：遊戲輸出區新出現的文字含關鍵字就送出指令
+  function keywordCard(rule) {
+    const enabled = field('enabled', element('input', { type: 'checkbox', checked: rule.enabled !== false, title: '啟用這條規則' }));
+    const pill = field('pill', element('span', { className: 'pill', hidden: true }));
+    const again = field('again', element('button', { type: 'button', className: 'linkbtn', textContent: '重新啟用', hidden: true }));
+    const remove = element('button', { type: 'button', className: 'x', textContent: '✕', title: '刪除這條規則' });
+    const pattern = field('pattern', element('input', { type: 'text', value: rule.pattern || '', placeholder: '例：你覺得口渴', title: '新出現的遊戲文字含這段字就觸發（不分大小寫）' }));
+    const commands = field('commands', element('textarea', { value: (rule.commands || []).join('\n'), placeholder: '例：drink' }));
+    const cooldown = field('cooldown', element('input', { type: 'number', min: Engine.MIN_COOLDOWN_SEC, value: rule.cooldown ?? D.cooldown }));
+    const card = element('div', { className: 'rule' },
+      element('div', { className: 'rule-head' }, enabled, element('span', { className: 'kind', textContent: '關鍵字' }), element('span', { className: 'grow' }, pill), again, remove),
+      element('label', { textContent: '關鍵字（遊戲新出現的文字含有就觸發，不分大小寫）' }), pattern,
+      element('label', { textContent: '送出的指令（一行一個，依序送出）' }), commands,
+      element('label', { textContent: '冷卻（秒，最少 3）' }), cooldown);
+    card.dataset.kind = 'keyword';
+    wireRuleControls(card, remove, again);
+    return card;
+  }
+
+  const buildCard = rule => (rule.kind === 'keyword' ? keywordCard(rule) : ruleCard(rule));
+
+  function readSettings() {
+    const get = (card, name) => card.querySelector(`[data-f="${name}"]`);
+    const lines = (card, name) => get(card, name).value.split('\n').map(x => x.trim()).filter(Boolean);
+    return {
+      rules: [...$g('rules').children].map(card => (card.dataset.kind === 'keyword'
+        ? {
+          kind: 'keyword',
+          enabled: get(card, 'enabled').checked,
+          pattern: get(card, 'pattern').value.trim(),
+          commands: lines(card, 'commands'),
+          cooldown: Number(get(card, 'cooldown').value),
+        }
+        : {
+          kind: 'stat',
+          enabled: get(card, 'enabled').checked,
+          stat: get(card, 'stat').value,
+          op: get(card, 'op').value,
+          unit: get(card, 'unit').value,
+          value: Number(get(card, 'value').value),
+          commands: lines(card, 'commands'),
+          cooldown: Number(get(card, 'cooldown').value),
+          buffer: Number(get(card, 'buffer').value),
+        })),
+      limitFires: $g('limitFires').checked,
+      limitIneffective: $g('limitIneffective').checked,
+      limitGlobal: $g('limitGlobal').checked,
+      maxFires: Number($g('maxFires').value),
+      windowMinutes: Number($g('windowMinutes').value),
+      maxIneffective: Number($g('maxIneffective').value),
+      globalPerMinute: Number($g('globalPerMinute').value),
+      delayMax: $g('delayMax').value.trim() === '' ? D.delayMax : Number($g('delayMax').value),
+      requireNormal: $g('requireNormal').checked,
+    };
+  }
+
+  // 兩組存在同一個 storage key，各寫各的那一組，不覆蓋另一組
+  async function save() {
+    const { triggerGroupSettings } = await chrome.storage.local.get('triggerGroupSettings');
+    await chrome.storage.local.set({ triggerGroupSettings: { ...triggerGroupSettings, [group.id]: readSettings() } });
+  }
+
+  // 沒勾選的限制，數字欄位反灰
+  function syncLimitInputs() {
+    [['limitFires', ['maxFires', 'windowMinutes']], ['limitIneffective', ['maxIneffective']], ['limitGlobal', ['globalPerMinute']]]
+      .forEach(([switchId, inputs]) => inputs.forEach(id => { $g(id).disabled = !$g(switchId).checked; }));
+  }
+
+  function render(saved) {
+    const config = saved || { rules: [BLANK_RULE] };
+    $g('rules').replaceChildren(...(config.rules.length ? config.rules : [BLANK_RULE]).map(buildCard));
+    $g('limitFires').checked = config.limitFires === true;
+    $g('limitIneffective').checked = config.limitIneffective === true;
+    $g('limitGlobal').checked = config.limitGlobal === true;
+    syncLimitInputs();
+    $g('maxFires').value = config.maxFires ?? D.maxFires;
+    $g('windowMinutes').value = config.windowMinutes ?? D.windowMinutes;
+    $g('maxIneffective').value = config.maxIneffective ?? D.maxIneffective;
+    $g('globalPerMinute').value = config.globalPerMinute ?? D.globalPerMinute;
+    $g('delayMax').value = config.delayMax ?? D.delayMax;
+    $g('requireNormal').checked = config.requireNormal !== false;
+  }
+
+  root.querySelector('.safety').addEventListener('change', syncLimitInputs);
+  $g('addRule').addEventListener('click', () => { $g('rules').append(ruleCard(BLANK_RULE)); save(); });
+  $g('addKeyword').addEventListener('click', () => { $g('rules').append(keywordCard({ enabled: true, pattern: '', commands: [], cooldown: D.cooldown })); save(); });
+  root.addEventListener('change', save);
+
+  $g('tstart').addEventListener('click', async () => {
+    try {
+      const config = readSettings();
+      if (!Engine.hasActiveRules(config)) throw new Error('至少要有一條完整的規則（數值規則要填項目、門檻、指令；關鍵字規則要填關鍵字、指令）');
+      await save();
+      const result = await send({ type: 'START_TRIGGER', group: group.id, config });
+      if (!result?.ok) throw new Error(result?.error || '啟動觸發失敗');
+      refreshLive();
+    } catch (e) { holdStatus(e.message); }
   });
+
+  $g('tstop').addEventListener('click', async () => {
+    try { await send({ type: 'STOP_TRIGGER', group: group.id }); refreshLive(); }
+    catch (e) { holdStatus(e.message); }
+  });
+
+  function renderReadings(stats) {
+    $g('read').replaceChildren(...STAT_NAMES.map(name => {
+      const stat = stats?.[name];
+      const max = stat && Number.isFinite(stat.max) ? `/${stat.max}` : '';
+      return element('div', { className: stat ? 'chip' : 'chip na' }, element('b', { textContent: name }), stat ? `${stat.value}${max}` : '—');
+    }));
+  }
+
+  // status 是遊戲頁回的 STATUS（連不上時是 null）。規則數量和遊戲頁正在跑的設定不同（剛改過還沒重新開始）時不顯示規則狀態
+  function refresh(status) {
+    renderReadings(status?.stats);
+    const state = status?.triggerGroups?.[group.id];
+    const cards = [...$g('rules').children];
+    const states = state?.on && state.rules.length === cards.length ? state.rules : [];
+    cards.forEach((card, i) => {
+      const pill = card.querySelector('[data-f="pill"]');
+      const again = card.querySelector('[data-f="again"]');
+      const rule = states[i];
+      pill.hidden = !rule || rule.phase === 'off';
+      again.hidden = !rule || rule.phase !== 'disabled';
+      if (rule) { pill.textContent = rule.text; pill.className = `pill ${rule.phase}`; pill.title = rule.text; }
+    });
+    if (Date.now() < hold.until) return;
+    $g('trigStatus').textContent = state?.on
+      ? `${group.name}觸發執行中（${state.rules.filter(rule => rule.phase !== 'off').length} 條規則）`
+      : (state?.note || `${group.name}觸發未啟動`);
+  }
+
+  return { group, root, render, refresh, readSettings };
 }
 
-function ruleCard(rule) {
-  const stat = field('stat', element('select', { title: '項目' }, ...STAT_NAMES.map(name => element('option', { value: name, textContent: name, selected: name === rule.stat }))));
-  const op = field('op', element('select', { title: '方向：≤ 目前值小於等於門檻就觸發，≥ 目前值大於等於門檻就觸發' },
-    element('option', { value: 'le', textContent: '≤', selected: rule.op !== 'ge' }),
-    element('option', { value: 'ge', textContent: '≥', selected: rule.op === 'ge' })));
-  const value = field('value', element('input', { type: 'number', min: 0, value: rule.value, title: '門檻' }));
-  const unit = field('unit', element('select', { title: '單位' },
-    element('option', { value: 'abs', textContent: '數值', selected: rule.unit !== 'pct' }),
-    element('option', { value: 'pct', textContent: '％', selected: rule.unit === 'pct' })));
-  const commands = field('commands', element('textarea', { value: (rule.commands || []).join('\n'), placeholder: '例：drink' }));
-  const cooldown = field('cooldown', element('input', { type: 'number', min: Engine.MIN_COOLDOWN_SEC, value: rule.cooldown }));
-  const buffer = field('buffer', element('input', { type: 'number', min: 0, value: rule.buffer }));
-  const enabled = field('enabled', element('input', { type: 'checkbox', checked: rule.enabled !== false, title: '啟用這條規則' }));
-  const pill = field('pill', element('span', { className: 'pill', hidden: true }));
-  const again = field('again', element('button', { type: 'button', className: 'linkbtn', textContent: '重新啟用', hidden: true }));
-  const remove = element('button', { type: 'button', className: 'x', textContent: '✕', title: '刪除這條規則' });
-  const rearm = element('p', { className: 'rearm' });
-
-  const card = element('div', { className: 'rule' },
-    element('div', { className: 'rule-head' }, enabled, element('span', { className: 'grow' }, pill), again, remove),
-    element('div', { className: 'cond' }, stat, op, value, unit),
-    element('label', { textContent: '送出的指令（一行一個，依序送出）' }), commands,
-    element('div', { className: 'row' },
-      element('div', {}, element('label', { textContent: '冷卻（秒，最少 3）' }), cooldown),
-      element('div', {}, element('label', { textContent: '回復緩衝（％）' }), buffer)),
-    rearm);
-
-  const updateRearm = () => {
-    const text = Engine.rearmText({ op: op.value, unit: unit.value, value: Number(value.value) || 0, buffer: Number(buffer.value) || 0 });
-    rearm.textContent = `回復條件：${stat.value} ${text} 才會重新武裝`;
-  };
-  card.addEventListener('input', updateRearm);
-  updateRearm();
-  card.dataset.kind = 'stat';
-  wireRuleControls(card, remove, again);
-  return card;
-}
-
-// 關鍵字規則：遊戲輸出區新出現的文字含關鍵字就送出指令
-function keywordCard(rule) {
-  const enabled = field('enabled', element('input', { type: 'checkbox', checked: rule.enabled !== false, title: '啟用這條規則' }));
-  const pill = field('pill', element('span', { className: 'pill', hidden: true }));
-  const again = field('again', element('button', { type: 'button', className: 'linkbtn', textContent: '重新啟用', hidden: true }));
-  const remove = element('button', { type: 'button', className: 'x', textContent: '✕', title: '刪除這條規則' });
-  const pattern = field('pattern', element('input', { type: 'text', value: rule.pattern || '', placeholder: '例：你覺得口渴', title: '新出現的遊戲文字含這段字就觸發（不分大小寫）' }));
-  const commands = field('commands', element('textarea', { value: (rule.commands || []).join('\n'), placeholder: '例：drink' }));
-  const cooldown = field('cooldown', element('input', { type: 'number', min: Engine.MIN_COOLDOWN_SEC, value: rule.cooldown ?? D.cooldown }));
-  const card = element('div', { className: 'rule' },
-    element('div', { className: 'rule-head' }, enabled, element('span', { className: 'kind', textContent: '關鍵字' }), element('span', { className: 'grow' }, pill), again, remove),
-    element('label', { textContent: '關鍵字（遊戲新出現的文字含有就觸發，不分大小寫）' }), pattern,
-    element('label', { textContent: '送出的指令（一行一個，依序送出）' }), commands,
-    element('label', { textContent: '冷卻（秒，最少 3）' }), cooldown);
-  card.dataset.kind = 'keyword';
-  wireRuleControls(card, remove, again);
-  return card;
-}
-
-const buildCard = rule => (rule.kind === 'keyword' ? keywordCard(rule) : ruleCard(rule));
-
-function readTriggerSettings() {
-  const get = (card, name) => card.querySelector(`[data-f="${name}"]`);
-  const lines = (card, name) => get(card, name).value.split('\n').map(x => x.trim()).filter(Boolean);
-  return {
-    rules: [...$('rules').children].map(card => (card.dataset.kind === 'keyword'
-      ? {
-        kind: 'keyword',
-        enabled: get(card, 'enabled').checked,
-        pattern: get(card, 'pattern').value.trim(),
-        commands: lines(card, 'commands'),
-        cooldown: Number(get(card, 'cooldown').value),
-      }
-      : {
-        kind: 'stat',
-        enabled: get(card, 'enabled').checked,
-        stat: get(card, 'stat').value,
-        op: get(card, 'op').value,
-        unit: get(card, 'unit').value,
-        value: Number(get(card, 'value').value),
-        commands: lines(card, 'commands'),
-        cooldown: Number(get(card, 'cooldown').value),
-        buffer: Number(get(card, 'buffer').value),
-      })),
-    limitFires: $('limitFires').checked,
-    limitIneffective: $('limitIneffective').checked,
-    limitGlobal: $('limitGlobal').checked,
-    maxFires: Number($('maxFires').value),
-    windowMinutes: Number($('windowMinutes').value),
-    maxIneffective: Number($('maxIneffective').value),
-    globalPerMinute: Number($('globalPerMinute').value),
-    delayMax: $('delayMax').value.trim() === '' ? D.delayMax : Number($('delayMax').value),
-    requireNormal: $('requireNormal').checked,
-  };
-}
-
-function saveTriggerUi() {
-  chrome.storage.local.set({ triggerSettings: readTriggerSettings() });
-}
-
-function renderTriggerSettings(saved) {
-  const config = saved || { rules: [BLANK_RULE] };
-  $('rules').replaceChildren(...(config.rules.length ? config.rules : [BLANK_RULE]).map(buildCard));
-  $('limitFires').checked = config.limitFires === true;
-  $('limitIneffective').checked = config.limitIneffective === true;
-  $('limitGlobal').checked = config.limitGlobal === true;
-  syncLimitInputs();
-  $('maxFires').value = config.maxFires ?? D.maxFires;
-  $('windowMinutes').value = config.windowMinutes ?? D.windowMinutes;
-  $('maxIneffective').value = config.maxIneffective ?? D.maxIneffective;
-  $('globalPerMinute').value = config.globalPerMinute ?? D.globalPerMinute;
-  $('delayMax').value = config.delayMax ?? D.delayMax;
-  $('requireNormal').checked = config.requireNormal !== false;
-}
-
-// 沒勾選的限制，數字欄位反灰
-function syncLimitInputs() {
-  [['limitFires', ['maxFires', 'windowMinutes']], ['limitIneffective', ['maxIneffective']], ['limitGlobal', ['globalPerMinute']]]
-    .forEach(([switchId, inputs]) => inputs.forEach(id => { $(id).disabled = !$(switchId).checked; }));
-}
-document.querySelector('.safety').addEventListener('change', syncLimitInputs);
-
-$('addRule').addEventListener('click', () => { $('rules').append(ruleCard(BLANK_RULE)); saveTriggerUi(); });
-$('addKeyword').addEventListener('click', () => { $('rules').append(keywordCard({ enabled: true, pattern: '', commands: [], cooldown: D.cooldown })); saveTriggerUi(); });
-document.querySelector('[data-pane="trigger"]').addEventListener('change', saveTriggerUi);
-
-let trigHold = { text: '', until: 0 };
-function holdTrigStatus(text) {
-  trigHold = { text, until: Date.now() + 4000 };
-  $('trigStatus').textContent = text;
-}
-
-$('tstart').addEventListener('click', async () => {
-  try {
-    const config = readTriggerSettings();
-    if (!Engine.hasActiveRules(config)) throw new Error('至少要有一條完整的規則（數值規則要填項目、門檻、指令；關鍵字規則要填關鍵字、指令）');
-    await chrome.storage.local.set({ triggerSettings: config });
-    const result = await send({ type: 'START_TRIGGER', config });
-    if (!result?.ok) throw new Error(result?.error || '啟動觸發失敗');
-    refreshLive();
-  } catch (e) { holdTrigStatus(e.message); }
-});
-
-$('tstop').addEventListener('click', async () => {
-  try { await send({ type: 'STOP_TRIGGER' }); refreshLive(); }
-  catch (e) { holdTrigStatus(e.message); }
-});
-
-function renderReadings(stats) {
-  $('read').replaceChildren(...STAT_NAMES.map(name => {
-    const stat = stats?.[name];
-    const max = stat && Number.isFinite(stat.max) ? `/${stat.max}` : '';
-    return element('div', { className: stat ? 'chip' : 'chip na' }, element('b', { textContent: name }), stat ? `${stat.value}${max}` : '—');
-  }));
-}
+const panes = Object.fromEntries(Engine.GROUPS.map(group => [group.id, createTriggerPane(group)]));
 
 // 定時分頁的倒數：固定指令的下一輪、隨機指令的下一次
 function renderCountdown(status) {
@@ -318,32 +369,17 @@ function renderCountdown(status) {
   $('countdown').textContent = `下一輪：${parts.length ? parts.join('　') : '—'}`;
 }
 
-// 每秒向遊戲頁要一次狀態，更新定時倒數、觸發的讀數與各規則的狀態；
-// 規則數量和遊戲頁正在跑的設定不同（剛改過還沒重新開始）時不顯示規則狀態
+// 每秒向遊戲頁要一次狀態，更新定時倒數與兩組觸發的讀數、規則狀態
 async function refreshLive() {
-  let status;
-  try { status = await send({ type: 'STATUS' }); } catch { renderReadings(null); renderCountdown(null); return; }
+  let status = null;
+  try { status = await send({ type: 'STATUS' }); } catch { /* 連不上遊戲頁：讀數顯示 — */ }
   renderCountdown(status);
-  const triggers = status?.triggers;
-  renderReadings(triggers?.stats);
-  const cards = [...$('rules').children];
-  const states = triggers?.on && triggers.rules.length === cards.length ? triggers.rules : [];
-  cards.forEach((card, i) => {
-    const pill = card.querySelector('[data-f="pill"]');
-    const again = card.querySelector('[data-f="again"]');
-    const state = states[i];
-    pill.hidden = !state || state.phase === 'off';
-    again.hidden = !state || state.phase !== 'disabled';
-    if (state) { pill.textContent = state.text; pill.className = `pill ${state.phase}`; pill.title = state.text; }
-  });
-  if (Date.now() < trigHold.until) return;
-  $('trigStatus').textContent = triggers?.on
-    ? `觸發執行中（${triggers.rules.filter(rule => rule.phase !== 'off').length} 條規則）`
-    : (triggers?.note || '觸發未啟動');
+  Object.values(panes).forEach(pane => pane.refresh(status));
 }
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'triggerSettings', 'popupTab']);
+  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert']);
+  $('persistentAlert').checked = data.persistentAlert === true;
   if (data.settings) {
     $('commands').value = (data.settings.commands || ['ps','px']).join('\n');
     $('minSeconds').value = data.settings.minSeconds ?? 30;
@@ -352,8 +388,12 @@ async function refreshLive() {
   }
   // 舊格式（一行一個 + 共用秒數）由 normalizeRandomItems 轉成每個指令一列
   renderRandomItems(CatworldTimer.normalizeRandomItems(data.settings));
-  renderTriggerSettings(data.triggerSettings);
-  showTab(data.popupTab === 'trigger' ? 'trigger' : 'timer');
+  // 舊版只有一組觸發設定（triggerSettings），升級時整份放進練功
+  const savedGroups = Engine.loadGroupSettings(data);
+  Object.values(panes).forEach(pane => pane.render(savedGroups[pane.group.id]));
+  // 舊版的分頁名稱是 trigger（現在叫練功）
+  const lastTab = data.popupTab === 'trigger' ? 'practice' : data.popupTab;
+  showTab(panes[lastTab] ? lastTab : 'timer');
   try {
     const status = await send({ type: 'STATUS' });
     setStatus(status?.running ? '執行中' : (status?.stopReason || '已停止'));
