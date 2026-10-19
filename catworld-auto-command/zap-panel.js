@@ -70,8 +70,8 @@ function attach(root, { readExp }) {
     el('div', { className: 'zap-tools' }, search, el('label', {}, yellow, ' 含黃色')), list);
   const hint = el('div', { className: 'zap-hint', hidden: true });
   // 怪物與鑑定結果共用這個浮層，各占一個區段；任何一個區段更新都重設自動消失的計時
-  const sections = { mobs: el('div'), items: el('div') };
-  hint.append(sections.mobs, sections.items);
+  const sections = { mobs: el('div'), items: el('div'), equipment: el('div') };
+  hint.append(sections.mobs, sections.items, sections.equipment);
   root.append(style);
   root.querySelector('.body').append(row, box);
   root.querySelector('.panel').append(hint);
@@ -150,6 +150,7 @@ function attach(root, { readExp }) {
     hideTimer = setTimeout(() => {
       sections.mobs.replaceChildren();
       sections.items.replaceChildren();
+      sections.equipment.replaceChildren();
       itemBlocks.length = 0;
       hint.hidden = true;
     }, HINT_MS);
@@ -271,6 +272,8 @@ function attach(root, { readExp }) {
     lookupItems(text);
   });
   observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+  // 裝備比較的 UI 借用同一個浮層（區段與自動消失的計時）
+  return { sections, touchHint, el };
 }
 
 globalThis.CatworldZapPanel = { attach };

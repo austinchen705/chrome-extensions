@@ -586,8 +586,9 @@ function initPanel() {
   };
   // 「怪物」列：讀 #exp 列出適合打的怪、怪物出現時顯示資訊（資料由 background 提供）
   // 怪物列壞了不能牽連後面開始／停止按鈕的綁定
+  let zapPanel = null;
   try {
-    CatworldZapPanel.attach(root, { readExp: () => Number((document.getElementById('exp')?.textContent || '').replace(/[,\s]/g, '')) });
+    zapPanel = CatworldZapPanel.attach(root, { readExp: () => Number((document.getElementById('exp')?.textContent || '').replace(/[,\s]/g, '')) });
   } catch (error) {
     console.error('[catworld] 怪物列初始化失敗', error);
   }
@@ -603,6 +604,17 @@ function initPanel() {
     });
   } catch (error) {
     console.error('[catworld] 解謎列初始化失敗', error);
+  }
+  // 「裝備」列：借用怪物列的浮層區段；讀取目前穿著送的 i／view 也走巨集
+  try {
+    if (!zapPanel) throw new Error('怪物列沒有初始化，裝備列借用不到浮層');
+    CatworldZapEquipmentUI.attach(root, {
+      overlay: { section: zapPanel.sections.equipment, touchHint: zapPanel.touchHint, el: zapPanel.el },
+      readExp: () => readNumber('exp'),
+      startSteps: text => startMacro(text),
+    });
+  } catch (error) {
+    console.error('[catworld] 裝備列初始化失敗', error);
   }
 
   // 點面板不要讓遊戲輸入框失去游標

@@ -32,8 +32,10 @@
         "zap-mobs.js",
         "zap-items.js",
         "zap-riddles.js",
+        "zap-equipment.js",
         "zap-panel.js",
         "zap-riddle-ui.js",
+        "zap-equipment-ui.js",
         "content.js"
       ],
       "css": [
