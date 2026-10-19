@@ -67,7 +67,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'zap-mobs.js', 'zap-panel.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -106,6 +106,24 @@ $('test').addEventListener('click', async () => {
 $('persistentAlert').addEventListener('change', () => {
   chrome.storage.local.set({ persistentAlert: $('persistentAlert').checked });
 });
+
+// 怪物分級門檻：存起來，遊戲頁的面板監聽 storage 變化，馬上生效。無效的值（需 1 < 綠上限 < 黃上限）不存，欄位還原
+let zapThresholds = CatworldZapMobs.normalizeThresholds(undefined);
+function showZapThresholds() {
+  $('zapGreenMax').value = zapThresholds.greenMax;
+  $('zapYellowMax').value = zapThresholds.yellowMax;
+}
+['zapGreenMax', 'zapYellowMax'].forEach(id => $(id).addEventListener('change', () => {
+  const raw = { greenMax: Number($('zapGreenMax').value), yellowMax: Number($('zapYellowMax').value) };
+  const valid = CatworldZapMobs.normalizeThresholds(raw);
+  if (valid.greenMax !== raw.greenMax || valid.yellowMax !== raw.yellowMax) {
+    showZapThresholds();
+    setStatus('門檻需 1 < 綠上限 < 黃上限');
+    return;
+  }
+  zapThresholds = valid;
+  chrome.storage.local.set({ zapThresholds });
+}));
 
 $('beep').addEventListener('click', async () => {
   try {
@@ -378,8 +396,10 @@ async function refreshLive() {
 }
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert']);
+  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds']);
   $('persistentAlert').checked = data.persistentAlert === true;
+  zapThresholds = CatworldZapMobs.normalizeThresholds(data.zapThresholds);
+  showZapThresholds();
   if (data.settings) {
     $('commands').value = (data.settings.commands || ['ps','px']).join('\n');
     $('minSeconds').value = data.settings.minSeconds ?? 30;

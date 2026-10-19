@@ -148,12 +148,20 @@ px</textarea>
     <label class="check"><input id="persistentAlert" type="checkbox"> 警報提示音一直響，按「確認」才停</label>
     <p class="hint tight">預設關閉＝原本的行為：每 10 秒響一次、最多 5 分鐘，回到遊戲頁點一下、按鍵或按「開始」就停。開啟後不會自己停，要按遊戲頁面板標題列（或系統通知上）的「確認」才會停，標題也會一直閃。</p>
   </div>
+  <div class="alertbox">
+    <div class="row">
+      <div><label for="zapGreenMax">怪物分級：綠上限 q</label><input id="zapGreenMax" type="number" min="1.01" step="0.1"></div>
+      <div><label for="zapYellowMax">黃上限 q</label><input id="zapYellowMax" type="number" min="1.01" step="0.1"></div>
+    </div>
+    <p class="hint tight">q = 怪物強度×2 ÷ 目前經驗。q ≤ 1 白（打了沒潛能）；q ≤ 綠上限 綠；q ≤ 黃上限 黃；更高紅。遊戲沒有公開門檻，請對照遊戲裡的顏色調整。</p>
+  </div>
   <button id="test">測試送出 ps</button>
   <button id="beep">測試提示音</button>
   <button id="skills">悟招清單（新分頁開啟）</button>
   <div class="hint">新出現「請輸入上面的數字」或「請輸入上方的數字」會立即停止。請先手動完成驗證，再按開始；舊紀錄不會重複觸發。需在 CatWorld Web 分頁使用。重新整理遊戲頁後會自動停止，避免意外持續執行。</div>
   <script src="trigger-engine.js"></script>
   <script src="timer-settings.js"></script>
+  <script src="zap-mobs.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
