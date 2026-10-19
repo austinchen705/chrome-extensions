@@ -2,7 +2,8 @@
  "sources": [
   "https://zap.muds.me/ot1.htm",
   "https://catworld.muds.tw/help/newstart.3",
-  "https://zap.muds.me/ub.htm"
+  "https://zap.muds.me/ub.htm",
+  "https://zap.muds.me/qu1.htm"
  ],
  "mobs": [
   {
@@ -7727,5 +7728,2782 @@
    "note": "防具：防禦 +36",
    "weapon": ""
   }
- ]
+ ],
+ "riddles": [
+  {
+   "id": "技能類/獨孤九劍",
+   "category": "技能類",
+   "name": "獨孤九劍",
+   "condition": "內力 300 [天賦]",
+   "hint": "如何得到風清揚前輩認同？",
+   "difficulty": "極易",
+   "reward": "學會此技能",
+   "page": "qu1-1.htm",
+   "shared": []
+  },
+  {
+   "id": "技能類/打狗棒法",
+   "category": "技能類",
+   "name": "打狗棒法",
+   "condition": "內力 300 [天賦]",
+   "hint": "丐幫幫主的專用棒法，該找誰呢",
+   "difficulty": "極易",
+   "reward": "學會此技能",
+   "page": "qu1-2.htm",
+   "shared": []
+  },
+  {
+   "id": "技能類/龍掌放龍",
+   "category": "技能類",
+   "name": "龍掌放龍",
+   "condition": "龍掌相關技能70",
+   "hint": "契丹的某人應該略知一二",
+   "difficulty": "極易",
+   "reward": "得知放龍指令",
+   "page": "qu1-3.htm",
+   "shared": []
+  },
+  {
+   "id": "技能類/習得凌波微步",
+   "category": "技能類",
+   "name": "習得凌波微步",
+   "condition": "80 萬 EXP",
+   "hint": "無量劍派附近好像出了事情",
+   "difficulty": "一般",
+   "reward": "學會此技能",
+   "page": "qu1-4.htm",
+   "shared": []
+  },
+  {
+   "id": "技能類/玉蕭劍法",
+   "category": "技能類",
+   "name": "玉蕭劍法",
+   "condition": "內力 2000 [天賦]",
+   "hint": "桃花島上某個地點也許有資料",
+   "difficulty": "難",
+   "reward": "學會此技能",
+   "page": "qu1-5.htm",
+   "shared": [
+    "彈指神通",
+    "糖果"
+   ]
+  },
+  {
+   "id": "技能類/彈指神通",
+   "category": "技能類",
+   "name": "彈指神通",
+   "condition": "內力 1500 [天賦]",
+   "hint": "桃花島上某個地點也許有資料",
+   "difficulty": "難",
+   "reward": "學會此技能",
+   "page": "qu1-5.htm",
+   "shared": [
+    "玉蕭劍法",
+    "糖果"
+   ]
+  },
+  {
+   "id": "技能類/九陰白骨爪",
+   "category": "技能類",
+   "name": "九陰白骨爪",
+   "condition": "80 萬 EXP",
+   "hint": "峨眉派似乎有相關消息",
+   "difficulty": "難",
+   "reward": "學會此技能",
+   "page": "qu1-6.htm",
+   "shared": []
+  },
+  {
+   "id": "技能類/習得六脈神劍",
+   "category": "技能類",
+   "name": "習得六脈神劍",
+   "condition": "內力 ???? [天賦]",
+   "hint": "會有一位書生出現尋找有緣人",
+   "difficulty": "極難",
+   "reward": "共可解三次",
+   "page": "qu1-7.htm",
+   "shared": []
+  },
+  {
+   "id": "技能類/習得葵花神功",
+   "category": "技能類",
+   "name": "習得葵花神功",
+   "condition": "50 萬 EXP",
+   "hint": "好像有人偷走了東方教主的寶物",
+   "difficulty": "極難",
+   "reward": "得到葵花寶典",
+   "page": "qu1-8.htm",
+   "shared": [
+    "自宮"
+   ]
+  },
+  {
+   "id": "治裝類/鞭子製作",
+   "category": "治裝類",
+   "name": "鞭子製作",
+   "condition": "無",
+   "hint": "歐冶子應該知道相關消息",
+   "difficulty": "極易",
+   "reward": "鑄的鞭子",
+   "page": "qu3-5.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/湖底",
+   "category": "治裝類",
+   "name": "湖底",
+   "condition": "無",
+   "hint": "峽谷中的夫婦不知道在煩惱什麼",
+   "difficulty": "極易",
+   "reward": "潛水衣",
+   "page": "qu2-2.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/唐伯虎的困擾",
+   "category": "治裝類",
+   "name": "唐伯虎的困擾",
+   "condition": "2 萬 EXP",
+   "hint": "蘇州的唐伯虎似乎遇到了難題",
+   "difficulty": "易",
+   "reward": "貓套裝",
+   "page": "qu3-7.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/玄鐵重劍",
+   "category": "治裝類",
+   "name": "玄鐵重劍",
+   "condition": "20 萬 EXP",
+   "hint": "絕情谷的劍僮好像闖禍了喔",
+   "difficulty": "易",
+   "reward": "玄鐵重劍",
+   "page": "qu2-3.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/屠龍刀",
+   "category": "治裝類",
+   "name": "屠龍刀",
+   "condition": "20 萬 EXP",
+   "hint": "冰火島上有個怪怪的人",
+   "difficulty": "易",
+   "reward": "屠龍刀",
+   "page": "qu2-1.htm",
+   "shared": [
+    "朱果冰蟾"
+   ]
+  },
+  {
+   "id": "治裝類/靈鷲宮的委託",
+   "category": "治裝類",
+   "name": "靈鷲宮的委託",
+   "condition": "20 萬 EXP",
+   "hint": "靈鷲宮似乎有人需要幫助",
+   "difficulty": "易",
+   "reward": "無痕甕 (冰翼無痕)",
+   "page": "qu2-10.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/朱果冰蟾",
+   "category": "治裝類",
+   "name": "朱果冰蟾",
+   "condition": "內力 2000",
+   "hint": "冰火島上有兩族的人發生了問題",
+   "difficulty": "易",
+   "reward": "朱果冰蟾",
+   "page": "qu2-1.htm",
+   "shared": [
+    "屠龍刀"
+   ]
+  },
+  {
+   "id": "治裝類/唐門秘寶",
+   "category": "治裝類",
+   "name": "唐門秘寶",
+   "condition": "50 萬 EXP [註]",
+   "hint": "唐老太踏好像知道一些事喔",
+   "difficulty": "一般",
+   "reward": "附註<1>",
+   "page": "qu3-2.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/流雲杖",
+   "category": "治裝類",
+   "name": "流雲杖",
+   "condition": "50 萬 EXP",
+   "hint": "天魔塔附近有個老人在煩惱事情",
+   "difficulty": "一般",
+   "reward": "流雲杖",
+   "page": "qu2-9.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/鳳凰披風",
+   "category": "治裝類",
+   "name": "鳳凰披風",
+   "condition": "60 萬 EXP",
+   "hint": "毒龍潭有個老人好像整天在煩惱",
+   "difficulty": "一般",
+   "reward": "鳳凰披風",
+   "page": "qu3-6.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/闖王秘寶",
+   "category": "治裝類",
+   "name": "闖王秘寶",
+   "condition": "70 萬 EXP",
+   "hint": "金礦山附近小村莊應該有著訊息",
+   "difficulty": "一般",
+   "reward": "焰羽冠、仙羽衣裳",
+   "page": "qu2-5.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/七世姻緣",
+   "category": "治裝類",
+   "name": "七世姻緣",
+   "condition": "70 萬 EXP",
+   "hint": "茅山有位女鬼似乎整天哭泣...",
+   "difficulty": "一般",
+   "reward": "附註<2>",
+   "page": "qu2-8.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/離魂金線纏",
+   "category": "治裝類",
+   "name": "離魂金線纏",
+   "condition": "30 萬 EXP",
+   "hint": "武當山有一位老人在煩惱著事情",
+   "difficulty": "難",
+   "reward": "離魂金線纏",
+   "page": "qu2-6.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/白駝山莊的毒物",
+   "category": "治裝類",
+   "name": "白駝山莊的毒物",
+   "condition": "50 萬 EXP",
+   "hint": "白駝山莊掃地的似乎有點困難",
+   "difficulty": "難",
+   "reward": "心瓣項鍊",
+   "page": "qu3-1.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/瑛姑的困擾",
+   "category": "治裝類",
+   "name": "瑛姑的困擾",
+   "condition": "50 萬 EXP",
+   "hint": "百花谷裡或許有跡可尋",
+   "difficulty": "難",
+   "reward": "天罡鬥服",
+   "page": "qu2-7.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/憾天神劍",
+   "category": "治裝類",
+   "name": "憾天神劍",
+   "condition": "60 萬 EXP",
+   "hint": "有間客棧似乎有位姑娘需要幫助",
+   "difficulty": "難",
+   "reward": "憾天神劍",
+   "page": "qu3-4.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/燕子鄔",
+   "category": "治裝類",
+   "name": "燕子鄔",
+   "condition": "80 萬 EXP",
+   "hint": "幫助慕容家也許能得到獎賞",
+   "difficulty": "難",
+   "reward": "水漾之繞",
+   "page": "qu3-3.htm",
+   "shared": []
+  },
+  {
+   "id": "治裝類/混元魔刀",
+   "category": "治裝類",
+   "name": "混元魔刀",
+   "condition": "150 萬 EXP [註]",
+   "hint": "三絕盟似乎可以打聽到消息",
+   "difficulty": "極難",
+   "reward": "混元魔刀",
+   "page": "qu2-4.htm",
+   "shared": []
+  },
+  {
+   "id": "道具類/王鐵匠的藥",
+   "category": "道具類",
+   "name": "王鐵匠的藥",
+   "condition": "需為新手",
+   "hint": "歐冶子似乎知道一些內情...",
+   "difficulty": "極易",
+   "reward": "錢",
+   "page": "qu4-1.htm",
+   "shared": []
+  },
+  {
+   "id": "道具類/樵夫的困擾",
+   "category": "道具類",
+   "name": "樵夫的困擾",
+   "condition": "需為新手",
+   "hint": "長安的樵夫好像很煩惱似的...",
+   "difficulty": "極易",
+   "reward": "錢",
+   "page": "qu4-2.htm",
+   "shared": []
+  },
+  {
+   "id": "道具類/鑄造武器的鐵塊",
+   "category": "道具類",
+   "name": "鑄造武器的鐵塊",
+   "condition": "無",
+   "hint": "聽說有人在礦坑發現一個寶箱",
+   "difficulty": "易",
+   "reward": "鑄造武器的鐵塊",
+   "page": "qu4-3.htm",
+   "shared": []
+  },
+  {
+   "id": "道具類/拜月訣",
+   "category": "道具類",
+   "name": "拜月訣",
+   "condition": "無",
+   "hint": "一本拜月教主很想得到的書籍",
+   "difficulty": "易",
+   "reward": "拜月訣",
+   "page": "qu4-7.htm",
+   "shared": []
+  },
+  {
+   "id": "道具類/臘八粥",
+   "category": "道具類",
+   "name": "臘八粥",
+   "condition": "150 萬 EXP",
+   "hint": "俠客島似乎會派人出來邀請...",
+   "difficulty": "難",
+   "reward": "臘八粥",
+   "page": "qu4-4.htm",
+   "shared": []
+  },
+  {
+   "id": "道具類/聖獸之謎",
+   "category": "道具類",
+   "name": "聖獸之謎",
+   "condition": "150 萬 EXP",
+   "hint": "貓宮似乎遺失了重要的聖獸...",
+   "difficulty": "極難",
+   "reward": "聖獸斯雷普尼爾",
+   "page": "qu4-5.htm",
+   "shared": []
+  },
+  {
+   "id": "道具類/神龍教的秘寶",
+   "category": "道具類",
+   "name": "神龍教的秘寶",
+   "condition": "未知",
+   "hint": "有位商人似乎知道相關的消息",
+   "difficulty": "極難",
+   "reward": "附註<3>",
+   "page": "qu4-6.htm",
+   "shared": []
+  },
+  {
+   "id": "寵物類/寵物武裝體",
+   "category": "寵物類",
+   "name": "寵物武裝體",
+   "condition": "未知",
+   "hint": "在寵物街有個博士...",
+   "difficulty": "一般",
+   "reward": "寵物 wevo 功能",
+   "page": "qu5-1.htm",
+   "shared": [
+    "[寵]黑玉斷續膏"
+   ]
+  },
+  {
+   "id": "寵物類/[寵]黑玉斷續膏",
+   "category": "寵物類",
+   "name": "[寵]黑玉斷續膏",
+   "condition": "未知",
+   "hint": "寵物飾品店老闆似乎正煩惱著",
+   "difficulty": "難",
+   "reward": "[寵]黑玉斷續膏",
+   "page": "qu5-1.htm",
+   "shared": [
+    "寵物武裝體"
+   ]
+  },
+  {
+   "id": "其他類/拜師",
+   "category": "其他類",
+   "name": "拜師",
+   "condition": "不一定",
+   "hint": "有些師父對你拜師會有要求",
+   "difficulty": "????",
+   "reward": "拜師",
+   "page": "qu6-1.htm",
+   "shared": []
+  },
+  {
+   "id": "其他類/解救貓族",
+   "category": "其他類",
+   "name": "解救貓族",
+   "condition": "未知",
+   "hint": "貓族的探春好像正在煩惱一件事",
+   "difficulty": "極易",
+   "reward": "未知",
+   "page": "qu6-5.htm",
+   "shared": []
+  },
+  {
+   "id": "其他類/石牢",
+   "category": "其他類",
+   "name": "石牢",
+   "condition": "無",
+   "hint": "古墓派似乎發生問題了",
+   "difficulty": "極易",
+   "reward": "發現李莫愁",
+   "page": "qu6-3.htm",
+   "shared": [
+    "入明教",
+    "入古墓"
+   ]
+  },
+  {
+   "id": "其他類/入明教",
+   "category": "其他類",
+   "name": "入明教",
+   "condition": "無",
+   "hint": "最近明教附近多了許多的乞丐",
+   "difficulty": "極易",
+   "reward": "進入明教",
+   "page": "qu6-3.htm",
+   "shared": [
+    "石牢",
+    "入古墓"
+   ]
+  },
+  {
+   "id": "其他類/入古墓",
+   "category": "其他類",
+   "name": "入古墓",
+   "condition": "無",
+   "hint": "古墓前有一位掃地老者也許知道",
+   "difficulty": "極易",
+   "reward": "進入古墓",
+   "page": "qu6-3.htm",
+   "shared": [
+    "石牢",
+    "入明教"
+   ]
+  },
+  {
+   "id": "其他類/東瀛的危機",
+   "category": "其他類",
+   "name": "東瀛的危機",
+   "condition": "50 萬 EXP",
+   "hint": "東瀛村子似乎發生了問題",
+   "difficulty": "易",
+   "reward": "附註<4>",
+   "page": "qu6-6.htm",
+   "shared": []
+  },
+  {
+   "id": "其他類/復活之謎",
+   "category": "其他類",
+   "name": "復活之謎",
+   "condition": "未知",
+   "hint": "大理皇帝似乎知道什麼情報...",
+   "difficulty": "易",
+   "reward": "可進入幫別人復活的房間",
+   "page": "qu6-4.htm",
+   "shared": []
+  },
+  {
+   "id": "其他類/自宮",
+   "category": "其他類",
+   "name": "自宮",
+   "condition": "無",
+   "hint": "日月神教那邊應該能提供方法",
+   "difficulty": "一般",
+   "reward": "變成中性",
+   "page": "qu1-8.htm",
+   "shared": [
+    "習得葵花神功"
+   ]
+  },
+  {
+   "id": "其他類/玉龍蘇合散藥方",
+   "category": "其他類",
+   "name": "玉龍蘇合散藥方",
+   "condition": "製藥學技能 161",
+   "hint": "萬獸山莊好像有人受了重傷",
+   "difficulty": "難",
+   "reward": "能製玉龍蘇合散",
+   "page": "qu6-2.htm",
+   "shared": []
+  },
+  {
+   "id": "其他類/糖果",
+   "category": "其他類",
+   "name": "糖果",
+   "condition": "無",
+   "hint": "桃花島的女孩似乎很喜歡吃糖？",
+   "difficulty": "難",
+   "reward": "發現糖果",
+   "page": "qu1-5.htm",
+   "shared": [
+    "玉蕭劍法",
+    "彈指神通"
+   ]
+  }
+ ],
+ "pages": {
+  "qu1-1.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "run e 5n o 2s nw w t w 2n 4w 3u;ask yueh about 令狐沖",
+     "commands": "run e 5n o 2s nw w t w 2n 4w 3u;ask yueh about 令狐沖"
+    },
+    {
+     "no": 2,
+     "text": "run e 5n 2o se t 2e s e t 2s 4w 2s;give wrapper to master",
+     "commands": "run e 5n 2o se t 2e s e t 2s 4w 2s;give wrapper to master"
+    },
+    {
+     "no": 3,
+     "text": "run e 5n 2o sw 2w t 2n w nd ne nd e t se s e s e se e s 3se s 4se 2ne e ne 2se ne e se 2s se eu se eu 2e 2eu 2ed n;climb cliff;n",
+     "commands": "run e 5n 2o sw 2w t 2n w nd ne nd e t se s e s e se e s 3se s 4se 2ne e ne 2se ne e se 2s se eu se eu 2e 2eu 2ed n;climb cliff;n"
+    },
+    {
+     "no": 4,
+     "text": "give hairpin to girl",
+     "commands": "give hairpin to girl"
+    },
+    {
+     "no": 5,
+     "text": "run e 5n 2o se t 2e s e t 2s 4w s;buy 牛皮酒袋;s;give pants to master;give skin to master",
+     "commands": "run e 5n 2o se t 2e s e t 2s 4w s;buy 牛皮酒袋;s;give pants to master;give skin to master"
+    },
+    {
+     "no": 6,
+     "text": "apprentice master;ask master about 獨孤九劍",
+     "commands": "apprentice master;ask master about 獨孤九劍"
+    },
+    {
+     "no": 7,
+     "text": "run e 5n o 2s nw w t w 2n 4w 2u w 5n",
+     "commands": "run e 5n o 2s nw w t w 2n 4w 2u w 5n"
+    },
+    {
+     "no": 8,
+     "text": "等出現【謠言】某人﹕xxx得到風清揚前輩真傳！ 註１：int和kar必須有25以上，內力必須有300以上才能領悟。 註２：每個路境的起始點都是 醉仙樓客棧(recall)",
+     "commands": ""
+    }
+   ],
+   "text": "獨孤九劍解法：\n1.run e 5n o 2s nw w t w 2n 4w 3u;ask yueh\nabout 令狐沖\n2.run e 5n 2o se t 2e s e t 2s 4w 2s;give\nwrapper to master\n3.run e 5n 2o sw 2w t 2n w nd ne nd e t\nse s e s e se e s 3se s 4se 2ne e ne 2se ne e se 2s se eu se eu 2e 2eu 2ed n;climb\ncliff;n\n4.give hairpin to girl\n5.run e 5n 2o se t 2e s e t 2s 4w s;buy 牛皮酒袋;s;give\npants to master;give skin to master\n6.apprentice master;ask master about 獨孤九劍\n7.run e 5n o 2s nw w t w 2n 4w 2u w 5n\n8.等出現【謠言】某人﹕xxx得到風清揚前輩真傳！\n註１：int和kar必須有25以上，內力必須有300以上才能領悟。\n註２：每個路境的起始點都是 醉仙樓客棧(recall)"
+  },
+  "qu1-2.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "run e 5n 2o se t 2e nd 3n t 7s 4w n;ask master about 拜師",
+     "commands": "run e 5n 2o se t 2e nd 3n t 7s 4w n;ask master about 拜師"
+    },
+    {
+     "no": 2,
+     "text": "run 2w 2s w nu 3n 3e;give letter to gin",
+     "commands": "run 2w 2s w nu 3n 3e;give letter to gin"
+    },
+    {
+     "no": 3,
+     "text": "run 3w 3s sd e 2n 2e;apprentice master;ask master about 打狗棒法",
+     "commands": "run 3w 3s sd e 2n 2e;apprentice master;ask master about 打狗棒法"
+    },
+    {
+     "no": 4,
+     "text": "run 2e s 2e n e 2n;push 櫃子",
+     "commands": "run 2e s 2e n e 2n;push 櫃子"
+    },
+    {
+     "no": 5,
+     "text": "發呆看洪七公表演黃狗撒尿，然後就有機會領悟 註：必須要有內力300，而且手上武器必須是杖類。",
+     "commands": ""
+    }
+   ],
+   "text": "打狗棒法解法：\n1.run e 5n 2o se t 2e nd 3n t 7s 4w n;ask\nmaster about 拜師\n2.run 2w 2s w nu 3n 3e;give letter to gin\n3.run 3w 3s sd e 2n 2e;apprentice master;ask\nmaster about 打狗棒法\n4.run 2e s 2e n e 2n;push 櫃子\n5.發呆看洪七公表演黃狗撒尿，然後就有機會領悟\n註：必須要有內力300，而且手上武器必須是杖類。"
+  },
+  "qu1-3.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "過程省略，使用方法為exert dragon 註：放龍條件為撲擊格鬥、內功心法、降龍十八掌、降龍神功皆70以上 且內功為降龍神功，掌為降龍十八掌。",
+     "commands": ""
+    }
+   ],
+   "text": "龍掌放龍：\n1.過程省略，使用方法為exert dragon\n註：放龍條件為撲擊格鬥、內功心法、降龍十八掌、降龍神功皆70以上\n且內功為降龍神功，掌為降龍十八掌。"
+  },
+  "qu1-4.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "殺了葉二娘取得小孩",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "之後到無量山，會先看到鍾靈 ask ling about 段譽，up give muh child，wd，climb cliff，s，push 岩石，push 石壁",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "找到段譽 ask yu about 凌波微步 ask yu about 妹子 ask yu about 鍾靈 ask yu about 司空玄 ask yu about 解藥 之後一直up出來...",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "在去找找鍾靈 ask ling about 解藥 ask ling about 爸爸 ask ling about 萬劫谷 ask ling about 救人 鐘靈會給你繡花鞋(jongling shoes)",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "去找甘寶寶 give jongling shoes to gan，他會問你鐘靈是不是出事情了 say 對，他會在問你要不要拿東西給段正淳 say 好",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "然後找段正淳(他在大里成內) give box to chun，他會問你誰給你的 say 甘寶寶",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "在找回到甘寶寶那裡找他老公鍾萬仇 give chour letter，他會問你跟姓段的有什麼關係 say 是，他老公會打你..打死他老公屍體上就有藥了.. get all from corpse",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "回到鍾靈那裡... give sy pill 司空玄會殺你，殺死司空玄後鐘靈會說他想回家 ask ling about 回家",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "立即到甘寶寶那裡.. 會說段正淳有危險 先到段正淳住的地方瞧瞧 再到木婉清的地方看看(中央廣場9e n w) PS：以上這兩行不知道要不要做,不過我這樣做就解開了..",
+     "commands": ""
+    },
+    {
+     "no": 10,
+     "text": "立即趕到最後一役的地方救他 ask chen about 延慶太子 ask chen about 皇位 (我也有問,不知道要不要) PS：他們會會說一堆廢話，然後會auto kill，不用心急打他們... 殺了兩個四大惡人(不能讓段正淳死掉喔) 記得兩個惡人不可以死在狗或龍的手下,最後一擊必須由你殺死他們 ^^^^^^^^ 雲中鶴一定要先死.段延慶最後死.如果段延慶先死任務就失敗了.我試過4次了. 最後一次就是這樣才解到的.",
+     "commands": ""
+    },
+    {
+     "no": 11,
+     "text": "記的以上要在rb前解完,之後飛到葉2娘那等rb打死她. 切記不要找別人先打給你喔.否則會失敗喔.?",
+     "commands": ""
+    },
+    {
+     "no": 12,
+     "text": "之後回到段譽那裡 ask yu about 凌波微步 就完成了...",
+     "commands": ""
+    }
+   ],
+   "text": "凌波微步解法：\n解迷過程:anfernee\nBug偵錯:ljjjl\n觸發條件:exp 800k\n大理中央廣場路徑 sw w t s w w su s t 4n\n葉二娘路徑: 中央廣場 9w 2n\n無量山路徑: 中央廣場 5e s w 5s wu sw w (鐘靈的位置)\n左子穆路徑: 鐘靈位置 up\n萬劫古路徑: 中央廣場 5e s e t 迷宮\n迷宮路徑: n e n e o t e n e n\nlook 松樹\npoke 雜草\nenter enter enter\n^^^^^^^^^^^^^^^^^按快一點\n進入之後 n(甘寶寶的位置) n e s (鍾萬仇的位置)\n段正淳路徑: 中央廣場 2n w 2n w\n最後一役的路徑 中央廣場 10e s 2w\n解法:\n勸各位在解時能在rb一開始就打葉2娘\n1.殺了葉二娘取得小孩\n2.之後到無量山，會先看到鍾靈\nask ling about 段譽，up\ngive muh child，wd，climb cliff，s，push 岩石，push 石壁\n3.找到段譽\nask yu about 凌波微步\nask yu about 妹子\nask yu about 鍾靈\nask yu about 司空玄\nask yu about 解藥\n之後一直up出來...\n4.在去找找鍾靈\nask ling about 解藥\nask ling about 爸爸\nask ling about 萬劫谷\nask ling about 救人\n鐘靈會給你繡花鞋(jongling shoes)\n5.去找甘寶寶\ngive jongling shoes to gan，他會問你鐘靈是不是出事情了\nsay 對，他會在問你要不要拿東西給段正淳\nsay 好\n6.然後找段正淳(他在大里成內)\ngive box to chun，他會問你誰給你的\nsay 甘寶寶\n7.在找回到甘寶寶那裡找他老公鍾萬仇\ngive chour letter，他會問你跟姓段的有什麼關係\nsay 是，他老公會打你..打死他老公屍體上就有藥了..\nget all from corpse\n8.回到鍾靈那裡...\ngive sy pill\n司空玄會殺你，殺死司空玄後鐘靈會說他想回家\nask ling about 回家\n9.立即到甘寶寶那裡..\n會說段正淳有危險\n先到段正淳住的地方瞧瞧\n再到木婉清的地方看看(中央廣場9e n w)\nPS：以上這兩行不知道要不要做,不過我這樣做就解開了..\n10.立即趕到最後一役的地方救他\nask chen about 延慶太子\nask chen about 皇位 (我也有問,不知道要不要)\nPS：他們會會說一堆廢話，然後會auto kill，不用心急打他們...\n殺了兩個四大惡人(不能讓段正淳死掉喔)\n記得兩個惡人不可以死在狗或龍的手下,最後一擊必須由你殺死他們\n^^^^^^^^\n雲中鶴一定要先死.段延慶最後死.如果段延慶先死任務就失敗了.我試過4次了.\n最後一次就是這樣才解到的.\n11.記的以上要在rb前解完,之後飛到葉2娘那等rb打死她.\n切記不要找別人先打給你喔.否則會失敗喔.?\n12.之後回到段譽那裡\nask yu about 凌波微步\n就完成了..."
+  },
+  "qu1-5.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "run e 5n 2o 2se t 7e se 2s e 等[啞僕(YaBa man)]",
+     "commands": "run e 5n 2o 2se t 7e se 2s e"
+    },
+    {
+     "no": 2,
+     "text": "pay上船到桃花島",
+     "commands": "pay"
+    },
+    {
+     "no": 3,
+     "text": "run ne n-->可設點",
+     "commands": "run ne n"
+    },
+    {
+     "no": 4,
+     "text": "run s 2sw w到[九宮花海青龍界碑] w n進去之後就是一個迷宮，目的是找[九宮花海朱雀界碑](裡面有mob 萬蠱毒蛛，樹精) s之後到第二段迷宮，目的是找[幽蘭小境](裡面有mob 萬蠱毒蛛，山精) <1>se那格可以climb 桃樹暫時躲避四周的萬蠱毒蛛 <2>se n;search 糖果;get candy可以撿到糖果一包 <3>run 2se到[九宮花海白虎界碑] s之後到第三段迷宮，目的是找[九宮花海玄武界碑](裡面有萬蠱毒蛛，桃花精) run n ne 3n 拜黃藥師後s可以[squeeze 通道]出去，run 2e到setplace的位置 PS.去之前要先找黃蓉ask master about 家書 到黃藥師後give homebook to master就可以拜了",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "到彈指閣(有mob啄木鳥(woodpecker))發呆可學會彈指神通",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "到試劍峰(有mob老虎(tiger))發呆可學會玉簫劍法",
+     "commands": ""
+    }
+   ],
+   "text": "玉簫、彈指解法：\n1.run e 5n 2o 2se t 7e se 2s e 等[啞僕(YaBa man)]\n2.pay上船到桃花島\n3.run ne n-->可設點\n4.run s 2sw w到[九宮花海青龍界碑]\nw n進去之後就是一個迷宮，目的是找[九宮花海朱雀界碑](裡面有mob\n萬蠱毒蛛，樹精)\ns之後到第二段迷宮，目的是找[幽蘭小境](裡面有mob\n萬蠱毒蛛，山精)\n<1>se那格可以climb 桃樹暫時躲避四周的萬蠱毒蛛\n<2>se n;search 糖果;get candy可以撿到糖果一包\n<3>run 2se到[九宮花海白虎界碑]\ns之後到第三段迷宮，目的是找[九宮花海玄武界碑](裡面有萬蠱毒蛛，桃花精)\nrun n ne 3n\n拜黃藥師後s可以[squeeze\n通道]出去，run 2e到setplace的位置\nPS.去之前要先找黃蓉ask master about 家書\n到黃藥師後give homebook to\nmaster就可以拜了\n5.到彈指閣(有mob啄木鳥(woodpecker))發呆可學會彈指神通\n6.到試劍峰(有mob老虎(tiger))發呆可學會玉簫劍法"
+  },
+  "qu1-6.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "waiter，run e 5n 2o sw t n nu 5w t w nw w n;touch 石壁;run s 2w s sw se s w sw su wu 2n ne 2u，找 [叫化子(beggar)] ask beggar about 鐵燄令",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "接1，run w u ne，找 [小昭(shun jan)] 給鐵燄令，give fire to jan wield fire jump hole push stone",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "接2，run n w 2n 3e 3ne 2sd，找 [明教教主 張無忌(Jang wu ji)] ask jang about 周芷若 nod jang ask jang about 教主信物 ask jang about 辨事 PS.記一下馬點方便等等回來",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "waiter，run e 5n o 4n 2w t n e 5n e，找 [蒙古郡主 趙敏(Jau Min)] 拿 黑玉斷續膏(black jade grease) ask jau about 黑玉斷續膏 say 是 nod jau 搜集完清單物品後回到此地輸入 check，清單需要物品如下： 黑玉斷續膏清單 物品名稱 需要數量 位置 鹿茸(Antlers) 3 沙漠，森林房子中的獵人買 天山雪蓮(snow lotus) 1 藥草的一種 萬年蔘王(king of ginseng) 1 藥草的一種 黃金羽毛(gold feather) 1 梅莊，黃金鳥 白虎骨(white tiger bone) 1 路上趴趴走的白虎 橘子(orange) 1 峨嵋派，超可愛香澄買",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "騎馬回 [明教教主 張無忌(Jang wu ji)] 給鹿鶴令，give pai to jang 給鹿鶴令，give pai to jang 給黑玉斷續膏，give grease to jang ask jang about 教主信物 殺了張無忌，拿到 [明教信物(Ming religion seal)]",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "峨眉禁區三層(路途遙遠不便提供路境，自己走)找 [峨嵋派 第四代掌門 周芷若(Jou Jr Ruo)] ask jou about 九陰真經 ask jou about 辦事 給教主信物，give seal to jou ask jou about 九陰真經 ask jou about 取得 nod jou，與周芷若戰鬥 一直打到出現周芷若停手，盡可能不要放狗，因為打暈就要重來了 周芷若說道﹕hmm...XXX實力夠堅強，有資格得知倚天劍與屠龍刀中的「秘密」。 ask jou about 秘密 給屠龍刀，give blade to jou ask jou about 九陰白骨爪，習得技能並拿回斷掉屠龍刀 完成",
+     "commands": ""
+    }
+   ],
+   "text": "信件標題：九陰白骨爪解法 v2.0\n寄 信 人：密蘭諾(milano)/轉寄自密蘭諾/轉寄自岩燒/轉寄自青峰大輝/轉寄自練霓裳\n※解謎前先準備以下三種道具：\n[1]殺死快活林迷宮裡 玄冥二老\n鶴筆翁(crane pen man) 拿 玄冥鶴令(crane\npai)\n[2]殺死冰火島山區內 玄冥二老\n鹿杖客(deer staff man) 拿 玄冥鹿令(deer\npai)\n[3]冰火島的謎 [屠龍刀(kill dragon blade)]，詳細請參考屠龍刀解謎部份\n任務從 長安城客棧(waiter) 開始\n1.waiter，run e 5n 2o sw t n nu 5w t w nw w n;touch 石壁;run\ns 2w s sw se s w sw su wu 2n ne 2u，找 [叫化子(beggar)]\nask beggar about 鐵燄令\n2.接1，run w u ne，找 [小昭(shun jan)]\n給鐵燄令，give fire to jan\nwield fire\njump hole\npush stone\n3.接2，run n w 2n 3e 3ne 2sd，找 [明教教主\n張無忌(Jang wu ji)]\nask jang about 周芷若\nnod jang\nask jang about 教主信物\nask jang about 辨事\nPS.記一下馬點方便等等回來\n4.waiter，run e 5n o 4n 2w t n e 5n e，找 [蒙古郡主\n趙敏(Jau Min)] 拿 黑玉斷續膏(black\njade grease)\nask jau about 黑玉斷續膏\nsay 是\nnod jau\n搜集完清單物品後回到此地輸入 check，清單需要物品如下：\n黑玉斷續膏清單\n物品名稱\n需要數量\n位置\n鹿茸(Antlers)\n3\n沙漠，森林房子中的獵人買\n天山雪蓮(snow lotus)\n1\n藥草的一種\n萬年蔘王(king of ginseng)\n1\n藥草的一種\n黃金羽毛(gold\nfeather)\n1\n梅莊，黃金鳥\n白虎骨(white tiger bone)\n1\n路上趴趴走的白虎\n橘子(orange)\n1\n峨嵋派，超可愛香澄買\n5.騎馬回 [明教教主 張無忌(Jang wu ji)]\n給鹿鶴令，give pai to jang\n給鹿鶴令，give pai to jang\n給黑玉斷續膏，give grease to jang\nask jang about 教主信物\n殺了張無忌，拿到 [明教信物(Ming\nreligion seal)]\n6.峨眉禁區三層(路途遙遠不便提供路境，自己走)找 [峨嵋派\n第四代掌門 周芷若(Jou Jr Ruo)]\nask jou about 九陰真經\nask jou about 辦事\n給教主信物，give seal to jou\nask jou about 九陰真經\nask jou about 取得\nnod jou，與周芷若戰鬥\n一直打到出現周芷若停手，盡可能不要放狗，因為打暈就要重來了\n周芷若說道﹕hmm...XXX實力夠堅強，有資格得知倚天劍與屠龍刀中的「秘密」。\nask jou about 秘密\n給屠龍刀，give blade to jou\nask jou about 九陰白骨爪，習得技能並拿回斷掉屠龍刀\n完成"
+  },
+  "qu1-7.htm": {
+   "steps": [],
+   "text": "目前版本的書生需求物品 (2020/6/25)：\n舊版的書生物品表：(藍色指城市、綠色指無auto\nk mob、紅色指有auto k mob)\n物品名\n取得方式\n物品名\n取得方式\n長安\n唐詩三百首\n魏無極\n熊皮\n郊區黑熊\n棍法入門\n魯有腳\n虎皮\n郊區老虎\n粗布衣\n叫化子\n狼皮\n郊區野狼\n燒酒螺\n醉仙樓客棧 nw 小販買\n紙皮水袋\n醉仙樓客棧買\n三字經\n醉仙樓客棧買\n桃符紙\n醉仙樓客棧 2e 地上撿\n高級探測器\n醉仙樓客棧買\n成都\n拈麵人\n捏麵人小販買\n回族\n哈密瓜\n海市蜃樓買\n江凌\n詩籤\n算命婆\n雪羽港\n貂皮衣\n楊工匠買\n紅燒螃蟹\n雪羽客棧\n襄陽\n萬巒豬腳\n襄陽客棧買\n蘇州\n五行入門術\n馮老師買\n廣州寵物街\n薄荷水\n神醫寵來樂買\n火燄山\n玄鐵石\n漁夫 [解謎]\n沙漠\n糌粑\n龍門客棧買(沙漠 run e s w n)\n串羊肉\n龍門客棧買(沙漠 run e s w n)\n不夜天\n鐵質短棒\n解救貓族 [解謎]\n詩籤\n惜春\n羊皮卷\n解救貓族 [解謎]\n天龍寺\n鐵槳\n漁夫\n灰布僧衣\n獨眼頭駝\n僧鞋\n小沙彌\n梅莊\n血藍鑰匙\n黃鐘公(變身後)\n血紅鑰匙\n丹青生(變身後)\n菱形鐵片\n禿筆翁(變身後)\n方形鐵片\n黑白子(變身後)\n破碎卷宗\n任我行(變身後)\n化屍粉\n黑衣人\n鎢剛令牌\n任我行(變身後)\n竹掃把\n小廝\n華山\n包袱\n岳靈珊 [解謎]\n竹劍\n華山高級弟子\n鐵單刀\n田伯光 (ask ten about 淫賊)\n廢墟\n桃符紙\nemap 廟裡撿\n茅山\n茅山老鵝\n茅山小棧買\n飄渺峰\n捕獸夾\n獵戶買\n受傷的雪兔\n雪山溪谷捕獸夾抓\n冰火島\n玄陰蟒鱗\n金翼玄冰蟒\n寒冰鏡\n蘇立亞(ask su about 秘寶)\n火磷石\n巴力克(ask ba about 族產)\n猴皮\n殺猴子\n猿皮\n殺火猿\n全真、古墓\n全真內功心法上冊\n獨臂道人\n生誘的鑰匙\n洪凌波(run nw n;search key)\n絕情谷\n護身符\n公孫止\n內丹\n鱷魚王\n老松寨\n帶頭大哥信函\n帶頭大哥\n沙漠(森林)\n蛇膽\n獵人買\n鹿皮\n雪鹿\n鹿茸\n獵人買\n豹皮\n豹王\n天魔塔\n紅寶石\n六樓敲下\n論語\n一樓箱子\n木製的鑰匙\n丁春秋\n唐門\n吹泡瓶\n唐老押買\n銀猴靴\n唐門之謎 [解謎]\n桃花島\n五行入門術\n瑛姑\n貓神天宮\n妖精之果\n聖獸之謎 [解謎]\n神龍島\n夜明珠\n神龍教秘寶 [解謎]\n撞鬼藥\n神龍教秘寶 [解謎]\n其他類\n白金盔甲\n無名盔甲的鑑定物, 商人找看看\n乾枯的樹枝\n趙雲級雕像獲得\n杖鑄模\n無名物品的鑑定物\n胭脂盒\n無名物品的鑑定物\n菩提子\n部份藥店販賣\n長白山人蔘\n部份藥店販賣\n註１：寫著 [解謎] 的物品，因為內容過長請參考解謎區相關資料。\n註２：顏色的錯誤有修正成可以給了\n註３：詩籤限定江凌和不夜天產，大理的不能給\n註４：天賦pill只有神龍島開出來的可以給，簽到拿的不行\n目前新的方式要東西會以顏色區別\n落魄書生說道﹕誰能給我全長狗膽白山唐人探蔘狼呢？\n類似上面這句...要求的物品名稱間會插入其他雜字，可能是防止觸發用的\n物品不能一次給太多(give all)，書生會拒收\n必須先看到書生要求什麼物品才可以給，就算別人告訴你要什麼也一樣"
+  },
+  "qu1-8.htm": {
+   "steps": [
+    {
+     "no": 2,
+     "text": "到[楊蓮亭]，ask ting about 自宮;nod ting;ask ting about 手術刀",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "到[老太監]，ask cutman about 手術刀",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "到[妙手神偷]，ask thief about 鴛鴦五珍膾、give fish to thief",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "手術刀(dagger)，這是一把自宮用的手術刀請打 cs 自己的id 來自宮吧 。XD 女：1.先到唐門唐老押買燒刀子(酒瓶裝)(nife wineskin) & 一小顆唐炒粟子(t-door chest nut)",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "到[楊蓮亭]，ask ting about 自宮;nod ting;ask ting about 軟木塞",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "到[酒鬼]，ask drunker about 軟木塞",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "give skin to drunker;give nut to drunker",
+     "commands": "give skin to drunker;give nut to drunker"
+    },
+    {
+     "no": 5,
+     "text": "特製軟木塞(ooo)，這是一個自塞專用的軟木,用途特殊 請打fs 自己的id來塞吧。XD 解完之後拿到物品..look物品有指令，下了就變中性(親自開新char測試喔XD) 拜東方不敗：",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "打死[囚犯 任我行(Zin wo shin)]拿破碎卷宗(scroll) (詳細請參考憾天解法)",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "交給東方不敗後就可以拜師了 葵花心法學法：",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "到[怪盜-負心]，可fight，總共要打五次(sword、whip、blade、staff、unarmed) 會愈來愈強，武器和用的sk也不同打死他後拿到[螢光鑰匙]",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "進入暗室中打開月光寶盒，就有機會開到葵花寶典 PS.葵花寶典不能給人，不能auc，不能賣，quit會掉地上直接消失 PS.葵花寶典可以讀到60級，50級以上才能自行practice，據說是不能learn的 PS.沒有讀書識字的人當然別想讀了",
+     "commands": ""
+    }
+   ],
+   "text": "自宮＆葵花寶典&拜東方不敗\n參考用地圖(感謝小有賀提供)：\n[黑木崖] run e 5n o o 2se t 2e 2s t\n打死守衛拿黑木令牌(pai)後到n底等船來，給[漁夫(fisherman)]後到對岸就是以下地圖\n自宮解法(請參照上列地圖)：\n男：1.先到雪羽港客棧買烤魚(Fried fish)\n2.到[楊蓮亭]，ask ting about 自宮;nod ting;ask ting\nabout 手術刀\n3.到[老太監]，ask cutman about 手術刀\n4.到[妙手神偷]，ask thief about 鴛鴦五珍膾、give fish to thief\n5.手術刀(dagger)，這是一把自宮用的手術刀請打 cs 自己的id 來自宮吧 。XD\n女：1.先到唐門唐老押買燒刀子(酒瓶裝)(nife wineskin) &\n一小顆唐炒粟子(t-door chest nut)\n2.到[楊蓮亭]，ask ting about 自宮;nod ting;ask ting\nabout 軟木塞\n3.到[酒鬼]，ask drunker about 軟木塞\n4.give skin to drunker;give nut to drunker\n5.特製軟木塞(ooo)，這是一個自塞專用的軟木,用途特殊 請打fs 自己的id來塞吧。XD\n解完之後拿到物品..look物品有指令，下了就變中性(親自開新char測試喔XD)\n拜東方不敗：\n1.打死[囚犯 任我行(Zin wo shin)]拿破碎卷宗(scroll)\n(詳細請參考憾天解法)\n2.交給東方不敗後就可以拜師了\n葵花心法學法：\n1.到[怪盜-負心]，可fight，總共要打五次(sword、whip、blade、staff、unarmed)\n會愈來愈強，武器和用的sk也不同打死他後拿到[螢光鑰匙]\n2.進入暗室中打開月光寶盒，就有機會開到葵花寶典\nPS.葵花寶典不能給人，不能auc，不能賣，quit會掉地上直接消失\nPS.葵花寶典可以讀到60級，50級以上才能自行practice，據說是不能learn的\nPS.沒有讀書識字的人當然別想讀了"
+  },
+  "qu3-5.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "waiter: run 2e u 看到[鑄造大師 歐冶子(founder)]",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "ask founder about 鞭子",
+     "commands": "ask founder about 鞭子"
+    },
+    {
+     "no": 3,
+     "text": "waiter: run e 5n 2o 2ne t 4e s 3e t n w 到[民房]",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "ask woman about 鞭子 要等他說一堆廢話 ps.中途玩家可能會等不急而拍桌，如果出現下面那行就可以quit重解啦 [逸雲拍起桌子大叫: 夠了, 妳煩不煩阿我問鞭子的事! 妳說的是什麼東西。]",
+     "commands": "ask woman about 鞭子"
+    },
+    {
+     "no": 5,
+     "text": "如果沒有拍桌最後她會跟你要一個製鞭的材料，將[海龍皮(leather)]或[惡龍筋(string)]交給她",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "然後她會說要製鞭沒空管[小孩(kid)]，請你幫他買個烤雞腿",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "回waiter買之後再回來，give leg to kid",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "然後鞭身就完成了，放在玩家身上",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "回[鑄造大師 歐冶子(founder)]，ask founder about 鞭身 歐冶子說道﹕當然是把鞭身跟獸骨給我製作(makewhip)囉, 你還想解多少次迷阿。",
+     "commands": ""
+    },
+    {
+     "no": 10,
+     "text": "將獸骨鞭柄、鞭身和800gold帶好，輸入makewhip之後就會馬上得到鞭子了 ps.沒有等待時間 歐冶子將青魔玉衡鞭完成之後, 慎重的把青魔玉衡鞭交給逸雲。 註：1.拿到鞭身後小孩就死了，小孩死後婦人就不幫人做鞭身，要等小孩rb",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "鑄鞭不受founder lv影響",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "用惡龍筋所做的會比海龍皮來的好",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "硬度和傷害是固定的，其他屬性則隨機",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "名字也會有所變化，上面的實例只是當時所鑄出的名字",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "名字當然不能自己指定，也是隨機的",
+     "commands": ""
+    }
+   ],
+   "text": "鞭子製作\n鞭子製作，感謝逸雲(cappuccino)提供：\n1.waiter: run 2e u   看到[鑄造大師 歐冶子(founder)]\n2.ask founder about 鞭子\n3.waiter: run e 5n 2o 2ne t 4e s 3e t n w   到[民房]\n4.ask woman about 鞭子 要等他說一堆廢話\nps.中途玩家可能會等不急而拍桌，如果出現下面那行就可以quit重解啦\n[逸雲拍起桌子大叫: 夠了, 妳煩不煩阿我問鞭子的事! 妳說的是什麼東西。]\n5.如果沒有拍桌最後她會跟你要一個製鞭的材料，將[海龍皮(leather)]或[惡龍筋(string)]交給她\n6.然後她會說要製鞭沒空管[小孩(kid)]，請你幫他買個烤雞腿\n7.回waiter買之後再回來，give leg to kid\n8.然後鞭身就完成了，放在玩家身上\n9.回[鑄造大師  歐冶子(founder)]，ask founder about 鞭身\n歐冶子說道﹕當然是把鞭身跟獸骨給我製作(makewhip)囉, 你還想解多少次迷阿。\n10.將獸骨鞭柄、鞭身和800gold帶好，輸入makewhip之後就會馬上得到鞭子了\nps.沒有等待時間\n歐冶子將青魔玉衡鞭完成之後,\n慎重的把青魔玉衡鞭交給逸雲。\n註：1.拿到鞭身後小孩就死了，小孩死後婦人就不幫人做鞭身，要等小孩rb\n2.鑄鞭不受founder lv影響\n3.用惡龍筋所做的會比海龍皮來的好\n4.硬度和傷害是固定的，其他屬性則隨機\n5.名字也會有所變化，上面的實例只是當時所鑄出的名字\n6.名字當然不能自己指定，也是隨機的"
+  },
+  "qu2-2.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "run e 5n 2o sw nw t e ne t 3w nw n;ask fisherman about 信物",
+     "commands": "run e 5n 2o sw nw t e ne t 3w nw n;ask fisherman about 信物"
+    },
+    {
+     "no": 2,
+     "text": "run s se 2e;give briefs to woman",
+     "commands": "run s se 2e;give briefs to woman"
+    },
+    {
+     "no": 3,
+     "text": "得到潛水衣",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "run 2w nw 2n w;wear suit;diving lake",
+     "commands": "run 2w nw 2n w;wear suit;diving lake"
+    },
+    {
+     "no": 5,
+     "text": "say 芝麻開門;get stone",
+     "commands": "say 芝麻開門;get stone"
+    },
+    {
+     "no": 6,
+     "text": "得到玄鐵石 註：線上只會有一件，當別人拿了之後你身上的自動消失，有secure也沒用",
+     "commands": ""
+    }
+   ],
+   "text": "湖底之謎：\n1.run e 5n 2o sw nw t e ne t 3w nw n;ask fisherman about 信物\n2.run s se 2e;give briefs to woman\n3.得到潛水衣\n4.run 2w nw 2n w;wear suit;diving lake\n5.say 芝麻開門;get stone\n6.得到玄鐵石\n註：線上只會有一件，當別人拿了之後你身上的自動消失，有secure也沒用"
+  },
+  "qu3-7.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "長安 to 唐伯虎：<waiter> e 5n 2o 2se t 6e n t 2w sw s 2e se e",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "唐伯虎 to 陸昭容：run w nw 2w n ne nw 2n e",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "陸昭容 to 羅秀英：run w 2s se s",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "羅秀英 to 九空：run n nw sw 3w nw ne",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "九空 to 謝天香：run sw se 3e se 5s",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "謝天香 to 馬鳳鳴：run 5n ne e n",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "馬鳳鳴 to 李傳紅：run 2s",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "李傳紅 to 蔣月琴：run n w sw 2s e",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "蔣月琴 to 唐伯虎：run w n 2e se e 對話：",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "唐伯虎：ask 秋香、老婆、陸昭容",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "陸昭容：ask 陸昭容、字畫、回家",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "羅秀英：ask 羅秀英、麻將、回家",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "九空：ask 九空、珠子、回家",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "謝天香：ask 謝天香、美酒、回家",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "馬鳳鳴：ask 馬鳳鳴、玉飾、回家",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "李傳紅：ask 李傳紅、古硯、回家",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "蔣月琴：ask 蔣月琴、酒杯、回家",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "give doll to tang 恭喜ＸＸＸＸＸＸ完成蘇州新手之謎！得到新手套裝一套。 此物名曰 ﹕貓長靴，鞋子類防具 品 階 ﹕中乘之品 硬 度 ﹕80 防 禦 力 ﹕17 / 17 屬 性 ﹕+2 輔助氣恢復 佩帶條件 ﹕經驗 19000，評價 6333 此物名曰 ﹕貓手手，手套類防具 品 階 ﹕中乘之品 硬 度 ﹕76 防 禦 力 ﹕14 / 14 屬 性 ﹕+5 輔助氣恢復 佩帶條件 ﹕經驗 17000，評價 5666 此物名曰 ﹕貓項圈，項鍊類防具 品 階 ﹕中乘之品 硬 度 ﹕80 防 禦 力 ﹕3 / 3 屬 性 ﹕+5 輔助氣恢復 佩帶條件 ﹕經驗 17000，評價 5666 此物名曰 ﹕貓鬚鬚，腰帶類防具 品 階 ﹕中乘之品 硬 度 ﹕73 防 禦 力 ﹕9 / 9 屬 性 ﹕+4 輔助氣恢復 佩帶條件 ﹕經驗 17000，評價 5666 此物名曰 ﹕貓斗篷，披風類防具 品 階 ﹕中乘之品 硬 度 ﹕77 防 禦 力 ﹕13 / 13 屬 性 ﹕+4 輔助氣恢復 佩帶條件 ﹕經驗 17000，評價 5666 此物名曰 ﹕貓皮甲，盔甲類防具 品 階 ﹕中乘之品 硬 度 ﹕80 防 禦 力 ﹕36 / 36 屬 性 ﹕+6 輔助氣恢復 佩帶條件 ﹕經驗 14000，評價 4666 此物名曰 ﹕貓耳朵，頭盔類防具 品 階 ﹕中乘之品 硬 度 ﹕80 防 禦 力 ﹕20 / 20 屬 性 ﹕+5 輔助氣恢復 佩帶條件 ﹕經驗 12000，評價 4000 此物名曰 ﹕貓尾巴，戒指類防具 品 階 ﹕中乘之品 硬 度 ﹕80 防 禦 力 ﹕4 / 4 屬 性 ﹕+2 輔助氣恢復 佩帶條件 ﹕經驗 19000，評價 6333 PS.套裝能力 ﹕+16 輔助氣恢復、+16 輔助精恢復、變成一隻貓？？！！ PS2.沒有的部位是盾牌、手腕、衣物這三種 PS3.硬度每件隨機範圍相同，為 73~80 PS4.補氣回除了盔甲，其他的範圍為1~5，盔甲是固定6 PS5.防禦是固定的",
+     "commands": "give doll to tang 恭喜"
+    }
+   ],
+   "text": "未命名 1\n新手裝備：\n限制：exp 2萬以上\n重要詩句：\n1桃花塢裏桃花庵， 2桃花庵裏桃花仙； 3桃花仙人種桃樹， 4又摘桃花換酒錢。\n5酒醒只在花前坐， 6酒醉還來花下眠； 7半醒半醉日復日， 8花落花開年復年。\n9但願老死花酒間，10不願鞠躬車馬前；11車塵馬足貴者趣，12酒盞花枝貧者緣。\n13若將富貴比貧賤，14一在平地一在天；15若將貧賤比車馬，16他得驅馳我得閑。\n17別人笑我忒瘋癲，18我笑他人看不穿；19不見五陵豪傑墓，20無花無酒鋤作田。\n另外還有 help rules\n流程：\n過程整個非常簡單但是很煩，每個ask的重要敘述會用[ ]框起來或是添上顏色，不會太難\n當每遇到一個唐伯虎的妻子後，她會把你踢進桃花庵中，然後給一張\nxx的尋寶圖(xx map)\nlook map可能會是上面詩句或是 help rules 裡面的內容，這時要用 bounce <號碼>\n這個指令到達固定位置後search\n找完四樣東西就會被傳出去，然後完成該老婆的測試後換下一個\n總共要重複七次，最後會獲得人偶娃娃(cut doll)，將物品交給唐伯虎後結束。\n整理路境：\n1.長安 to 唐伯虎：<waiter> e 5n 2o 2se t 6e n t 2w sw s 2e se e\n2.唐伯虎 to 陸昭容：run w nw 2w n ne nw 2n e\n3.陸昭容 to 羅秀英：run w 2s se s\n4.羅秀英 to 九空：run n nw sw 3w nw ne\n5.九空 to 謝天香：run sw se 3e se 5s\n6.謝天香 to 馬鳳鳴：run 5n ne e n\n7.馬鳳鳴 to 李傳紅：run 2s\n8.李傳紅 to 蔣月琴：run n w sw 2s e\n9.蔣月琴 to 唐伯虎：run w n 2e se e\n對話：\n1.唐伯虎：ask 秋香、老婆、陸昭容\n2.陸昭容：ask 陸昭容、字畫、回家\n3.羅秀英：ask 羅秀英、麻將、回家\n4.九空：ask 九空、珠子、回家\n5.謝天香：ask 謝天香、美酒、回家\n6.馬鳳鳴：ask 馬鳳鳴、玉飾、回家\n7.李傳紅：ask 李傳紅、古硯、回家\n8.蔣月琴：ask 蔣月琴、酒杯、回家\n9.give doll to tang\n恭喜ＸＸＸＸＸＸ完成蘇州新手之謎！得到新手套裝一套。\n此物名曰 ﹕貓長靴，鞋子類防具\n品 階 ﹕中乘之品\n硬 度 ﹕80\n防 禦 力 ﹕17 / 17\n屬 性 ﹕+2 輔助氣恢復\n佩帶條件 ﹕經驗 19000，評價 6333\n此物名曰 ﹕貓手手，手套類防具\n品 階 ﹕中乘之品\n硬 度 ﹕76\n防 禦 力 ﹕14 / 14\n屬 性 ﹕+5 輔助氣恢復\n佩帶條件 ﹕經驗 17000，評價 5666\n此物名曰 ﹕貓項圈，項鍊類防具\n品 階 ﹕中乘之品\n硬 度 ﹕80\n防 禦 力 ﹕3 / 3\n屬 性 ﹕+5 輔助氣恢復\n佩帶條件 ﹕經驗 17000，評價 5666\n此物名曰 ﹕貓鬚鬚，腰帶類防具\n品 階 ﹕中乘之品\n硬 度 ﹕73\n防 禦 力 ﹕9 / 9\n屬 性 ﹕+4 輔助氣恢復\n佩帶條件 ﹕經驗 17000，評價 5666\n此物名曰 ﹕貓斗篷，披風類防具\n品 階 ﹕中乘之品\n硬 度 ﹕77\n防 禦 力 ﹕13 / 13\n屬 性 ﹕+4 輔助氣恢復\n佩帶條件 ﹕經驗 17000，評價 5666\n此物名曰 ﹕貓皮甲，盔甲類防具\n品 階 ﹕中乘之品\n硬 度 ﹕80\n防 禦 力 ﹕36 / 36\n屬 性 ﹕+6 輔助氣恢復\n佩帶條件 ﹕經驗 14000，評價 4666\n此物名曰 ﹕貓耳朵，頭盔類防具\n品 階 ﹕中乘之品\n硬 度 ﹕80\n防 禦 力 ﹕20 / 20\n屬 性 ﹕+5 輔助氣恢復\n佩帶條件 ﹕經驗 12000，評價 4000\n此物名曰 ﹕貓尾巴，戒指類防具\n品 階 ﹕中乘之品\n硬 度 ﹕80\n防 禦 力 ﹕4 / 4\n屬 性 ﹕+2 輔助氣恢復\n佩帶條件 ﹕經驗 19000，評價 6333\nPS.套裝能力 ﹕+16 輔助氣恢復、+16 輔助精恢復、變成一隻貓？？！！\nPS2.沒有的部位是盾牌、手腕、衣物這三種\nPS3.硬度每件隨機範圍相同，為 73~80\nPS4.補氣回除了盔甲，其他的範圍為1~5，盔甲是固定6\nPS5.防禦是固定的"
+  },
+  "qu2-3.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "玄鐵石(stone)：先拿潛水衣，不然玄冰衣也行喔 先run e 5n 2o sw nw t e ne t 3w nw n;ask fisherman about 信物 run s se 2e;give woman briefs就有潛水衣 然後run 2w nw 2n w;wear suit;diving lake;say 芝麻開門;get stone",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "內丹(chako)： run e 5n o 2n 2e eu t;enter hole;w n w n nw w wu;climb cliff;s se 打死[鱷魚王(lord)]就可以撿到了",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "護身符(selfs)： run e 5n o 2n 2e eu t;enter hole;w 2n nu 2n w 2n e;open door;n 打死[「絕情谷主」公孫止(valley leader)]就可以撿到了 二：解法：",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "run e 5n o 2n 2e eu t;enter hole;w 2n nu 2n w 2n w 看到[劍僮(child)]",
+     "commands": "run e 5n o 2n 2e eu t;enter hole;w 2n nu 2n w 2n w"
+    },
+    {
+     "no": 2,
+     "text": "ask child about 寶劍;ask child about 鎮谷之寶",
+     "commands": "ask child about 寶劍;ask child about 鎮谷之寶"
+    },
+    {
+     "no": 3,
+     "text": "run 3e s 2e s 看到管家(steward)",
+     "commands": "run 3e s 2e s"
+    },
+    {
+     "no": 4,
+     "text": "ask steward 寶劍;setplace 2",
+     "commands": "ask steward 寶劍;setplace 2"
+    },
+    {
+     "no": 5,
+     "text": "waiter: run e 5n o 2s nw w t w s e;ask wu about 玄鐵寶劍;give chako to wu PS.chako是內丹不是聖果丹",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "waiter: run e 5n 2o 2ne t 3e s 4e t 2n 2e",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "等船來,在pay然後到對岸時out",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "run e n ne e 2s e t n 2w n w n e n eu eu ne ne ed ne eu e wu nu t s w nu t s w 看到[冰精工匠(ice imp)]",
+     "commands": "run e n ne e 2s e t n 2w n w n e n eu eu ne ne ed ne eu e wu nu t s w nu t s w"
+    },
+    {
+     "no": 9,
+     "text": "give imp stone;ask imp about 玄鐵寶劍;ride 2;ask steward about 千尺",
+     "commands": "give imp stone;ask imp about 玄鐵寶劍;ride 2;ask steward about 千尺"
+    },
+    {
+     "no": 10,
+     "text": "waiter: run e 5n o 2n 2e eu t;enter hole;w n w n nw w n 看到[火牢守衛(turnkey)]",
+     "commands": ""
+    },
+    {
+     "no": 11,
+     "text": "打死後run 2n 看到[老婦人(old woman)]",
+     "commands": ""
+    },
+    {
+     "no": 12,
+     "text": "ask woman about 玄鐵重劍",
+     "commands": "ask woman about 玄鐵重劍"
+    },
+    {
+     "no": 13,
+     "text": "run 3s wu;climb cliff;nw squeeze crack 看到[地底老婦(old woman)]",
+     "commands": "run 3s wu;climb cliff;nw squeeze crack"
+    },
+    {
+     "no": 14,
+     "text": "ask woman about 玄鐵重劍;ask woman about 鎮谷之寶;ask woman about 公孫止;give self to woman 解完 註：解迷限制為exp20萬, 內力要1500 註：身上太重劍會給不了而掉在地上",
+     "commands": "ask woman about 玄鐵重劍;ask woman about 鎮谷之寶;ask woman about 公孫止;give self to woman 解完"
+    }
+   ],
+   "text": "玄鐵重劍：\n一：準備物品：\n1.玄鐵石(stone)：先拿潛水衣，不然玄冰衣也行喔\n先run e 5n 2o sw nw t e ne t 3w nw n;ask fisherman about 信物\nrun s se 2e;give woman briefs就有潛水衣\n然後run 2w nw 2n w;wear suit;diving lake;say 芝麻開門;get stone\n2.內丹(chako)：\nrun e 5n o 2n 2e eu t;enter hole;w n w n nw w wu;climb cliff;s se\n打死[鱷魚王(lord)]就可以撿到了\n3.護身符(selfs)：\nrun e 5n o 2n 2e eu t;enter hole;w 2n nu 2n w 2n e;open door;n\n打死[「絕情谷主」公孫止(valley leader)]就可以撿到了\n二：解法：\n1.run e 5n o 2n 2e eu t;enter hole;w 2n nu 2n w 2n w 看到[劍僮(child)]\n2.ask child about 寶劍;ask child about 鎮谷之寶\n3.run 3e s 2e s 看到管家(steward)\n4.ask steward 寶劍;setplace 2\n5.waiter: run e 5n o 2s nw w t w s e;ask wu about 玄鐵寶劍;give chako to wu\nPS.chako是內丹不是聖果丹\n6.waiter: run e 5n 2o 2ne t 3e s 4e t 2n 2e\n7.等船來,在pay然後到對岸時out\n8.run e n ne e 2s e t n 2w n w n e n eu eu ne ne ed ne eu e wu nu t s w nu t s w\n看到[冰精工匠(ice imp)]\n9.give imp stone;ask imp about 玄鐵寶劍;ride 2;ask steward about 千尺\n10.waiter: run e 5n o 2n 2e eu t;enter hole;w n w n nw w n 看到[火牢守衛(turnkey)]\n11.打死後run 2n 看到[老婦人(old woman)]\n12.ask woman about 玄鐵重劍\n13.run 3s wu;climb cliff;nw squeeze crack 看到[地底老婦(old woman)]\n14.ask woman about 玄鐵重劍;ask woman about 鎮谷之寶;ask woman about 公孫止;give self to\nwoman\n解完\n註：解迷限制為exp20萬, 內力要1500\n註：身上太重劍會給不了而掉在地上"
+  },
+  "qu2-1.htm": {
+   "steps": [],
+   "text": "屠龍刀：\nrun e 5n 2o 2ne t 4e se 2e t 2n 2e\n等船來，pay，然後在enter\n到冰火..\nrun e n ne e s s e t s e w n w n e n eu eu ne ne ed ne eu\nsetplace 2\nrun e n eu e ne nu nw n t\nfollow ba，ask ba about 族產(火磷石)，他就會kill你\nride 2\nrun e wu nu t\nfollow su，ask su about 秘寶(寒冰鏡)，他就會kill你\nride 2\nrun e n eu nu w eu nu u e;squeeze crack....\n然後去打金剛火猿(keco)打死他拿火猿鱗。\n走出來才能ride 2\nrun e n eu e ne nu nw u se;squeeze crack...\n然後去打金翼玄冰蟒(serpent)打死他拿玄陰蟒鱗。\n走出來ride 2\nrun e n eu e ne nu nw n t n e...\n把火猿鱗給他，他會給你烈陽袍\nride 2\nrun e wu nu t s w...把玄陰蟒鱗給他，他會給你玄冰衣\n去玄冰湖...穿烈陽袍...jump 冰湖;put 寒冰鏡 in chest;diving\n湖面---->冰蟾\n去烈火池...穿玄冰衣...jump 火池;put 火磷石 in chest;diving\n池面---->朱果\nride 2\nrun wd sw t n\n把兩樣解到的東西教給謝遜"
+  },
+  "qu2-10.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "到飄渺峰找「中年大叔」獵戶(hunter) ※註１、２ (1)ask hunter about 飄渺森林 (2)ask hunter about 獵場 (3)ask hunter about 怪人 (4)ask hunter about 三十六洞七十二島主 (5)ask hunter about 故事(等他說完故事) (6)ask hunter about 小鼎",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "到靈鷲宮找靈鷲宮開山祖師「逍遙派」天山童姥(master tian shan) (1)ask master about 小鼎",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "到靈鷲宮找四使婢任意一位 (1)ask lan about 小鼎",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "到靈鷲宮找靈鷲宮「昊天部首領」余婆婆(grandma yu) (1)ask yu about 小鼎 (2)ask yu about 藍光 (3)ask yu about 古甕",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "到靈鷲宮找小丫頭(tundere girl) ※註３ (1)ask girl about 幫忙 ※小ㄚ頭會出現在飄渺雪山或靈鷲宮內",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "前往南方海岸線(run e 5n 2o 2se w t e 2se 2s) (1)游泳(swimming;e ne s ne e;climb;run sw s e n)到五指山島找赤炎洞洞主 端木元(duan mu yuan) (2)ask yuan about 靈鷲宮",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "到花椰島(端木元開始：run s w n;jump 礁石;run w n)找花椰島島主 黎夫人(madam li) (1)ask li about 端木元 (2)從這裡開始有兩種解法：分為路線A、路線B ※註４、５ 路線A：幫黎夫人報仇 (1)nod li (2)回端木元：ask yuan about 黎夫人 (自動auto k) (3)殺死端木元回黎夫人：ask li about 端木元 (獲得赤火石(fire stone)) 路線B：幫端木元殺死黎夫人 (1)shake li (自動auto k)，殺死黎夫人撿屍獲得破碎的赤火石(broken fire stone) (2)將破碎的赤火石交還給端木元 (3)再將小ㄚ頭給的止癢丸交給端木元即可",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "回靈鷲宮找小ㄚ頭 (1)ask girl about 回報 (獲得老舊的甕(old urn))",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "到飄渺水洞(run e 5n 2o 2ne t 3e s 3e n 3nu 2n u 2e se 6e) (1)fill urn，將老舊的甕裝滿冷釀(沒裝滿可以在原地等自動累積再裝) ※註６ (2)put gama into urn，將千年冰蟾放進老舊的甕 -------------------------------------------------------------------------------------------------- (3-B1)如果7.時是走路線B，先到金礦山附近(run e 5n 2o sw t e su t 2e 2s e)找糖葫蘆小販(sogarcoated vendor)買糖葫蘆(sugarcoated fruit) (3-B2)到端木元：ask duan about 赤火石 (3-B3)give fruit to duan，將糖葫蘆交給端木元獲得赤火石 -------------------------------------------------------------------------------------------------- (4)到任意一個戶外地方 (能看到天氣敘述的) ※註７、８ (5)put stone into urn，將赤火石放進老舊的甕，洗畫面，獲得無痕甕 (6)無痕甕使用方法：putforce <數字>，1點換算1內力=1暗器，不輸入任何數字可以看到你製造出來的暗器屬性 備註：",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "獵戶在有島主、洞主的地方問有些問題不會回答",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "不能跳過獵戶直接找後面的人物問問題，這樣無法開啟解謎條件",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "未滿 200k 的 char 無法解謎，問小丫頭時，她會說你太弱無法幫忙",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "端木元和黎夫人不能找人幫忙殺 (只能一人kill，若是解任務角色在他被定或昏倒時kill會直接跑掉)",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "端木元 hp 較高、pf 傷害高，黎夫人 hp 較少但是會定人，可以自行決定要殺誰，解謎結果不受影響",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "冷釀一定要裝滿才能放千年冰蟾，不然會說沒有適合的水源",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "放赤火石的地方要在戶外，不然不能放",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "已經放完千年冰蟾之後就算把冷釀喝光也可以放赤火石 (算不算bug...?)",
+     "commands": ""
+    }
+   ],
+   "text": "冰翼無痕解謎：由小落蘭(asaku)/轉寄自艾涅爾(iomm)提供\n暗器類武器，解謎最後可獲得道具無痕甕，以無痕甕用內力制造暗器\n解謎過程：\n1.到飄渺峰找「中年大叔」獵戶(hunter) ※註１、２\n(1)ask hunter about 飄渺森林\n(2)ask hunter about 獵場\n(3)ask hunter about 怪人\n(4)ask hunter about 三十六洞七十二島主\n(5)ask hunter about 故事(等他說完故事)\n(6)ask hunter about 小鼎\n2.到靈鷲宮找靈鷲宮開山祖師「逍遙派」天山童姥(master\ntian shan)\n(1)ask master about 小鼎\n3.到靈鷲宮找四使婢任意一位\n(1)ask lan about 小鼎\n4.到靈鷲宮找靈鷲宮「昊天部首領」余婆婆(grandma\nyu)\n(1)ask yu about 小鼎\n(2)ask yu about 藍光\n(3)ask yu about 古甕\n5.到靈鷲宮找小丫頭(tundere girl) ※註３\n(1)ask girl about 幫忙\n※小ㄚ頭會出現在飄渺雪山或靈鷲宮內\n6.前往南方海岸線(run e 5n 2o 2se w t e 2se 2s)\n(1)游泳(swimming;e ne s ne e;climb;run sw s e n)到五指山島找赤炎洞洞主\n端木元(duan mu yuan)\n(2)ask yuan about 靈鷲宮\n7.到花椰島(端木元開始：run s w n;jump 礁石;run w n)找花椰島島主\n黎夫人(madam li)\n(1)ask li about 端木元\n(2)從這裡開始有兩種解法：分為路線A、路線B ※註４、５\n路線A：幫黎夫人報仇\n(1)nod li\n(2)回端木元：ask yuan about 黎夫人 (自動auto k)\n(3)殺死端木元回黎夫人：ask li about 端木元 (獲得赤火石(fire stone))\n路線B：幫端木元殺死黎夫人\n(1)shake li (自動auto k)，殺死黎夫人撿屍獲得破碎的赤火石(broken\nfire stone)\n(2)將破碎的赤火石交還給端木元\n(3)再將小ㄚ頭給的止癢丸交給端木元即可\n8.回靈鷲宮找小ㄚ頭\n(1)ask girl about 回報 (獲得老舊的甕(old urn))\n9.到飄渺水洞(run e 5n 2o 2ne t 3e s 3e n 3nu 2n u 2e se 6e)\n(1)fill urn，將老舊的甕裝滿冷釀(沒裝滿可以在原地等自動累積再裝) ※註６\n(2)put gama into urn，將千年冰蟾放進老舊的甕\n--------------------------------------------------------------------------------------------------\n(3-B1)如果7.時是走路線B，先到金礦山附近(run e 5n 2o sw t e su t 2e 2s e)找糖葫蘆小販(sogarcoated\nvendor)買糖葫蘆(sugarcoated fruit)\n(3-B2)到端木元：ask duan about 赤火石\n(3-B3)give fruit to duan，將糖葫蘆交給端木元獲得赤火石\n--------------------------------------------------------------------------------------------------\n(4)到任意一個戶外地方 (能看到天氣敘述的) ※註７、８\n(5)put stone into urn，將赤火石放進老舊的甕，洗畫面，獲得無痕甕\n(6)無痕甕使用方法：putforce\n<數字>，1點換算1內力=1暗器，不輸入任何數字可以看到你製造出來的暗器屬性\n備註：\n1.獵戶在有島主、洞主的地方問有些問題不會回答\n2.不能跳過獵戶直接找後面的人物問問題，這樣無法開啟解謎條件\n3.未滿 200k 的 char 無法解謎，問小丫頭時，她會說你太弱無法幫忙\n4.端木元和黎夫人不能找人幫忙殺 (只能一人kill，若是解任務角色在他被定或昏倒時kill會直接跑掉)\n5.端木元 hp 較高、pf 傷害高，黎夫人 hp 較少但是會定人，可以自行決定要殺誰，解謎結果不受影響\n6.冷釀一定要裝滿才能放千年冰蟾，不然會說沒有適合的水源\n7.放赤火石的地方要在戶外，不然不能放\n8.已經放完千年冰蟾之後就算把冷釀喝光也可以放赤火石\n(算不算bug...?)"
+  },
+  "qu3-2.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "ask master about 兒 ask master about 前唐掌門人 ask master about 唐敵 ask master about 吳璦 ask master about 練功 ask master about 屍骨無存 ask master about 液體 ask master about 天一神水 ask master about 敵人 ask master about 秘寶 ask master about 定海針 ps.其實可以全部省略",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "w s s w;kill wian ps.注意下k會跑出一堆隱忍(t ian)",
+     "commands": "w s s w;kill wian ps"
+    },
+    {
+     "no": 3,
+     "text": "打死楚詩媚後 open 床罩",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "e n;search 金色粉末 ps.注意如果先給了master bstaf，千萬別打錯字，打錯字黃金鏟直接消失",
+     "commands": "e n;search 金色粉末"
+    },
+    {
+     "no": 5,
+     "text": "n e;give master bstaf ps.金色粉末和黃金鏟拿到之後請別使用give、神通、ride、run，否則物品直接消失 ps.寵物用的tr不在此限制之內",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "s s s s s s w;see 五毒區;exert depoison;enforce 10 ps.會中毒注意去毒後要enforce 10 ps.幫區有雕像就直接回去pray statue吧，這裡是能記點區不用等30min ps.這格有唐賊要注意，通常都會自己亂跑到其他地方",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "e;kill scorpion <絕毒魔蠍兩隻，不會擋人可以引走一隻一隻打> n;kill scorpion <絕毒魔蠍兩隻，不會擋人可以引走一隻一隻打> n n;kill scorpion <絕毒魔蠍兩隻，會擋路需一次解決> d;kill snake <劇毒催魂蛇兩隻，沒意外還有唐賊一隻，會擋路需一次解決> d ps.全都auto k ps.問我auto k的要怎麼一隻一隻引?，自己想辦法啦 或走另一條路： 7-2.w s e s d;kill snake <劇毒催魂蛇兩隻，沒意外還有唐賊一隻，會擋路需一次解決> ps.缺點是走太慢會中玉峰毒...穿辟邪背心也沒用 ps.w有一隻[絕毒魔蠍]但不擋路、兩個s方向也各有一隻[五彩毒蜈蚣]不擋路(auto k會follow)",
+     "commands": "e;kill scorpion;kill scorpion;kill scorpion;kill snake;kill snake"
+    },
+    {
+     "no": 8,
+     "text": "unwield weapon;wield snakesf;wield goldup;jump hole",
+     "commands": "unwield weapon;wield snakesf;wield goldup;jump hole"
+    },
+    {
+     "no": 9,
+     "text": "w w s e e e e ps.要衝快一點，路上可能有[唐賊]或是[五彩毒蜈蚣]",
+     "commands": "w w s e e e e ps"
+    },
+    {
+     "no": 10,
+     "text": "burying corpse;unlock 備注： <1>因為[唐賊]會自己亂跑，所以去之前有人已經引過，[唐賊]可能不在原位 <2>前面四隻[絕毒魔蠍]因為不會擋人，但是會追殺他的對手，所以也可能被引掉 <3>兩隻[劇毒催魂蛇]跟[唐賊]那格，還有可能會跑來[五彩毒蜈蚣]搗亂，有些似乎不用鞭是打不死的 <4>最後的箱子裡面有幾種東西： (1)[金蛇]連環甲 (2)銀猴靴 (3)盤蛇肩巾 (4)金蛇錐 (5)唐門弟子 (6)劇毒催魂蛇 (7)十步毒蟾 <5>箱子可以sac XD",
+     "commands": "burying corpse;unlock 備注"
+    }
+   ],
+   "text": "唐門寶箱：\n1.\nask master about 兒\nask master about 前唐掌門人\nask master about 唐敵\nask master about 吳璦\nask master about 練功\nask master about 屍骨無存\nask master about 液體\nask master about 天一神水\nask master about 敵人\nask master about 秘寶\nask master about 定海針\nps.其實可以全部省略\n2.w s s w;kill wian\nps.注意下k會跑出一堆隱忍(t ian)\n3.打死楚詩媚後 open 床罩\n4.e n;search 金色粉末\nps.注意如果先給了master bstaf，千萬別打錯字，打錯字黃金鏟直接消失\n5.n e;give master bstaf\nps.金色粉末和黃金鏟拿到之後請別使用give、神通、ride、run，否則物品直接消失\nps.寵物用的tr不在此限制之內\n6.s s s s s s w;see 五毒區;exert depoison;enforce 10\nps.會中毒注意去毒後要enforce 10\nps.幫區有雕像就直接回去pray statue吧，這裡是能記點區不用等30min\nps.這格有唐賊要注意，通常都會自己亂跑到其他地方\n7.e;kill scorpion <絕毒魔蠍兩隻，不會擋人可以引走一隻一隻打>\nn;kill scorpion <絕毒魔蠍兩隻，不會擋人可以引走一隻一隻打>\nn\nn;kill scorpion <絕毒魔蠍兩隻，會擋路需一次解決>\nd;kill snake <劇毒催魂蛇兩隻，沒意外還有唐賊一隻，會擋路需一次解決>\nd\nps.全都auto k\nps.問我auto k的要怎麼一隻一隻引?，自己想辦法啦\n或走另一條路：\n7-2.w s e s d;kill snake <劇毒催魂蛇兩隻，沒意外還有唐賊一隻，會擋路需一次解決>\nps.缺點是走太慢會中玉峰毒...穿辟邪背心也沒用\nps.w有一隻[絕毒魔蠍]但不擋路、兩個s方向也各有一隻[五彩毒蜈蚣]不擋路(auto\nk會follow)\n8.unwield weapon;wield snakesf;wield goldup;jump hole\n9.w w s e e e e\nps.要衝快一點，路上可能有[唐賊]或是[五彩毒蜈蚣]\n10.burying corpse;unlock\n備注：\n<1>因為[唐賊]會自己亂跑，所以去之前有人已經引過，[唐賊]可能不在原位\n<2>前面四隻[絕毒魔蠍]因為不會擋人，但是會追殺他的對手，所以也可能被引掉\n<3>兩隻[劇毒催魂蛇]跟[唐賊]那格，還有可能會跑來[五彩毒蜈蚣]搗亂，有些似乎不用鞭是打不死的\n<4>最後的箱子裡面有幾種東西：\n(1)[金蛇]連環甲  (2)銀猴靴\n(3)盤蛇肩巾\n(4)金蛇錐\n(5)唐門弟子  (6)劇毒催魂蛇\n(7)十步毒蟾\n<5>箱子可以sac XD"
+  },
+  "qu2-9.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "去天魔塔外面的狹道e n 問man除魔然後nod man他講完再一次nod man",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "然後到第三層找地藏王clean眼睛後再去找石壁search石壁",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "再來去第四層w w s w s後open door完s 問那裡的人六散道人和溫少雲",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "再去第五層找彌勒佛move布袋(記得設點) 好了就去桌子search桌子可以找到毛筆",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "再來到第六層hammer紅寶石(記得設點)",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "再去第七層n n w open door進去 問後問裡面一個阿婆花若水和給他髮釵然後nod woman 然後出去n w w s insert staff 然後在那裡打unlock staff你會得到牛皮書(你會掉到6f)",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "(重複4.5步驟回到7f)問他牛皮書再給花若水牛皮書 他會叫你去找他師妹流算子(在江陵城錢莊u)(記得設點)",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "到ㄋ江陵城錢莊u問她流算子 然後問花若水再nod woman再回去再找花若水(重複4.5步驟回到7f)",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "回去找花若水後問他牛皮書他會叫你去密室等 等老丁出來和花若水講話 講完後在密室發呆一下會有婢女來開門",
+     "commands": ""
+    },
+    {
+     "no": 10,
+     "text": "出來後再去打死老丁n w squeeze通道 那裡有個人問休溫妮和浮雲宮 然後給他牛皮書 他會叫你去江陵客棧u u u 找說書",
+     "commands": ""
+    },
+    {
+     "no": 11,
+     "text": "到ㄋ以後就insert key 然後進去後unlock key會拿到血書",
+     "commands": ""
+    },
+    {
+     "no": 12,
+     "text": "回去找溫少雲問血書再給他血書 再去江陵找說書問血書 然後再回去找溫少雲他會給你另一個血書",
+     "commands": ""
+    },
+    {
+     "no": 13,
+     "text": "再去馬鈺w w w w open door 找乾坤子給他血書即可 最後把毛筆給乾坤子 ps:可以請人在7f留著.避免爬上爬下.太辛苦",
+     "commands": ""
+    }
+   ],
+   "text": "流雲杖：\n1.去天魔塔外面的狹道e n\n問man除魔然後nod man他講完再一次nod man\n2.然後到第三層找地藏王clean眼睛後再去找石壁search石壁\n3.再來去第四層w w s w s後open door完s\n問那裡的人六散道人和溫少雲\n4.再去第五層找彌勒佛move布袋(記得設點)\n好了就去桌子search桌子可以找到毛筆\n5.再來到第六層hammer紅寶石(記得設點)\n6.再去第七層n n w open door進去\n問後問裡面一個阿婆花若水和給他髮釵然後nod woman\n然後出去n w w s insert staff\n然後在那裡打unlock staff你會得到牛皮書(你會掉到6f)\n7.(重複4.5步驟回到7f)問他牛皮書再給花若水牛皮書\n他會叫你去找他師妹流算子(在江陵城錢莊u)(記得設點)\n8.到ㄋ江陵城錢莊u問她流算子\n然後問花若水再nod woman再回去再找花若水(重複4.5步驟回到7f)\n9.回去找花若水後問他牛皮書他會叫你去密室等\n等老丁出來和花若水講話\n講完後在密室發呆一下會有婢女來開門\n10.出來後再去打死老丁n w squeeze通道\n那裡有個人問休溫妮和浮雲宮\n然後給他牛皮書\n他會叫你去江陵客棧u u u 找說書\n11.到ㄋ以後就insert key\n然後進去後unlock key會拿到血書\n12.回去找溫少雲問血書再給他血書\n再去江陵找說書問血書\n然後再回去找溫少雲他會給你另一個血書\n13.再去馬鈺w w w w open door\n找乾坤子給他血書即可\n最後把毛筆給乾坤子\nps:可以請人在7f留著.避免爬上爬下.太辛苦"
+  },
+  "qu3-6.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "打死金鳳凰",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "拿羽毛去給老人",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "拿爪去瀑布後放進箱子(put claw into chest) 鳳凰路徑 run e 5n 2o ne t 2s e ed e n t 2e n w nw sw n wu ne e n ne e u 2n ed nw 2n e s u 3eu u u 老人路徑 run e 5n 2o ne t 2s e ed e n t 2e 2n ne n 2e 2n 瀑布箱子路徑 run e 5n 2o ne t 2s e ed e n t 2e n w nw sw n wu ne e n ne e u 2n ed nw enter 瀑布",
+     "commands": ""
+    }
+   ],
+   "text": "鳳凰披風解法\n鳳凰披風解法：\n1.打死金鳳凰\n2.拿羽毛去給老人\n3.拿爪去瀑布後放進箱子(put claw into chest)\n鳳凰路徑\nrun e 5n 2o ne t 2s e ed e n t 2e n w nw sw n wu ne e n ne e u 2n ed nw 2n e s u\n3eu u u\n老人路徑\nrun e 5n 2o ne t 2s e ed e n t 2e 2n ne n 2e 2n\n瀑布箱子路徑\nrun e 5n 2o ne t 2s e ed e n t 2e n w nw sw n wu ne e n ne e u 2n ed nw enter 瀑布"
+  },
+  "qu2-5.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "ride 2;ask boy about 闖王;ask boy about 愛妾",
+     "commands": "ride 2;ask boy about 闖王;ask boy about 愛妾"
+    },
+    {
+     "no": 2,
+     "text": "run 2se e n;ask woman about 闖王;ask woman about 陳圓圓",
+     "commands": "run 2se e n;ask woman about 闖王;ask woman about 陳圓圓"
+    },
+    {
+     "no": 3,
+     "text": "ride 4;ask ke about 陳圓圓",
+     "commands": "ride 4;ask ke about 陳圓圓"
+    },
+    {
+     "no": 4,
+     "text": "ride 2;run 2se e n give woman letter;ask woman about 闖王;ask woman about 身邊大將",
+     "commands": "ride 2;run 2se e n give woman letter;ask woman about 闖王;ask woman about 身邊大將"
+    },
+    {
+     "no": 5,
+     "text": "ride 3;ask fei about 闖王;ask fei about 藏寶圖;ask fei about 闖王軍刀",
+     "commands": "ride 3;ask fei about 闖王;ask fei about 藏寶圖;ask fei about 闖王軍刀"
+    },
+    {
+     "no": 6,
+     "text": "ride 2;run 4w n;ask lan about 胡斐;say 知道",
+     "commands": "ride 2;run 4w n;ask lan about 胡斐;say 知道"
+    },
+    {
+     "no": 7,
+     "text": "ride 3(等lan到來就ok) <這邊有一點需要注意不要騎馬進去,因為不確定地圖是否正確的,馬先交給別人顧吧>",
+     "commands": "ride 3"
+    },
+    {
+     "no": 8,
+     "text": "waiter>>run e 5n 2o sw t e su t 2e 2s 6e 2se e n e",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "#5 pull candlestick left;#2 pull candlestick right(就是左推五次,右推兩次啦) 有用zmud的人就知道...grin 註:有幾點我要先說明..就是步驟4.問完身邊大將之後,陳圓圓會說出五個人 就是(胡斐 李嚴 田歸農 苗人鳳 崔秋山)...要去跟他們拿地圖,但是五個人 之中只有一張是真的,而且每一輪rb後,地圖會隨機,不一定都在誰身上,當你 拿到錯的地圖之後,一進去迷宮裡若是看到大螃蟹...那無疑的你可以quit囉 所以有幾點我的建議: <1>先選定一個身邊大將.我選的是胡斐....(大家好像都找他) <2>帶10 chakoㄎ去pull handlestick就好,因為一看到crab就得quit囉 <3>在你去pull handlestick之前.不要把馬奇進去吧,因為一看到crab,就得重解,馬還用的到 <4>等你進去到(地下石道 - )..那就成功\\了,進去之後先duel把chako準備好吧(先請外面的人幫你拿著咩!!) <5>地道裡的mob<黑衣侍衛(black cloth soldier)>並不強,我想800k以上都沒問題吧 <6>若是看到crab,quit之後,再重解,然後要等rb之後才能pull handlestick <7>還有一點超級重要,就是進去之後,在你還沒找到盒子之前若是有人進來, 你們就必須要搶先一步囉,第一個人開到有東西,之後在裡面的人就沒東西了 <8>進去(地下石道 - )..這裡是個大迷宮,不好走,考驗你的耐心囉..等你找到金盒子...cong...你就成功\\囉 <9>打入unlock.... 恭喜xxxxxx得到闖王的寶藏！ 恭喜你！拿到闖王的寶藏～～請好好珍惜～～ 闖王迷宮走法 一開始進去的地方只有一個出口..是 n 然後往n走 隨機會被傳到3個不同的點 正確的是有ne出口的點 成功到有ne的那個點後 往ne走 一樣隨機被傳到幾個不同房間 正確的是有se ne的房間 往se走 一樣隨機到幾個房間 正確的是要到有nw s到房間 能到這之後 往s走...一樣有幾房間可能會到...其中包括寶箱點 所以同樣的路線要一直走..直到 走到正確的路徑 所以 如果每次都中的話 應該路徑是 n ne se s (從一開始進來的只有n的點) 就一直試吧 直到lucky點 走到正確的房間!",
+     "commands": ""
+    }
+   ],
+   "text": "闖王寶藏：\n提供者: James\n路徑提供者: Frankyy\n製作者: Ljjjl\n先買一匹馬...設好以下ride點\nride 1設在waiter就可以...\nride 2曬穀場:run e 5n 2o sw t e su t 2e 2s 6e;setplace 2\nride 3大雪山:run e 5n 2o sw 2w t 2n w nd ne nd e t se s\ne s e se e s 3se s 4se 2ne e ne 2se ne e se 2s se eu se\neu 2e 2eu nu wu sw;setplace 3<胡斐>\nride 4東大街:run e 5n 2o sw w t s 5w s su s 3e t 4n 3e;setplace 4<阿珂>\n1.ride 2;ask boy about 闖王;ask boy about 愛妾\n2.run 2se e n;ask woman about 闖王;ask woman about 陳圓圓\n3.ride 4;ask ke about 陳圓圓\n4.ride 2;run 2se e n\ngive woman letter;ask woman about 闖王;ask woman about 身邊大將\n5.ride 3;ask fei about 闖王;ask fei about 藏寶圖;ask fei about 闖王軍刀\n6.ride 2;run 4w n;ask lan about 胡斐;say 知道\n7.ride 3(等lan到來就ok)\n<這邊有一點需要注意不要騎馬進去,因為不確定地圖是否正確的,馬先交給別人顧吧>\n8.waiter>>run e 5n 2o sw t e su t 2e 2s 6e 2se e n e\n9.#5 pull candlestick left;#2 pull candlestick right(就是左推五次,右推兩次啦)\n有用zmud的人就知道...grin\n註:有幾點我要先說明..就是步驟4.問完身邊大將之後,陳圓圓會說出五個人\n就是(胡斐 李嚴 田歸農 苗人鳳 崔秋山)...要去跟他們拿地圖,但是五個人\n之中只有一張是真的,而且每一輪rb後,地圖會隨機,不一定都在誰身上,當你\n拿到錯的地圖之後,一進去迷宮裡若是看到大螃蟹...那無疑的你可以quit囉\n所以有幾點我的建議:\n<1>先選定一個身邊大將.我選的是胡斐....(大家好像都找他)\n<2>帶10 chakoㄎ去pull handlestick就好,因為一看到crab就得quit囉\n<3>在你去pull handlestick之前.不要把馬奇進去吧,因為一看到crab,就得重解,馬還用的到\n<4>等你進去到(地下石道 - )..那就成功\\了,進去之後先duel把chako準備好吧(先請外面的人幫你拿著咩!!)\n<5>地道裡的mob<黑衣侍衛(black cloth soldier)>並不強,我想800k以上都沒問題吧\n<6>若是看到crab,quit之後,再重解,然後要等rb之後才能pull handlestick\n<7>還有一點超級重要,就是進去之後,在你還沒找到盒子之前若是有人進來,\n你們就必須要搶先一步囉,第一個人開到有東西,之後在裡面的人就沒東西了\n<8>進去(地下石道 - )..這裡是個大迷宮,不好走,考驗你的耐心囉..等你找到金盒子...cong...你就成功\\囉\n<9>打入unlock....\n恭喜xxxxxx得到闖王的寶藏！\n恭喜你！拿到闖王的寶藏～～請好好珍惜～～\n闖王迷宮走法\n一開始進去的地方只有一個出口..是 n\n然後往n走\n隨機會被傳到3個不同的點\n正確的是有ne出口的點\n成功到有ne的那個點後 往ne走\n一樣隨機被傳到幾個不同房間\n正確的是有se ne的房間\n往se走\n一樣隨機到幾個房間\n正確的是要到有nw s到房間\n能到這之後 往s走...一樣有幾房間可能會到...其中包括寶箱點\n所以同樣的路線要一直走..直到 走到正確的路徑\n所以 如果每次都中的話 應該路徑是 n ne se s (從一開始進來的只有n的點)\n就一直試吧 直到lucky點 走到正確的房間!"
+  },
+  "qu2-8.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "ask chian about 傷心事",
+     "commands": "ask chian about 傷心事"
+    },
+    {
+     "no": 2,
+     "text": "等她廢話",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "nod chian",
+     "commands": "nod chian"
+    },
+    {
+     "no": 4,
+     "text": "再等廢話，她會叫你去找寧采臣",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "run 3nd ne 2s;fly tree;sw 會看到[寧采臣(nin xai chen)]",
+     "commands": "run 3nd ne 2s;fly tree;sw"
+    },
+    {
+     "no": 1,
+     "text": "ask chen about 小倩",
+     "commands": "ask chen about 小倩"
+    },
+    {
+     "no": 2,
+     "text": "聽廢話，會叫你去隔壁找怪老頭",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "run ne 會看到[邪氣 怪老頭(freak oldman)]",
+     "commands": "run ne"
+    },
+    {
+     "no": 1,
+     "text": "ask oldman about 燕赤霞",
+     "commands": "ask oldman about 燕赤霞"
+    },
+    {
+     "no": 2,
+     "text": "ask oldman about 兄弟",
+     "commands": "ask oldman about 兄弟"
+    },
+    {
+     "no": 3,
+     "text": "ask oldman about 聖地",
+     "commands": "ask oldman about 聖地"
+    },
+    {
+     "no": 4,
+     "text": "ask oldman about 玉靈洞",
+     "commands": "ask oldman about 玉靈洞"
+    },
+    {
+     "no": 5,
+     "text": "ask oldman about 哪裡",
+     "commands": "ask oldman about 哪裡"
+    },
+    {
+     "no": 6,
+     "text": "等廢話，他會說什麼滿頭刀的..要你給他青銅刀",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "去找有青銅刀的mob打斷給他，給完得到雪月短笛",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "fly 岸邊;run 2n sw 3su sd 2sw s;pass river",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "回圈中有auto k mob",
+     "commands": ""
+    },
+    {
+     "no": 10,
+     "text": "會找到一格敘述有scream的，大喊之後會掉出一隻小烏鴉",
+     "commands": ""
+    },
+    {
+     "no": 11,
+     "text": "after crow之後他會在回圈裡亂跑幾格，你會跟著他走，注意遇到mob會被auto k 笨重小烏鴉說道﹕人家迷路了啦!你如果幫我洗一下身體(wash crow)!說不定就會想起來了!",
+     "commands": ""
+    },
+    {
+     "no": 12,
+     "text": "然後出現上面那行就照著打wash crow，就被傳到入口了 玉靈洞部份",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "wash face(必要);push gate",
+     "commands": "wash face;push gate"
+    },
+    {
+     "no": 2,
+     "text": "一直往e(ne、se)的方向走，小心路上的金道人，會auto k、逃跑追打、亂跑 到一格有敘述fire的，jump fire會看到[「上善若水」小粉姑娘(bubble)]",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "ask bubble about 上善若水",
+     "commands": "ask bubble about 上善若水"
+    },
+    {
+     "no": 2,
+     "text": "ask bubble about 求道",
+     "commands": "ask bubble about 求道"
+    },
+    {
+     "no": 3,
+     "text": "ask bubble about 茅山",
+     "commands": "ask bubble about 茅山"
+    },
+    {
+     "no": 4,
+     "text": "ask bubble about 衝塔頂",
+     "commands": "ask bubble about 衝塔頂"
+    },
+    {
+     "no": 5,
+     "text": "ask bubble about 但是",
+     "commands": "ask bubble about 但是"
+    },
+    {
+     "no": 6,
+     "text": "ask bubble about 桃木劍",
+     "commands": "ask bubble about 桃木劍"
+    },
+    {
+     "no": 7,
+     "text": "拿到空白符紙與桃木劍就可以climb vine",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "run nw ne 2w sw;會看到[燕赤霞(yan chi xia)]",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "ask xia about 寧采臣",
+     "commands": "ask xia about 寧采臣"
+    },
+    {
+     "no": 2,
+     "text": "打死燕他會叫你告訴寧采臣說[成全]他們",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "write 急急如律令法移;fire seal",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "到第三層(小心那裡的mob死掉還會跑出一堆靈蟲)run se e;push button(會中玉蜂毒5)",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "到一個老子閣",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "search 膝 得到宮廷粉式糕點",
+     "commands": "search 膝"
+    },
+    {
+     "no": 7,
+     "text": "knock pallow一直到出去為止(小心指令超過10個被踢)",
+     "commands": "knock pallow"
+    },
+    {
+     "no": 8,
+     "text": "到外面回去找寧采臣run 2e 2ne nu 3nd ne 2s;fly tree;sw",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "ask chen about 成全;寧會叫你找小倩說[完成]",
+     "commands": ""
+    },
+    {
+     "no": 10,
+     "text": "然後找小倩ne;fly 岸邊;run 2n sw 3su",
+     "commands": ""
+    },
+    {
+     "no": 11,
+     "text": "ask chian about 完成;拿到一封給惜春的信",
+     "commands": ""
+    },
+    {
+     "no": 12,
+     "text": "到貓族的土靈使e看到惜春，read letter就完成了 此物名曰 ﹕看姓別而定 硬 度 ﹕45 種 類 ﹕鞋子類防具 防 禦 力 ﹕6-14 屬 性 ﹕6-10 閃躲 配帶條件 ﹕經驗 [700000] 評價 [100000] 註壹：最小值-最大值 註貳：硬度我不清楚(反正沒差多少)",
+     "commands": ""
+    }
+   ],
+   "text": "boots謎\n男: 凝雲靴\n女:\n若晴靴\n中:\n無塵靴\n茅山部份:\n路境(waiter): run e 5n 2o 2se t 5e n;climb stair (注意內力會降到0)\n進入後: run 2e 2ne nu 會看到[幽魂 小倩(xao chian)]\n1.ask chian about 傷心事\n2.等她廢話\n3.nod chian\n4.再等廢話，她會叫你去找寧采臣\n5.run 3nd ne 2s;fly tree;sw 會看到[寧采臣(nin xai chen)]\n1.ask chen about 小倩\n2.聽廢話，會叫你去隔壁找怪老頭\n3.run ne 會看到[邪氣 怪老頭(freak oldman)]\n1.ask oldman about 燕赤霞\n2.ask oldman about 兄弟\n3.ask oldman about 聖地\n4.ask oldman about 玉靈洞\n5.ask oldman about 哪裡\n6.等廢話，他會說什麼滿頭刀的..要你給他青銅刀\n7.去找有青銅刀的mob打斷給他，給完得到雪月短笛\n8.fly 岸邊;run 2n sw 3su sd 2sw s;pass river\n9.回圈中有auto k mob\n10.會找到一格敘述有scream的，大喊之後會掉出一隻小烏鴉\n11.after crow之後他會在回圈裡亂跑幾格，你會跟著他走，注意遇到mob會被auto k\n笨重小烏鴉說道﹕人家迷路了啦!你如果幫我洗一下身體(wash crow)!說不定就會想起來了!\n12.然後出現上面那行就照著打wash crow，就被傳到入口了\n玉靈洞部份\n1.wash face(必要);push gate\n2.一直往e(ne、se)的方向走，小心路上的金道人，會auto k、逃跑追打、亂跑\n到一格有敘述fire的，jump fire會看到[「上善若水」小粉姑娘(bubble)]\n1.ask bubble about 上善若水\n2.ask bubble about 求道\n3.ask bubble about 茅山\n4.ask bubble about 衝塔頂\n5.ask bubble about 但是\n6.ask bubble about 桃木劍\n7.拿到空白符紙與桃木劍就可以climb vine\n8.run nw ne 2w sw;會看到[燕赤霞(yan chi xia)]\n1.ask xia about 寧采臣\n2.打死燕他會叫你告訴寧采臣說[成全]他們\n3.write 急急如律令法移;fire seal\n4.到第三層(小心那裡的mob死掉還會跑出一堆靈蟲)run se e;push button(會中玉蜂毒5)\n5.到一個老子閣\n6.search 膝 得到宮廷粉式糕點\n7.knock pallow一直到出去為止(小心指令超過10個被踢)\n8.到外面回去找寧采臣run 2e 2ne nu 3nd ne 2s;fly tree;sw\n9.ask chen about 成全;寧會叫你找小倩說[完成]\n10.然後找小倩ne;fly 岸邊;run 2n sw 3su\n11.ask chian about 完成;拿到一封給惜春的信\n12.到貓族的土靈使e看到惜春，read letter就完成了\n此物名曰　﹕看姓別而定\n硬 度　﹕45\n種 類　﹕鞋子類防具\n防 禦 力 ﹕6-14\n屬 性　﹕6-10 閃躲\n配帶條件　﹕經驗 [700000]　評價 [100000]\n註壹：最小值-最大值\n註貳：硬度我不清楚(反正沒差多少)"
+  },
+  "qu2-6.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "到老頭那問<1>妖靈窟 <2>進入 <3>巨石",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "到古虛子問<1>妖靈窟",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "到張三豐問<1>妖靈窟 <2>巨石",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "到宋遠橋問<1>咒語 <2>令符",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "到俞岱嚴問<1>咒語 <2>令符",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "到張松溪問<1>令符 <2>俗家弟子",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "找李慕白問<1>令符 <2>青冥劍",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "到俞秀蓮問<1>寶劍 <2>玉嬌龍",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "找玉嬌龍問<1>寶劍 他會auto k你，羅小虎也會攻擊你，打死拿到青冥劍 ps.玉嬌龍pf是情意七劍要注意",
+     "commands": ""
+    },
+    {
+     "no": 10,
+     "text": "然後給李慕白sword",
+     "commands": ""
+    },
+    {
+     "no": 11,
+     "text": "到張翠山問<1>畫符 <2>拿桃符紙(長安keeper或是天魔塔keeper都有)給他，得到令符(paper)",
+     "commands": ""
+    },
+    {
+     "no": 12,
+     "text": "到老頭那給他paper..他會說一句「天地無極，乾坤借法。」，say完就傳進妖靈窟 ps.會讓神內傷注意 ps.打死老頭可以把令符再撿回來=.=\" 以下是洞內解說： ◎- 入口 瘟- 瘟鬼(plague ghost) 餓- 餓死鬼(hungry ghost) 食- 食屍鬼(corpse ghost) 相-*妖怪武狀元 相狀(shiang juanq) 獨孤 + 吸星大法 耆-*人肉屠魔 耆戈(chi ge) 血刀 + 神照功 炎-*虛食百生 炎顱(yan lu) 落英 夜-*噬魂修羅 夜叉(yeh cha) 拜月心法(ps.配槍-_-...所以enforce馬上變回10) 鬼-*妖中殘 魑(chy) 八極 + 四靈火 -*殘中鬼 魅(mey) 毒龍 + 四靈水 -*鬼中暴 魍(woang) 黯然 + 四靈風 -*暴中魂 魎(leang) 四靈土 蚩-*九黎族長 蚩尤(chy yo) 醉刀 + 天龍吼 寶- 太虛的寶藏(chest) 非mob ps.*代表會解定 ps.太虛的寶藏那格出來指令是squeeze crack ps.也可以quit，或是clan home放東西再quits ps.目前改成exp不夠會說沒資格打開箱子",
+     "commands": ""
+    }
+   ],
+   "text": "離魂金線纏流程：\n1.到老頭那問<1>妖靈窟 <2>進入 <3>巨石\n2.到古虛子問<1>妖靈窟\n3.到張三豐問<1>妖靈窟 <2>巨石\n4.到宋遠橋問<1>咒語 <2>令符\n5.到俞岱嚴問<1>咒語 <2>令符\n6.到張松溪問<1>令符 <2>俗家弟子\n7.找李慕白問<1>令符 <2>青冥劍\n8.到俞秀蓮問<1>寶劍 <2>玉嬌龍\n9.找玉嬌龍問<1>寶劍 他會auto k你，羅小虎也會攻擊你，打死拿到青冥劍\nps.玉嬌龍pf是情意七劍要注意\n10.然後給李慕白sword\n11.到張翠山問<1>畫符 <2>拿桃符紙(長安keeper或是天魔塔keeper都有)給他，得到令符(paper)\n12.到老頭那給他paper..他會說一句「天地無極，乾坤借法。」，say完就傳進妖靈窟\nps.會讓神內傷注意\nps.打死老頭可以把令符再撿回來=.=\"\n以下是洞內解說：\n◎-  入口\n瘟- 瘟鬼(plague ghost)\n餓- 餓死鬼(hungry ghost)\n食- 食屍鬼(corpse ghost)\n相-*妖怪武狀元\n相狀(shiang juanq)　　　　獨孤 + 吸星大法\n耆-*人肉屠魔\n耆戈(chi ge)　　　　　　　  血刀 + 神照功\n炎-*虛食百生\n炎顱(yan lu)　  　　　　　　落英\n夜-*噬魂修羅\n夜叉(yeh cha)　　　　　 　   拜月心法(ps.配槍-_-...所以enforce馬上變回10)\n鬼-*妖中殘\n魑(chy)　　　　　　　　　 　 八極 + 四靈火\n-*殘中鬼\n魅(mey)　　　　　　　　　 　毒龍 + 四靈水\n-*鬼中暴\n魍(woang)　　　　　　　　　 黯然 + 四靈風\n-*暴中魂\n魎(leang)　　　　　　　　　   四靈土\n蚩-*九黎族長\n蚩尤(chy yo)　　　　　　　 醉刀 + 天龍吼\n寶- 太虛的寶藏(chest)　　　　　　　　　 非mob\nps.*代表會解定\nps.太虛的寶藏那格出來指令是squeeze crack\nps.也可以quit，或是clan home放東西再quits\nps.目前改成exp不夠會說沒資格打開箱子"
+  },
+  "qu3-1.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "run e 5n 2o sw 2w t s 3w 4s e nw e s s se s e se (打掃小廝) ask sz about 處理(care 會有五毒mob跑來跑去..auto k)",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "拿潛水衣 run e 5n 2o sw nw t e ne t 3w nw n;ask fisherman about 信物;#wa 500;run s se 2e;give briefs to woman",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "run e 5n 2o e n e t 5n e 6n e n 2e sw e n n w n (快活林渡口) diving lake;e;#wa 500;n;n;#wa 500;e;n;#wa 500;n;n;dis 岸邊",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "到快活林後,找酒鬼接20招 ask man about 煉蠱洞 then accept (20下超痛..建議運兩種心法以上)",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "出快活林 回程 diving lake;s;#wa 500;s;s;#wa 500;w;s;#wa 500;s;w;dis 岸邊",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "run e 5n 2o sw 2w t s 3w 4s e nw e s s se s 2w sw s nw (煉蠱洞洞口) open 石門",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "進去後找萬蠱毒蛛王、劇毒催魂蛇王打煉蠱、煉魄壺鑰匙(會趴趴造，不知道跑哪去)",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "找到煉蠱、煉魄壺開蠱王、蠱魄 PS.煉蠱壺裡的東西：初級/中級/高級暗器手法書、萬蠱毒蛛、劇毒催魂蛇、十步毒蟾、蠱王 煉魄壺裡的東西：初級/中級/高級暗器手法書、萬蠱毒蛛、劇毒催魂蛇、十步毒蟾、蠱魄",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "到最東邊石壁處climb 石壁就出去了，然後找歐陽克 run e 5n 2o sw 2w t s 3w 4s e nw e s s se s w n",
+     "commands": ""
+    },
+    {
+     "no": 10,
+     "text": "把兩樣物品交給他，解完 PS.可以只給一隻，另一隻就算quit relogin之後也能再解完 PS.要給蠱的人一定要親自上快活林找酒鬼接20招，有quit過必須重新接招",
+     "commands": ""
+    }
+   ],
+   "text": "心瓣項鍊：\n註：以下路境均由waiter開始\n1.run e 5n 2o sw 2w t s 3w 4s e nw e s s se s e se (打掃小廝)\nask sz about 處理(care 會有五毒mob跑來跑去..auto k)\n2.拿潛水衣\nrun e 5n 2o sw nw t e ne t 3w nw n;ask fisherman about 信物;#wa 500;run s se\n2e;give briefs to woman\n3.run e 5n 2o e n e t 5n e 6n e n 2e sw e n n w n (快活林渡口)\ndiving lake;e;#wa 500;n;n;#wa 500;e;n;#wa 500;n;n;dis 岸邊\n4.到快活林後,找酒鬼接20招\nask man about 煉蠱洞\nthen accept (20下超痛..建議運兩種心法以上)\n5.出快活林\n回程 diving lake;s;#wa 500;s;s;#wa 500;w;s;#wa 500;s;w;dis 岸邊\n6.run e 5n 2o sw 2w t s 3w 4s e nw e s s se s 2w sw s nw (煉蠱洞洞口)\nopen 石門\n7.進去後找萬蠱毒蛛王、劇毒催魂蛇王打煉蠱、煉魄壺鑰匙(會趴趴造，不知道跑哪去)\n8.找到煉蠱、煉魄壺開蠱王、蠱魄\nPS.煉蠱壺裡的東西：初級/中級/高級暗器手法書、萬蠱毒蛛、劇毒催魂蛇、十步毒蟾、蠱王\n煉魄壺裡的東西：初級/中級/高級暗器手法書、萬蠱毒蛛、劇毒催魂蛇、十步毒蟾、蠱魄\n9.到最東邊石壁處climb 石壁就出去了，然後找歐陽克\nrun e 5n 2o sw 2w t s 3w 4s e nw e s s se s w n\n10.把兩樣物品交給他，解完\nPS.可以只給一隻，另一隻就算quit relogin之後也能再解完\nPS.要給蠱的人一定要親自上快活林找酒鬼接20招，有quit過必須重新接招"
+  },
+  "qu2-7.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "run e 5n 2o ne e e t n 4e n eu t;push stele;run w 2s w 2n w 2s w 2n 3w 2nw w nu e(周伯通) ask ton about 瑛姑;ask ton about 詩句",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "run e 5n 2o 2se t 6e 3s 3e(桃花島渡口)(記的帶黃蓉的家書拜黃藥師) 到黃藥師 2s 找瑛姑ask ku about 詩句",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "回周伯通 talk 四張機，鴛鴦織就欲雙飛，可憐未老頭先白。春波碧草，曉寒深處，相對浴紅衣。",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "回瑛姑 ask ku about 證明",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "回周伯通 give babedou to ton;ask ton about 小孩;ask ton about 刺客;ask ton about 報仇",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "回瑛姑 ask ku about 裘千仞",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "ask ton about 裘千仞;ask ton about 迷宮;ask ton about 鑰匙",
+     "commands": "ask ton about 裘千仞;ask ton about 迷宮;ask ton about 鑰匙"
+    },
+    {
+     "no": 8,
+     "text": "ko 周伯通..get 迷宮鑰匙",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "run e 5n 2o ne e e t n 4e n eu t;push stele;run w 2s w 2n w 2s w 2n 3w n e nw e 2n 2wd wd open 巨石 w (百花迷宮起點)",
+     "commands": "run e 5n 2o ne e e t n 4e n eu t;push stele;run w 2s w 2n w 2s w 2n 3w n e nw e 2n 2wd wd open"
+    },
+    {
+     "no": 10,
+     "text": "找裘千仞 ko 有奇異的鑰匙(1/4 機率打到)",
+     "commands": ""
+    },
+    {
+     "no": 11,
+     "text": "找chest unlock有掌門令牌",
+     "commands": ""
+    },
+    {
+     "no": 12,
+     "text": "回瑛姑給掌門令牌..得到天罡鬥服一件 迷宮全逛走法 (入口) w w sw e e e se e se w n (往n是出口) e e se nw (往e是chest) n w w e (回入口)",
+     "commands": ""
+    }
+   ],
+   "text": "天罡鬥服：\n1.run e 5n 2o ne e e t n 4e n eu t;push stele;run w 2s w 2n w 2s w 2n 3w 2nw\nw nu e(周伯通)\nask ton about 瑛姑;ask ton about 詩句\n2.run e 5n 2o 2se t 6e 3s 3e(桃花島渡口)(記的帶黃蓉的家書拜黃藥師)\n到黃藥師 2s 找瑛姑ask ku about 詩句\n3.回周伯通\ntalk 四張機，鴛鴦織就欲雙飛，可憐未老頭先白。春波碧草，曉寒深處，相對浴紅衣。\n4.回瑛姑\nask ku about 證明\n5.回周伯通\ngive babedou to ton;ask ton about 小孩;ask ton about 刺客;ask ton about 報仇\n6.回瑛姑\nask ku about 裘千仞\n7.ask ton about 裘千仞;ask ton about 迷宮;ask ton about 鑰匙\n8.ko 周伯通..get 迷宮鑰匙\n9.run e 5n 2o ne e e t n 4e n eu t;push stele;run w 2s w 2n w 2s w 2n 3w n e nw\ne 2n 2wd wd\nopen 巨石 w (百花迷宮起點)\n10.找裘千仞 ko 有奇異的鑰匙(1/4 機率打到)\n11.找chest unlock有掌門令牌\n12.回瑛姑給掌門令牌..得到天罡鬥服一件\n迷宮全逛走法\n(入口) w w sw e e e se e se w n (往n是出口) e e se nw (往e是chest) n w w e (回入口)"
+  },
+  "qu3-4.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "以施為起點： <1>e;open door;s 看到[梅莊四友 丹青生(dam chin zon)] ask zon about 日月神教 打死拿到[血紅鑰匙(redkey)] <2>run n e;open door;n 看到[梅莊四友 禿筆翁(To pe oang)] ask oang about 任我行 打死拿到[菱形鐵片(liniron)] <3>run n w;open door;s 看到[梅莊四友 黑白子(Black white son)] ask son about 地牢 打死拿到[方形鐵片(fairon)] <4>run n nw;open door;run 3n 看到[梅莊四友 黃鐘公(Hwang zong koang)] ask koang about 東方不敗 打死拿到[血藍鑰匙(bluekey)] <5>黃鐘公當格push 石床;run d nd open 石門;nd open 鐵門;nd open 鐵門;n 看到[囚犯 任我行(Zin wo shin)] ask shin about 葵花寶典 打死拿到[破碎卷宗(scroll)，銅製令牌(wusteel)] PS.問完之後都會直接auto k，能力會比原來沒問前強很多 PS.黃鐘公的pf有bug...而且傷害很大，問之前最好先定 PS.任我行有招九陰琵琶爪會把武器打掉在地上",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "waiter: run e 4n e;climb 階梯;run su nu wu n 看到[一字電劍 丁堅(din jan)] climb 梅樹;run 2u;climb 鳥巢 看到[黃金鳥(gold bird)] 打死拿到[黃金羽毛(golden feather)] jump 鳥巢，會回到丁堅 PS.黃金鳥auto k PS.climb 梅樹後不能ride，必須到鳥巢上jump 鳥巢下來 或是到climb 鳥巢那格往d走再回u，會沒有有關鳥巢的敘述，也可以ride",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "上冰火島解朱果 water: run e 5n 2o 2ne t 4e se 2e t 2n 2e 2n 2e 等船靠岸pay;enter 等船到冰火島run e n ne e s s e t s e w n w n e n eu eu ne ne ed ne eu;setplace 2 run e n eu e ne nu nw u se;squeeze crack;run t s w n sw e;kill serpent 打死拿到[玄陰蟒鱗(ice lins)] run w ne s e n o;squeeze crack;nw d;ride 2 run e n eu e ne nu nw n t 看到[火人 巴立克(ba le ka)] follow ba;ask ba about 族產;k ba 打死拿到[火磷石(fire gem)] ride 2;run e wu nu t s w;give lins to imp 得到玄冰衣(ice suit) ride 2;run e n eu nu w eu nu u e;squeeze crack;run t n e 2n ne 穿上玄冰衣，然後jump 火池 看到[六角石箱(six chest)]後，put gem in chest 得到千年朱果(fruit) diving 池面;run sw 2s w s o;squeeze crack;run w d;ride 2 PS.解過屠龍的就沒朱果拉！",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "需要一把玄鐵重劍(有人說愈爛愈好) 解法(以下的run都由waiter開始)：",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "run e 5n 2o sw 2w t 2n w nd ne nd e t se s e s e se e s 3se s 4se 2ne e ne 2se ne e se 2s se eu se eu 2e 2eu 2ed n;climb cliff;n 看到[妙齡女孩(girl)] ask girl about 任盈盈 ask girl about 日月神教 ask girl about 東方不敗 nod girl 然後等他說廢話",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "run e 5n 2o sw 2w t w 2n nd ne nd e t e s w n;setplace 2 看到[浪人(man)] ask man about 向問天 give wusteel to man nod man 等他廢話之後 ask man about 破碎卷宗 give scroll to man",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "run e 5n 2o sw 2w t 2n w nd ne nd e t se s e s e se e s 3se s 4se 2ne e ne 2se ne e se 2s se eu se eu 2e 2eu nu wu 看到[神手 向陽天(shi yuang tan)] ask tan about 破碎卷宗 然後等他廢話 說完ride 2 看到[浪人(man)] ask man about 破碎卷宗 等廢話",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "run e 5n 2o sw t e su 4w t 5n 2w 看到[隱居老人(old man)] give sword to man(給玄鐵重劍) give fruit to man(給千年朱果) run 4e 看到[隱居老人(old man)] give 融合物 to man(id忘了/__\\) give feather to man(給黃金羽毛) 就解完了 PS.憾天神劍的頂極能力：傷害99、加parry29、加sword29、加force9",
+     "commands": ""
+    }
+   ],
+   "text": "憾天神劍：\n事先準備物品：\nwaiter: run e 4n e;climb 階梯;run su nu wu n e;open door;run 2n e\n看到[五路神  施令威(Si lin wiae)]\n1.以施為起點：\n<1>e;open door;s\n看到[梅莊四友  丹青生(dam chin zon)]\nask zon about 日月神教\n打死拿到[血紅鑰匙(redkey)]\n<2>run n e;open door;n\n看到[梅莊四友  禿筆翁(To pe oang)]\nask oang about 任我行\n打死拿到[菱形鐵片(liniron)]\n<3>run n w;open door;s\n看到[梅莊四友  黑白子(Black white son)]\nask son about 地牢\n打死拿到[方形鐵片(fairon)]\n<4>run n nw;open door;run 3n\n看到[梅莊四友  黃鐘公(Hwang zong koang)]\nask koang about 東方不敗\n打死拿到[血藍鑰匙(bluekey)]\n<5>黃鐘公當格push 石床;run d nd\nopen 石門;nd\nopen 鐵門;nd\nopen 鐵門;n\n看到[囚犯  任我行(Zin wo shin)]\nask shin about 葵花寶典\n打死拿到[破碎卷宗(scroll)，銅製令牌(wusteel)]\nPS.問完之後都會直接auto k，能力會比原來沒問前強很多\nPS.黃鐘公的pf有bug...而且傷害很大，問之前最好先定\nPS.任我行有招九陰琵琶爪會把武器打掉在地上\n2.waiter: run e 4n e;climb 階梯;run su nu wu n\n看到[一字電劍  丁堅(din jan)]\nclimb 梅樹;run 2u;climb 鳥巢\n看到[黃金鳥(gold bird)]\n打死拿到[黃金羽毛(golden feather)]\njump 鳥巢，會回到丁堅\nPS.黃金鳥auto k\nPS.climb 梅樹後不能ride，必須到鳥巢上jump 鳥巢下來\n或是到climb 鳥巢那格往d走再回u，會沒有有關鳥巢的敘述，也可以ride\n3.上冰火島解朱果\nwater: run e 5n 2o 2ne t 4e se 2e t 2n 2e 2n 2e\n等船靠岸pay;enter\n等船到冰火島run e n ne e s s e t s e w n w n e n eu eu ne ne ed ne eu;setplace 2\nrun e n eu e ne nu nw u se;squeeze crack;run t s w n sw e;kill serpent\n打死拿到[玄陰蟒鱗(ice lins)]\nrun w ne s e n o;squeeze crack;nw d;ride 2\nrun e n eu e ne nu nw n t\n看到[火人 巴立克(ba le ka)]\nfollow ba;ask ba about 族產;k ba\n打死拿到[火磷石(fire gem)]\nride 2;run e wu nu t s w;give lins to imp\n得到玄冰衣(ice suit)\nride 2;run e n eu nu w eu nu u e;squeeze crack;run t n e 2n ne\n穿上玄冰衣，然後jump 火池\n看到[六角石箱(six chest)]後，put gem in chest\n得到千年朱果(fruit)\ndiving 池面;run sw 2s w s o;squeeze crack;run w d;ride 2\nPS.解過屠龍的就沒朱果拉！\n4.需要一把玄鐵重劍(有人說愈爛愈好)\n解法(以下的run都由waiter開始)：\n1.run e 5n 2o sw 2w t 2n w nd ne nd e t se s e s e se e s 3se s 4se 2ne e ne 2se\nne e se 2s se eu se eu 2e 2eu 2ed n;climb cliff;n\n看到[妙齡女孩(girl)]\nask girl about 任盈盈\nask girl about 日月神教\nask girl about 東方不敗\nnod girl\n然後等他說廢話\n2.run e 5n 2o sw 2w t w 2n nd ne nd e t e s w n;setplace 2\n看到[浪人(man)]\nask man about 向問天\ngive wusteel to man\nnod man\n等他廢話之後\nask man about 破碎卷宗\ngive scroll to man\n3.run e 5n 2o sw 2w t 2n w nd ne nd e t se s e s e se e s 3se s 4se 2ne e ne 2se\nne e se 2s se eu se eu 2e 2eu nu wu\n看到[神手  向陽天(shi yuang tan)]\nask tan about 破碎卷宗\n然後等他廢話\n說完ride 2\n看到[浪人(man)]\nask man about 破碎卷宗\n等廢話\n4.run e 5n 2o sw t e su 4w t 5n 2w\n看到[隱居老人(old man)]\ngive sword to man(給玄鐵重劍)\ngive fruit to man(給千年朱果)\nrun 4e\n看到[隱居老人(old man)]\ngive 融合物 to man(id忘了/__\\)\ngive feather to man(給黃金羽毛)\n就解完了\nPS.憾天神劍的頂極能力：傷害99、加parry29、加sword29、加force9"
+  },
+  "qu3-3.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "到蘇州城run e 5n 2o 2se t 6e n t",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "w底, sw, s底會到港口，然後等綠杉少女出現",
+     "commands": "w"
+    },
+    {
+     "no": 3,
+     "text": "pay然後enter上船，等船開到另一邊下船",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "s底, w底, n底看到阿朱，tan qin(應該沒錯吧...總之就是彈琴) 會到湖心",
+     "commands": "s"
+    },
+    {
+     "no": 5,
+     "text": "湖心搖槳也沒用...等一等就會自動出現出口，out就到燕子鄔了",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "試劍台(setplace 2)可以jump muzhuang(會內傷喔)，",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "上去後看到慕容復，ask fu about 幫忙",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "他會叫你去找公孫止拿大燕國玉璽",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "去絕情谷找公孫止，ask leader about 傳國玉璽",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "公孫止會跟你要朱雀羽和玄武心",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "都交給他會得到玉璽，然後拿回去給慕容復",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "慕容復會交給你一張地圖，上面有四個敘述要去找位置search",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "將四個部份的圖都找到後到慕容復，ask fu about 找齊了，就會告訴你： 攬月居的密語就是[光復大燕]，還有進去要問王語焉[獎賞]",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "到攬月居(setplace 3)後輸入knock penjing",
+     "commands": ""
+    },
+    {
+     "no": 10,
+     "text": "然後say 光復大燕，會有一條往e的路",
+     "commands": ""
+    },
+    {
+     "no": 11,
+     "text": "走進去找到王語焉，ask wang about 獎賞",
+     "commands": ""
+    },
+    {
+     "no": 12,
+     "text": "她會叫你去拿手捐給段譽，當格pull book可以出去",
+     "commands": ""
+    },
+    {
+     "no": 13,
+     "text": "葷錦園run 2n e n，look camellia可以看到奇怪的東西",
+     "commands": ""
+    },
+    {
+     "no": 14,
+     "text": "search 奇怪的東西，得到手捐",
+     "commands": "search 奇怪的東西"
+    },
+    {
+     "no": 15,
+     "text": "將手捐拿給段譽，段譽會給你一把扇子",
+     "commands": ""
+    },
+    {
+     "no": 16,
+     "text": "把扇子拿給王語焉就解完了",
+     "commands": ""
+    }
+   ],
+   "text": "進燕子鄔\n有人說我偷懶額外補上的:X...沒時間實際去跑 口述將就一下吧\n1.到蘇州城run e 5n 2o 2se t 6e n t\n2.w底, sw, s底會到港口，然後等綠杉少女出現\n3.pay然後enter上船，等船開到另一邊下船\n4.s底, w底, n底看到阿朱，tan qin(應該沒錯吧...總之就是彈琴) 會到湖心\n5.湖心搖槳也沒用...等一等就會自動出現出口，out就到燕子鄔了\n1.試劍台(setplace 2)可以jump muzhuang(會內傷喔)，\n2.上去後看到慕容復，ask fu about 幫忙\n3.他會叫你去找公孫止拿大燕國玉璽\n4.去絕情谷找公孫止，ask leader about 傳國玉璽\n5.公孫止會跟你要朱雀羽和玄武心\n6.都交給他會得到玉璽，然後拿回去給慕容復\n7.慕容復會交給你一張地圖，上面有四個敘述要去找位置search\n8.將四個部份的圖都找到後到慕容復，ask fu about 找齊了，就會告訴你：\n攬月居的密語就是[光復大燕]，還有進去要問王語焉[獎賞]\n9.到攬月居(setplace 3)後輸入knock penjing\n10.然後say 光復大燕，會有一條往e的路\n11.走進去找到王語焉，ask wang about 獎賞\n12.她會叫你去拿手捐給段譽，當格pull book可以出去\n13.葷錦園run 2n e n，look camellia可以看到奇怪的東西\n14.search 奇怪的東西，得到手捐\n15.將手捐拿給段譽，段譽會給你一把扇子\n16.把扇子拿給王語焉就解完了"
+  },
+  "qu2-4.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "幫忙(這個要點兩次)",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "去石椅那邊 l 石椅",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "ask 小廝 about 孟星魂, 快活林, 煩惱, 混元魔刀, 柳樹",
+     "commands": "ask 小廝"
+    },
+    {
+     "no": 4,
+     "text": "潛水去快活林 給孟星魂 doll",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "前往桃花島 找馮式之墳 climb 桃樹",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "ask 石群 about 任務",
+     "commands": "ask 石群"
+    },
+    {
+     "no": 7,
+     "text": "回快活林 ask 孟星魂 about 快活林信物",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "和解五毒一樣 give master bstaf search 金色粉末 然後衝到開箱子那格 就可以見到 高老大了 ask 高老大 about 獎賞",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "帶著屠龍刀&青龍眼，(不能run喔!) 前往恐怖的貓宮2f 2f e n e n e s n w e nw e(費拉) w(3) n ne n e nw n(安全點) 會看到小何 給他兩樣東西就可以了",
+     "commands": ""
+    }
+   ],
+   "text": "混元魔刀：\n必備條件 不被spider(五毒那隻) 三絕盟護法ko (p.s:快活林不能quit) 能找人上貓宮2f\n事先不能先解五毒 有先解者請quit 道具 屠龍刀一把\n青龍眼一顆(聖獸 青龍)\n路徑 門口 2out開始 e n e t 5n e n n 小廝 門口開始 3n 2w n 孟星蝶\n門口開始 4n e n 2e sw e n 石椅 孟星蝶 n w 潛水 孟星蝶 n w n\n解法混元魔刀\n1.幫忙(這個要點兩次)\n2.去石椅那邊 l 石椅\n3.ask 小廝 about 孟星魂, 快活林, 煩惱, 混元魔刀, 柳樹\n4.潛水去快活林 給孟星魂 doll\n5.前往桃花島 找馮式之墳 climb 桃樹\n6.ask 石群 about 任務\n7.回快活林 ask 孟星魂 about 快活林信物\n8.和解五毒一樣 give master bstaf search 金色粉末\n然後衝到開箱子那格 就可以見到 高老大了 ask 高老大 about 獎賞\n9.帶著屠龍刀&青龍眼，(不能run喔!)\n前往恐怖的貓宮2f 2f e n e n e s n w e nw e(費拉) w(3) n ne n e nw n(安全點)\n會看到小何 給他兩樣東西就可以了"
+  },
+  "qu4-1.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "run 2e u;apprentice founder",
+     "commands": "run 2e u;apprentice founder"
+    },
+    {
+     "no": 2,
+     "text": "run d w 2n w;say 是",
+     "commands": "run d w 2n w;say 是"
+    },
+    {
+     "no": 3,
+     "text": "run e n w;give letter to herbalist",
+     "commands": "run e n w;give letter to herbalist"
+    },
+    {
+     "no": 4,
+     "text": "run e s w;give pill to wang",
+     "commands": "run e s w;give pill to wang"
+    },
+    {
+     "no": 5,
+     "text": "解完，得到200文錢",
+     "commands": ""
+    }
+   ],
+   "text": "老王的藥粉：\n1.run 2e u;apprentice founder\n2.run d w 2n w;say 是\n3.run e n w;give letter to herbalist\n4.run e s w;give pill to wang\n5.解完，得到200文錢"
+  },
+  "qu4-2.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "run e 3n 附近找[樵夫(woodcutter)]",
+     "commands": "run e 3n"
+    },
+    {
+     "no": 2,
+     "text": "ask woodcutter about 瘋狗",
+     "commands": "ask woodcutter about 瘋狗"
+    },
+    {
+     "no": 3,
+     "text": "recall;run 2e;ask keeper about 瘋狗",
+     "commands": "recall;run 2e;ask keeper about 瘋狗"
+    },
+    {
+     "no": 4,
+     "text": "say 願意",
+     "commands": "say 願意"
+    },
+    {
+     "no": 5,
+     "text": "run w s 2w;kill dog",
+     "commands": "run w s 2w;kill dog"
+    },
+    {
+     "no": 6,
+     "text": "打死瘋狗後回到廟祝得10兩銀子",
+     "commands": ""
+    }
+   ],
+   "text": "殺死瘋狗：\n1.run e 3n     附近找[樵夫(woodcutter)]\n2.ask woodcutter about 瘋狗\n3.recall;run 2e;ask keeper about 瘋狗\n4.say 願意\n5.run w s 2w;kill dog\n6.打死瘋狗後回到廟祝得10兩銀子"
+  },
+  "qu4-3.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "waiter: run e 5n 2o sw 2w t w 2n nd e t w s se e t;climb rope;run 3e s e nw;dig 岩壁;climb rope",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "run n w;push 花崗岩;climb rope",
+     "commands": "run n w;push 花崗岩;climb rope"
+    },
+    {
+     "no": 3,
+     "text": "run n 2ne 2e;jump well;run nw w;open door;n",
+     "commands": "run n 2ne 2e;jump well;run nw w;open door;n"
+    },
+    {
+     "no": 4,
+     "text": "打死 [魑魅牙修羅 桑田(leader)] 拿到鑰匙",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "waiter: run e 5n 2o sw 2w t w 2n nd e t w s se e t;climb rope;run 3e se;dig 岩壁;climb rope",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "run w 2sw w n;unlock chest",
+     "commands": "run w 2sw w n;unlock chest"
+    },
+    {
+     "no": 7,
+     "text": "得到鐵塊 註：dodge不夠高者不能climb rope，臂力不夠不能dig 岩壁",
+     "commands": ""
+    }
+   ],
+   "text": "鑄造武器的鐵塊：\n1.waiter:  run e 5n 2o sw 2w t w 2n nd e t w s se e\nt;climb rope;run 3e s e nw;dig 岩壁;climb rope\n2.run n w;push 花崗岩;climb rope\n3.run n 2ne 2e;jump well;run nw w;open door;n\n4.打死 [魑魅牙修羅 桑田(leader)] 拿到鑰匙\n5.waiter:  run e 5n 2o sw 2w t w 2n nd e t w s se e\nt;climb rope;run 3e se;dig 岩壁;climb rope\n6.run w 2sw w n;unlock chest\n7.得到鐵塊\n註：dodge不夠高者不能climb rope，臂力不夠不能dig 岩壁"
+  },
+  "qu4-7.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "run e 5n 2o sw w t s 4w 3n w t 10n 殺死擋路的[「縣城官兵」守城官兵(door guard)]",
+     "commands": "run e 5n 2o sw w t s 4w 3n w t 10n"
+    },
+    {
+     "no": 2,
+     "text": "run 2n u e u ne 2e se s e;jump flight;run e s eu 2ne s ne s 看到[拜月教 月圓(moon full)]",
+     "commands": "run 2n u e u ne 2e se s e;jump flight;run e s eu 2ne s ne s"
+    },
+    {
+     "no": 3,
+     "text": "ask full about 月陰，得到手令(key)",
+     "commands": "ask full about 月陰"
+    },
+    {
+     "no": 4,
+     "text": "run n sw n 2sw wd n w;jump flight;run sd w 看到[月陰居 侍衛(moon guard)]",
+     "commands": "run n sw n 2sw wd n w;jump flight;run sd w"
+    },
+    {
+     "no": 5,
+     "text": "give key to guard 看到[拜月教 月陰(moon black)]",
+     "commands": "give key to guard 看到"
+    },
+    {
+     "no": 6,
+     "text": "ask black about 拜月訣;run 2e nu w n nw ne e u e 看到[牢房典獄長(jail room leader)]",
+     "commands": "ask black about 拜月訣;run 2e nu w n nw ne e u e"
+    },
+    {
+     "no": 7,
+     "text": "ask leader about 規矩;輸入spend(身上要有十兩銀子)，或是殺了他往e走 看到[囚犯(jail man)]",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "ask man about 拜月訣;run 2w d w sw se s e;jump flight;run e 2s 到[神像]",
+     "commands": "ask man about 拜月訣;run 2w d w sw se s e;jump flight;run e 2s"
+    },
+    {
+     "no": 9,
+     "text": "touch 神像;put key into box 註：1.拜月訣一個人一生只能解一次",
+     "commands": "touch 神像;put key into box 註"
+    },
+    {
+     "no": 2,
+     "text": "將此書交給拜月，就可以拜師了",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "其實拜月的特殊sk都可以直接找玩家學(拜月七訣、拜月心法、拜月身法)",
+     "commands": ""
+    }
+   ],
+   "text": "拜月訣\n拜月訣：\n1.run e 5n 2o sw w t s 4w 3n w t 10n 殺死擋路的[「縣城官兵」守城官兵(door\nguard)]\n2.run 2n u e u ne 2e se s e;jump flight;run e s eu 2ne s ne s 看到[拜月教\n月圓(moon full)]\n3.ask full about 月陰，得到手令(key)\n4.run n sw n 2sw wd n w;jump flight;run sd w 看到[月陰居\n侍衛(moon guard)]\n5.give key to guard 看到[拜月教 月陰(moon black)]\n6.ask black about 拜月訣;run 2e nu w n nw ne e u e 看到[牢房典獄長(jail\nroom leader)]\n7.ask leader about 規矩;輸入spend(身上要有十兩銀子)，或是殺了他往e走 看到[囚犯(jail man)]\n8.ask man about 拜月訣;run 2w d w sw se s e;jump flight;run e 2s 到[神像]\n9.touch 神像;put key into box\n註：1.拜月訣一個人一生只能解一次\n2.將此書交給拜月，就可以拜師了\n3.其實拜月的特殊sk都可以直接找玩家學(拜月七訣、拜月心法、拜月身法)"
+  },
+  "qu4-4.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "因為要打的mob都是100w、150w，因此建議 150w 以上解 ps.建議帶 治內傷的pill 跟 普洱茶(免疫毒15min)",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "exp到 150萬 且未解過者 (以前90萬，有改過)，先到非安全區 (不能發呆、昏倒) rb(mob重置) 會出現 俠客島傳來一聲聲煙火，恭賀XXX很榮幸接受善惡使者測驗！ 每次 rb 抓一位，打贏後直到 quit 前都不會再遇到第二次善惡使者 依序 打張三(chang san)、李四(Lee sui)、打完會給 善惡令(sign) ps.注意張三李四出來時同一格的 mob 會全部一起打玩家 (不能 kill 除外，龍、狗會消失)",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "到 waiter，run e 5n 2o 2se w t e s e s e s e 的渡口，看到 阿繡(A Shiou) ask shiou 口信，講一陣子話後要 nod shiou 講完後等 船夫(fisherman) 來之後給 sign 上船進入俠客島",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "船到了之後 out，ne (這裡可以設點)，再來 e，enter hole之後正式開始解謎 俠客島內流程： [注意事項]",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "裡面將俠客行的詩句分成很多機關門，每個都有守門人，打完才能 push 開門，而且門一定時間會自動關閉",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "主要目的是在最後看到 木島主(Mo ladder) 前需要先看到兩次 石破天(Shr Po-Tian)",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "第二次看到會有 石破天握住你的手說道：唉...我怎麼躲你都能找到，我不玩了...XXX去找島主吧。",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "找石破天分成兩種方式，地毯式搜索或是佛系式搜索",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "地毯式搜索：就是每 push 一個機關就到處逛殺光全部 mob 自己找，比較省時間 但需注意有兩個機關路是連續的，如果花時間在裡面找人就過不去了 (下面會提到)",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "佛系式搜索就是找個位置發呆，因為石破天每15分會自己換位置，等他自己來找你 優點是簡單，遇完兩次就可以略過其他 mob 只打守門而且不容易被卡，缺點就是臉黑可能會等很久 ps.石破天大約有 20 格左右的出現位置隨機轉移，自己去算佛系式的機率 [推機關流程]",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "接上面 enter hole 後，run w nw 2ne，看到 正在沉思中 愚茶道長(U-tsa taoist)",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "殺死後，push 鞍，run 2sw nw，看到 正在沉思中 白自在(White dz dai)",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "殺死後，push 鉤，run 2se e 2n e se s se w，看到 正在演練中 丁不四(Din-bu sui) ※2-3為第一個卡路點，中間過太慢會卡住 (但是這裡可以走回起點所以還好)",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "殺死後，push 行，run e nw 2n ne e se w，看到 正在悲傷中 溫仁厚(Wan-lan ho)",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "殺死後，push 藏，run e nw w sw 2s 2se 2n e 2s，看到 雪山派前掌門人 威德(Wan der)",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "殺死後，push 膝，run 3n e，看到 正在悔恨中 解文豹(Dzai-wun bau)",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "殺死後，push 觴，run w 3s e s 5w e，看到 正在發洩中 西門觀止(Simangundz)",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "殺死後，push 五，run 3e，看到 正在沉悶中 黑衣人(Blacker)",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "殺死後，push 熱，run w 2s 2e，看到 正在思女中 梅文馨(Me wan sin)",
+     "commands": ""
+    },
+    {
+     "no": 10,
+     "text": "殺死後，push 先，run 7w 2n，看到 青眼怒暴中 天虛道人(Sky-helt taoist) ※9-10為第二個卡路點，中間過太慢會卡住 (注意這裡如果被卡住就出不去了，除非有人救你) ps.另一種方式是等大概 30分-1小時 都不要去 7w 那格，等系統節省資源還原後(路會從e變s)，就可以回到前面重跑了",
+     "commands": ""
+    },
+    {
+     "no": 11,
+     "text": "殺死後，push 赫，run s w n 2w，遇到 全身皮膚泛青中 范一飛(Fa i fen)",
+     "commands": ""
+    },
+    {
+     "no": 12,
+     "text": "殺死後，push 香，run e n 3w 3s e n e，看到 考驗官 木島主(Mo ladder) 攻略提示：從木島主開始 run w s w 3n 這裡沒僕人，可以在這邊直接等石破天突然出現 等完兩次就照反方向 run 3s e n e 回去打敗木島主吧 [最後流程]",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "如果出現 真乖...但是你還沒陪我貴賓玩躲貓貓...所以你打贏我也沒用喔！ 表示沒遇過兩次石破天",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "(注意一攻擊他就會招一堆狗) 殺死木島主，就會昏倒並傳送到 俠客島 龍島主(Lon ladder) 攻略提示：打木島主有血刀星梭就沒什麼好怕的，如果沒有，放 perform 時要記得對準木島主放 還有要注意他的 perform 跟氣反擊，好像是破蓮訣還是風行四斬吧...總之會打精",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "問龍島主： ask ladder about 臘八粥 ask ladder about 誠意 worship ladder，就結束了(自動永久加內力100)，傳回 waiter (臘八粥變成玩具吃了只會昏倒沒加東西) (worship 時如果過程有偷吃步，會出現 真乖...但是你是偷渡客...所以我不能給你東西喔！ 一樣傳回 waiter 但解失敗) ps.解完後在沒 quit 前還可以靠人背上俠客島 .因為船夫才會判斷有沒有解完臘八粥，杜濫只查你是不是通過船夫進來的",
+     "commands": ""
+    }
+   ],
+   "text": "qu4-4俠客島-臘八粥：\n來源：不可考 (ZAP網站)\n實測：bigboss\n整理：normal\n進俠客島前流程：\n1.因為要打的mob都是100w、150w，因此建議 150w 以上解\nps.建議帶 治內傷的pill 跟 普洱茶(免疫毒15min)\n2.exp到 150萬 且未解過者 (以前90萬，有改過)，先到非安全區 (不能發呆、昏倒)\nrb(mob重置) 會出現 俠客島傳來一聲聲煙火，恭賀XXX很榮幸接受善惡使者測驗！\n每次 rb 抓一位，打贏後直到 quit 前都不會再遇到第二次善惡使者\n依序 打張三(chang san)、李四(Lee sui)、打完會給 善惡令(sign)\nps.注意張三李四出來時同一格的 mob 會全部一起打玩家 (不能 kill 除外，龍、狗會消失)\n3.到 waiter，run e 5n 2o 2se w t e s e s e s e 的渡口，看到 阿繡(A Shiou)\nask shiou 口信，講一陣子話後要 nod shiou\n講完後等 船夫(fisherman) 來之後給 sign 上船進入俠客島\n4.船到了之後 out，ne (這裡可以設點)，再來 e，enter hole之後正式開始解謎\n俠客島內流程：\n[注意事項]\n1.裡面將俠客行的詩句分成很多機關門，每個都有守門人，打完才能 push 開門，而且門一定時間會自動關閉\n2.主要目的是在最後看到 木島主(Mo ladder) 前需要先看到兩次 石破天(Shr Po-Tian)\n3.第二次看到會有 石破天握住你的手說道：唉...我怎麼躲你都能找到，我不玩了...XXX去找島主吧。\n4.找石破天分成兩種方式，地毯式搜索或是佛系式搜索\n5.地毯式搜索：就是每 push 一個機關就到處逛殺光全部 mob 自己找，比較省時間\n但需注意有兩個機關路是連續的，如果花時間在裡面找人就過不去了 (下面會提到)\n6.佛系式搜索就是找個位置發呆，因為石破天每15分會自己換位置，等他自己來找你\n優點是簡單，遇完兩次就可以略過其他 mob 只打守門而且不容易被卡，缺點就是臉黑可能會等很久\nps.石破天大約有 20 格左右的出現位置隨機轉移，自己去算佛系式的機率\n[推機關流程]\n1.接上面 enter hole 後，run w nw 2ne，看到 正在沉思中 愚茶道長(U-tsa taoist)\n2.殺死後，push 鞍，run 2sw nw，看到 正在沉思中 白自在(White dz dai)\n3.殺死後，push 鉤，run 2se e 2n e se s se w，看到 正在演練中 丁不四(Din-bu sui)\n※2-3為第一個卡路點，中間過太慢會卡住 (但是這裡可以走回起點所以還好)\n4.殺死後，push 行，run e nw 2n ne e se w，看到 正在悲傷中 溫仁厚(Wan-lan ho)\n5.殺死後，push 藏，run e nw w sw 2s 2se 2n e 2s，看到 雪山派前掌門人 威德(Wan der)\n6.殺死後，push 膝，run 3n e，看到 正在悔恨中 解文豹(Dzai-wun bau)\n7.殺死後，push 觴，run w 3s e s 5w e，看到 正在發洩中 西門觀止(Simangundz)\n8.殺死後，push 五，run 3e，看到 正在沉悶中 黑衣人(Blacker)\n9.殺死後，push 熱，run w 2s 2e，看到 正在思女中 梅文馨(Me wan sin)\n10.殺死後，push 先，run 7w 2n，看到 青眼怒暴中 天虛道人(Sky-helt taoist)\n※9-10為第二個卡路點，中間過太慢會卡住 (注意這裡如果被卡住就出不去了，除非有人救你)\nps.另一種方式是等大概 30分-1小時 都不要去 7w 那格，等系統節省資源還原後(路會從e變s)，就可以回到前面重跑了\n11.殺死後，push 赫，run s w n 2w，遇到 全身皮膚泛青中 范一飛(Fa i fen)\n12.殺死後，push 香，run e n 3w 3s e n e，看到 考驗官 木島主(Mo ladder)\n攻略提示：從木島主開始 run w s w 3n 這裡沒僕人，可以在這邊直接等石破天突然出現\n等完兩次就照反方向 run 3s e n e 回去打敗木島主吧\n[最後流程]\n1.如果出現 真乖...但是你還沒陪我貴賓玩躲貓貓...所以你打贏我也沒用喔！ 表示沒遇過兩次石破天\n2.(注意一攻擊他就會招一堆狗) 殺死木島主，就會昏倒並傳送到 俠客島 龍島主(Lon ladder)\n攻略提示：打木島主有血刀星梭就沒什麼好怕的，如果沒有，放 perform 時要記得對準木島主放\n還有要注意他的 perform 跟氣反擊，好像是破蓮訣還是風行四斬吧...總之會打精\n3.問龍島主：\nask ladder about 臘八粥\nask ladder about 誠意\nworship ladder，就結束了(自動永久加內力100)，傳回 waiter (臘八粥變成玩具吃了只會昏倒沒加東西)\n(worship 時如果過程有偷吃步，會出現 真乖...但是你是偷渡客...所以我不能給你東西喔！ 一樣傳回 waiter 但解失敗)\nps.解完後在沒 quit 前還可以靠人背上俠客島\n.因為船夫才會判斷有沒有解完臘八粥，杜濫只查你是不是通過船夫進來的"
+  },
+  "qu4-5.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "紅寶石(天魔塔)",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "到fela(ask fela about 故事)..然後他會說一堆.. 記得中間要點頭他才會繼續說(nod fela)",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "到falans(ask falans about 雅米拉)(最好也點頭吧...等他給你koba)",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "精靈粉末(先到女神像bow 神像 在去dig 精靈粉末)",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "神聖卷軸(holyscroll)...打死溫妮撿到key去一樓jfk那格unlock 收集齊之後",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "到長老(ask elf about 雅米拉或聖獸)..把 koba 給他",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "ask elf about 神聖卷軸--->give elf holyscroll",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "到蒂德莉特(問 解除禁制)--->",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "再回長老ask神聖卷軸(again)",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "就去招換師那格give 精靈粉末跟紅寶石就完成了!!",
+     "commands": ""
+    }
+   ],
+   "text": "聖獸斯雷普尼爾：\n2f e n e s 蒂德莉特\n2f e n e n e s n w e nw e(費拉) w(3) n(安全點) n(3) e(木門)(3)\n2f e n e n e s n w e nw e(費拉) w(3) n ne n e nw n(安全點) e(3) n(古井)(3)\n2f e n e n e s n w e nw e(費拉) w(3) n ne n e nw n(安全點) w(精靈粉末)\njump 古井後 法勒斯 e n(3) n(長老)(安全點) w(3) n(女神像)(安全點)\njump 古井後 法勒斯 e n(3) n(長老)(安全點) n(3) n(溫妮wenny)\n從費拉倒著走回2f 入口 費拉 w se w s s w w\n解迷過程\n1.紅寶石(天魔塔)\n2.到fela(ask fela about 故事)..然後他會說一堆..\n記得中間要點頭他才會繼續說(nod fela)\n3.到falans(ask falans about 雅米拉)(最好也點頭吧...等他給你koba)\n4.精靈粉末(先到女神像bow 神像 在去dig 精靈粉末)\n5.神聖卷軸(holyscroll)...打死溫妮撿到key去一樓jfk那格unlock\n收集齊之後\n1.到長老(ask elf about 雅米拉或聖獸)..把 koba 給他\n2.ask elf about 神聖卷軸--->give elf holyscroll\n3.到蒂德莉特(問 解除禁制)--->\n4.再回長老ask神聖卷軸(again)\n5.就去招換師那格give 精靈粉末跟紅寶石就完成了!!"
+  },
+  "qu4-6.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "先問商人->秘寶->再pay",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "許雪亭問->秘寶->商人->張寶宏",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "殷錦問->張寶宏->商人->可惜->得罪教主->內情",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "無根道人問->殷錦->內情",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "鐘志靈問->無根道人->內情->他會說出一句.....無比倫的copy起來",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "張淡月問->地牢->->鐘志靈->把剛剛那行xxxx無比倫貼上去....不要有任何符號, 他會給你右甲左乙上丙下丁",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "去找到煉丹爐kiln touch kiln east 1次 touch kiln west 2次 touch kiln up 3次 touch kiln down 4次 down看到老人",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "問他祕密 他會說一堆然後有一句正三反五前一後六 然後會要你去沙灘找夜明珠",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "打死沙灘上的商人就會撿到了",
+     "commands": ""
+    },
+    {
+     "no": 10,
+     "text": "然後再打五龍使和洪安通撿他們身上的鑰匙",
+     "commands": ""
+    },
+    {
+     "no": 11,
+     "text": "都打死後就可以去地下通道了 地下通道的入口在洪安通那格 正三反五前一後六 touch dragon east 3次 touch dragon west 5次 touch dragon up 1次 touch dragon down 6次 夜明珠的功能是讓你能在地下通道裡行走 拿到後請裝備上, 它是hands的防具.",
+     "commands": ""
+    }
+   ],
+   "text": "神龍教秘寶：\n1.先問商人->秘寶->再pay\n2.許雪亭問->秘寶->商人->張寶宏\n3.殷錦問->張寶宏->商人->可惜->得罪教主->內情\n4.無根道人問->殷錦->內情\n5.鐘志靈問->無根道人->內情->他會說出一句.....無比倫的copy起來\n6.張淡月問->地牢->->鐘志靈->把剛剛那行xxxx無比倫貼上去....不要有任何符號,\n他會給你右甲左乙上丙下丁\n7.去找到煉丹爐kiln\ntouch kiln east 1次\ntouch kiln west 2次\ntouch kiln up 3次\ntouch kiln down 4次\ndown看到老人\n8.問他祕密\n他會說一堆然後有一句正三反五前一後六\n然後會要你去沙灘找夜明珠\n9.打死沙灘上的商人就會撿到了\n10.然後再打五龍使和洪安通撿他們身上的鑰匙\n11.都打死後就可以去地下通道了\n地下通道的入口在洪安通那格\n正三反五前一後六\ntouch dragon east 3次\ntouch dragon west 5次\ntouch dragon up 　1次\ntouch dragon down 6次\n夜明珠的功能是讓你能在地下通道裡行走\n拿到後請裝備上, 它是hands的防具."
+  },
+  "qu5-1.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "武裝體： (1)找寵物博士->問牛林寺->問大力金剛寵->問古拳法家->問鹹蛋超人->問報仇 (2)進寵森找鹹蛋超人(在深處) PS.要跟黑玉一起解的話可以先設點，深處有的時候不太好進 (3)問報仇，然後 accept 就開始戰鬥 PS.鹹蛋超人會完全體前的全部特技(主要是會補血麻煩，其他就吃補品吧) PS.exp大約 500k 以上在挑戰(我是 550k 去打的) PS.聖果液跟薄荷水記得要帶(當時我買 20，用到還剩 10 瓶) PS.因為聖果液跟薄荷水使用都是 spray <petid>..所以最好一種丟地上 要用再撿 (4)打贏之後鹹蛋超人就跑了，然後開始亂逛 + search (5) search 到東西就解完，會有一行洗畫面敘述(我好像走不到兩格 search 就有了)",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "[寵]黑玉斷續膏 (1)找不飾人->問新飾品->問材料->問小雪 (2)到寵森找一個叫小蘿莉的 mob (在森林) (3)找到後->問小雪->nod 得到清單(※１) PS.這個清單 quit 會消失喔 PS.可以先用 pet 設個 點(memo) 再去收集物品 (4)清單一收集完找小蘿莉check，會得到光芒草 拿到金蛇粉就直接以武裝體 pet 指令 tr 飛回森林，雖然小蘿莉換位置了，但是絕對比從唐門走來要輕鬆 PS.因為有金蛇粉一項物品，所以不能 ride、run 和神通，但是 pet 的 tr 並不受此限制所以 PS.拿到光芒草後需注意時間，三分鐘內草就枯萎了，枯萎的草不能解後面任務 PS.最好在交差之前先跑一趟森林深處設個點 (後續劇情)，不然運氣不好一直進不去森林深處就完蛋了 (5)找寵來樂->問光芒草 他會叫你找他師兄寵來爽，限時三分鐘 PS.寵來樂會說限時兩三分鐘...但其實在拿到草的瞬間就已經開始計時了 (6)找到寵來爽(在深處)->問光芒草->給他光芒草(枯萎就不收了) (7)回去找寵來樂->問藥方->會得到清單(※２) PS.這個清單是可 save 的 (8)清單中有黑玉斷續膏這個藥材，必須找趙敏 (9)到蒙古忽必烈e找趙敏->問黑玉斷續膏->say 是->得到清單(※３) PS.這個清單quit會消失喔 (10)清單三收集完找趙敏 check 得到黑玉斷續膏 (11)清單二收集完找寵來爽，他會叫你去拿 30 樣指定物品，該物品可能是以下三種 [感謝刀魔(blademan)提供]",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "地脈血泉：run e 5n 2o sw nw t e ne t 3w nw 2w ne nu u nu (nw、w、wu) <--括弧的三個地方有機率出",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "仙蓮子：run e 5n 2o e n e t e 11n e n 2e sw e n w (n、run n e) <--括弧的兩個地方有機率出",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "茴香茶：run e 5n 2o sw w t s 4w 3n w t 10n (守城官兵擋路);run 2n u e u ne 2e se s e;jump flight;run e s eu 2ne nw w n e n 3e n ne e n ne e s 3e n;push 花瓶 <--只有一個 (12)看到你要的物品，撿完設點離開，每 15min rb 就來撿吧 PS.好像玩家吃了也有效果，所以有不少人就這樣不解完一直撿那個物品(解完就撿不到了) PS.物品可以 store.. 所以不怕 quit 就不見 (13)拿著30個(多的不用帶著)回去找寵來爽然後把物品給他...就解完了(也有洗畫面)",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "藥品清單(有什麼難拿的趕快找人幫忙吧) 物品 數量 地點 物品清單＜１＞ ※１ 火猿鱗(fire lins) １ 冰火島，金剛火猿 動物毛皮(animal leather) ５ 寵物森林，小動物 麒麟角(kylin horn) １ 路上趴趴走的麒麟 玄鐵石(stone) １ 參照湖底之謎解法 金蛇粉(snakesf) １ 唐門，記得拿了之後不能ride、run和神通 紅寶石(redgem) １ 天魔塔六樓解謎 鳳凰羽毛(phoenix feather) １ 天叢，金鳳凰 金質髮釵(golden hairpin) １ 參照解救貓族解法 物品清單＜２＞ ※２ 雪龍草(snowdragon herb) １ 藥草的一種 黃金草(gold herb) １ 藥草的一種 橘子(orange) １ 峨嵋派，超可愛香澄買 鹿茸(antlers) ５ 沙漠，森林房子中的獵人買 天山雪蓮散(powder) ２ 回族，藥店買 糖果(candy) １ 桃花島，馮氏之墓解謎 黑玉斷續膏(black jade grease) １ 請參照※３ 蟹肉(crab meat) １ 桃花島，大閘蟹 物品清單＜３＞ ※３ 鹿茸(Antlers) ３ 沙漠，森林房子中的獵人買 天山雪蓮(snow lotus) １ 藥草的一種 萬年蔘王(king of ginseng) １ 藥草的一種 黃金羽毛(gold feather) １ 梅莊，黃金鳥 白虎骨(white tiger bone) １ 路上趴趴走的白虎 橘子(orange) １ 峨嵋派，超可愛香澄買",
+     "commands": ""
+    }
+   ],
+   "text": "1.武裝體：\n(1)找寵物博士->問牛林寺->問大力金剛寵->問古拳法家->問鹹蛋超人->問報仇\n(2)進寵森找鹹蛋超人(在深處)\nPS.要跟黑玉一起解的話可以先設點，深處有的時候不太好進\n(3)問報仇，然後 accept 就開始戰鬥\nPS.鹹蛋超人會完全體前的全部特技(主要是會補血麻煩，其他就吃補品吧)\nPS.exp大約 500k 以上在挑戰(我是 550k 去打的)\nPS.聖果液跟薄荷水記得要帶(當時我買\n20，用到還剩 10 瓶)\nPS.因為聖果液跟薄荷水使用都是\nspray <petid>..所以最好一種丟地上 要用再撿\n(4)打贏之後鹹蛋超人就跑了，然後開始亂逛 + search\n(5) search 到東西就解完，會有一行洗畫面敘述(我好像走不到兩格 search 就有了)\n2.[寵]黑玉斷續膏\n(1)找不飾人->問新飾品->問材料->問小雪\n(2)到寵森找一個叫小蘿莉的 mob (在森林)\n(3)找到後->問小雪->nod　得到清單(※１)\nPS.這個清單 quit 會消失喔\nPS.可以先用 pet 設個 點(memo) 再去收集物品\n(4)清單一收集完找小蘿莉check，會得到光芒草\n拿到金蛇粉就直接以武裝體 pet 指令 tr 飛回森林，雖然小蘿莉換位置了，但是絕對比從唐門走來要輕鬆\nPS.因為有金蛇粉一項物品，所以不能 ride、run 和神通，但是 pet 的 tr\n並不受此限制所以\nPS.拿到光芒草後需注意時間，三分鐘內草就枯萎了，枯萎的草不能解後面任務\nPS.最好在交差之前先跑一趟森林深處設個點 (後續劇情)，不然運氣不好一直進不去森林深處就完蛋了\n(5)找寵來樂->問光芒草　他會叫你找他師兄寵來爽，限時三分鐘\nPS.寵來樂會說限時兩三分鐘...但其實在拿到草的瞬間就已經開始計時了\n(6)找到寵來爽(在深處)->問光芒草->給他光芒草(枯萎就不收了)\n(7)回去找寵來樂->問藥方->會得到清單(※２)\nPS.這個清單是可 save 的\n(8)清單中有黑玉斷續膏這個藥材，必須找趙敏\n(9)到蒙古忽必烈e找趙敏->問黑玉斷續膏->say 是->得到清單(※３)\nPS.這個清單quit會消失喔\n(10)清單三收集完找趙敏 check 得到黑玉斷續膏\n(11)清單二收集完找寵來爽，他會叫你去拿 30 樣指定物品，該物品可能是以下三種 [感謝刀魔(blademan)提供]\n1.地脈血泉：run\ne 5n 2o sw nw t e ne t 3w nw 2w ne nu u nu (nw、w、wu)   <--括弧的三個地方有機率出\n2.仙蓮子：run\ne 5n 2o e n e t e 11n e n 2e sw e n w (n、run n e)   <--括弧的兩個地方有機率出\n3.茴香茶：run e 5n 2o sw w t s 4w 3n\nw t 10n (守城官兵擋路);run 2n u e u ne\n2e se s e;jump flight;run e s eu 2ne nw w n e n 3e n ne e n ne e s 3e n;push 花瓶\n<--只有一個\n(12)看到你要的物品，撿完設點離開，每 15min rb 就來撿吧\nPS.好像玩家吃了也有效果，所以有不少人就這樣不解完一直撿那個物品(解完就撿不到了)\nPS.物品可以 store.. 所以不怕 quit 就不見\n(13)拿著30個(多的不用帶著)回去找寵來爽然後把物品給他...就解完了(也有洗畫面)\n3.藥品清單(有什麼難拿的趕快找人幫忙吧)\n物品\n數量\n地點\n物品清單＜１＞　※１\n火猿鱗(fire\nlins)\n１\n冰火島，金剛火猿\n動物毛皮(animal\nleather)\n５\n寵物森林，小動物\n麒麟角(kylin\nhorn)\n１\n路上趴趴走的麒麟\n玄鐵石(stone)\n１\n參照湖底之謎解法\n金蛇粉(snakesf)\n１\n唐門，記得拿了之後不能ride、run和神通\n紅寶石(redgem)\n１\n天魔塔六樓解謎\n鳳凰羽毛(phoenix\nfeather)\n１\n天叢，金鳳凰\n金質髮釵(golden\nhairpin)\n１\n參照解救貓族解法\n物品清單＜２＞　※２\n雪龍草(snowdragon\nherb)\n１\n藥草的一種\n黃金草(gold\nherb)\n１\n藥草的一種\n橘子(orange)\n１\n峨嵋派，超可愛香澄買\n鹿茸(antlers)\n５\n沙漠，森林房子中的獵人買\n天山雪蓮散(powder)\n２\n回族，藥店買\n糖果(candy)\n１\n桃花島，馮氏之墓解謎\n黑玉斷續膏(black\njade grease)\n１\n請參照※３\n蟹肉(crab\nmeat)\n１\n桃花島，大閘蟹\n物品清單＜３＞　※３\n鹿茸(Antlers)\n３\n沙漠，森林房子中的獵人買\n天山雪蓮(snow\nlotus)\n１\n藥草的一種\n萬年蔘王(king\nof ginseng)\n１\n藥草的一種\n黃金羽毛(gold\nfeather)\n１\n梅莊，黃金鳥\n白虎骨(white\ntiger bone)\n１\n路上趴趴走的白虎\n橘子(orange)\n１\n峨嵋派，超可愛香澄買"
+  },
+  "qu6-1.htm": {
+   "steps": [],
+   "text": "拜師相關：\nMaster Name\n拜師的條件\n沒有任何條件就可拜師\n唐璦\n可直接拜師\n馬鈺\n可直接拜師\n嚴嫫欣\n可直接拜師\n滅絕師太\n可直接拜師\n白萬劍\n可直接拜師\n狄雲\n可直接拜師\n王重陽\n所在位置內力不到1000會被推出去\n有性別和天賦等限制者\n楊過\n女性不能直接拜師\n宋遠橋\n女性不能直接拜師\n張三豐\n女性不能直接拜師，所在位置須持武當信物進入\n一燈大師\n女性不能直接拜師，男性必須先剃度出家才能拜師\n玄智和尚\n女性不能直接拜師，男性必須先剃度出家才能拜師\n唐無敵\n女性不能直接拜師，所在位置必須通過一個機關\n小龍女\n男性不能直接拜師\n白鳳凰\n男性不能直接拜師，女性直接拜師容貌需在30以上\n史小翠\n必須解完臘八粥才能拜師 (臘八粥解法請參考謎列表道具類臘八粥)\n必須給予某件物品才能拜師\n喬峰\n需給帶頭大哥信函才能拜師\n拜月\n需給拜月訣才能拜師\n黃藥師\n需給黃蓉的家書才能拜師\n東方不敗\n需給破碎卷宗才能拜師\n黃蓉\n需要通過一個謎才能拜師\n李書文\n需要通過一個謎才能拜師\n令狐沖\n需要通過一個謎才能拜師\n洪七公\ncooking技能50以上，給叫化雞或萬巒豬腳後拜師\n天山童姥\n需要通過三處天險，並將受傷的竹雞、羚羊、梅花鹿其中之一交給她\n有殺氣限制才能拜師\n胡青牛\n殺氣100以下\n歐冶子\n殺氣100以下\n先接受實力測試才能拜師\n歐陽峰\n必須接下10招不昏\n冷無雁\n必須接下10招不昏"
+  },
+  "qu6-5.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "run e 5n 2o 2ne t 3e 2n nu t;#12 s;climb rope;#7 n;run 2n w s w",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "[貓族第三代弟子 元春(cat maid)]，ask maid about 解救;nod maid",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "run e n ne e n w nw，[貓族第三代弟子 迎春(cat maid)]",
+     "commands": "run e n ne e n w nw"
+    },
+    {
+     "no": 4,
+     "text": "ask maid about 魔王",
+     "commands": "ask maid about 魔王"
+    },
+    {
+     "no": 5,
+     "text": "run e s 2e 3s e[貓族第三代弟子 探春(cat maid)]",
+     "commands": "run e s 2e 3s e"
+    },
+    {
+     "no": 6,
+     "text": "give hairpin to maid;nod maid",
+     "commands": "give hairpin to maid;nod maid"
+    },
+    {
+     "no": 7,
+     "text": "run w 3n w n;insert stick;n;unlock stick",
+     "commands": "run w 3n w n;insert stick;n;unlock stick"
+    },
+    {
+     "no": 8,
+     "text": "得到羊皮卷(parchment)",
+     "commands": ""
+    },
+    {
+     "no": 9,
+     "text": "run su s e 3s e[貓族第三代弟子 探春(cat maid)]",
+     "commands": "run su s e 3s e"
+    },
+    {
+     "no": 10,
+     "text": "ask cat about 羊皮卷;run w 4n e[貓族第三代弟子 惜春(cat maid)]",
+     "commands": "ask cat about 羊皮卷;run w 4n e"
+    },
+    {
+     "no": 11,
+     "text": "ask cat about 魔人;run w 4s e[貓族第三代弟子 探春(cat maid)]",
+     "commands": "ask cat about 魔人;run w 4s e"
+    },
+    {
+     "no": 12,
+     "text": "ask cat about 羊皮卷",
+     "commands": "ask cat about 羊皮卷"
+    },
+    {
+     "no": 13,
+     "text": "得到鐵質短棒(iron stick)和羊皮卷(parchment) 註：目前只有金質髮釵(hairpin)、鐵質短棒(iron stick)和羊皮卷(parchment)有用途 而且聽說再往後解會被關在房間裡...所以只解到這",
+     "commands": ""
+    }
+   ],
+   "text": "解救貓族？：\n1.run e 5n 2o 2ne t 3e 2n nu t;#12 s;climb rope;#7 n;run 2n w s w\n2.[貓族第三代弟子 元春(cat maid)]，ask maid about 解救;nod maid\n3.run e n ne e n w nw，[貓族第三代弟子 迎春(cat maid)]\n4.ask maid about 魔王\n5.run e s 2e 3s e[貓族第三代弟子 探春(cat maid)]\n6.give hairpin to maid;nod maid\n7.run w 3n w n;insert stick;n;unlock stick\n8.得到羊皮卷(parchment)\n9.run su s e 3s e[貓族第三代弟子 探春(cat maid)]\n10.ask cat about 羊皮卷;run w 4n e[貓族第三代弟子 惜春(cat maid)]\n11.ask cat about 魔人;run w 4s e[貓族第三代弟子 探春(cat maid)]\n12.ask cat about 羊皮卷\n13.得到鐵質短棒(iron stick)和羊皮卷(parchment)\n註：目前只有金質髮釵(hairpin)、鐵質短棒(iron\nstick)和羊皮卷(parchment)有用途\n而且聽說再往後解會被關在房間裡...所以只解到這"
+  },
+  "qu6-3.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "洪凌波開始：run nw n;search key;get key",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "洪凌波：e;open door;e 入古墓：",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "run e 5n o 2s e s t 3sw 2su wu s 2w",
+     "commands": "run e 5n o 2s e s t 3sw 2su wu s 2w"
+    },
+    {
+     "no": 2,
+     "text": "ask taoist about 古墓",
+     "commands": "ask taoist about 古墓"
+    },
+    {
+     "no": 3,
+     "text": "ask taoist about 女俠",
+     "commands": "ask taoist about 女俠"
+    },
+    {
+     "no": 4,
+     "text": "ask taoist about 林朝英 過程可省略，指令為worship tomb 入明教：",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "run e 5n 2o sw t n nu 5w t w nw w n;touch 石壁;run s 2w s sw se s w sw su wu 2n ne 2u",
+     "commands": "run e 5n 2o sw t n nu 5w t w nw w n;touch 石壁;run s 2w s sw se s w sw su wu 2n ne 2u"
+    },
+    {
+     "no": 2,
+     "text": "ask bagger about 鐵燄令",
+     "commands": "ask bagger about 鐵燄令"
+    },
+    {
+     "no": 3,
+     "text": "run w u ne;give fire to jan",
+     "commands": "run w u ne;give fire to jan"
+    },
+    {
+     "no": 4,
+     "text": "wield fire;jump hole;push stone",
+     "commands": "wield fire;jump hole;push stone"
+    }
+   ],
+   "text": "石牢＆入古墓＆入明教\n石牢部份：過程省略，直接告知位置\n1.洪凌波開始：run\nnw n;search key;get key\n2.洪凌波：e;open door;e\n入古墓：\n1.run e 5n o 2s e s t 3sw 2su wu s 2w\n2.ask taoist about 古墓\n3.ask taoist about 女俠\n4.ask taoist about 林朝英\n過程可省略，指令為worship tomb\n入明教：\n1.run\ne 5n 2o sw t n nu 5w t w nw w n;touch 石壁;run s 2w s sw se s w sw su wu 2n ne 2u\n2.ask bagger about 鐵燄令\n3.run w u ne;give fire to jan\n4.wield fire;jump hole;push stone"
+  },
+  "qu6-6.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "到[村長]，ask mayor about 軍隊;ask mayor about 源義經",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "到[源義經]，ask jing about 忍窟;ask jing about 忍者;ask jing about 弁慶",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "到[武藏坊弁慶]，ask bian about 忍窟;ask bian about 忍者;ask bian about 任務",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "到[源義經]，ask jing about 任務",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "然後去忍窟把三層的擋路人都打死 分別拿到[千鳥香爐]，[半藏左臂]，[旅行日記] PS.1f 往2f push 櫃子，2f 往3f touch 手把，3f 出去 move 白色 PS.每一層的第一個位置都可以設點ride，但是不能用神通飛進來",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "三樣都拿到後ride 2全部拿給[源義經]，然後他會去叫你找[村長]",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "到[村長]，ask mayor about 任務，問完後到[斷魂崖]，jump 懸崖;search，會看到[頹廢老人(Old man)]",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "ask man about 忍窟;ask man about 忍者;ask man about 煩惱;ask man about 桑田",
+     "commands": "ask man about 忍窟;ask man about 忍者;ask man about 煩惱;ask man about 桑田"
+    },
+    {
+     "no": 9,
+     "text": "w;climb 岩石，參考武器鐵塊拿法找到[魑魅牙修羅 桑田(leader)]打死他得到桑田令",
+     "commands": "w;climb 岩石"
+    },
+    {
+     "no": 10,
+     "text": "拿桑田令給老人，他會給你個茶葉，出來到[榮西禪師(West monk)]，ask monk about 茶具;ask monk about 師兄",
+     "commands": ""
+    },
+    {
+     "no": 11,
+     "text": "回waiter買波蘿聖水，run e 5n 2o sw w t s 2w su s t 5n w看到[榮東禪師(East monk)]",
+     "commands": ""
+    },
+    {
+     "no": 12,
+     "text": "ask monk about 茶具;ask monk about 任務，把聖水給他後他會給你茶具，再回到[榮西禪師]把茶葉跟茶具都給他會給你一顆 忘憂丹(chako)",
+     "commands": "ask monk about 茶具;ask monk about 任務"
+    },
+    {
+     "no": 13,
+     "text": "到[斷魂崖]把忘憂丹給[頹廢老人]，然後看廢話後ask man about 體質 解完 PS1：解完之後內力、靈力、法力都可以多蹲 50 (需要自己蹲) PS2：此任務增加的 50 不受一般公式影響 PS3：東瀛只有少數地方可以設點和ride(藥店，忍窟123樓第一格，村裡守門人附近)",
+     "commands": ""
+    }
+   ],
+   "text": "信件標題\n信件標題﹕東瀛簡易版\n寄 信 人﹕阿飛(wings)/轉寄自阿飛/轉寄自一步天履/轉寄電閃修改為目前版本\n準備一匹烏黑駒 然後到[御生堂(下船處run\n4w n ne)]設setplace 2起始點\n<1> run sw s 2w s 3w n w          [村長(mayor)]\n<2> run sw s 2w s w 6n 3w        [鐮倉戰神\n源義經(yuan yi jing)]\n<3> run sw s 2w s w 7n 2e ne    [弁慶七寶\n武藏坊弁慶(Bian Ching)]\n<4> run sw s w s\n[榮西禪師(West monk)]\n<5> run sw s 2w s w 3n 2e         [斷魂崖]\n1.到[村長]，ask mayor about 軍隊;ask mayor about 源義經\n2.到[源義經]，ask jing about 忍窟;ask jing about 忍者;ask\njing about 弁慶\n3.到[武藏坊弁慶]，ask bian about 忍窟;ask bian about\n忍者;ask bian about 任務\n4.到[源義經]，ask jing about 任務\n5.然後去忍窟把三層的擋路人都打死 分別拿到[千鳥香爐]，[半藏左臂]，[旅行日記]\nPS.1f 往2f push 櫃子，2f 往3f touch 手把，3f 出去 move 白色\nPS.每一層的第一個位置都可以設點ride，但是不能用神通飛進來\n6.三樣都拿到後ride 2全部拿給[源義經]，然後他會去叫你找[村長]\n7.到[村長]，ask mayor about 任務，問完後到[斷魂崖]，jump\n懸崖;search，會看到[頹廢老人(Old man)]\n8.ask man about 忍窟;ask man about 忍者;ask man about 煩惱;ask man about 桑田\n9.w;climb 岩石，參考武器鐵塊拿法找到[魑魅牙修羅 桑田(leader)]打死他得到桑田令\n10.拿桑田令給老人，他會給你個茶葉，出來到[榮西禪師(West\nmonk)]，ask monk about 茶具;ask monk about 師兄\n11.回waiter買波蘿聖水，run e 5n 2o sw w t s 2w su s t 5n w看到[榮東禪師(East\nmonk)]\n12.ask monk about 茶具;ask monk about 任務，把聖水給他後他會給你茶具，再回到[榮西禪師]把茶葉跟茶具都給他會給你一顆\n忘憂丹(chako)\n13.到[斷魂崖]把忘憂丹給[頹廢老人]，然後看廢話後ask\nman about 體質\n解完\nPS1：解完之後內力、靈力、法力都可以多蹲 50 (需要自己蹲)\nPS2：此任務增加的 50 不受一般公式影響\nPS3：東瀛只有少數地方可以設點和ride(藥店，忍窟123樓第一格，村裡守門人附近)"
+  },
+  "qu6-4.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "ask ming about 幫幫我",
+     "commands": "ask ming about 幫幫我"
+    },
+    {
+     "no": 2,
+     "text": "ask ming about 仙靈島",
+     "commands": "ask ming about 仙靈島"
+    },
+    {
+     "no": 3,
+     "text": "ask ming about 徐福 到仙靈島",
+     "commands": "ask ming about 徐福"
+    },
+    {
+     "no": 1,
+     "text": "撿起兩片槳",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "jump上船然後努力划(oar)到對岸",
+     "commands": "jump"
+    },
+    {
+     "no": 3,
+     "text": "上岸後往東方向走，到森林中砍木頭，起碼要30個 當然愈多愈好",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "然後到東方岸邊，用set wood搭橋，不夠30個木頭就不能搭",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "搭好後往e走，到對岸，enter進入房間內，看到[老公公(super old man)]",
+     "commands": ""
+    },
+    {
+     "no": 1,
+     "text": "ask man about 徐福",
+     "commands": "ask man about 徐福"
+    },
+    {
+     "no": 2,
+     "text": "ask man about 長生不老丹藥",
+     "commands": "ask man about 長生不老丹藥"
+    },
+    {
+     "no": 3,
+     "text": "ask man about 誠意",
+     "commands": "ask man about 誠意"
+    },
+    {
+     "no": 4,
+     "text": "然後他會要五樣東西：唐炒粟子，汪汪仙貝，鐵板烤肉，金莎，拈麵人。",
+     "commands": ""
+    },
+    {
+     "no": 5,
+     "text": "給他之後還會要四樣：10捆木材、玉龍蘇合散、大承氣丸和七色碧靈丹。",
+     "commands": ""
+    },
+    {
+     "no": 6,
+     "text": "都給完後拿到長生不老丹藥，回去交給段正明，得到復活之謎位置",
+     "commands": ""
+    },
+    {
+     "no": 7,
+     "text": "圖大概就是茅山地圖...找圖上的復活地點入口(客棧)，push picture",
+     "commands": ""
+    },
+    {
+     "no": 8,
+     "text": "掉進一間房間內，條件是可以用五種聖獸的物品其中一種讓死亡超過65次的人回到城隍廟 地圖(遊戲給的是黃底..看的眼睛好痛)： 內部房間敘述： 復活小屋 - 這邊是專門會死亡點數超過65次的人而設立的，會來到這邊代表 你準備來解救困在地獄裡頭的朋友，而解救的方法在旁邊的牌子(sign) 有說明。而這邊既然稱為復活小屋，意思就是說你可以拿聖獸的寶物 來幫助你的朋友交換復活點數。 look sign giveob <聖獸寶物> to <人名> - 任意拿一種聖獸的寶物來交換生命點數。 沒解過的push畫只會被賞一巴掌..以上",
+     "commands": ""
+    }
+   ],
+   "text": "復活之謎\n找去大理找段正明\n1.ask ming about 幫幫我\n2.ask ming about 仙靈島\n3.ask ming about 徐福\n到仙靈島\n1.撿起兩片槳\n2.jump上船然後努力划(oar)到對岸\n3.上岸後往東方向走，到森林中砍木頭，起碼要30個 當然愈多愈好\n4.然後到東方岸邊，用set wood搭橋，不夠30個木頭就不能搭\n5.搭好後往e走，到對岸，enter進入房間內，看到[老公公(super old man)]\n1.ask man about 徐福\n2.ask man about 長生不老丹藥\n3.ask man about 誠意\n4.然後他會要五樣東西：唐炒粟子，汪汪仙貝，鐵板烤肉，金莎，拈麵人。\n5.給他之後還會要四樣：10捆木材、玉龍蘇合散、大承氣丸和七色碧靈丹。\n6.都給完後拿到長生不老丹藥，回去交給段正明，得到復活之謎位置\n7.圖大概就是茅山地圖...找圖上的復活地點入口(客棧)，push picture\n8.掉進一間房間內，條件是可以用五種聖獸的物品其中一種讓死亡超過65次的人回到城隍廟\n地圖(遊戲給的是黃底..看的眼睛好痛)：\n內部房間敘述：\n復活小屋 -\n這邊是專門會死亡點數超過65次的人而設立的，會來到這邊代表\n你準備來解救困在地獄裡頭的朋友，而解救的方法在旁邊的牌子(sign)\n有說明。而這邊既然稱為復活小屋，意思就是說你可以拿聖獸的寶物\n來幫助你的朋友交換復活點數。\nlook sign\ngiveob <聖獸寶物> to <人名> - 任意拿一種聖獸的寶物來交換生命點數。\n沒解過的push畫只會被賞一巴掌..以上"
+  },
+  "qu6-2.htm": {
+   "steps": [
+    {
+     "no": 1,
+     "text": "run e 5n 2o sw nw t e ne se ne se 2n e t 4s e 3s 3w nw 看到[金甲獅王 史叔剛(shi shu gang)]-->設點setplace 2 ask gang about 內傷 ask gang about 九尾靈狐 等他廢話之後run se 2e 2s 遇到[九尾靈狐] auto k 打到牠跑掉就ok 回到waiter",
+     "commands": ""
+    },
+    {
+     "no": 2,
+     "text": "run 2se t 7e se 2s e 等[啞僕(YaBa man)] pay上船到桃花島 run ne n-->設點setplace 3 run s 2sw w到[九宮花海青龍界碑] w n進去之後就是一個迷宮，目的是找[九宮花海朱雀界碑](裡面有mob 萬蠱毒蛛，樹精) s之後到第二段迷宮，目的是找[幽蘭小境](裡面有mob 萬蠱毒蛛，山精) <1>se那格可以climb 桃樹暫時躲避四周的萬蠱毒蛛 <2>se n;search 糖果;get candy可以撿到糖果一包 <3>run 2se到[九宮花海白虎界碑] s之後到第三段迷宮，目的是找[九宮花海玄武界碑](裡面有萬蠱毒蛛，桃花精) run n ne n 看到[神算子 瑛姑(Ying ku)] ask ku about 九尾靈狐 然後2n拜黃藥師後s可以[squeeze 通道]出去，run 2e到setplace 2的位置 回到waiter PS.去之前要先找黃蓉ask master about 家書 到黃藥師後give homebook to master就可以拜了",
+     "commands": ""
+    },
+    {
+     "no": 3,
+     "text": "run e 5n o s e 2s t 3sw 2su wu s 2w;worship tomb;run e 4s;enter crack;run se e 看到[古墓派第四代弟子「神鵰俠」楊過(Master Yang)] ask yang about 四味靈藥 得到一份有四個敘述的紙，到相對位置後search能拿到靈藥之一 樟腦(Camphor)、洋金花(Flower)、雪球果(Snowball fruit)、當歸(Chinese herb) ride 3;run 2w;squeeze 通道;s 看到[神算子 瑛姑(Ying ku)] ask ku about 救命丹 n;squeeze 通道;run 2e 回到waiter",
+     "commands": ""
+    },
+    {
+     "no": 4,
+     "text": "run e 5n 2o sw t n nu 5w t w nw w n;touch 石壁;run s 2w s sw se s w sw su wu 2n ne u e 看到[藥宗第五代醫神「蝶谷醫仙」胡青牛(master hu)] ask hu about 救命丹 拿到後ride 2將藥給史叔剛[give pill to gang] 他就會給你一張玉龍蘇合散的藥方，製法為：三葉雪桑果+雪龍草 PS.沒解過是製不出來的",
+     "commands": ""
+    }
+   ],
+   "text": "玉龍蘇合散流程：\n1.run e 5n 2o sw nw t e ne se ne se 2n e t 4s e 3s 3w nw\n看到[金甲獅王\n史叔剛(shi shu gang)]-->設點setplace 2\nask gang about 內傷\nask gang about 九尾靈狐\n等他廢話之後run se 2e 2s 遇到[九尾靈狐] auto k\n打到牠跑掉就ok 回到waiter\n2.run 2se t 7e se 2s e 等[啞僕(YaBa man)]\npay上船到桃花島\nrun ne n-->設點setplace 3\nrun s 2sw w到[九宮花海青龍界碑]\nw n進去之後就是一個迷宮，目的是找[九宮花海朱雀界碑](裡面有mob\n萬蠱毒蛛，樹精)\ns之後到第二段迷宮，目的是找[幽蘭小境](裡面有mob\n萬蠱毒蛛，山精)\n<1>se那格可以climb 桃樹暫時躲避四周的萬蠱毒蛛\n<2>se n;search 糖果;get candy可以撿到糖果一包\n<3>run 2se到[九宮花海白虎界碑]\ns之後到第三段迷宮，目的是找[九宮花海玄武界碑](裡面有萬蠱毒蛛，桃花精)\nrun n ne n\n看到[神算子 瑛姑(Ying ku)]\nask ku about 九尾靈狐\n然後2n拜黃藥師後s可以[squeeze 通道]出去，run 2e到setplace 2的位置\n回到waiter\nPS.去之前要先找黃蓉ask master about 家書\n到黃藥師後give homebook to master就可以拜了\n3.run e 5n o s e 2s t 3sw 2su wu s 2w;worship tomb;run e 4s;enter crack;run se e\n看到[古墓派第四代弟子「神鵰俠」楊過(Master\nYang)]\nask yang about 四味靈藥\n得到一份有四個敘述的紙，到相對位置後search能拿到靈藥之一\n樟腦(Camphor)、洋金花(Flower)、雪球果(Snowball fruit)、當歸(Chinese herb)\nride 3;run 2w;squeeze 通道;s\n看到[神算子 瑛姑(Ying ku)]\nask ku about 救命丹\nn;squeeze 通道;run 2e 回到waiter\n4.run e 5n 2o sw t n nu 5w t w nw w n;touch 石壁;run s 2w s sw se s w sw su wu 2n\nne u e\n看到[藥宗第五代醫神「蝶谷醫仙」胡青牛(master hu)]\nask hu about 救命丹\n拿到後ride 2將藥給史叔剛[give pill to gang]\n他就會給你一張玉龍蘇合散的藥方，製法為：三葉雪桑果+雪龍草\nPS.沒解過是製不出來的"
+  }
+ }
 }

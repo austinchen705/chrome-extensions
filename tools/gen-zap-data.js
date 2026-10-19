@@ -1,29 +1,49 @@
-// 從 zap 攻略站的 MOB 表與 catworld 說明站的新手怪列表，加上 tools/zap-overrides.json，
+// 從 zap 攻略站的 MOB 表、無名物品表、解謎總表與步驟頁，以及 catworld 說明站的新手怪列表，加上 tools/zap-overrides.json，
 // 產生 catworld-auto-command/zap-data.json。
 // 用法：node tools/gen-zap-data.js            （連網抓來源）
-//       node tools/gen-zap-data.js --from-dir <資料夾>   （讀 <資料夾>/ot1.htm、newstart.3.html、ub.htm）
+//       node tools/gen-zap-data.js --from-dir <資料夾>   （讀 <資料夾>/ot1.htm、newstart.3.html、ub.htm、qu1.htm、list.html 與選單裡的每個 qu*.htm）
 const fs = require('fs');
 const path = require('path');
-const { buildData, SOURCES, UB_URL } = require('./zap-parse');
+const { buildData, SOURCES, UB_URL, parseRiddleMenu } = require('./zap-parse');
+
+const SITE = 'https://zap.muds.me/';
+const CONCURRENCY = 6;
 
 const outFile = path.join(__dirname, '..', 'catworld-auto-command', 'zap-data.json');
 const overridesFile = path.join(__dirname, 'zap-overrides.json');
 
+const get = async url => {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url} 回應 ${response.status}`);
+  return response.text();
+};
+
+// 選單裡每個步驟頁都要抓到；任何一個抓不到就整個失敗（不寫出缺頁的資料）
+async function loadRiddles(read) {
+  const indexHtml = await read('qu1.htm');
+  const menuHtml = await read('list.html');
+  const files = [...new Set(parseRiddleMenu(menuHtml).map(entry => entry.file))];
+  const pageHtml = {};
+  for (let i = 0; i < files.length; i += CONCURRENCY) {
+    const batch = files.slice(i, i + CONCURRENCY);
+    const htmls = await Promise.all(batch.map(read));
+    batch.forEach((file, k) => { pageHtml[file] = htmls[k]; });
+  }
+  return { indexHtml, menuHtml, pageHtml };
+}
+
 async function loadSources(dir) {
   if (dir) {
+    const read = async name => fs.readFileSync(path.join(dir, name), 'utf8');
     return {
-      zapHtml: fs.readFileSync(path.join(dir, 'ot1.htm'), 'utf8'),
-      newstartHtml: fs.readFileSync(path.join(dir, 'newstart.3.html'), 'utf8'),
-      ubHtml: fs.readFileSync(path.join(dir, 'ub.htm'), 'utf8'),
+      zapHtml: await read('ot1.htm'),
+      newstartHtml: await read('newstart.3.html'),
+      ubHtml: await read('ub.htm'),
+      riddleHtml: await loadRiddles(read),
     };
   }
-  const get = async url => {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`${url} 回應 ${response.status}`);
-    return response.text();
-  };
   const [zapHtml, newstartHtml, ubHtml] = await Promise.all([...SOURCES, UB_URL].map(get));
-  return { zapHtml, newstartHtml, ubHtml };
+  return { zapHtml, newstartHtml, ubHtml, riddleHtml: await loadRiddles(name => get(`${SITE}${name}`)) };
 }
 
 async function main() {

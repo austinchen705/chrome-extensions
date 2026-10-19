@@ -175,8 +175,76 @@ function parseRiddlePage(html) {
   return { steps, text: lines.join('\n') };
 }
 
+// 總表（qu1.htm）沒有連結，名稱也和選單（list.html）不完全一致；對應順序：名稱相同 → 別名表 → 正規化後相同或互相包含
+const RIDDLE_ALIASES = {
+  鞭子製作: '鞭子制作',
+  唐伯虎的困擾: '新手裝備',
+  靈鷲宮的委託: '冰翼無痕',
+  白駝山莊的毒物: '心瓣項鍊',
+  瑛姑的困擾: '天罡鬥服',
+  燕子鄔: '水漾之繞',
+};
+const riddleNorm = text => String(text ?? '').replace(/[\s[\]（）()-]|習得|之謎|的|秘寶|寶/g, '');
+
+function parseRiddleIndex(html) {
+  const rows = [];
+  let category = '';
+  for (const [, rowHtml] of html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
+    const cells = Array.from(rowHtml.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g), match => cellText(match[1]));
+    const filled = cells.filter(Boolean);
+    if (filled.length === 1 && /類$/.test(filled[0])) category = filled[0];
+    else if (cells.length >= 5 && cells[0] && cells[0] !== '名稱') {
+      const [name, condition, hint, difficulty, reward] = cells;
+      rows.push({ category, name, condition, hint, difficulty, reward });
+    }
+  }
+  return rows;
+}
+
+function parseRiddleMenu(html) {
+  const entries = [];
+  let category = '';
+  for (const match of html.matchAll(/<span class="t1">([^<]+)<\/span>|href="(qu[\d-]+\.htm)"[^>]*>([^<]+)/g)) {
+    if (match[1]) category = match[1].trim();
+    else if (match[2] !== 'qu1.htm') entries.push({ category, file: match[2], name: match[3].trim() });
+  }
+  return entries;
+}
+
+function matchMenu(name, menu) {
+  const alias = RIDDLE_ALIASES[name];
+  return menu.find(entry => entry.name === name)
+    || (alias && menu.find(entry => entry.name === alias))
+    || menu.find(entry => riddleNorm(entry.name) === riddleNorm(name))
+    || menu.find(entry => riddleNorm(entry.name).includes(riddleNorm(name)) || riddleNorm(name).includes(riddleNorm(entry.name)))
+    || null;
+}
+
+function buildRiddles({ indexHtml, menuHtml, pageHtml }) {
+  const menu = parseRiddleMenu(menuHtml);
+  const report = [];
+  const used = new Set();
+  const riddles = parseRiddleIndex(indexHtml).map(entry => {
+    const found = matchMenu(entry.name, menu);
+    if (found) used.add(found);
+    else report.push(`總表有、選單沒有：${entry.name}`);
+    return { id: `${entry.category}/${entry.name}`, ...entry, page: found ? found.file : null, shared: [] };
+  });
+  riddles.forEach(riddle => {
+    if (riddle.page) riddle.shared = riddles.filter(other => other !== riddle && other.page === riddle.page).map(other => other.name);
+  });
+  menu.filter(entry => !used.has(entry)).forEach(entry => report.push(`選單有、沒被使用：${entry.name}（${entry.file}）`));
+  const pages = {};
+  for (const file of new Set(riddles.map(riddle => riddle.page).filter(Boolean))) {
+    if (pageHtml[file] === undefined) report.push(`沒有 HTML：${file}`);
+    else pages[file] = parseRiddlePage(pageHtml[file]);
+  }
+  return { riddles, pages, report };
+}
+
 const SOURCES = ['https://zap.muds.me/ot1.htm', 'https://catworld.muds.tw/help/newstart.3'];
 const UB_URL = 'https://zap.muds.me/ub.htm';
+const RIDDLE_URL = 'https://zap.muds.me/qu1.htm';
 
 // 無名物品表 ub.htm：三張表，LV 在帶 rowspan 的儲存格（往下列沿用）。
 // 第 1 張：LV 之後每格都是純名稱（販賣品，無功能）；第 2 張：名稱、功能（鑄模與材料）；第 3 張：名稱、武器效果、防具效果（寶石）
@@ -238,7 +306,7 @@ function parseUnknownObjectHtml(html) {
 }
 
 // 來源改版時解析結果會突然變少，這時寧可失敗也不要產生一份殘缺的資料
-function buildData({ zapHtml, newstartHtml, overrides, ubHtml }, { minZap = 100, minNewstart = 20, minItems = 30 } = {}) {
+function buildData({ zapHtml, newstartHtml, overrides, ubHtml, riddleHtml }, { minZap = 100, minNewstart = 20, minItems = 30, minRiddles = 40 } = {}) {
   const zap = parseZapMobHtml(zapHtml);
   const newstart = parseNewstartHtml(newstartHtml);
   if (zap.length < minZap || newstart.length < minNewstart) {
@@ -249,6 +317,10 @@ function buildData({ zapHtml, newstartHtml, overrides, ubHtml }, { minZap = 100,
     throw new Error(`來源解析異常：無名物品表 ${items.length} 筆（至少 ${minItems}）`);
   }
   const merged = mergeSources(zap, newstart);
+  const riddleData = riddleHtml === undefined ? null : buildRiddles(riddleHtml);
+  if (riddleData && riddleData.riddles.length < minRiddles) {
+    throw new Error(`來源解析異常：解謎總表 ${riddleData.riddles.length} 個（至少 ${minRiddles}）`);
+  }
   const mobOverrides = overrides.filter(override => !('item' in override));
   const itemOverrides = overrides.filter(override => 'item' in override);
   const { mobs, problems: mobProblems, notes } = applyOverrides(merged.mobs, mobOverrides);
@@ -260,12 +332,22 @@ function buildData({ zapHtml, newstartHtml, overrides, ubHtml }, { minZap = 100,
     ...merged.conflicts.map(line => `數值差異：${line}`),
     ...unknown.map(mob => `強度不明：${mob.name}（${mob.location}）`),
     ...notes,
+    ...(riddleData ? [`謎 ${riddleData.riddles.length} 個、步驟頁 ${Object.keys(riddleData.pages).length} 頁`, ...riddleData.report] : []),
   ];
-  const sources = ubHtml === undefined ? SOURCES : [...SOURCES, UB_URL];
-  return { data: { sources, mobs, ...(ubHtml === undefined ? {} : { items: applied.items }) }, report, problems };
+  const sources = [...SOURCES, ...(ubHtml === undefined ? [] : [UB_URL]), ...(riddleData ? [RIDDLE_URL] : [])];
+  return {
+    data: {
+      sources,
+      mobs,
+      ...(ubHtml === undefined ? {} : { items: applied.items }),
+      ...(riddleData ? { riddles: riddleData.riddles, pages: riddleData.pages } : {}),
+    },
+    report,
+    problems,
+  };
 }
 
 module.exports = {
   normalize, parseZapMobHtml, parseNewstartHtml, parseUnknownObjectHtml, applyItemOverrides, mergeSources, applyOverrides, buildData, SOURCES, UB_URL,
-  VERBS, extractCommands, parseRiddlePage,
+  VERBS, extractCommands, parseRiddlePage, parseRiddleIndex, parseRiddleMenu, buildRiddles, RIDDLE_ALIASES,
 };
