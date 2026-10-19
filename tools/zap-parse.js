@@ -85,6 +85,7 @@ function mergeSources(zap, newstart) {
 function applyOverrides(mobs, overrides) {
   const result = mobs.map(mob => ({ ...mob }));
   const problems = [];
+  const notes = [];
   const patch = (mob, override) => {
     if (override.exp !== undefined) mob.exp = override.exp;
     if (override.note !== undefined) mob.note = override.note;
@@ -99,9 +100,13 @@ function applyOverrides(mobs, overrides) {
       return;
     }
     if (matches.length === 1) patch(matches[0], override);
-    else problems.push(`補充檔項目${matches.length ? '有歧義（該名稱有多隻，請加 location）' : '找不到對應的怪'}：${override.name}`);
+    else if (!matches.length) {
+      // 兩個來源都沒有的怪：視為新增，但列在報告裡，打錯字才看得出來
+      result.push(makeMob({ name: override.name, exp: override.exp ?? null, note: override.note ?? '', source: 'override' }));
+      notes.push(`補充檔新增（兩個來源都沒有這隻怪）：${override.name}`);
+    } else problems.push(`補充檔項目有歧義（該名稱有多隻，請加 location）：${override.name}`);
   });
-  return { mobs: result, problems };
+  return { mobs: result, problems, notes };
 }
 
 const SOURCES = ['https://zap.muds.me/ot1.htm', 'https://catworld.muds.tw/help/newstart.3'];
@@ -114,12 +119,13 @@ function buildData({ zapHtml, newstartHtml, overrides }, { minZap = 100, minNews
     throw new Error(`來源解析異常：zap ${zap.length} 筆（至少 ${minZap}）、newstart ${newstart.length} 筆（至少 ${minNewstart}）`);
   }
   const merged = mergeSources(zap, newstart);
-  const { mobs, problems } = applyOverrides(merged.mobs, overrides);
+  const { mobs, problems, notes } = applyOverrides(merged.mobs, overrides);
   const unknown = mobs.filter(mob => mob.exp === null);
   const report = [
     `zap ${zap.length} 筆、newstart ${newstart.length} 筆、合併後 ${mobs.length} 筆`,
     ...merged.conflicts.map(line => `數值差異：${line}`),
     ...unknown.map(mob => `強度不明：${mob.name}（${mob.location}）`),
+    ...notes,
   ];
   return { data: { sources: SOURCES, mobs }, report, problems };
 }

@@ -25,17 +25,23 @@ function normalizeName(text) {
 
 const idOf = name => /\(([^)]*)\)\s*$/.exec(normalizeName(name))?.[1].trim() ?? '';
 
-// 遊戲裡的怪物行：「  ※名稱(ID) [fight][kill]」。去掉 ※ 與行尾標籤，同一隻合併計數
+// 遊戲裡的怪物行：「  ※名稱(ID) <戰鬥中> [fight][kill]」（<…> 是狀態，不一定有）。
+// 去掉 ※、狀態與行尾標籤，同一隻合併計數
 function parseMobLines(text) {
   const counts = new Map();
   String(text ?? '').split(/\r?\n/).forEach(rawLine => {
     const line = rawLine.normalize('NFKC');
-    const match = /^\s*※\s*(.+?)\s*(?:\[[^\]]*\]\s*)*$/.exec(line);
+    const match = /^\s*※\s*(.+?)\s*(?:(?:<[^>]*>|\[[^\]]*\])\s*)*$/.exec(line);
     if (!match) return;
     const name = match[1].replace(/\s+/g, ' ');
     counts.set(name, (counts.get(name) || 0) + 1);
   });
   return Array.from(counts, ([name, count]) => ({ name, count }));
+}
+
+// 遊戲把一行輸出拆成好幾個節點（※、稱號、名稱各在自己的 <span>），所以節點文字要直接相接，不能加分隔
+function textFromAdded(texts) {
+  return texts.join('');
 }
 
 function gradeOf(strength, exp, thresholds = DEFAULT_THRESHOLDS) {
@@ -46,13 +52,22 @@ function gradeOf(strength, exp, thresholds = DEFAULT_THRESHOLDS) {
   return { q, grade };
 }
 
+// 遊戲與攻略表對稱號後面的空白不一致（「猛虎大將軍 蒙古將軍」vs「猛虎大將軍蒙古將軍」），比對時忽略所有空白
+const compactName = text => normalizeName(text).replace(/\s/g, '');
+
 function findMobs(mobs, name) {
-  const key = normalizeName(name);
-  const exact = mobs.filter(mob => normalizeName(mob.name) === key);
+  const key = compactName(name);
+  const exact = mobs.filter(mob => compactName(mob.name) === key);
   if (exact.length) return exact.map(mob => ({ mob, idOnly: false }));
   const id = idOf(name);
   if (!id) return [];
   return mobs.filter(mob => (mob.id || idOf(mob.name)) === id).map(mob => ({ mob, idOnly: true }));
+}
+
+// 一個候選的說明文字。經驗讀不到時分不出顏色，但強度本身是已知的，照樣顯示
+function metaText({ mob, q, idOnly }) {
+  const strength = !Number.isFinite(mob.exp) ? '強度未知' : q === null ? `強度 ${mob.exp}` : `強度 ${mob.exp}（q=${q.toFixed(2)}）`;
+  return [strength, mob.location, mob.note, idOnly ? '僅 ID 命中' : ''].filter(Boolean).join('　');
 }
 
 function describe(mobs, items, exp, thresholds) {
@@ -101,6 +116,6 @@ function handleMessage(mobs, message) {
 
 globalThis.CatworldZapMobs = {
   DEFAULT_THRESHOLDS, SUITABLE_LIMIT, normalizeThresholds, normalizeName, parseMobLines,
-  gradeOf, findMobs, describe, suitable, limitHints, recentFilter, handleMessage,
+  textFromAdded, gradeOf, findMobs, metaText, describe, suitable, limitHints, recentFilter, handleMessage,
 };
 })();

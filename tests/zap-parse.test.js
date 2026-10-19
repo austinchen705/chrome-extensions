@@ -85,13 +85,21 @@ test('applyOverrides overrides the only mob with that name', () => {
   assert.equal(byName(result.mobs, '虎頭人(tiger man)')[0].exp, 46000);
 });
 
-test('applyOverrides reports ambiguous and missing names without changing anything', () => {
+test('applyOverrides reports ambiguous names without changing anything', () => {
   const { mobs } = mergeSources(zap(), newstart());
   const before = JSON.stringify(mobs);
-  const result = applyOverrides(mobs, [
-    { name: '食魂獸(eat ghost)', exp: 1 },
-    { name: '不存在(nobody)', exp: 1 },
-  ]);
-  assert.equal(result.problems.length, 2);
+  const result = applyOverrides(mobs, [{ name: '食魂獸(eat ghost)', exp: 1 }]);
+  assert.equal(result.problems.length, 1);
   assert.equal(JSON.stringify(result.mobs), before);
+});
+
+test('applyOverrides adds a mob that neither source has and notes it', () => {
+  const { mobs } = mergeSources(zap(), newstart());
+  const result = applyOverrides(mobs, [{ name: '新怪(newbie)', exp: 123, note: '手動' }]);
+  assert.deepEqual(result.problems, []);
+  assert.equal(result.notes.length, 1);
+  assert.match(result.notes[0], /新怪\(newbie\)/);
+  const added = byName(result.mobs, '新怪(newbie)');
+  assert.equal(added.length, 1);
+  assert.deepEqual([added[0].exp, added[0].location, added[0].source], [123, '', 'override']);
 });

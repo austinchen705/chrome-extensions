@@ -584,7 +584,12 @@ function initPanel() {
     confirm: $('.confirm'),
   };
   // 「怪物」列：讀 #exp 列出適合打的怪、怪物出現時顯示資訊（資料由 background 提供）
-  CatworldZapPanel.attach(root, { readExp: () => Number((document.getElementById('exp')?.textContent || '').replace(/[,\s]/g, '')) });
+  // 怪物列壞了不能牽連後面開始／停止按鈕的綁定
+  try {
+    CatworldZapPanel.attach(root, { readExp: () => Number((document.getElementById('exp')?.textContent || '').replace(/[,\s]/g, '')) });
+  } catch (error) {
+    console.error('[catworld] 怪物列初始化失敗', error);
+  }
 
   // 點面板不要讓遊戲輸入框失去游標
   root.addEventListener('mousedown', e => e.preventDefault());

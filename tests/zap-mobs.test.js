@@ -122,3 +122,33 @@ test('recentFilter suppresses names shown within the window', () => {
   assert.deepEqual(Z.recentFilter(['a', 'b'], 5000, last, 10000), ['b']);
   assert.deepEqual(Z.recentFilter(['a'], 12000, last, 10000), ['a']);
 });
+
+test('parseMobLines strips status markers the game puts after the name', () => {
+  const text = [
+    '  ※千夫長 蒙古兵(guard) <昏迷不醒> [fight][kill]',
+    '  ※橫霸四方 忽必烈(king) <戰鬥中> [fight][kill]',
+    '  ※大臣(noble) [fight][kill]',
+  ].join('\n');
+  assert.deepEqual(Z.parseMobLines(text).map(item => item.name), ['千夫長 蒙古兵(guard)', '橫霸四方 忽必烈(king)', '大臣(noble)']);
+});
+
+test('textFromAdded joins node texts with no separator, so a line split across spans parses', () => {
+  const pieces = ['  ', '※', '千夫長', ' 蒙古兵(guard)', ' <戰鬥中>', ' ', '[fight][kill]', '\n  ', '※', '橫霸四方', ' 忽必烈(king) ', '[fight][kill]'];
+  assert.deepEqual(Z.parseMobLines(Z.textFromAdded(pieces)).map(item => item.name), ['千夫長 蒙古兵(guard)', '橫霸四方 忽必烈(king)']);
+});
+
+test('findMobs ignores spacing differences between the game and the table', () => {
+  const mobs = [mob('猛虎大將軍蒙古將軍(General)', 500000, '蒙古'), mob('征南大將軍 蒙古將軍(general)', 450000, '襄陽')];
+  const hits = Z.findMobs(mobs, '猛虎大將軍 蒙古將軍(general)');
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].idOnly, false);
+  assert.equal(hits[0].mob.exp, 500000);
+});
+
+test('metaText keeps a known strength when the grade is unavailable', () => {
+  const known = { mob: { exp: 250000, location: '蒙古', note: '' }, q: null, idOnly: false };
+  assert.match(Z.metaText(known), /強度 250000/);
+  assert.doesNotMatch(Z.metaText(known), /強度未知/);
+  assert.match(Z.metaText({ mob: { exp: null, location: '隨機出現', note: '' }, q: null, idOnly: false }), /強度未知/);
+  assert.match(Z.metaText({ mob: { exp: 250000, location: '蒙古', note: '' }, q: 1.2056, idOnly: true }), /q=1\.21.*僅 ID 命中/);
+});
