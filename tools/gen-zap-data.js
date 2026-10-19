@@ -10,6 +10,7 @@ const SITE = 'https://zap.muds.me/';
 const CONCURRENCY = 6;
 
 const outFile = path.join(__dirname, '..', 'catworld-auto-command', 'zap-data.json');
+const aliasesFile = path.join(__dirname, 'zap-route-aliases.json');
 const overridesFile = path.join(__dirname, 'zap-overrides.json');
 
 const get = async url => {
@@ -52,6 +53,13 @@ async function main() {
   const dir = dirIndex >= 0 ? process.argv[dirIndex + 1] : null;
   const overrides = JSON.parse(fs.readFileSync(overridesFile, 'utf8'));
   const { data, report, problems } = buildData({ ...(await loadSources(dir)), overrides });
+  const routeAliases = JSON.parse(fs.readFileSync(aliasesFile, 'utf8'));
+  if (data.routes) {
+    Object.entries(routeAliases).forEach(([place, target]) => {
+      if (!data.routes.some(route => route.name === target)) problems.push(`路線別名指向不存在的地點：${place} → ${target}`);
+    });
+    data.routeAliases = routeAliases;
+  }
   report.forEach(line => console.log(line));
   if (problems.length) {
     problems.forEach(line => console.error(line));

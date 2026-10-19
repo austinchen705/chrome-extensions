@@ -45,7 +45,7 @@
 - `zap-mobs.js` 不碰 DOM，content script、background、popup、測試共用：manifest、popup.html、popup 的備援注入（`files` 清單）都要載入它，且在 `zap-panel.js`、`content.js` 之前；漏了備援注入的清單，`content.js` 會因為找不到 `CatworldZapPanel` 而出錯。
 - 資料只在 background 第一次被問到時載入（`ZAP_LOOKUP`、`ZAP_SUITABLE`），不隨每個遊戲分頁載入。分級看 `q = 強度 × 2 ÷ #exp`，門檻存在 `chrome.storage.local.zapThresholds`。
 - 怪物出現提示（`zap-panel.js`）自己觀察 `#content` 新增的文字、略過浮動視窗，與 `active()` 無關；怪物行是 `※名稱(ID) <戰鬥中> [fight][kill]`（`<…>` 狀態不一定有，解析時去掉），比對鍵是完整名稱（不分大小寫、忽略所有空白），同名多隻不猜、全部列出。遊戲把一行拆成多個節點（`※`、稱號、名稱各在自己的 `<span>`），所以新增節點的文字要直接相接（`textFromAdded`），不能用換行連接。UI 放在面板 shadow DOM 內，搜尋框要擋掉 `mousedown` 與按鍵事件的冒泡。
-- 怪物位置對「總路徑」表（`zap-data.json` 的 `routes`，由 `tools/zap-parse.js` 的 `parseRoutesHtml` 從 `help/map.15` 解析）在 `zap-mobs.js` 的 `routeFor`：完全同名優先，否則只接受「一方以另一方開頭」（天魔塔2f↔天魔塔），地名夾在別的字中間不猜（往黑木崖渡口、金礦坑南方小鎮）；「走過去」只能走 `startMacro`（`startSteps`），指令是 `routeCommand`＝`run e 5n 2o <路線>`，不自動 `recall`。
+- 怪物位置對「總路徑」表（`zap-data.json` 的 `routes`，由 `tools/zap-parse.js` 的 `parseRoutesHtml` 從 `help/map.15` 解析）在 `zap-mobs.js` 的 `routeFor`：完全同名優先，否則只接受「一方以另一方開頭」（天魔塔2f↔天魔塔），地名夾在別的字中間不猜（往黑木崖渡口、金礦坑南方小鎮）；「走過去」只能走 `startMacro`（`startSteps`），指令是 `routeCommand`＝`run e 5n 2o <路線>`，不自動 `recall`。對不上的地點可在 `tools/zap-route-aliases.json` 補別名（產生資料時併入 `routeAliases`，指向不存在的路線名會讓產生腳本失敗），別名命中一律當約略對應。
 - 測試：`npm test`（`node --test`，Node 18 以上；不要寫成 `node --test tests/`，新版 Node 會把資料夾當檔案）。介面測試（`tests/zap-equipment-ui.test.js`、`tests/zap-route-ui.test.js`）需要 jsdom（devDependency，`npm install`），沒裝會自動跳過；測試裡把介面的等待時間縮小 `SCALE` 倍。
 
 ## 裝備比較

@@ -216,3 +216,18 @@ test('most real mobs get a route from the real data', () => {
   const withRoute = data.mobs.filter(entry => Z.routeFor(entry.location, data.routes));
   assert.ok(withRoute.length / data.mobs.length > 0.6, `only ${withRoute.length}/${data.mobs.length}`);
 });
+
+test('routeFor falls back to the alias table and marks it as approximate', () => {
+  const aliases = { 襄楊: '襄陽城', 靈鷲宮: '冰火島' };
+  const hit = Z.routeFor('襄楊', routes, aliases);
+  assert.deepEqual([hit.route.name, hit.exact], ['襄陽城', false]);
+  assert.equal(Z.routeFor('靈鷲宮偏殿', routes, aliases).route.name, '冰火島');
+  assert.equal(Z.routeFor('襄楊', routes), null, 'no aliases, no guess');
+  assert.equal(Z.routeFor('襄楊', routes, { 襄楊: '不存在' }), null);
+  assert.equal(Z.routeFor('華山', routes, { 華山: '襄陽城' }).route.name, '華山', 'a direct match beats an alias');
+});
+
+test('every alias in the alias file points to a real route', () => {
+  const data = require('../catworld-auto-command/zap-data.json');
+  Object.entries(data.routeAliases).forEach(([place, target]) => assert.ok(data.routes.some(route => route.name === target), `${place} → ${target}`));
+});
