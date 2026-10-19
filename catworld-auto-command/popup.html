@@ -155,6 +155,11 @@ px</textarea>
     </div>
     <p class="hint tight">q = 怪物強度×2 ÷ 目前經驗。q ≤ 1 白（打了沒潛能）；q ≤ 綠上限 綠；q ≤ 黃上限 黃；更高紅。遊戲沒有公開門檻，請對照遊戲裡的顏色調整。</p>
   </div>
+  <div class="alertbox">
+    <label for="mainWeapon">主要武器類型</label>
+    <select id="mainWeapon"></select>
+    <p class="hint tight">用來判斷鑑定後的鑄模與材料是否適合你；未設定時只依等級建議（LV1～2 賣掉、LV3 以上留著）。</p>
+  </div>
   <button id="test">測試送出 ps</button>
   <button id="beep">測試提示音</button>
   <button id="skills">悟招清單（新分頁開啟）</button>
@@ -162,6 +167,7 @@ px</textarea>
   <script src="trigger-engine.js"></script>
   <script src="timer-settings.js"></script>
   <script src="zap-mobs.js"></script>
+  <script src="zap-items.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

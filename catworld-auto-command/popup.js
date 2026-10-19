@@ -107,6 +107,13 @@ $('persistentAlert').addEventListener('change', () => {
   chrome.storage.local.set({ persistentAlert: $('persistentAlert').checked });
 });
 
+// 主要武器類型：存起來，遊戲頁的面板監聽 storage 變化，馬上生效。不合法的值當成未設定
+const weaponValue = value => (CatworldZapItems.WEAPON_TYPES.includes(value) ? value : '');
+$('mainWeapon').replaceChildren(...['', ...CatworldZapItems.WEAPON_TYPES].map(type => element('option', { value: type, textContent: type || '未設定' })));
+$('mainWeapon').addEventListener('change', () => {
+  chrome.storage.local.set({ mainWeapon: weaponValue($('mainWeapon').value) });
+});
+
 // 怪物分級門檻：存起來，遊戲頁的面板監聽 storage 變化，馬上生效。無效的值（需 1 < 綠上限 < 黃上限）不存，欄位還原
 let zapThresholds = CatworldZapMobs.normalizeThresholds(undefined);
 function showZapThresholds() {
@@ -396,8 +403,9 @@ async function refreshLive() {
 }
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds']);
+  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon']);
   $('persistentAlert').checked = data.persistentAlert === true;
+  $('mainWeapon').value = weaponValue(data.mainWeapon);
   zapThresholds = CatworldZapMobs.normalizeThresholds(data.zapThresholds);
   showZapThresholds();
   if (data.settings) {
