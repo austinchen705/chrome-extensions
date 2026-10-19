@@ -29,6 +29,8 @@
         "timer-settings.js",
         "macro-wait.js",
         "macro-notes.js",
+        "zap-mobs.js",
+        "zap-panel.js",
         "content.js"
       ],
       "css": [

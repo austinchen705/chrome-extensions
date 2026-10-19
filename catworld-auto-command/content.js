@@ -583,6 +583,8 @@ function initPanel() {
     macroLine: $('.macro-line'), macroText: $('.macro-text'), mstop: $('.mstop'),
     confirm: $('.confirm'),
   };
+  // 「怪物」列：讀 #exp 列出適合打的怪、怪物出現時顯示資訊（資料由 background 提供）
+  CatworldZapPanel.attach(root, { readExp: () => Number((document.getElementById('exp')?.textContent || '').replace(/[,\s]/g, '')) });
 
   // 點面板不要讓遊戲輸入框失去游標
   root.addEventListener('mousedown', e => e.preventDefault());

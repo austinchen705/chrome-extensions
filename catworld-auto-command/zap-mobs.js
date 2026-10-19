@@ -73,6 +73,20 @@ function suitable(mobs, exp, thresholds, { grades = ['green'], query = '' } = {}
     .sort((a, b) => b.mob.exp - a.mob.exp);
 }
 
+// 浮層一次最多列 max 筆，其餘只算數量
+function limitHints(items, max) {
+  return { shown: items.slice(0, max), hidden: Math.max(0, items.length - max) };
+}
+
+// 視窗內提示過的名稱不再提示（房間重畫會重複送出同一批怪）；會更新 lastShown
+function recentFilter(names, now, lastShown, windowMs) {
+  return names.filter(name => {
+    if (name in lastShown && now - lastShown[name] < windowMs) return false;
+    lastShown[name] = now;
+    return true;
+  });
+}
+
 // background 用：回 null 表示不是這個模組的訊息
 function handleMessage(mobs, message) {
   if (message?.type === 'ZAP_LOOKUP') {
@@ -87,6 +101,6 @@ function handleMessage(mobs, message) {
 
 globalThis.CatworldZapMobs = {
   DEFAULT_THRESHOLDS, SUITABLE_LIMIT, normalizeThresholds, normalizeName, parseMobLines,
-  gradeOf, findMobs, describe, suitable, handleMessage,
+  gradeOf, findMobs, describe, suitable, limitHints, recentFilter, handleMessage,
 };
 })();

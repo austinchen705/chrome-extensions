@@ -106,3 +106,19 @@ test('handleMessage answers ZAP_SUITABLE and ignores other types', () => {
   assert.equal(reply.items.length, 1);
   assert.equal(Z.handleMessage(mobs, { type: 'START' }), null);
 });
+
+test('limitHints keeps the first max items and counts the rest', () => {
+  const items = Array.from({ length: 12 }, (_, i) => ({ name: `怪${i}(m${i})`, count: 1 }));
+  const { shown, hidden } = Z.limitHints(items, 8);
+  assert.equal(shown.length, 8);
+  assert.equal(hidden, 4);
+  assert.deepEqual(Z.limitHints(items.slice(0, 3), 8), { shown: items.slice(0, 3), hidden: 0 });
+});
+
+test('recentFilter suppresses names shown within the window', () => {
+  const last = {};
+  assert.deepEqual(Z.recentFilter(['a'], 1000, last, 10000), ['a']);
+  assert.deepEqual(Z.recentFilter(['a'], 5000, last, 10000), []);
+  assert.deepEqual(Z.recentFilter(['a', 'b'], 5000, last, 10000), ['b']);
+  assert.deepEqual(Z.recentFilter(['a'], 12000, last, 10000), ['a']);
+});
