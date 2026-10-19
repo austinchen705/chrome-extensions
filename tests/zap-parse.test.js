@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseZapMobHtml, parseNewstartHtml, parseUnknownObjectHtml, mergeSources, applyOverrides } = require('../tools/zap-parse.js');
+const { parseZapMobHtml, parseNewstartHtml, parseUnknownObjectHtml, applyItemOverrides, mergeSources, applyOverrides } = require('../tools/zap-parse.js');
 
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8');
 const zap = () => parseZapMobHtml(fixture('ot1-sample.html'));
@@ -146,4 +146,27 @@ test('parseUnknownObjectHtml covers all five levels', () => {
   const all = items();
   assert.deepEqual([...new Set(all.map(entry => entry.level))].sort(), [1, 2, 3, 4, 5]);
   assert.equal(all.length, 94);
+});
+
+test('applyItemOverrides patches an existing item and adds a new one', () => {
+  const base = items();
+  const spider = base.find(entry => entry.name.includes('雪蛛'));
+  const result = applyItemOverrides(base, [
+    { item: spider.name, weapon: '劍' },
+    { item: '新物(brand new)', level: 3, note: '手動' },
+  ]);
+  assert.deepEqual(result.problems, []);
+  assert.equal(result.items.find(entry => entry.name === spider.name).weapon, '劍');
+  assert.equal(result.items.find(entry => entry.name === spider.name).level, spider.level);
+  assert.deepEqual(result.items.find(entry => entry.name === '新物(brand new)'), { name: '新物(brand new)', level: 3, note: '手動', weapon: '' });
+  assert.equal(result.items.length, base.length + 1);
+  assert.equal(base.find(entry => entry.name === spider.name).weapon === '劍', false, 'the input list is not mutated');
+});
+
+test('applyItemOverrides reports an unknown item without a level and an invalid weapon', () => {
+  const base = items();
+  const result = applyItemOverrides(base, [{ item: '不存在的東西' }, { item: '明朝古董木雕', weapon: '法師' }]);
+  assert.equal(result.problems.length, 2);
+  assert.equal(result.items.length, base.length);
+  assert.equal(result.items.find(entry => entry.name === '明朝古董木雕').weapon, '');
 });

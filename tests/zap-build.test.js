@@ -40,3 +40,11 @@ test('buildData includes items when ubHtml is given', () => {
 test('buildData rejects an ub page that parses to too few items', () => {
   assert.throws(() => buildData({ ...input([]), ubHtml: '<html></html>' }, { minZap: 1, minNewstart: 1 }), /來源解析異常/);
 });
+
+test('buildData routes item overrides to items and mob overrides to mobs', () => {
+  const overrides = [{ item: '明朝古董木雕', level: 3 }, { name: '老虎(tiger)', location: '長安城', exp: 500 }];
+  const { data, problems } = buildData({ ...input(overrides), ubHtml: fixture('ub-sample.html') }, { minZap: 1, minNewstart: 1 });
+  assert.deepEqual(problems, []);
+  assert.equal(data.items.find(entry => entry.name === '明朝古董木雕').level, 3);
+  assert.equal(data.mobs.filter(mob => mob.name === '老虎(tiger)').length, 2);
+});

@@ -80,3 +80,20 @@ test('handleMessage answers ZAP_ITEM and ignores other types', () => {
   assert.equal(reply.results[0].candidates[0].advice.action, 'sell');
   assert.equal(I.handleMessage(items, { type: 'ZAP_SUITABLE' }), null);
 });
+
+test('matchItems uses the exact name when the game prints the hole count', () => {
+  const items = [item('劍鑄模 (一洞)', 2), item('劍鑄模 (二洞)', 3), item('劍鑄模 (三洞)', 4)];
+  assert.deepEqual(I.matchItems(items, '一個劍鑄模 (二洞)').map(x => x.name), ['劍鑄模 (二洞)']);
+  assert.deepEqual(I.matchItems(items, '一個劍鑄模（二洞）').map(x => x.name), ['劍鑄模 (二洞)']);
+  assert.equal(I.matchItems(items, '一個劍鑄模').length, 3);
+});
+
+test('matchItems needs the name to end the sentence after a quantifier', () => {
+  const items = [item('鑼', 1), item('貓眼', 4), item('明朝古董木雕', 1)];
+  assert.deepEqual(I.matchItems(items, '一個銅鑼'), []);
+  assert.deepEqual(I.matchItems(items, '一顆貓眼石'), []);
+  assert.deepEqual(I.matchItems(items, '一面鑼').map(x => x.name), ['鑼']);
+  assert.deepEqual(I.matchItems(items, '二十個鑼').map(x => x.name), ['鑼']);
+  assert.deepEqual(I.matchItems(items, '一尊明朝古董木雕').map(x => x.name), ['明朝古董木雕']);
+  assert.deepEqual(I.matchItems(items, '明朝古董木雕').map(x => x.name), ['明朝古董木雕']);
+});

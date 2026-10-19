@@ -19,12 +19,23 @@ function findIdentified(text, now, state) {
   return Array.from(String(text).matchAll(/衰老頭給你([^。\n]+)。/g), match => match[1]);
 }
 
-// 句子裡被包含的最長名稱；同鍵的所有項目一起回傳
-function matchItems(items, sentence) {
-  const key = itemKey(sentence);
-  const hits = items.map(item => ({ item, itemKey: itemKey(item.name) })).filter(hit => hit.itemKey && key.includes(hit.itemKey));
+// 名稱要出現在句子結尾，前面只能是「數詞加至多一個量詞字」（一隻、二十個、一尊…）：
+// 單純包含會讓「一個銅鑼」配到「鑼」、「一顆貓眼石」配到「貓眼」，給表上沒有的物品亂下建議
+const QUANTIFIER = /^[零一二三四五六七八九十百千萬兩]*.?$/;
+const fullKey = text => String(text ?? '').normalize('NFKC').toLowerCase().replace(/\s/g, '');
+
+function longestEnding(items, keyOf, key) {
+  const hits = items
+    .map(item => ({ item, itemKey: keyOf(item.name) }))
+    .filter(hit => hit.itemKey && key.endsWith(hit.itemKey) && QUANTIFIER.test(key.slice(0, key.length - hit.itemKey.length)));
   const longest = Math.max(0, ...hits.map(hit => hit.itemKey.length));
   return hits.filter(hit => hit.itemKey.length === longest).map(hit => hit.item);
+}
+
+// 先用帶洞數的完整名稱比；遊戲沒印洞數時才退到去括號的鍵，同鍵的所有項目一起回傳
+function matchItems(items, sentence) {
+  const exact = longestEnding(items, fullKey, fullKey(sentence));
+  return exact.length ? exact : longestEnding(items, itemKey, itemKey(sentence));
 }
 
 function advise(item, mainWeapon) {

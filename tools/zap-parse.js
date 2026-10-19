@@ -122,6 +122,30 @@ function weaponOf(name, note) {
   return /鞭/.test(`${name}${note}`) ? '鞭' : '';
 }
 
+// 補充檔裡帶 item 欄位的項目：有同名物品就覆蓋 level／note／weapon；沒有就新增（要有 level）
+const WEAPON_TYPES = ['劍', '刀', '杖', '鞭', '拳套', '暗器']; // 與 zap-items.js 的 WEAPON_TYPES 一致
+const compact = text => normalize(text).replace(/\s/g, '');
+
+function applyItemOverrides(items, overrides) {
+  const result = items.map(item => ({ ...item }));
+  const problems = [];
+  overrides.forEach(override => {
+    if (override.weapon !== undefined && override.weapon !== '' && !WEAPON_TYPES.includes(override.weapon)) {
+      problems.push(`補充檔物品的 weapon 不合法：${override.item}（${override.weapon}）`);
+      return;
+    }
+    const found = result.find(item => compact(item.name) === compact(override.item));
+    if (found) {
+      ['level', 'note', 'weapon'].forEach(field => { if (override[field] !== undefined) found[field] = override[field]; });
+    } else if (Number.isInteger(override.level) && override.level >= 1 && override.level <= 5) {
+      result.push({ name: override.item, level: override.level, note: override.note ?? '', weapon: override.weapon ?? '' });
+    } else {
+      problems.push(`補充檔物品找不到對應項目，也沒有 level 可以新增：${override.item}`);
+    }
+  });
+  return { items: result, problems };
+}
+
 function parseUnknownObjectHtml(html) {
   const items = [];
   html.split(/<table/i).slice(1).forEach((tableHtml, tableIndex) => {
@@ -159,7 +183,11 @@ function buildData({ zapHtml, newstartHtml, overrides, ubHtml }, { minZap = 100,
     throw new Error(`來源解析異常：無名物品表 ${items.length} 筆（至少 ${minItems}）`);
   }
   const merged = mergeSources(zap, newstart);
-  const { mobs, problems, notes } = applyOverrides(merged.mobs, overrides);
+  const mobOverrides = overrides.filter(override => !('item' in override));
+  const itemOverrides = overrides.filter(override => 'item' in override);
+  const { mobs, problems: mobProblems, notes } = applyOverrides(merged.mobs, mobOverrides);
+  const applied = applyItemOverrides(items, itemOverrides);
+  const problems = [...mobProblems, ...applied.problems];
   const unknown = mobs.filter(mob => mob.exp === null);
   const report = [
     `zap ${zap.length} 筆、newstart ${newstart.length} 筆、合併後 ${mobs.length} 筆、無名物品 ${items.length} 筆`,
@@ -168,9 +196,9 @@ function buildData({ zapHtml, newstartHtml, overrides, ubHtml }, { minZap = 100,
     ...notes,
   ];
   const sources = ubHtml === undefined ? SOURCES : [...SOURCES, UB_URL];
-  return { data: { sources, mobs, ...(ubHtml === undefined ? {} : { items }) }, report, problems };
+  return { data: { sources, mobs, ...(ubHtml === undefined ? {} : { items: applied.items }) }, report, problems };
 }
 
 module.exports = {
-  normalize, parseZapMobHtml, parseNewstartHtml, parseUnknownObjectHtml, mergeSources, applyOverrides, buildData, SOURCES, UB_URL,
+  normalize, parseZapMobHtml, parseNewstartHtml, parseUnknownObjectHtml, applyItemOverrides, mergeSources, applyOverrides, buildData, SOURCES, UB_URL,
 };

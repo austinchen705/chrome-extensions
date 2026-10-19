@@ -11,6 +11,7 @@ const WEAPON_KEY = 'mainWeapon';
 const GAME_WINDOWS = '#monitor, #map_table, #macro_table, #setting_table';
 const HINT_MS = 10000;
 const HINT_MAX = 8;
+const ITEM_BLOCK_MAX = 8;
 const DEDUPE_MS = 10000;
 const CANDIDATE_MAX = 6;
 const GRADE = {
@@ -141,13 +142,15 @@ function attach(root, { readExp }) {
 
   // ---- 怪物出現 ----
   let hideTimer = null;
-  function setSection(section, nodes) {
-    section.replaceChildren(...nodes);
+  const itemBlocks = [];
+  // 任何一個區段更新都顯示浮層並重設自動消失的計時
+  function touchHint() {
     hint.hidden = false;
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
       sections.mobs.replaceChildren();
       sections.items.replaceChildren();
+      itemBlocks.length = 0;
       hint.hidden = true;
     }, HINT_MS);
   }
@@ -162,7 +165,8 @@ function attach(root, { readExp }) {
       if (more) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${more} 筆同名候選` }));
     });
     if (hidden) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${hidden} 種` }));
-    setSection(sections.mobs, nodes);
+    sections.mobs.replaceChildren(...nodes);
+    touchHint();
   }
 
   // ---- 鑑定結果（雜物拿給衰老頭鑑定後的真名）----
@@ -172,17 +176,25 @@ function attach(root, { readExp }) {
     return el('div', { className: 'zap-item' },
       tag, ` LV${item.level} ${item.name}`, item.note ? el('br') : '', item.note ? el('span', { className: 'meta', textContent: item.note }) : '');
   }
-  function showItems(results, hidden) {
-    const nodes = [el('div', { className: 'title', textContent: '鑑定結果' })];
+  // 鑑定的答案只出現一次、不會重畫，所以新結果接在舊的後面（只留最新 ITEM_BLOCK_MAX 筆），
+  // 不像怪物提示每次整個取代；連續鑑定（ti;ti;ti）每件都是獨立的一批新文字
+  function addItemResults(results, hidden) {
+    const section = sections.items;
+    if (!section.firstChild) section.append(el('div', { className: 'title', textContent: '鑑定結果' }));
+    section.querySelectorAll('.zap-overflow').forEach(note => note.remove());
     results.forEach(({ sentence, candidates }) => {
-      nodes.push(el('div', { className: 'zap-item', textContent: sentence }));
-      if (!candidates.length) nodes.push(el('div', { className: 'zap-more', textContent: '表上沒有這個物品' }));
+      const block = el('div', { className: 'zap-block' }, el('div', { className: 'zap-item', textContent: sentence }));
+      if (!candidates.length) block.append(el('div', { className: 'zap-more', textContent: '表上沒有這個物品' }));
       const { shown, hidden: more } = Z.limitHints(candidates, CANDIDATE_MAX);
-      shown.forEach(candidate => nodes.push(itemNode(candidate)));
-      if (more) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${more} 筆同名候選` }));
+      shown.forEach(candidate => block.append(itemNode(candidate)));
+      if (more) block.append(el('div', { className: 'zap-more', textContent: `…還有 ${more} 筆同名候選` }));
+      section.append(block);
+      itemBlocks.push(block);
     });
-    if (hidden) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${hidden} 件` }));
-    setSection(sections.items, nodes);
+    while (itemBlocks.length > ITEM_BLOCK_MAX) itemBlocks.shift().remove();
+    // 超過一批上限的件數只是提示，不算在保留的結果裡
+    if (hidden) section.append(el('div', { className: 'zap-more zap-overflow', textContent: `…還有 ${hidden} 件` }));
+    touchHint();
   }
 
   const inGameOutput = node => {
@@ -206,16 +218,17 @@ function attach(root, { readExp }) {
 
   const handState = { handedAt: null };
   const lastItemShown = {};
-  let itemLookupId = 0;
   function lookupItems(text) {
     const now = Date.now();
-    const sentences = [...new Set(ZI.findIdentified(text, now, handState))];
-    const fresh = new Set(Z.recentFilter(sentences, now, lastItemShown, DEDUPE_MS));
-    const { shown, hidden } = Z.limitHints(sentences.filter(sentence => fresh.has(sentence)), HINT_MAX);
+    const recent = sentence => sentence in lastItemShown && now - lastItemShown[sentence] < DEDUPE_MS;
+    const sentences = [...new Set(ZI.findIdentified(text, now, handState))].filter(sentence => !recent(sentence));
+    const { shown, hidden } = Z.limitHints(sentences, HINT_MAX);
     if (!shown.length) return;
-    const mine = ++itemLookupId;
     send({ type: 'ZAP_ITEM', sentences: shown, mainWeapon }).then(reply => {
-      if (reply?.ok && mine === itemLookupId) showItems(reply.results, hidden);
+      // 查詢失敗就不算「提示過」，下次還能再顯示
+      if (!reply?.ok) return;
+      shown.forEach(sentence => { lastItemShown[sentence] = Date.now(); });
+      addItemResults(reply.results, hidden);
     });
   }
 
