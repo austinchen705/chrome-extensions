@@ -109,6 +109,72 @@ function applyOverrides(mobs, overrides) {
   return { mobs: result, problems, notes };
 }
 
+// ---- 解謎 ----
+// 步驟頁的指令混在說明文字裡，所以抽取是保守的：一步只要有任何一段不被認得，整步就不給自動指令，
+// 寧可讓使用者自己補，也不要給只有一半的指令送進遊戲。
+const VERBS = new Set(('run ask give climb jump ride push kill search open enter squeeze get nod say touch fly apprentice '
+  + 'setplace wield unlock pay wear diving dig buy wash write knock exert enforce unwield burying recall put worship insert').split(' '));
+const DIRECTION = /^\d*(?:n|s|e|w|u|d|ne|nw|se|sw|nu|nd|su|sd|eu|ed|wu|wd)$/;
+const ASCII_PREFIX = /^[A-Za-z0-9 \-_#'.,:+/@<>~=*]*/;
+
+// 認得就回傳指令文字，不認得回 null
+function recognizeSegment(segment) {
+  const head = /^[A-Za-z][A-Za-z0-9-]*/.exec(segment);
+  if (!head) return null;
+  const verb = head[0].toLowerCase();
+  const isDirection = DIRECTION.test(verb);
+  if (!VERBS.has(verb) && !isDirection) return null;
+  let command = ASCII_PREFIX.exec(segment)[0];
+  let consumed = command.length;
+  // 會帶中文引數的指令（ask X about 令狐沖、buy 牛皮酒袋、say 是）；run 與方向後面的中文是說明
+  if (verb !== 'run' && !isDirection && /\s$/.test(command)) {
+    const cjk = /^[\u4e00-\u9fff]+/.exec(segment.slice(consumed));
+    if (cjk) {
+      command += cjk[0];
+      consumed += cjk[0].length;
+    }
+  }
+  // 後面的說明裡還有別的指令動詞，代表這一段不只一個指令，不能只取前半
+  if ((segment.slice(consumed).match(/[A-Za-z]+/g) || []).some(word => VERBS.has(word.toLowerCase()))) return null;
+  return command.replace(/[\s\-=>~*.,:<]+$/, '').replace(/\s+/g, ' ');
+}
+
+function extractCommands(stepText) {
+  const segments = String(stepText ?? '').split(/[;；]/).map(piece => piece.trim()).filter(Boolean);
+  const commands = [];
+  for (const segment of segments) {
+    const command = recognizeSegment(segment);
+    if (!command) return '';
+    commands.push(command);
+  }
+  return commands.join(';');
+}
+
+function pageLines(html) {
+  const stripped = html
+    .replace(/<(style|script)[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(?:br\s*\/?|\/p|\/tr|\/div|\/li)>/gi, '\n')
+    .replace(/<[^>]*>/g, '');
+  const lines = decode(stripped).replace(/\ufeff/g, '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  return lines.filter((line, index) => line !== '回上頁' && !(index === 0 && /^qu[\d-]+$/.test(line)));
+}
+
+// 編號步驟（行首「1.」）；沒有編號的行接到前一步（硬換行），沒有編號步驟的頁面 steps 為 []
+function parseRiddlePage(html) {
+  const lines = pageLines(html);
+  const raw = [];
+  for (const line of lines) {
+    const match = /^(\d+)\s*[.．、]\s*(.*)$/.exec(line);
+    if (match) raw.push({ no: Number(match[1]), parts: [match[2]] });
+    else if (raw.length) raw[raw.length - 1].parts.push(line);
+  }
+  const steps = raw.map(({ no, parts }) => {
+    const text = parts.join(' ').replace(/\s+/g, ' ').trim();
+    return { no, text, commands: extractCommands(text) };
+  });
+  return { steps, text: lines.join('\n') };
+}
+
 const SOURCES = ['https://zap.muds.me/ot1.htm', 'https://catworld.muds.tw/help/newstart.3'];
 const UB_URL = 'https://zap.muds.me/ub.htm';
 
@@ -201,4 +267,5 @@ function buildData({ zapHtml, newstartHtml, overrides, ubHtml }, { minZap = 100,
 
 module.exports = {
   normalize, parseZapMobHtml, parseNewstartHtml, parseUnknownObjectHtml, applyItemOverrides, mergeSources, applyOverrides, buildData, SOURCES, UB_URL,
+  VERBS, extractCommands, parseRiddlePage,
 };
