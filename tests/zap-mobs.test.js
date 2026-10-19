@@ -152,3 +152,11 @@ test('metaText keeps a known strength when the grade is unavailable', () => {
   assert.match(Z.metaText({ mob: { exp: null, location: '隨機出現', note: '' }, q: null, idOnly: false }), /強度未知/);
   assert.match(Z.metaText({ mob: { exp: 250000, location: '蒙古', note: '' }, q: 1.2056, idOnly: true }), /q=1\.21.*僅 ID 命中/);
 });
+
+test('gradeOf matches the game colours the user observed at exp 416944', () => {
+  const E2 = 416944;
+  assert.equal(Z.gradeOf(250000, E2).grade, 'green', '忽必烈');
+  assert.equal(Z.gradeOf(370000, E2).grade, 'green', '丐幫長老：強度比經驗小');
+  assert.equal(Z.gradeOf(390000, E2).grade, 'green', '六合門 夏老：強度比經驗小');
+  assert.equal(Z.gradeOf(500000, E2).grade, 'yellow', '猛虎大將軍 蒙古將軍：強度比經驗大');
+});

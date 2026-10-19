@@ -9,7 +9,9 @@
 (() => {
 if (globalThis.CatworldZapMobs) return;
 
-const DEFAULT_THRESHOLDS = Object.freeze({ greenMax: 1.5, yellowMax: 3 });
+// 綠上限 2＝怪物強度比你的經驗小（q = 2S/E < 2 ⇔ S < E）就是綠：遊戲實測夏老（390000）、丐幫長老（370000）在經驗 416944 時是綠，
+// 蒙古將軍（500000，q≈2.4）是黃。黃上限 3 沒有紅色的校準點，是猜的
+const DEFAULT_THRESHOLDS = Object.freeze({ greenMax: 2, yellowMax: 3 });
 const SUITABLE_LIMIT = 200;
 
 function normalizeThresholds(raw) {
