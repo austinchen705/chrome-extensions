@@ -471,7 +471,7 @@ function startMacro(text) {
   if (parsed.error) {
     macroNote = { text: `巨集沒有執行：${parsed.error}`, until: Date.now() + 8000 };
     renderPanel();
-    return;
+    return false;
   }
   armDetection();
   macroNote = null;
@@ -479,6 +479,7 @@ function startMacro(text) {
   macroRuns.add(run);
   advanceMacro(run);
   renderPanel();
+  return true;
 }
 
 function advanceMacro(run) {

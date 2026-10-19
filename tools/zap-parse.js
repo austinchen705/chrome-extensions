@@ -117,25 +117,34 @@ const VERBS = new Set(('run ask give climb jump ride push kill search open enter
 const DIRECTION = /^\d*(?:n|s|e|w|u|d|ne|nw|se|sw|nu|nd|su|sd|eu|ed|wu|wd)$/;
 const ASCII_PREFIX = /^[A-Za-z0-9 \-_#'.,:+/@<>~=*]*/;
 
-// 認得就回傳指令文字，不認得回 null
+// 只有這些指令的中文引數是真正的引數（其他動詞後面的中文都是說明）；ask 的中文引數只出現在 about 之後
+const CJK_ARG_VERBS = new Set(['buy', 'say', 'search', 'push', 'touch']);
+
+// 認得就回傳指令文字，不認得回 null。這一段只要藏著任何可疑的東西（多一個指令、被丟掉的移動、截斷的 ask）就不認得
 function recognizeSegment(segment) {
   const head = /^[A-Za-z][A-Za-z0-9-]*/.exec(segment);
   if (!head) return null;
   const verb = head[0].toLowerCase();
   const isDirection = DIRECTION.test(verb);
   if (!VERBS.has(verb) && !isDirection) return null;
-  let command = ASCII_PREFIX.exec(segment)[0];
+  const prefix = ASCII_PREFIX.exec(segment)[0];
+  // 「ps.」是註解的開頭，後面都是說明
+  const note = /\bps\b\.?/i.exec(prefix);
+  let command = note ? prefix.slice(0, note.index) : prefix;
   let consumed = command.length;
-  // 會帶中文引數的指令（ask X about 令狐沖、buy 牛皮酒袋、say 是）；run 與方向後面的中文是說明
-  if (verb !== 'run' && !isDirection && /\s$/.test(command)) {
+  const takesCjk = (verb === 'ask' && /\sabout\s$/i.test(command)) || (CJK_ARG_VERBS.has(verb) && /^[A-Za-z]+\s$/.test(command));
+  if (!note && takesCjk) {
     const cjk = /^[\u4e00-\u9fff]+/.exec(segment.slice(consumed));
     if (cjk) {
       command += cjk[0];
       consumed += cjk[0].length;
     }
   }
-  // 後面的說明裡還有別的指令動詞，代表這一段不只一個指令，不能只取前半
-  if ((segment.slice(consumed).match(/[A-Za-z]+/g) || []).some(word => VERBS.has(word.toLowerCase()))) return null;
+  // 指令本身裡面又出現別的指令動詞，代表兩個指令黏在一起（例如 run 2se e n give woman letter）
+  if (command.trim().split(/\s+/).slice(1).some(token => VERBS.has(token.toLowerCase()))) return null;
+  // 後面的說明裡有指令動詞、方向或 about，代表還有東西被丟掉（被截斷的 ask、寫在說明裡的移動），不能只取前半
+  const forbidden = word => VERBS.has(word.toLowerCase()) || DIRECTION.test(word) || word.toLowerCase() === 'about';
+  if ((segment.slice(consumed).match(/[A-Za-z]+/g) || []).some(forbidden)) return null;
   return command.replace(/[\s\-=>~*.,:<]+$/, '').replace(/\s+/g, ' ');
 }
 
@@ -159,20 +168,34 @@ function pageLines(html) {
   return lines.filter((line, index) => line !== '回上頁' && !(index === 0 && /^qu[\d-]+$/.test(line)));
 }
 
-// 編號步驟（行首「1.」）；沒有編號的行接到前一步（硬換行），沒有編號步驟的頁面 steps 為 []
+// 編號步驟（行首「1.」，或帶標籤的「男：1.」）；沒有編號的行接到前一步（硬換行）。
+// 第一步之前的文字是 preamble（準備事項、說明）；步驟之間「入古墓：」這類小標題記在下一步的 heading，不接到上一步。
+// 沒有編號步驟的頁面 steps 為 []、preamble 為 ''（整頁文字在 text）
+const STEP_LINE = /^(?:([^\d\s]{1,3}[：:])\s*)?(\d+)\s*[.．、]\s*(.*)$/;
+const HEADING_LINE = /^[^\d\s][^：:]{0,18}[：:]$/;
+
 function parseRiddlePage(html) {
   const lines = pageLines(html);
   const raw = [];
-  for (const line of lines) {
-    const match = /^(\d+)\s*[.．、]\s*(.*)$/.exec(line);
-    if (match) raw.push({ no: Number(match[1]), parts: [match[2]] });
-    else if (raw.length) raw[raw.length - 1].parts.push(line);
-  }
-  const steps = raw.map(({ no, parts }) => {
-    const text = parts.join(' ').replace(/\s+/g, ' ').trim();
-    return { no, text, commands: extractCommands(text) };
+  let firstStepLine = -1;
+  let pendingHeading = '';
+  lines.forEach((line, index) => {
+    const match = STEP_LINE.exec(line);
+    if (match) {
+      if (firstStepLine < 0) firstStepLine = index;
+      raw.push({ no: Number(match[2]), heading: [pendingHeading, match[1]].filter(Boolean).join(' '), parts: [match[3]] });
+      pendingHeading = '';
+    } else if (raw.length && HEADING_LINE.test(line)) {
+      pendingHeading = line;
+    } else if (raw.length) {
+      raw[raw.length - 1].parts.push(line);
+    }
   });
-  return { steps, text: lines.join('\n') };
+  const steps = raw.map(({ no, heading, parts }) => {
+    const text = parts.join(' ').replace(/\s+/g, ' ').trim();
+    return { no, text, commands: extractCommands(text), ...(heading ? { heading } : {}) };
+  });
+  return { steps, preamble: firstStepLine < 0 ? '' : lines.slice(0, firstStepLine).join('\n'), text: lines.join('\n') };
 }
 
 // 總表（qu1.htm）沒有連結，名稱也和選單（list.html）不完全一致；對應順序：名稱相同 → 別名表 → 正規化後相同或互相包含
@@ -306,7 +329,7 @@ function parseUnknownObjectHtml(html) {
 }
 
 // 來源改版時解析結果會突然變少，這時寧可失敗也不要產生一份殘缺的資料
-function buildData({ zapHtml, newstartHtml, overrides, ubHtml, riddleHtml }, { minZap = 100, minNewstart = 20, minItems = 30, minRiddles = 40 } = {}) {
+function buildData({ zapHtml, newstartHtml, overrides, ubHtml, riddleHtml }, { minZap = 100, minNewstart = 20, minItems = 30, minRiddles = 40, minPages = 30 } = {}) {
   const zap = parseZapMobHtml(zapHtml);
   const newstart = parseNewstartHtml(newstartHtml);
   if (zap.length < minZap || newstart.length < minNewstart) {
@@ -320,6 +343,9 @@ function buildData({ zapHtml, newstartHtml, overrides, ubHtml, riddleHtml }, { m
   const riddleData = riddleHtml === undefined ? null : buildRiddles(riddleHtml);
   if (riddleData && riddleData.riddles.length < minRiddles) {
     throw new Error(`來源解析異常：解謎總表 ${riddleData.riddles.length} 個（至少 ${minRiddles}）`);
+  }
+  if (riddleData && Object.keys(riddleData.pages).length < minPages) {
+    throw new Error(`來源解析異常：解謎步驟頁 ${Object.keys(riddleData.pages).length} 頁（至少 ${minPages}）`);
   }
   const mobOverrides = overrides.filter(override => !('item' in override));
   const itemOverrides = overrides.filter(override => 'item' in override);

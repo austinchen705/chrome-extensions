@@ -57,7 +57,7 @@ const riddleInput = () => {
 };
 
 test('buildData includes riddles when riddleHtml is given', () => {
-  const { data } = buildData({ ...input([]), riddleHtml: riddleInput() }, { minZap: 1, minNewstart: 1 });
+  const { data } = buildData({ ...input([]), riddleHtml: riddleInput() }, { minZap: 1, minNewstart: 1, minPages: 1 });
   assert.equal(data.riddles.length, 46);
   assert.ok(data.pages['qu4-1.htm']);
   assert.ok(data.sources.includes('https://zap.muds.me/qu1.htm'));
@@ -66,4 +66,9 @@ test('buildData includes riddles when riddleHtml is given', () => {
 test('buildData rejects an index that parses to too few riddles', () => {
   const bad = { ...riddleInput(), indexHtml: '<html></html>' };
   assert.throws(() => buildData({ ...input([]), riddleHtml: bad }, { minZap: 1, minNewstart: 1 }), /來源解析異常/);
+});
+
+test('buildData rejects riddles whose step pages did not parse', () => {
+  const noMenu = { ...riddleInput(), menuHtml: '' };
+  assert.throws(() => buildData({ ...input([]), riddleHtml: noMenu }, { minZap: 1, minNewstart: 1 }), /來源解析異常/);
 });

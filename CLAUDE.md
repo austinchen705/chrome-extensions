@@ -59,10 +59,11 @@
 ## 解謎
 
 - 資料是 `zap-data.json` 的 `riddles`（總表）與 `pages`（步驟頁），由 `tools/zap-parse.js` 產生：總表沒有連結，靠選單名稱對應（`RIDDLE_ALIASES` 列出 6 個對不上的別名），共用頁面（玉蕭劍法／彈指神通／糖果等）整頁共用步驟；總表少於 40 個謎時產生腳本失敗、不覆寫。
-- 步驟的指令抽取是保守的（`extractCommands`）：一步只要有任何一段不認得就整步為空，不給只有一半的指令；`VERBS` 是從真實頁面統計出來的動詞白名單。
+- 步驟的指令抽取是保守的（`extractCommands`／`recognizeSegment`）：一步只要有任何一段不認得就整步為空，不給只有一半的指令。「不認得」包含：段首不是 `VERBS`（從真實頁面統計的動詞白名單）或方向；指令本身又出現別的動詞（兩個指令黏在一起，例如 `run … n give woman letter`）；指令後面的說明裡還有動詞、方向或 `about`（代表有東西被丟掉）；中文引數只在 `ask … about`、`buy/say/search/push/touch` 後面才算，其他動詞後面的中文是說明；`ps.` 以後都是說明。改規則要用真實頁面（唐門 `qu3-2` 第 7 步、`qu2-4` 第 3 步）驗證。
+- `parseRiddlePage` 另外輸出 `preamble`（第一步之前的文字）與步驟的 `heading`（「入古墓：」「男：」這類小標題或標籤，不接到上一步）；UI 兩者都要顯示。
 - `zap-riddles.js` 不碰 DOM，要同時加進 manifest 與 popup 備援注入、且在 `zap-panel.js`／`zap-riddle-ui.js` 之前。條件分組：未達優先於需自行確認；讀不到的狀態要傳 `NaN`（不是 0，0 會被當成「不夠」）。
 - 「送出」只能走 `content.js` 的 `startMacro`（`zap-riddle-ui.js` 的 `deps.startSteps`）：這樣才算 `active()`、驗證碼時被 `cancelMacros` 取消；不要另造送出通道、也不要直接操作 `#input`。
-- 補的指令存在 `chrome.storage.local.riddleCommands`，以「頁面檔名＋步驟在該頁的位置」為鍵並記錄當時的步驟數（不用頁面印的編號，共用頁會重新編號）；匯入先驗證形狀，不合法不能動既有資料。UI 在 shadow DOM 內，輸入框要擋掉冒泡。
+- 補的指令存在 `chrome.storage.local.riddleCommands`，以「頁面檔名＋步驟在該頁的位置」為鍵並逐步記錄存檔當時的步驟數（`ns`，舊資料用整頁的 `n`；不用頁面印的編號，共用頁會重新編號）；「步驟已變動」逐步判斷，改一步不能讓其他補過的步驟的警告消失。匯入先驗證形狀，不合法不能動既有資料；`storage.onChanged` 要同步另一個分頁的改動，否則會用舊資料蓋掉對方。`startMacro` 回傳是否真的啟動（格式錯誤回 `false`），UI 據此決定說不說「已送出」。UI 在 shadow DOM 內，輸入框要擋掉冒泡。
 
 ## 設定頁
 

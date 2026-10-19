@@ -65,6 +65,17 @@ test('searchRiddles matches name, hint, reward and category', () => {
   assert.equal(R.searchRiddles(list, ' 屠 龍 ').length, 1);
 });
 
+test('splitCommands also splits on line breaks', () => {
+  assert.deepEqual(R.splitCommands('run e\nlook\r\nsay hi'), ['run e', 'look', 'say hi']);
+});
+
+test('parseImport accepts per-step stamps and rejects bad ones', () => {
+  const ok = JSON.stringify({ riddleCommands: { 'p.htm': { n: 3, cmds: { 1: 'x' }, ns: { 1: 3 } } }, riddleDone: {} });
+  assert.equal(R.parseImport(ok).ok, true);
+  const bad = JSON.stringify({ riddleCommands: { 'p.htm': { n: 3, cmds: { 1: 'x' }, ns: { 1: 'three' } } }, riddleDone: {} });
+  assert.equal(R.parseImport(bad).ok, false);
+});
+
 test('splitCommands drops empty pieces', () => {
   assert.deepEqual(R.splitCommands('run e;;give a to b; '), ['run e', 'give a to b']);
   assert.deepEqual(R.splitCommands('run e；look'), ['run e', 'look']);
@@ -82,16 +93,26 @@ test('effectiveStep prefers the edit, then the site, then none', () => {
 });
 
 test('effectiveStep flags stale edits when the step count changed', () => {
-  assert.equal(R.effectiveStep(page, 1, { 'p.htm': { n: 5, cmds: { 2: 'x' } } }, 'p.htm').stale, true);
-  assert.equal(R.effectiveStep(page, 1, { 'p.htm': { n: 3, cmds: { 2: 'x' } } }, 'p.htm').stale, false);
-  assert.equal(R.effectiveStep(page, 1, {}, 'p.htm').stale, false);
+  assert.equal(R.effectiveStep(page, 2, { 'p.htm': { n: 5, cmds: { 2: 'x' } } }, 'p.htm').stale, true);
+  assert.equal(R.effectiveStep(page, 2, { 'p.htm': { n: 3, cmds: { 2: 'x' } } }, 'p.htm').stale, false);
+  assert.equal(R.effectiveStep(page, 2, {}, 'p.htm').stale, false);
+  assert.equal(R.effectiveStep(page, 1, { 'p.htm': { n: 5, cmds: { 2: 'x' } } }, 'p.htm').stale, false, 'a step without an edit is not stale');
+});
+
+test('saving one edit does not clear the stale flag of the other edits on the page', () => {
+  const eleven = { steps: Array.from({ length: 11 }, (_, i) => ({ no: i + 1, text: '', commands: '' })) };
+  const old = { 'p.htm': { n: 10, cmds: { 3: 'a', 7: 'b' } } };
+  const saved = R.setEdit(old, 'p.htm', 11, 3, 'a2');
+  assert.equal(R.effectiveStep(eleven, 3, saved, 'p.htm').stale, false, 'the step just saved is reviewed');
+  assert.equal(R.effectiveStep(eleven, 7, saved, 'p.htm').stale, true, 'the untouched edit stays flagged');
+  assert.equal(R.effectiveStep(eleven, 3, old, 'p.htm').stale, true);
 });
 
 test('setEdit adds, removes and does not mutate', () => {
   const before = {};
   const added = R.setEdit(before, 'p.htm', 3, 2, 'look');
   assert.deepEqual(before, {});
-  assert.deepEqual(added, { 'p.htm': { n: 3, cmds: { 2: 'look' } } });
+  assert.deepEqual(added, { 'p.htm': { n: 3, cmds: { 2: 'look' }, ns: { 2: 3 } } });
   const two = R.setEdit(added, 'p.htm', 3, 1, 'run e');
   assert.deepEqual(two['p.htm'].cmds, { 1: 'run e', 2: 'look' });
   const removed = R.setEdit(two, 'p.htm', 3, 2, '  ');

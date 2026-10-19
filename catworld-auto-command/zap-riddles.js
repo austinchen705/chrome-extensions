@@ -55,25 +55,37 @@ function searchRiddles(riddles, query) {
   return riddles.filter(riddle => squash(`${riddle.name}${riddle.hint}${riddle.reward}${riddle.category}`).includes(needle));
 }
 
-const splitCommands = text => String(text ?? '').split(/[;；]/).map(piece => piece.trim()).filter(Boolean);
+// 換行也當分隔：編輯框裡多行的文字不能原封不動送出（單行輸入框會吃掉換行，指令會黏成 run elook）
+const splitCommands = text => String(text ?? '').split(/[;；\r\n]+/).map(piece => piece.trim()).filter(Boolean);
 const joinCommands = list => list.join(';');
 
+// 「步驟已變動」是逐步判斷的：只有有補指令的那一步、而且它存檔當時的步驟數（ns[序號]，舊資料沒有就用整頁的 n）
+// 和現在不同才算。改一步不能讓同頁其他還沒重新確認過的補充指令跟著變成「沒問題」。
 function effectiveStep(page, index, edits, file) {
   const entry = edits?.[file];
-  const stale = Boolean(entry) && entry.n !== page.steps.length;
   const edited = entry?.cmds?.[index];
-  if (typeof edited === 'string' && edited.trim()) return { commands: edited.trim(), source: 'edited', stale };
+  const hasEdit = typeof edited === 'string' && edited.trim() !== '';
+  const stale = hasEdit && (entry.ns?.[index] ?? entry.n) !== page.steps.length;
+  if (hasEdit) return { commands: edited.trim(), source: 'edited', stale };
   const site = page.steps[index - 1]?.commands || '';
-  return { commands: site, source: site ? 'site' : 'none', stale };
+  return { commands: site, source: site ? 'site' : 'none', stale: false };
 }
 
 function setEdit(edits, file, stepCount, index, text) {
   const next = { ...edits };
-  const entry = { n: stepCount, cmds: { ...edits[file]?.cmds } };
+  const old = edits[file];
+  const cmds = { ...old?.cmds };
+  // 舊資料沒有逐步的紀錄時，其他步驟沿用整頁的 n（維持它們的「已變動」狀態）
+  const ns = { ...(old?.ns ?? Object.fromEntries(Object.keys(cmds).map(key => [key, old.n]))) };
   const clean = String(text ?? '').trim();
-  if (clean) entry.cmds[index] = clean;
-  else delete entry.cmds[index];
-  if (Object.keys(entry.cmds).length) next[file] = entry;
+  if (clean) {
+    cmds[index] = clean;
+    ns[index] = stepCount;
+  } else {
+    delete cmds[index];
+    delete ns[index];
+  }
+  if (Object.keys(cmds).length) next[file] = { n: stepCount, cmds, ns };
   else delete next[file];
   return next;
 }
@@ -92,7 +104,8 @@ function parseImport(text) {
   }
   for (const [file, entry] of Object.entries(data.riddleCommands)) {
     const valid = isObject(entry) && Number.isInteger(entry.n) && isObject(entry.cmds)
-      && Object.values(entry.cmds).every(value => typeof value === 'string');
+      && Object.values(entry.cmds).every(value => typeof value === 'string')
+      && (entry.ns === undefined || (isObject(entry.ns) && Object.values(entry.ns).every(Number.isInteger)));
     if (!valid) return { ok: false, error: `riddleCommands 的 ${file} 格式不對` };
   }
   if (!Object.values(data.riddleDone).every(value => value === true)) return { ok: false, error: 'riddleDone 的值只能是 true' };

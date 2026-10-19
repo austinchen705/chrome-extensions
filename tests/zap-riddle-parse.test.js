@@ -115,3 +115,53 @@ test('buildRiddles reports an index riddle with no menu entry', () => {
   assert.ok(report.some(line => line.startsWith('總表有、選單沒有') && line.includes('獨孤九劍')));
   assert.ok(report.some(line => line.startsWith('選單有、沒被使用') && line.includes('完全不同的名字')));
 });
+
+test('extractCommands refuses steps whose moves sit between annotated commands', () => {
+  const tang = 'e;kill scorpion <絕毒魔蠍兩隻，不會擋人可以引走一隻一隻打> n;kill scorpion <絕毒魔蠍兩隻，不會擋人可以引走一隻一隻打> n n;kill scorpion <絕毒魔蠍兩隻，會擋路需一次解決> d;kill snake <劇毒催魂蛇兩隻，會擋路需一次解決> d ps.全都auto k';
+  assert.equal(extractCommands(tang), '');
+});
+
+test('extractCommands refuses a truncated ask and moves written as prose', () => {
+  assert.equal(extractCommands('ask 小廝 about 孟星魂, 快活林, 煩惱, 混元魔刀, 柳樹'), '');
+  assert.equal(extractCommands('w底, sw, s底會到港口，然後等綠杉少女出現'), '');
+});
+
+test('extractCommands refuses two commands glued together', () => {
+  assert.equal(extractCommands('ride 2;run 2se e n give woman letter;ask woman about 闖王;ask woman about 身邊大將'), '');
+  assert.equal(extractCommands('run 3s wu;climb cliff;nw squeeze crack'), '');
+});
+
+test('extractCommands only takes Chinese arguments in the known slots', () => {
+  assert.equal(extractCommands('give doll to tang 恭喜'), 'give doll to tang');
+  assert.equal(extractCommands('put key into box 註'), 'put key into box');
+  assert.equal(extractCommands('ask ting about 自宮'), 'ask ting about 自宮');
+  assert.equal(extractCommands('search 糖果'), 'search 糖果');
+});
+
+test('extractCommands cuts the ps. annotation', () => {
+  assert.equal(extractCommands('kill wian ps.到後面'), 'kill wian');
+  assert.equal(extractCommands('w w s e e e e ps.到了'), 'w w s e e e e');
+});
+
+test('parseRiddlePage keeps the text before the first step as a preamble', () => {
+  const sealed = page('qu6-3.htm');
+  assert.match(sealed.preamble, /石牢部份/);
+  assert.doesNotMatch(sealed.preamble, /洪凌波開始/);
+  assert.equal(page('qu2-1.htm').preamble, '');
+  assert.match(page('qu2-5.htm').preamble, /setplace/);
+});
+
+test('parseRiddlePage turns section headings into step headings instead of gluing them to the previous step', () => {
+  const { steps } = page('qu6-3.htm');
+  const grave = steps.find(step => step.heading === '入古墓：');
+  assert.ok(grave, 'a step carries the 入古墓： heading');
+  assert.ok(steps.every(step => !step.text.includes('入古墓：') && !step.text.includes('入明教：')));
+  assert.ok(steps.some(step => step.heading === '入明教：'));
+});
+
+test('parseRiddlePage reads a labelled step like 男：1.先到…', () => {
+  const { steps } = page('qu1-8.htm');
+  const male = steps.find(step => step.text.startsWith('先到雪羽港客棧買烤魚'));
+  assert.ok(male, 'the male route step 1 exists');
+  assert.equal(male.heading, '男：');
+});

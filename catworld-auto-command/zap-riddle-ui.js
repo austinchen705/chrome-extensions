@@ -110,8 +110,10 @@ function attach(root, { readStats, startSteps }) {
   function renderList() {
     current = null;
     const stats = readStats();
-    const unreadable = !Number.isFinite(stats.exp) || !Number.isFinite(stats.force);
-    status.textContent = unreadable ? '讀不到經驗／內力，條件都需自行確認' : `經驗 ${stats.exp}　內力上限 ${stats.force}`;
+    const missing = [!Number.isFinite(stats.exp) && '經驗', !Number.isFinite(stats.force) && '內力'].filter(Boolean);
+    status.textContent = missing.length
+      ? `讀不到${missing.join('、')}，需要${missing.join('、')}的條件都歸「需自行確認」`
+      : `經驗 ${stats.exp}　內力上限 ${stats.force}`;
     const visible = R.searchRiddles(data.riddles, search.value).filter(riddle => showDone.checked || !done[riddle.id]);
     const groups = R.groupRiddles(visible, stats);
     main.replaceChildren();
@@ -144,11 +146,16 @@ function attach(root, { readStats, startSteps }) {
     const sendButton = el('button', { className: 'rd-btn', textContent: '送出', disabled: !effective.commands });
     sendButton.addEventListener('click', () => {
       const text = R.joinCommands(R.splitCommands(effective.commands));
-      if (!text) return;
-      startSteps(text);
-      say(`已送出第 ${step.no} 步：${text}`);
+      if (!text || sendButton.disabled) return;
+      // 連按兩下會啟動兩個巨集（含 kill 的步驟就送兩次），按下後短暫停用
+      sendButton.disabled = true;
+      setTimeout(() => { sendButton.disabled = false; }, 1500);
+      // startSteps 回 false 代表巨集沒有執行（例如 @等待 格式錯誤），不能說已送出
+      if (startSteps(text) === false) say('沒有送出：指令格式不對，請看面板「巨集」列的提示');
+      else say(`已送出第 ${step.no} 步：${text}`);
     });
     return el('div', { className: 'rd-step' },
+      step.heading ? el('div', { className: 'rd-group', textContent: step.heading }) : '',
       el('div', { textContent: `${step.no}. ${step.text}` }),
       el('div', { className: 'rd-cmd', textContent: cmdText }),
       effective.stale && effective.source === 'edited' ? el('div', { className: 'rd-warn', textContent: '步驟已變動，請確認這個補充的指令還對' }) : '',
@@ -168,7 +175,11 @@ function attach(root, { readStats, startSteps }) {
     if (!riddle.page) main.append(el('div', { className: 'rd-note', textContent: '沒有步驟頁' }));
     else if (!page) main.append(el('div', { className: 'rd-note', textContent: '沒有步驟頁資料' }));
     else if (!page.steps.length) main.append(el('div', { className: 'rd-text', textContent: page.text }));
-    else page.steps.forEach((_, i) => main.append(stepRow(riddle, page, i + 1)));
+    else {
+      // 第一步之前的文字常有準備事項（要先設的點、要先收集的東西），不顯示會漏掉前置條件
+      if (page.preamble) main.append(el('div', { className: 'rd-text', textContent: page.preamble }));
+      page.steps.forEach((_, i) => main.append(stepRow(riddle, page, i + 1)));
+    }
   }
 
   // ---- 匯出／匯入 ----
@@ -196,6 +207,15 @@ function attach(root, { readStats, startSteps }) {
     io.hidden = true;
     say('已匯入');
     renderList();
+  });
+
+  // 另一個遊戲分頁改了補充指令或已解過標記時同步進來；不然這個分頁下次存檔會用舊資料把對方的改動蓋掉。
+  // 看步驟時不重畫（編輯框裡可能有還沒存的文字）
+  chrome.storage.onChanged?.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if (changes[EDITS_KEY]) edits = changes[EDITS_KEY].newValue ?? {};
+    if (changes[DONE_KEY]) done = changes[DONE_KEY].newValue ?? {};
+    if (data && !current && !box.hidden) renderList();
   });
 
   // ---- 開關與載入 ----
