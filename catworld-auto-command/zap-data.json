@@ -1,7 +1,8 @@
 {
  "sources": [
   "https://zap.muds.me/ot1.htm",
-  "https://catworld.muds.tw/help/newstart.3"
+  "https://catworld.muds.tw/help/newstart.3",
+  "https://zap.muds.me/ub.htm"
  ],
  "mobs": [
   {
@@ -7159,6 +7160,572 @@
    "note": "",
    "exp": 500,
    "source": "override"
+  }
+ ],
+ "items": [
+  {
+   "name": "黑耀石球",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "唸珠",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "象牙箸",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "三彩翠玉",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "粉兔兔吊飾",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "奶茶兔吊飾",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "假玉佩",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "鑼",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "祖母綠",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "斷掉的玉釵",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "馬蹄鐵",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "銅燈",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "彈珠",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "破舊八卦鏡",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "破扇子",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "夜壺",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "木如意",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "明朝古董木雕",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "玉手鐲",
+   "level": 1,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "硬掉的饅頭",
+   "level": 2,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "無芯蠟燭",
+   "level": 2,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "挽面的線",
+   "level": 2,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "牌位",
+   "level": 2,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "驗金石",
+   "level": 3,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "杓子",
+   "level": 3,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "胭脂盒",
+   "level": 3,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "檀香珠",
+   "level": 3,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "小貝螺",
+   "level": 3,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "閃山雲",
+   "level": 4,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "翡翠姻石",
+   "level": 4,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "玳瑁",
+   "level": 4,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "淨身玉",
+   "level": 4,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "乳石英",
+   "level": 4,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "奇羅木",
+   "level": 5,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "珊瑚金",
+   "level": 5,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "澄光玉",
+   "level": 5,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "暮光沙",
+   "level": 5,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "滄水石",
+   "level": 5,
+   "note": "",
+   "weapon": ""
+  },
+  {
+   "name": "照妖鏡",
+   "level": 1,
+   "note": "查看他人的EXP，悟性不夠高無法使用",
+   "weapon": ""
+  },
+  {
+   "name": "刀鑄模 (一洞)",
+   "level": 2,
+   "note": "鑄造所需使用的模子",
+   "weapon": "刀"
+  },
+  {
+   "name": "海龍皮",
+   "level": 2,
+   "note": "鑄造鞭子所需使用的物品",
+   "weapon": "鞭"
+  },
+  {
+   "name": "杖鑄模 (一洞)",
+   "level": 2,
+   "note": "鑄造所需使用的模子",
+   "weapon": "杖"
+  },
+  {
+   "name": "杖鑄模 (二洞)",
+   "level": 2,
+   "note": "鑄造所需使用的模子",
+   "weapon": "杖"
+  },
+  {
+   "name": "劍鑄模 (一洞)",
+   "level": 2,
+   "note": "鑄造所需使用的模子",
+   "weapon": "劍"
+  },
+  {
+   "name": "獸骨鞭柄 (二洞)",
+   "level": 2,
+   "note": "鑄造鞭子所需使用的模子",
+   "weapon": "鞭"
+  },
+  {
+   "name": "刀鑄模 (二洞)",
+   "level": 3,
+   "note": "鑄造所需使用的模子",
+   "weapon": "刀"
+  },
+  {
+   "name": "鏢鑄模 (無洞)",
+   "level": 3,
+   "note": "鑄造所需使用的模子",
+   "weapon": "暗器"
+  },
+  {
+   "name": "指環鑄模 (一洞)",
+   "level": 3,
+   "note": "鑄造所需使用的模子",
+   "weapon": ""
+  },
+  {
+   "name": "杖鑄模 (三洞)",
+   "level": 3,
+   "note": "鑄造所需使用的模子",
+   "weapon": "杖"
+  },
+  {
+   "name": "劍鑄模 (二洞)",
+   "level": 3,
+   "note": "鑄造所需使用的模子",
+   "weapon": "劍"
+  },
+  {
+   "name": "刀鑄模 (三洞)",
+   "level": 4,
+   "note": "鑄造所需使用的模子",
+   "weapon": "刀"
+  },
+  {
+   "name": "鏢鑄模 (一洞)",
+   "level": 4,
+   "note": "鑄造所需使用的模子",
+   "weapon": "暗器"
+  },
+  {
+   "name": "指環鑄模 (二洞)",
+   "level": 4,
+   "note": "鑄造所需使用的模子",
+   "weapon": ""
+  },
+  {
+   "name": "杖鑄模 (四洞)",
+   "level": 4,
+   "note": "鑄造所需使用的模子",
+   "weapon": "杖"
+  },
+  {
+   "name": "惡龍筋",
+   "level": 4,
+   "note": "鑄造鞭子所需使用的物品",
+   "weapon": "鞭"
+  },
+  {
+   "name": "劍鑄模 (三洞)",
+   "level": 4,
+   "note": "鑄造所需使用的模子",
+   "weapon": "劍"
+  },
+  {
+   "name": "獸骨鞭柄 (四洞)",
+   "level": 4,
+   "note": "鑄造鞭子所需使用的模子",
+   "weapon": "鞭"
+  },
+  {
+   "name": "鏢鑄模 (二洞)",
+   "level": 5,
+   "note": "鑄造所需使用的模子",
+   "weapon": "暗器"
+  },
+  {
+   "name": "指環鑄模 (三洞)",
+   "level": 5,
+   "note": "鑄造所需使用的模子",
+   "weapon": ""
+  },
+  {
+   "name": "碧茜",
+   "level": 2,
+   "note": "武器：蛇毒 +5",
+   "weapon": ""
+  },
+  {
+   "name": "蜜蠟",
+   "level": 2,
+   "note": "武器：玉蜂毒 +2",
+   "weapon": ""
+  },
+  {
+   "name": "錮元石",
+   "level": 2,
+   "note": "武器：硬度 +14　防具：氣上限 +24",
+   "weapon": ""
+  },
+  {
+   "name": "月耀石",
+   "level": 2,
+   "note": "武器：傷害 +2　防具：防禦力 +3",
+   "weapon": ""
+  },
+  {
+   "name": "雞血玉",
+   "level": 2,
+   "note": "武器：硬度 +9　防具：氣上限 +16",
+   "weapon": ""
+  },
+  {
+   "name": "海洋之星",
+   "level": 2,
+   "note": "武器：傷害 +3　防具：防禦力 +4",
+   "weapon": ""
+  },
+  {
+   "name": "瑪瑙皇",
+   "level": 3,
+   "note": "武器：會心 +1",
+   "weapon": ""
+  },
+  {
+   "name": "紅玉髓",
+   "level": 3,
+   "note": "武器：封穴 +1　防具：閃躲 +6",
+   "weapon": ""
+  },
+  {
+   "name": "烈燄石",
+   "level": 3,
+   "note": "武器：硬度 +19　防具：氣上限 +32",
+   "weapon": ""
+  },
+  {
+   "name": "咒璽",
+   "level": 3,
+   "note": "武器：粉碎 +1",
+   "weapon": ""
+  },
+  {
+   "name": "西藏天珠",
+   "level": 3,
+   "note": "武器：吸氣化氣 +2　防具：氣反擊 +1",
+   "weapon": ""
+  },
+  {
+   "name": "日耀石",
+   "level": 3,
+   "note": "武器：傷害 +4　防具：防禦力 +5",
+   "weapon": ""
+  },
+  {
+   "name": "冰火玄石",
+   "level": 4,
+   "note": "武器：傷害 +5　防具：防禦力 +6",
+   "weapon": ""
+  },
+  {
+   "name": "硫磺結晶",
+   "level": 4,
+   "note": "武器：麻痺 +1",
+   "weapon": ""
+  },
+  {
+   "name": "貓眼",
+   "level": 4,
+   "note": "武器：粉碎 +2",
+   "weapon": ""
+  },
+  {
+   "name": "五彩石",
+   "level": 4,
+   "note": "武器：硬度 +24　防具：氣上限 +40",
+   "weapon": ""
+  },
+  {
+   "name": "至炎琥珀",
+   "level": 4,
+   "note": "武器：吸氣化神 +1　防具：神反擊 +2",
+   "weapon": ""
+  },
+  {
+   "name": "花琉璃",
+   "level": 4,
+   "note": "武器：會心 +2",
+   "weapon": ""
+  },
+  {
+   "name": "冥魂珠",
+   "level": 4,
+   "note": "武器：吸氣化氣 +3　防具：氣反擊 +2",
+   "weapon": ""
+  },
+  {
+   "name": "冰菁石",
+   "level": 4,
+   "note": "武器：吸氣化精 +2　防具：精反擊 +3",
+   "weapon": ""
+  },
+  {
+   "name": "紫龍晶",
+   "level": 4,
+   "note": "武器：封技 +1　防具：招架 +8",
+   "weapon": ""
+  },
+  {
+   "name": "千年雪蛛岩",
+   "level": 4,
+   "note": "武器：玉蜂毒 +8　防具：內功 +5",
+   "weapon": ""
+  },
+  {
+   "name": "龍宮舍利",
+   "level": 5,
+   "note": "防具：內功 +12",
+   "weapon": ""
+  },
+  {
+   "name": "青龍鱗",
+   "level": 5,
+   "note": "防具：防禦力 +12",
+   "weapon": ""
+  },
+  {
+   "name": "烈焰之花",
+   "level": 5,
+   "note": "武器：攻擊 +36",
+   "weapon": ""
+  },
+  {
+   "name": "金絲楠木",
+   "level": 5,
+   "note": "防具：閃躲 +16",
+   "weapon": ""
+  },
+  {
+   "name": "玄冰蠶繭",
+   "level": 5,
+   "note": "武器：麻痺 +2",
+   "weapon": ""
+  },
+  {
+   "name": "冰魄",
+   "level": 5,
+   "note": "武器：吸氣化氣 +4",
+   "weapon": ""
+  },
+  {
+   "name": "七彩螢石",
+   "level": 5,
+   "note": "武器：傷害 +10",
+   "weapon": ""
+  },
+  {
+   "name": "沉沙流晶",
+   "level": 5,
+   "note": "防具：氣反擊 +3",
+   "weapon": ""
+  },
+  {
+   "name": "深海琥珀",
+   "level": 5,
+   "note": "武器：硬度 +32",
+   "weapon": ""
+  },
+  {
+   "name": "煉獄蒼穹",
+   "level": 5,
+   "note": "防具：氣上限 +52",
+   "weapon": ""
+  },
+  {
+   "name": "天霜玉璃",
+   "level": 5,
+   "note": "武器：會心 +3",
+   "weapon": ""
+  },
+  {
+   "name": "碧魔蛛眼",
+   "level": 5,
+   "note": "武器：粉碎 +3",
+   "weapon": ""
+  },
+  {
+   "name": "天雷之珠",
+   "level": 5,
+   "note": "防具：防禦 +36",
+   "weapon": ""
   }
  ]
 }

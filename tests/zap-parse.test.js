@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseZapMobHtml, parseNewstartHtml, mergeSources, applyOverrides } = require('../tools/zap-parse.js');
+const { parseZapMobHtml, parseNewstartHtml, parseUnknownObjectHtml, mergeSources, applyOverrides } = require('../tools/zap-parse.js');
 
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8');
 const zap = () => parseZapMobHtml(fixture('ot1-sample.html'));
@@ -102,4 +102,48 @@ test('applyOverrides adds a mob that neither source has and notes it', () => {
   const added = byName(result.mobs, '新怪(newbie)');
   assert.equal(added.length, 1);
   assert.deepEqual([added[0].exp, added[0].location, added[0].source], [123, '', 'override']);
+});
+
+const items = () => parseUnknownObjectHtml(fixture('ub-sample.html'));
+const itemNamed = name => items().find(entry => entry.name === name);
+
+test('parseUnknownObjectHtml reads junk names from the first table', () => {
+  assert.deepEqual(itemNamed('明朝古董木雕'), { name: '明朝古董木雕', level: 1, note: '', weapon: '' });
+  assert.equal(itemNamed('奶茶兔吊飾').level, 1);
+});
+
+test('parseUnknownObjectHtml reads moulds with their function', () => {
+  assert.deepEqual(itemNamed('劍鑄模 (二洞)'), { name: '劍鑄模 (二洞)', level: 3, note: '鑄造所需使用的模子', weapon: '劍' });
+  assert.deepEqual([itemNamed('杖鑄模 (四洞)').level, itemNamed('杖鑄模 (四洞)').weapon], [4, '杖']);
+  assert.equal(itemNamed('鏢鑄模 (一洞)').weapon, '暗器');
+  assert.equal(itemNamed('指環鑄模 (一洞)').weapon, '');
+});
+
+test('parseUnknownObjectHtml maps whip materials by name or function', () => {
+  const skin = itemNamed('海龍皮');
+  assert.equal(skin.level, 2);
+  assert.equal(skin.weapon, '鞭');
+  assert.match(skin.note, /鞭子/);
+  assert.equal(itemNamed('獸骨鞭柄 (二洞)').weapon, '鞭');
+});
+
+test('parseUnknownObjectHtml reads gems with their effects', () => {
+  const relic = itemNamed('龍宮舍利');
+  assert.equal(relic.level, 5);
+  assert.match(relic.note, /內功 \+12/);
+  assert.match(itemNamed('瑪瑙皇').note, /會心 \+1/);
+});
+
+test('parseUnknownObjectHtml has no fist items and joins names split by spans', () => {
+  const all = items();
+  assert.ok(!all.some(entry => entry.weapon === '拳套'));
+  const spider = all.find(entry => entry.name.includes('雪蛛'));
+  assert.ok(spider);
+  assert.doesNotMatch(spider.name, /[|\n]/);
+});
+
+test('parseUnknownObjectHtml covers all five levels', () => {
+  const all = items();
+  assert.deepEqual([...new Set(all.map(entry => entry.level))].sort(), [1, 2, 3, 4, 5]);
+  assert.equal(all.length, 94);
 });

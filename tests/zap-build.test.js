@@ -29,3 +29,14 @@ test('buildData merges both sources and applies overrides', () => {
   assert.ok(Array.isArray(data.sources) && data.sources.length === 2);
   assert.ok(report.some(line => line.includes('老虎')));
 });
+
+test('buildData includes items when ubHtml is given', () => {
+  const ubHtml = fixture('ub-sample.html');
+  const { data } = buildData({ ...input([]), ubHtml }, { minZap: 1, minNewstart: 1 });
+  assert.equal(data.items.length, 94);
+  assert.equal(data.sources.length, 3);
+});
+
+test('buildData rejects an ub page that parses to too few items', () => {
+  assert.throws(() => buildData({ ...input([]), ubHtml: '<html></html>' }, { minZap: 1, minNewstart: 1 }), /來源解析異常/);
+});

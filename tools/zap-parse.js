@@ -110,24 +110,67 @@ function applyOverrides(mobs, overrides) {
 }
 
 const SOURCES = ['https://zap.muds.me/ot1.htm', 'https://catworld.muds.tw/help/newstart.3'];
+const UB_URL = 'https://zap.muds.me/ub.htm';
+
+// 無名物品表 ub.htm：三張表，LV 在帶 rowspan 的儲存格（往下列沿用）。
+// 第 1 張：LV 之後每格都是純名稱（販賣品，無功能）；第 2 張：名稱、功能（鑄模與材料）；第 3 張：名稱、武器效果、防具效果（寶石）
+function weaponOf(name, note) {
+  if (name.includes('劍鑄模')) return '劍';
+  if (name.includes('刀鑄模')) return '刀';
+  if (name.includes('杖鑄模')) return '杖';
+  if (name.includes('鏢鑄模')) return '暗器';
+  return /鞭/.test(`${name}${note}`) ? '鞭' : '';
+}
+
+function parseUnknownObjectHtml(html) {
+  const items = [];
+  html.split(/<table/i).slice(1).forEach((tableHtml, tableIndex) => {
+    let level = null;
+    for (const [, rowHtml] of tableHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
+      const cells = Array.from(rowHtml.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g), match => cellText(match[1]));
+      if (cells.some(text => /等級|物品名稱|功能|鑲於/.test(text))) continue;
+      const levelMatch = /^LV\s*(\d)$/.exec(cells[0] ?? '');
+      if (levelMatch) level = Number(levelMatch[1]);
+      const rest = levelMatch ? cells.slice(1) : cells;
+      if (level === null) continue;
+      const entries = tableIndex === 0
+        ? rest.filter(Boolean).map(name => ({ name, note: '' }))
+        : [{
+          name: rest[0],
+          note: tableIndex === 1
+            ? rest[1] ?? ''
+            : [rest[1] && `武器：${rest[1]}`, rest[2] && `防具：${rest[2]}`].filter(Boolean).join('　'),
+        }];
+      entries.filter(entry => entry.name).forEach(({ name, note }) => items.push({ name, level, note, weapon: weaponOf(name, note) }));
+    }
+  });
+  return items;
+}
 
 // 來源改版時解析結果會突然變少，這時寧可失敗也不要產生一份殘缺的資料
-function buildData({ zapHtml, newstartHtml, overrides }, { minZap = 100, minNewstart = 20 } = {}) {
+function buildData({ zapHtml, newstartHtml, overrides, ubHtml }, { minZap = 100, minNewstart = 20, minItems = 30 } = {}) {
   const zap = parseZapMobHtml(zapHtml);
   const newstart = parseNewstartHtml(newstartHtml);
   if (zap.length < minZap || newstart.length < minNewstart) {
     throw new Error(`來源解析異常：zap ${zap.length} 筆（至少 ${minZap}）、newstart ${newstart.length} 筆（至少 ${minNewstart}）`);
   }
+  const items = ubHtml === undefined ? [] : parseUnknownObjectHtml(ubHtml);
+  if (ubHtml !== undefined && items.length < minItems) {
+    throw new Error(`來源解析異常：無名物品表 ${items.length} 筆（至少 ${minItems}）`);
+  }
   const merged = mergeSources(zap, newstart);
   const { mobs, problems, notes } = applyOverrides(merged.mobs, overrides);
   const unknown = mobs.filter(mob => mob.exp === null);
   const report = [
-    `zap ${zap.length} 筆、newstart ${newstart.length} 筆、合併後 ${mobs.length} 筆`,
+    `zap ${zap.length} 筆、newstart ${newstart.length} 筆、合併後 ${mobs.length} 筆、無名物品 ${items.length} 筆`,
     ...merged.conflicts.map(line => `數值差異：${line}`),
     ...unknown.map(mob => `強度不明：${mob.name}（${mob.location}）`),
     ...notes,
   ];
-  return { data: { sources: SOURCES, mobs }, report, problems };
+  const sources = ubHtml === undefined ? SOURCES : [...SOURCES, UB_URL];
+  return { data: { sources, mobs, ...(ubHtml === undefined ? {} : { items }) }, report, problems };
 }
 
-module.exports = { normalize, parseZapMobHtml, parseNewstartHtml, mergeSources, applyOverrides, buildData, SOURCES };
+module.exports = {
+  normalize, parseZapMobHtml, parseNewstartHtml, parseUnknownObjectHtml, mergeSources, applyOverrides, buildData, SOURCES, UB_URL,
+};

@@ -1,10 +1,10 @@
 // 從 zap 攻略站的 MOB 表與 catworld 說明站的新手怪列表，加上 tools/zap-overrides.json，
 // 產生 catworld-auto-command/zap-data.json。
 // 用法：node tools/gen-zap-data.js            （連網抓來源）
-//       node tools/gen-zap-data.js --from-dir <資料夾>   （讀 <資料夾>/ot1.htm 與 newstart.3.html）
+//       node tools/gen-zap-data.js --from-dir <資料夾>   （讀 <資料夾>/ot1.htm、newstart.3.html、ub.htm）
 const fs = require('fs');
 const path = require('path');
-const { buildData, SOURCES } = require('./zap-parse');
+const { buildData, SOURCES, UB_URL } = require('./zap-parse');
 
 const outFile = path.join(__dirname, '..', 'catworld-auto-command', 'zap-data.json');
 const overridesFile = path.join(__dirname, 'zap-overrides.json');
@@ -14,6 +14,7 @@ async function loadSources(dir) {
     return {
       zapHtml: fs.readFileSync(path.join(dir, 'ot1.htm'), 'utf8'),
       newstartHtml: fs.readFileSync(path.join(dir, 'newstart.3.html'), 'utf8'),
+      ubHtml: fs.readFileSync(path.join(dir, 'ub.htm'), 'utf8'),
     };
   }
   const get = async url => {
@@ -21,8 +22,8 @@ async function loadSources(dir) {
     if (!response.ok) throw new Error(`${url} 回應 ${response.status}`);
     return response.text();
   };
-  const [zapHtml, newstartHtml] = await Promise.all(SOURCES.map(get));
-  return { zapHtml, newstartHtml };
+  const [zapHtml, newstartHtml, ubHtml] = await Promise.all([...SOURCES, UB_URL].map(get));
+  return { zapHtml, newstartHtml, ubHtml };
 }
 
 async function main() {
