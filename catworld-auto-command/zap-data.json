@@ -1,0 +1,7164 @@
+{
+ "sources": [
+  "https://zap.muds.me/ot1.htm",
+  "https://catworld.muds.tw/help/newstart.3"
+ ],
+ "mobs": [
+  {
+   "name": "園丁(gardener)",
+   "id": "gardener",
+   "location": "絕情谷",
+   "note": "一陽指、 內力太低的小心",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "管家(steward)",
+   "id": "steward",
+   "location": "絕情谷",
+   "note": "",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "巨人(troll)",
+   "id": "troll",
+   "location": "珍獸森林",
+   "note": "把人轟到別格",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "神算子 瑛姑(Ying ku)",
+   "id": "ying ku",
+   "location": "桃花島",
+   "note": "咒術",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "華山劍派第十三代弟子 林平之(Lin pin ze)",
+   "id": "lin pin ze",
+   "location": "華山",
+   "note": "獨孤劍",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "母雞(hen)",
+   "id": "hen",
+   "location": "金礦坑南方小鎮",
+   "note": "有烤雞腿",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "糖葫蘆小販(sogarcoated vendor)",
+   "id": "sogarcoated vendor",
+   "location": "金礦坑南方小鎮",
+   "note": "",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "冰人 蘇力亞(su le ya)",
+   "id": "su le ya",
+   "location": "冰火島",
+   "note": "",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "火人 巴立克(ba le ka)",
+   "id": "ba le ka",
+   "location": "冰火島",
+   "note": "",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "強盜(robber)",
+   "id": "robber",
+   "location": "邪虎寨",
+   "note": "auto k",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "萬獸山莊 大象(elephant)",
+   "id": "elephant",
+   "location": "萬獸山莊",
+   "note": "",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "囚犯(jail man)",
+   "id": "jail man",
+   "location": "拜月山莊",
+   "note": "",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "火球妖(fireball)",
+   "id": "fireball",
+   "location": "玉靈洞",
+   "note": "auto k、必中自殺炸彈",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "梅花鹿(deer)",
+   "id": "deer",
+   "location": "飄渺峰",
+   "note": "pf逃跑 (Mob 消失)",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "羚羊(sheep)",
+   "id": "sheep",
+   "location": "飄渺峰",
+   "note": "pf逃跑 (Mob 消失)",
+   "exp": 10000,
+   "source": "zap"
+  },
+  {
+   "name": "丫環(ya huan)",
+   "id": "ya huan",
+   "location": "蘇州",
+   "note": "",
+   "exp": 11000,
+   "source": "zap"
+  },
+  {
+   "name": "慕容世家「伺茶丫鬟」素素(susu)",
+   "id": "susu",
+   "location": "燕子鄔",
+   "note": "",
+   "exp": 11000,
+   "source": "zap"
+  },
+  {
+   "name": "闖軍 暴民(mob)",
+   "id": "mob",
+   "location": "長安",
+   "note": "exp太高auto k",
+   "exp": 12000,
+   "source": "zap"
+  },
+  {
+   "name": "沙蠍(scorpion)",
+   "id": "scorpion",
+   "location": "沙漠",
+   "note": "小心地形傷害",
+   "exp": 12000,
+   "source": "zap"
+  },
+  {
+   "name": "萬獸山莊 野獅子(lion)",
+   "id": "lion",
+   "location": "萬獸山莊",
+   "note": "auto k",
+   "exp": 12000,
+   "source": "zap"
+  },
+  {
+   "name": "蘇州少女(girl)",
+   "id": "girl",
+   "location": "蘇州",
+   "note": "",
+   "exp": 12000,
+   "source": "zap"
+  },
+  {
+   "name": "婢女(bi nu)",
+   "id": "bi nu",
+   "location": "蘇州",
+   "note": "",
+   "exp": 12000,
+   "source": "zap"
+  },
+  {
+   "name": "慕容世家「丫鬟」阿朱(zhu)",
+   "id": "zhu",
+   "location": "燕子鄔",
+   "note": "",
+   "exp": 12000,
+   "source": "zap"
+  },
+  {
+   "name": "慕容世家「丫鬟」阿碧(abi)",
+   "id": "abi",
+   "location": "燕子鄔",
+   "note": "",
+   "exp": 13000,
+   "source": "zap"
+  },
+  {
+   "name": "萬獸山莊 豺狼(wolf)",
+   "id": "wolf",
+   "location": "萬獸山莊",
+   "note": "auto k",
+   "exp": 14000,
+   "source": "zap"
+  },
+  {
+   "name": "小精靈(faerie)",
+   "id": "faerie",
+   "location": "珍獸森林",
+   "note": "pf命中必暈",
+   "exp": 14000,
+   "source": "zap"
+  },
+  {
+   "name": "武器王(weapon wang)",
+   "id": "weapon wang",
+   "location": "蒙古",
+   "note": "",
+   "exp": 15000,
+   "source": "zap"
+  },
+  {
+   "name": "契丹兵(Arms)",
+   "id": "arms",
+   "location": "契丹",
+   "note": "",
+   "exp": 15000,
+   "source": "zap"
+  },
+  {
+   "name": "巨型巨居蟹(Large hermit crab)",
+   "id": "large hermit crab",
+   "location": "冰火島沙灘",
+   "note": "",
+   "exp": 15000,
+   "source": "zap"
+  },
+  {
+   "name": "和尚(monk)",
+   "id": "monk",
+   "location": "金礦坑南方小鎮",
+   "note": "",
+   "exp": 15000,
+   "source": "zap"
+  },
+  {
+   "name": "萬獸山莊 花豹(leopard)",
+   "id": "leopard",
+   "location": "萬獸山莊",
+   "note": "auto k",
+   "exp": 16000,
+   "source": "zap"
+  },
+  {
+   "name": "萬獸山莊 猛虎(tiger)",
+   "id": "tiger",
+   "location": "萬獸山莊",
+   "note": "auto k",
+   "exp": 16000,
+   "source": "zap"
+  },
+  {
+   "name": "招潮蟹(crab)",
+   "id": "crab",
+   "location": "桃花島",
+   "note": "",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "土匪嘍囉(Bandit)",
+   "id": "bandit",
+   "location": "老松寨",
+   "note": "auto k",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "第六代弟子(pupil)",
+   "id": "pupil",
+   "location": "古墓",
+   "note": "",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "第一團 蒙古兵(Soldier)",
+   "id": "soldier",
+   "location": "蒙古、襄陽",
+   "note": "襄陽的auto k",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "第二團 蒙古兵(Soldier)",
+   "id": "soldier",
+   "location": "蒙古、襄陽",
+   "note": "auto k",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "第三團 蒙古兵(Soldier)",
+   "id": "soldier",
+   "location": "襄陽",
+   "note": "auto k",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "第四團 蒙古兵(Soldier)",
+   "id": "soldier",
+   "location": "襄陽",
+   "note": "auto k",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "第五團 蒙古兵(Soldier)",
+   "id": "soldier",
+   "location": "襄陽",
+   "note": "auto k",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "天南段家第十七代直傳弟子 漁夫(Fisherman)",
+   "id": "fisherman",
+   "location": "天龍寺",
+   "note": "",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "狗頭人(Dog man)",
+   "id": "dog man",
+   "location": "谷湖",
+   "note": "auto k",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "巨大螃蟹(Large crab)",
+   "id": "large crab",
+   "location": "冰火島沙灘",
+   "note": "",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "小嘍囉(mountain bandit)",
+   "id": "mountain bandit",
+   "location": "邪虎寨",
+   "note": "",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "和尚(monk)",
+   "id": "monk",
+   "location": "大理",
+   "note": "",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "榮東禪師(East monk)",
+   "id": "east monk",
+   "location": "大理",
+   "note": "",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "萬獸山莊 猿猴(ape)",
+   "id": "ape",
+   "location": "萬獸山莊",
+   "note": "auto k",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "小孩(kid)",
+   "id": "kid",
+   "location": "蘇州",
+   "note": "",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "蘇州才子(su man)",
+   "id": "su man",
+   "location": "蘇州",
+   "note": "",
+   "exp": 20000,
+   "source": "zap"
+  },
+  {
+   "name": "蘇州少婦(su woman)",
+   "id": "su woman",
+   "location": "蘇州",
+   "note": "",
+   "exp": 21000,
+   "source": "zap"
+  },
+  {
+   "name": "蘇州女孩(su girl)",
+   "id": "su girl",
+   "location": "蘇州",
+   "note": "",
+   "exp": 21000,
+   "source": "zap"
+  },
+  {
+   "name": "老王(cook)",
+   "id": "cook",
+   "location": "燕子鄔",
+   "note": "",
+   "exp": 21000,
+   "source": "zap"
+  },
+  {
+   "name": "丫環(yanziwu servant)",
+   "id": "yanziwu servant",
+   "location": "燕子鄔",
+   "note": "",
+   "exp": 21000,
+   "source": "zap"
+  },
+  {
+   "name": "西山一窟鬼 笑臉鬼(smile face gui)",
+   "id": "smile face gui",
+   "location": "萬獸山莊",
+   "note": "太醜auto k?",
+   "exp": 23000,
+   "source": "zap"
+  },
+  {
+   "name": "西山一窟鬼 俏鬼(beautiful gui)",
+   "id": "beautiful gui",
+   "location": "萬獸山莊",
+   "note": "太醜auto k?",
+   "exp": 23000,
+   "source": "zap"
+  },
+  {
+   "name": "獅子(lion)",
+   "id": "lion",
+   "location": "邪虎寨",
+   "note": "",
+   "exp": 25000,
+   "source": "zap"
+  },
+  {
+   "name": "天南段家第十七代直傳弟子 樵夫(Woodcutter)",
+   "id": "woodcutter",
+   "location": "天龍寺",
+   "note": "",
+   "exp": 25000,
+   "source": "zap"
+  },
+  {
+   "name": "契丹兵隊長(Senior arms)",
+   "id": "senior arms",
+   "location": "契丹",
+   "note": "",
+   "exp": 25000,
+   "source": "zap"
+  },
+  {
+   "name": "西山一窟鬼 討債鬼(tao zhai gui)",
+   "id": "tao zhai gui",
+   "location": "萬獸山莊",
+   "note": "太醜auto k?",
+   "exp": 25000,
+   "source": "zap"
+  },
+  {
+   "name": "翼人(gargoyle)",
+   "id": "gargoyle",
+   "location": "珍獸森林",
+   "note": "定人",
+   "exp": 27000,
+   "source": "zap"
+  },
+  {
+   "name": "遊客(visitor)",
+   "id": "visitor",
+   "location": "天龍寺",
+   "note": "",
+   "exp": 28000,
+   "source": "zap"
+  },
+  {
+   "name": "遊客(visitor)",
+   "id": "visitor",
+   "location": "天龍寺",
+   "note": "",
+   "exp": 28000,
+   "source": "zap"
+  },
+  {
+   "name": "西山一窟鬼 無常鬼(wu chang gui)",
+   "id": "wu chang gui",
+   "location": "萬獸山莊",
+   "note": "太醜auto k?",
+   "exp": 29000,
+   "source": "zap"
+  },
+  {
+   "name": "啄木鳥(woodpecker)",
+   "id": "woodpecker",
+   "location": "桃花島",
+   "note": "",
+   "exp": 30000,
+   "source": "zap"
+  },
+  {
+   "name": "小花鹿(deer)",
+   "id": "deer",
+   "location": "桃花島",
+   "note": "",
+   "exp": 30000,
+   "source": "zap"
+  },
+  {
+   "name": "狼頭人(wolf man)",
+   "id": "wolf man",
+   "location": "谷湖",
+   "note": "",
+   "exp": 30000,
+   "source": "zap"
+  },
+  {
+   "name": "契丹王 耶律洪基(king ye)",
+   "id": "king ye",
+   "location": "契丹",
+   "note": "",
+   "exp": 30000,
+   "source": "zap"
+  },
+  {
+   "name": "天南段家第十七代直傳弟子 農夫(Farmer)",
+   "id": "farmer",
+   "location": "天龍寺",
+   "note": "",
+   "exp": 30000,
+   "source": "zap"
+  },
+  {
+   "name": "八極門第三代弟子 學徒(staff student)",
+   "id": "staff student",
+   "location": "廣州",
+   "note": "",
+   "exp": 30000,
+   "source": "zap"
+  },
+  {
+   "name": "絕情谷弟子(pupil)",
+   "id": "pupil",
+   "location": "絕情谷",
+   "note": "",
+   "exp": 30000,
+   "source": "zap"
+  },
+  {
+   "name": "黑衣人(black man)",
+   "id": "black man",
+   "location": "天魔塔箱子",
+   "note": "auto k",
+   "exp": 30000,
+   "source": "zap"
+  },
+  {
+   "name": "西山一窟鬼 催命鬼(cui ming gui)",
+   "id": "cui ming gui",
+   "location": "萬獸山莊",
+   "note": "太醜auto k?",
+   "exp": 32000,
+   "source": "zap"
+  },
+  {
+   "name": "西山一窟鬼 煞神鬼(sha shen gui)",
+   "id": "sha shen gui",
+   "location": "萬獸山莊",
+   "note": "太醜auto k?",
+   "exp": 33000,
+   "source": "zap"
+  },
+  {
+   "name": "搶匪(bandit)",
+   "id": "bandit",
+   "location": "珍獸森林",
+   "note": "檔路硬闖auto k",
+   "exp": 33000,
+   "source": "zap"
+  },
+  {
+   "name": "中年男子(man)",
+   "id": "man",
+   "location": "衡山",
+   "note": "",
+   "exp": 33000,
+   "source": "zap"
+  },
+  {
+   "name": "飛頭火(flyfire)",
+   "id": "flyfire",
+   "location": "冰火島、火燄山、天魔塔箱子",
+   "note": "天魔塔的auto k",
+   "exp": 35000,
+   "source": "zap"
+  },
+  {
+   "name": "契丹將軍(General)",
+   "id": "general",
+   "location": "契丹",
+   "note": "",
+   "exp": 35000,
+   "source": "zap"
+  },
+  {
+   "name": "拜月教徒 侍衛(guard)",
+   "id": "guard",
+   "location": "拜月山莊",
+   "note": "",
+   "exp": 35000,
+   "source": "zap"
+  },
+  {
+   "name": "拜月山莊 護院教頭(guard)",
+   "id": "guard",
+   "location": "拜月山莊",
+   "note": "",
+   "exp": 35000,
+   "source": "zap"
+  },
+  {
+   "name": "拜月山莊 山莊弟子(soldier)",
+   "id": "soldier",
+   "location": "拜月山莊",
+   "note": "",
+   "exp": 35000,
+   "source": "zap"
+  },
+  {
+   "name": "獸人(Orc)",
+   "id": "orc",
+   "location": "冰火島森林、天魔塔箱子",
+   "note": "auto k",
+   "exp": 35000,
+   "source": "zap"
+  },
+  {
+   "name": "貓族三代弟子 婢女(cat girl)",
+   "id": "cat girl",
+   "location": "不夜天",
+   "note": "意寒神功",
+   "exp": 35000,
+   "source": "zap"
+  },
+  {
+   "name": "西山一窟鬼 喪門鬼(sang men gui)",
+   "id": "sang men gui",
+   "location": "萬獸山莊",
+   "note": "太醜auto k?",
+   "exp": 35000,
+   "source": "zap"
+  },
+  {
+   "name": "迎客僧(monk)",
+   "id": "monk",
+   "location": "天龍寺",
+   "note": "",
+   "exp": 35000,
+   "source": "zap"
+  },
+  {
+   "name": "襄陽守軍 士兵(soldier)",
+   "id": "soldier",
+   "location": "襄陽",
+   "note": "",
+   "exp": 40000,
+   "source": "zap"
+  },
+  {
+   "name": "星宿派大師姊 小阿紫(zu)",
+   "id": "zu",
+   "location": "契丹",
+   "note": "放毒",
+   "exp": 40000,
+   "source": "zap"
+  },
+  {
+   "name": "掃地僧(monk)",
+   "id": "monk",
+   "location": "天龍寺",
+   "note": "",
+   "exp": 40000,
+   "source": "zap"
+  },
+  {
+   "name": "拜月教 一級侍衛(soldier)",
+   "id": "soldier",
+   "location": "拜月山莊",
+   "note": "auto k",
+   "exp": 40000,
+   "source": "zap"
+  },
+  {
+   "name": "「瑤光閣」巡邏兵(guard)",
+   "id": "guard",
+   "location": "天魔塔1f",
+   "note": "auto k",
+   "exp": 40000,
+   "source": "zap"
+  },
+  {
+   "name": "護衛團 蒙古兵(Guard)",
+   "id": "guard",
+   "location": "蒙古",
+   "note": "",
+   "exp": 40000,
+   "source": "zap"
+  },
+  {
+   "name": "十夫長 蒙古兵(Guard)",
+   "id": "guard",
+   "location": "蒙古、襄陽",
+   "note": "",
+   "exp": 40000,
+   "source": "zap"
+  },
+  {
+   "name": "瘋老頭子(Mad bad ugly dirty oldman)",
+   "id": "mad bad ugly dirty oldman",
+   "location": "老松寨",
+   "note": "咒術、殺氣過高",
+   "exp": 40000,
+   "source": "zap"
+  },
+  {
+   "name": "守衛(mountain bandit)",
+   "id": "mountain bandit",
+   "location": "邪虎寨",
+   "note": "",
+   "exp": 40000,
+   "source": "zap"
+  },
+  {
+   "name": "火龜(Fire turtle)",
+   "id": "fire turtle",
+   "location": "火燄山",
+   "note": "",
+   "exp": 50000,
+   "source": "zap",
+   "otherExp": [
+    40000
+   ]
+  },
+  {
+   "name": "萬獸山莊 侍衛(soldier)",
+   "id": "soldier",
+   "location": "萬獸山莊",
+   "note": "降龍神功、auto k",
+   "exp": 40000,
+   "source": "zap"
+  },
+  {
+   "name": "西山一窟鬼 吊死鬼(diao si gui)",
+   "id": "diao si gui",
+   "location": "萬獸山莊",
+   "note": "太醜auto k?",
+   "exp": 40000,
+   "source": "zap"
+  },
+  {
+   "name": "知府師爺 甄有慶(youqing zhen)",
+   "id": "youqing zhen",
+   "location": "蘇州",
+   "note": "",
+   "exp": 40000,
+   "source": "zap"
+  },
+  {
+   "name": "萬門八弟子 沈城(shen cheng)",
+   "id": "shen cheng",
+   "location": "江陵",
+   "note": "",
+   "exp": 44000,
+   "source": "zap"
+  },
+  {
+   "name": "虎頭人(Tiger man)",
+   "id": "tiger man",
+   "location": "谷湖",
+   "note": "auto k",
+   "exp": 45000,
+   "source": "override",
+   "otherExp": [
+    40000
+   ]
+  },
+  {
+   "name": "惡魔(demon)",
+   "id": "demon",
+   "location": "珍獸森林",
+   "note": "auto k",
+   "exp": 45000,
+   "source": "zap"
+  },
+  {
+   "name": "西山一窟鬼 大頭鬼(big head gui)",
+   "id": "big head gui",
+   "location": "萬獸山莊",
+   "note": "太醜auto k?",
+   "exp": 45000,
+   "source": "zap"
+  },
+  {
+   "name": "貓族第三代弟子 貓女(cat girl)",
+   "id": "cat girl",
+   "location": "不夜天",
+   "note": "意寒神功",
+   "exp": 45000,
+   "source": "zap"
+  },
+  {
+   "name": "龍蝦(lobster)",
+   "id": "lobster",
+   "location": "神龍島海底",
+   "note": "auto k",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "獅王(lion king)",
+   "id": "lion king",
+   "location": "邪虎寨",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "巨木旗弟子(wood guard)",
+   "id": "wood guard",
+   "location": "明教",
+   "note": "殺氣過高",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "銳金旗弟子(gold guard)",
+   "id": "gold guard",
+   "location": "明教",
+   "note": "殺氣過高",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "烈火旗弟子(fire guard)",
+   "id": "fire guard",
+   "location": "明教",
+   "note": "殺氣過高",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "洪水旗弟子(water guard)",
+   "id": "water guard",
+   "location": "明教",
+   "note": "殺氣過高",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "厚土旗弟子(soil guard)",
+   "id": "soil guard",
+   "location": "明教",
+   "note": "auto k",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "呂府護衛 護衛隊(soldier)",
+   "id": "soldier",
+   "location": "襄陽",
+   "note": "血刀",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "好業人 蕙棠依依(dondon)",
+   "id": "dondon",
+   "location": "蒙古",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "第五代弟子(pupil)",
+   "id": "pupil",
+   "location": "古墓",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "守衛(man)",
+   "id": "man",
+   "location": "往黑木崖渡口",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "學生(student)",
+   "id": "student",
+   "location": "廣州",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "小婢女(little girl)",
+   "id": "little girl",
+   "location": "廣州",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "大少奶奶(woman)",
+   "id": "woman",
+   "location": "廣州",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "八極門第二代弟子 棍師(staffer)",
+   "id": "staffer",
+   "location": "廣州",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "大淫魔「淫魔田伯光」田伯光(Ten bo kuang)",
+   "id": "ten bo kuang",
+   "location": "華山",
+   "note": "ask 變身後",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "土匪首領(Bandit leader)",
+   "id": "bandit leader",
+   "location": "老松寨",
+   "note": "auto k",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "黑冠巨蟒(Serpent)",
+   "id": "serpent",
+   "location": "老松寨",
+   "note": "auto k",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "火光蛇(Fire snake)",
+   "id": "fire snake",
+   "location": "火燄山",
+   "note": "",
+   "exp": 60000,
+   "source": "zap",
+   "otherExp": [
+    50000
+   ]
+  },
+  {
+   "name": "萬門五弟子 卜垣(bu yuan)",
+   "id": "bu yuan",
+   "location": "江陵",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "萬門七弟子 馮坦(feng tan)",
+   "id": "feng tan",
+   "location": "江陵",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "百業社 分社長(club leader)",
+   "id": "club leader",
+   "location": "大理",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "西山一窟鬼「樊一翁」長鬚鬼(chang xu gui)",
+   "id": "chang xu gui",
+   "location": "萬獸山莊",
+   "note": "太醜auto k?",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "蘇州知府 馮正東(feng zhengdong)",
+   "id": "feng zhengdong",
+   "location": "蘇州",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "小紙人(paper man)",
+   "id": "paper man",
+   "location": "茅山",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "小草人(hay man)",
+   "id": "hay man",
+   "location": "茅山",
+   "note": "",
+   "exp": 50000,
+   "source": "zap"
+  },
+  {
+   "name": "獨角獸(unicorn)",
+   "id": "unicorn",
+   "location": "珍獸森林",
+   "note": "把人轟到別格",
+   "exp": 51000,
+   "source": "zap"
+  },
+  {
+   "name": "天馬(pegasus)",
+   "id": "pegasus",
+   "location": "珍獸森林",
+   "note": "",
+   "exp": 52000,
+   "source": "zap"
+  },
+  {
+   "name": "萬門六弟子 吳坎(wu kan)",
+   "id": "wu kan",
+   "location": "江陵",
+   "note": "",
+   "exp": 52000,
+   "source": "zap"
+  },
+  {
+   "name": "魚安魚康fish(fish)",
+   "id": "fish",
+   "location": "港口大海",
+   "note": "auto k、定人",
+   "exp": 55000,
+   "source": "zap"
+  },
+  {
+   "name": "萬門二弟子 周圻(jou chi)",
+   "id": "jou chi",
+   "location": "江陵",
+   "note": "",
+   "exp": 56000,
+   "source": "zap"
+  },
+  {
+   "name": "萬門大弟子 魯坤(lu guen)",
+   "id": "lu guen",
+   "location": "江陵",
+   "note": "",
+   "exp": 60000,
+   "source": "zap"
+  },
+  {
+   "name": "萬門四弟子 孫均(suen jiun)",
+   "id": "suen jiun",
+   "location": "江陵",
+   "note": "",
+   "exp": 60000,
+   "source": "zap"
+  },
+  {
+   "name": "老松寨寨主「潑風刀王」帶頭大哥(Boss tsang)",
+   "id": "boss tsang",
+   "location": "老松寨",
+   "note": "auto k",
+   "exp": 60000,
+   "source": "zap"
+  },
+  {
+   "name": "「天魔塔「天魔七獸」」象妖(elephant goblin)",
+   "id": "elephant goblin",
+   "location": "天魔塔1f",
+   "note": "auto k",
+   "exp": 60000,
+   "source": "zap"
+  },
+  {
+   "name": "「天魔軍團」黃衣人(yellow man)",
+   "id": "yellow man",
+   "location": "天魔塔箱子",
+   "note": "auto k",
+   "exp": 60000,
+   "source": "zap"
+  },
+  {
+   "name": "山賊看守(bandit watcher)",
+   "id": "bandit watcher",
+   "location": "邪虎寨",
+   "note": "auto k",
+   "exp": 60000,
+   "source": "zap"
+  },
+  {
+   "name": "獨眼頭陀(One-eyed monk)",
+   "id": "one-eyed monk",
+   "location": "天龍寺、神秘迴廊",
+   "note": "天龍寺的有灰僧布衣",
+   "exp": 60000,
+   "source": "zap"
+  },
+  {
+   "name": "巨大山豬(Large pig)",
+   "id": "large pig",
+   "location": "冰火島森林",
+   "note": "",
+   "exp": 60000,
+   "source": "zap"
+  },
+  {
+   "name": "烈火食人龜(Big fire turtle)",
+   "id": "big fire turtle",
+   "location": "火燄山",
+   "note": "suto k",
+   "exp": 70000,
+   "source": "zap",
+   "otherExp": [
+    60000
+   ]
+  },
+  {
+   "name": "守衛(guard)",
+   "id": "guard",
+   "location": "絕情谷",
+   "note": "",
+   "exp": 60000,
+   "source": "zap"
+  },
+  {
+   "name": "青城派 弟子(pupil)",
+   "id": "pupil",
+   "location": "燕子鄔",
+   "note": "",
+   "exp": 60000,
+   "source": "zap"
+  },
+  {
+   "name": "青城派弟子(pupil)",
+   "id": "pupil",
+   "location": "衡山",
+   "note": "",
+   "exp": 63000,
+   "source": "zap"
+  },
+  {
+   "name": "火巨蟒(big fire)",
+   "id": "big fire",
+   "location": "冰火島、火燄山、天魔塔箱子",
+   "note": "auto k",
+   "exp": 90000,
+   "source": "zap",
+   "otherExp": [
+    70000
+   ]
+  },
+  {
+   "name": "萬門三弟子 萬圭(wuan guei)",
+   "id": "wuan guei",
+   "location": "江陵",
+   "note": "",
+   "exp": 70000,
+   "source": "zap"
+  },
+  {
+   "name": "貼身丫環(gigirl)",
+   "id": "gigirl",
+   "location": "廣州",
+   "note": "",
+   "exp": 70000,
+   "source": "zap"
+  },
+  {
+   "name": "名妓 春煙(sugirl)",
+   "id": "sugirl",
+   "location": "廣州",
+   "note": "",
+   "exp": 70000,
+   "source": "zap"
+  },
+  {
+   "name": "名妓 夏靈(sumgirl)",
+   "id": "sumgirl",
+   "location": "廣州",
+   "note": "",
+   "exp": 70000,
+   "source": "zap"
+  },
+  {
+   "name": "名妓 秋雲(fallgirl)",
+   "id": "fallgirl",
+   "location": "廣州",
+   "note": "",
+   "exp": 70000,
+   "source": "zap"
+  },
+  {
+   "name": "名妓 冬槿(wingirl)",
+   "id": "wingirl",
+   "location": "廣州",
+   "note": "",
+   "exp": 70000,
+   "source": "zap"
+  },
+  {
+   "name": "百夫長 蒙古兵(Guard)",
+   "id": "guard",
+   "location": "蒙古、襄陽",
+   "note": "",
+   "exp": 70000,
+   "source": "zap"
+  },
+  {
+   "name": "襄陽守軍 小隊長(guard)",
+   "id": "guard",
+   "location": "襄陽",
+   "note": "血刀",
+   "exp": 70000,
+   "source": "zap"
+  },
+  {
+   "name": "食魂獸(eat ghost)",
+   "id": "eat ghost",
+   "location": "天魔塔箱子",
+   "note": "auto k",
+   "exp": 70000,
+   "source": "zap"
+  },
+  {
+   "name": "鱷魚(crocodile)",
+   "id": "crocodile",
+   "location": "絕情谷",
+   "note": "",
+   "exp": 75000,
+   "source": "zap"
+  },
+  {
+   "name": "食魂獸(Eat ghost)",
+   "id": "eat ghost",
+   "location": "冰火島森林",
+   "note": "auto k",
+   "exp": 75000,
+   "source": "zap"
+  },
+  {
+   "name": "書生(teacher)",
+   "id": "teacher",
+   "location": "廣州",
+   "note": "",
+   "exp": 80000,
+   "source": "zap"
+  },
+  {
+   "name": "八極門第二代弟子 劉月俠(Liu ue sha)",
+   "id": "liu ue sha",
+   "location": "廣州",
+   "note": "",
+   "exp": 80000,
+   "source": "zap"
+  },
+  {
+   "name": "「瑤光閣主「天龍劍」」田歸農(ten qua-lon)",
+   "id": "ten qua-lon",
+   "location": "天魔塔1f",
+   "note": "auto k",
+   "exp": 80000,
+   "source": "zap"
+  },
+  {
+   "name": "「開陽閣」巡邏兵(guard)",
+   "id": "guard",
+   "location": "天魔塔2f",
+   "note": "auto k",
+   "exp": 80000,
+   "source": "zap"
+  },
+  {
+   "name": "頭目(bandit header)",
+   "id": "bandit header",
+   "location": "邪虎寨",
+   "note": "",
+   "exp": 80000,
+   "source": "zap"
+  },
+  {
+   "name": "恆山派弟子(pupil)",
+   "id": "pupil",
+   "location": "衡山",
+   "note": "",
+   "exp": 80000,
+   "source": "zap"
+  },
+  {
+   "name": "泰山派弟子(pupil)",
+   "id": "pupil",
+   "location": "衡山",
+   "note": "",
+   "exp": 80000,
+   "source": "zap"
+  },
+  {
+   "name": "火蠍(Fire scorpion)",
+   "id": "fire scorpion",
+   "location": "冰火島",
+   "note": "",
+   "exp": 80000,
+   "source": "zap"
+  },
+  {
+   "name": "林老爺(linman)",
+   "id": "linman",
+   "location": "廣州",
+   "note": "",
+   "exp": 80000,
+   "source": "zap"
+  },
+  {
+   "name": "深海龍蝦(lobster king)",
+   "id": "lobster king",
+   "location": "港口大海",
+   "note": "auto k、夾人",
+   "exp": 80000,
+   "source": "zap"
+  },
+  {
+   "name": "華山派弟子(pupil)",
+   "id": "pupil",
+   "location": "衡山",
+   "note": "",
+   "exp": 82000,
+   "source": "zap"
+  },
+  {
+   "name": "獅子(lion)",
+   "id": "lion",
+   "location": "桃花島",
+   "note": "",
+   "exp": 85000,
+   "source": "zap"
+  },
+  {
+   "name": "嵩山派弟子(pupil)",
+   "id": "pupil",
+   "location": "衡山",
+   "note": "",
+   "exp": 89000,
+   "source": "zap"
+  },
+  {
+   "name": "冰蠍(Ice scorpion)",
+   "id": "ice scorpion",
+   "location": "冰火島",
+   "note": "",
+   "exp": 90000,
+   "source": "zap"
+  },
+  {
+   "name": "青竹絲(snake)",
+   "id": "snake",
+   "location": "桃花島",
+   "note": "",
+   "exp": 95000,
+   "source": "zap"
+  },
+  {
+   "name": "火牢守衛(turnkey)",
+   "id": "turnkey",
+   "location": "絕情谷",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "灰熊(bear)",
+   "id": "bear",
+   "location": "桃花島",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "後宮之最 貴夫人(Lady)",
+   "id": "lady",
+   "location": "蒙古",
+   "note": "",
+   "exp": 100000,
+   "source": "override",
+   "otherExp": [
+    20000
+   ]
+  },
+  {
+   "name": "千夫長 蒙古兵(Guard)",
+   "id": "guard",
+   "location": "蒙古",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "闖軍「威德大將軍」羅汝才(general)",
+   "id": "general",
+   "location": "長安",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "闖軍「八大王」張獻忠(general)",
+   "id": "general",
+   "location": "長安",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "闖軍「左輔」牛金星(general)",
+   "id": "general",
+   "location": "長安",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "闖軍「制將軍」李嚴(general li)",
+   "id": "general li",
+   "location": "長安",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "闖軍「權將軍」劉宗敏(general)",
+   "id": "general",
+   "location": "長安",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "闖軍「一隻虎」李過(general)",
+   "id": "general",
+   "location": "長安",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "闖軍「上相」張國紳(general)",
+   "id": "general",
+   "location": "長安",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "闖軍「謀士」顧君恩(general)",
+   "id": "general",
+   "location": "長安",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "巨蛾(large moth)",
+   "id": "large moth",
+   "location": "武當後山",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "四腳蛇(four-feet snake)",
+   "id": "four-feet snake",
+   "location": "武當後山",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "黑蜈蚣(black centipede)",
+   "id": "black centipede",
+   "location": "武當後山",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "東瀛 護衛隊(japan guard)",
+   "id": "japan guard",
+   "location": "東瀛",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "神龍教 海岸偵查隊(soldier)",
+   "id": "soldier",
+   "location": "神龍島沙灘",
+   "note": "巡邏被抓包auto k?",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "神龍教「老子就是屌啦～你打我阿」海岸巡邏隊(soldier)",
+   "id": "soldier",
+   "location": "神龍島沙灘",
+   "note": "隨機auto k?",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "「天魔塔「天魔七獸」」餓狼(hungry wolf)",
+   "id": "hungry wolf",
+   "location": "天魔塔2f",
+   "note": "auto k",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "呆頭鵝(stupid goose)",
+   "id": "stupid goose",
+   "location": "茅山",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "傻小鴨(dump duck)",
+   "id": "dump duck",
+   "location": "茅山",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "茅山 小道士(little taoist)",
+   "id": "little taoist",
+   "location": "茅山",
+   "note": "",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "大肚蛙(frog)",
+   "id": "frog",
+   "location": "茅山",
+   "note": "變色蛙",
+   "exp": 100000,
+   "source": "zap"
+  },
+  {
+   "name": "老虎(tiger)",
+   "id": "tiger",
+   "location": "桃花島",
+   "note": "",
+   "exp": 105000,
+   "source": "zap",
+   "otherExp": [
+    500
+   ]
+  },
+  {
+   "name": "襄陽守軍 中隊長(guard)",
+   "id": "guard",
+   "location": "襄陽",
+   "note": "血刀",
+   "exp": 110000,
+   "source": "zap"
+  },
+  {
+   "name": "大力神 史季強(shi ji qiang)",
+   "id": "shi ji qiang",
+   "location": "萬獸山莊",
+   "note": "白雲杖、降龍神功、放龍",
+   "exp": 110000,
+   "source": "zap"
+  },
+  {
+   "name": "白額山君 史伯威(shi bo wei)",
+   "id": "shi bo wei",
+   "location": "萬獸山莊",
+   "note": "拜月掌",
+   "exp": 110000,
+   "source": "zap"
+  },
+  {
+   "name": "八手仙猿 史孟捷(shi meng jie)",
+   "id": "shi meng jie",
+   "location": "萬獸山莊",
+   "note": "一陽指、吸星大法",
+   "exp": 120000,
+   "source": "zap"
+  },
+  {
+   "name": "「故幫主夫人」楚詩媚(t wian)",
+   "id": "t wian",
+   "location": "唐門",
+   "note": "打精氣神、解定、用pf打會變身",
+   "exp": 120000,
+   "source": "zap"
+  },
+  {
+   "name": "「開陽閣主「君子劍」」岳不群(yuen bu-chun)",
+   "id": "yuen bu-chun",
+   "location": "天魔塔2f",
+   "note": "auto k",
+   "exp": 120000,
+   "source": "zap"
+  },
+  {
+   "name": "「玉衡閣」「下等」狗腿幫眾(prog)",
+   "id": "prog",
+   "location": "天魔塔3f",
+   "note": "auto k",
+   "exp": 120000,
+   "source": "zap"
+  },
+  {
+   "name": "太行山大寨主「六合手」呂通(liu tueng)",
+   "id": "liu tueng",
+   "location": "江陵",
+   "note": "auto k",
+   "exp": 120000,
+   "source": "zap"
+  },
+  {
+   "name": "管見子 史仲猛(shi zhong meng)",
+   "id": "shi zhong meng",
+   "location": "萬獸山莊",
+   "note": "八極棍",
+   "exp": 130000,
+   "source": "zap"
+  },
+  {
+   "name": "巨蝙蝠(big bat)",
+   "id": "big bat",
+   "location": "礦坑",
+   "note": "",
+   "exp": 130000,
+   "source": "zap"
+  },
+  {
+   "name": "「伊賀流」流浪忍者(ninja)",
+   "id": "ninja",
+   "location": "天魔塔箱子",
+   "note": "auto k",
+   "exp": 130000,
+   "source": "zap"
+  },
+  {
+   "name": "「天魔塔「天魔七獸」」狂獅(crazy lion)",
+   "id": "crazy lion",
+   "location": "天魔塔3f",
+   "note": "auto k",
+   "exp": 140000,
+   "source": "zap"
+  },
+  {
+   "name": "岩石怪(stone giant)",
+   "id": "stone giant",
+   "location": "冰火島",
+   "note": "auto k",
+   "exp": 140000,
+   "source": "zap"
+  },
+  {
+   "name": "鱷魚王(lord)",
+   "id": "lord",
+   "location": "絕情谷",
+   "note": "有內丹",
+   "exp": 150000,
+   "source": "zap"
+  },
+  {
+   "name": "「初級」戶隱忍者(ninja)",
+   "id": "ninja",
+   "location": "東瀛忍窟1f",
+   "note": "auto k",
+   "exp": 150000,
+   "source": "zap"
+  },
+  {
+   "name": "「初級」甲賀忍者(ninja)",
+   "id": "ninja",
+   "location": "東瀛忍窟1f",
+   "note": "auto k",
+   "exp": 150000,
+   "source": "zap"
+  },
+  {
+   "name": "「初級」伊賀忍者(ninja)",
+   "id": "ninja",
+   "location": "東瀛忍窟1f",
+   "note": "auto k",
+   "exp": 150000,
+   "source": "zap"
+  },
+  {
+   "name": "闖王「奉天倡義文武大元帥」李自成(general)",
+   "id": "general",
+   "location": "長安",
+   "note": "",
+   "exp": 150000,
+   "source": "zap"
+  },
+  {
+   "name": "腐屍(zombie)",
+   "id": "zombie",
+   "location": "礦坑、天魔塔箱子",
+   "note": "auto k",
+   "exp": 150000,
+   "source": "zap"
+  },
+  {
+   "name": "新兵團 回族戰士(Warrior)",
+   "id": "warrior",
+   "location": "回族",
+   "note": "",
+   "exp": 150000,
+   "source": "zap"
+  },
+  {
+   "name": "哨兵團 回族戰士(Warrior)",
+   "id": "warrior",
+   "location": "回族",
+   "note": "",
+   "exp": 150000,
+   "source": "zap"
+  },
+  {
+   "name": "拜月教 武士(moon soldier)",
+   "id": "moon soldier",
+   "location": "拜月山莊",
+   "note": "",
+   "exp": 150000,
+   "source": "zap"
+  },
+  {
+   "name": "嵩山派 史登達(shi deng-da)",
+   "id": "shi deng-da",
+   "location": "衡山",
+   "note": "",
+   "exp": 150000,
+   "source": "zap"
+  },
+  {
+   "name": "老師(teacher)",
+   "id": "teacher",
+   "location": "大理",
+   "note": "",
+   "exp": 150000,
+   "source": "zap"
+  },
+  {
+   "name": "占星師(mistery man)",
+   "id": "mistery man",
+   "location": "大理",
+   "note": "",
+   "exp": 150000,
+   "source": "zap"
+  },
+  {
+   "name": "金甲獅王 史叔剛(shi shu gang)",
+   "id": "shi shu gang",
+   "location": "萬獸山莊",
+   "note": "落英掌",
+   "exp": 155000,
+   "source": "zap"
+  },
+  {
+   "name": "「伊賀流」流浪忍者(ninja)",
+   "id": "ninja",
+   "location": "冰火島",
+   "note": "auto k",
+   "exp": 160000,
+   "source": "zap"
+  },
+  {
+   "name": "甲賀流黑忍傳人「流浪中的日本忍者」隱忍(t ninja)",
+   "id": "t ninja",
+   "location": "冰火戰爭",
+   "note": "auto k、隱形",
+   "exp": 160000,
+   "source": "zap"
+  },
+  {
+   "name": "算命婆(ming woman)",
+   "id": "ming woman",
+   "location": "江陵",
+   "note": "",
+   "exp": 160000,
+   "source": "zap"
+  },
+  {
+   "name": "狂巨鼠(Rat)",
+   "id": "rat",
+   "location": "礦坑",
+   "note": "",
+   "exp": 160000,
+   "source": "zap"
+  },
+  {
+   "name": "毒瘴鼠(miasma rat)",
+   "id": "miasma rat",
+   "location": "毒龍潭",
+   "note": "",
+   "exp": 160000,
+   "source": "zap"
+  },
+  {
+   "name": "駝背老人(old man)",
+   "id": "old man",
+   "location": "天魔塔廢街",
+   "note": "",
+   "exp": 160000,
+   "source": "zap"
+  },
+  {
+   "name": "貓族三代弟子 元春(cat maid)",
+   "id": "cat maid",
+   "location": "不夜天",
+   "note": "意寒神功",
+   "exp": 160000,
+   "source": "zap"
+  },
+  {
+   "name": "貓族三代弟子 惜春(cat maid)",
+   "id": "cat maid",
+   "location": "不夜天",
+   "note": "意寒神功",
+   "exp": 160000,
+   "source": "zap"
+  },
+  {
+   "name": "貓族三代弟子 探春(cat maid)",
+   "id": "cat maid",
+   "location": "不夜天",
+   "note": "意寒神功",
+   "exp": 170000,
+   "source": "zap"
+  },
+  {
+   "name": "四聖獸 玄武(black turtle)",
+   "id": "black turtle",
+   "location": "珍獸森林",
+   "note": "auto k、內傷或破壞盔甲",
+   "exp": 170000,
+   "source": "zap"
+  },
+  {
+   "name": "四聖獸 白虎(white tiger)",
+   "id": "white tiger",
+   "location": "珍獸森林",
+   "note": "auto k、把人轟到別格",
+   "exp": 170000,
+   "source": "zap"
+  },
+  {
+   "name": "火焰石怪(fire stone)",
+   "id": "fire stone",
+   "location": "冰火島、天魔塔箱子",
+   "note": "auto k",
+   "exp": 170000,
+   "source": "zap"
+  },
+  {
+   "name": "華山派 勞德諾(lao de-nuo)",
+   "id": "lao de-nuo",
+   "location": "衡山",
+   "note": "",
+   "exp": 180000,
+   "source": "zap"
+  },
+  {
+   "name": "「玉衡閣主「執法尊者」」摘星子(getstar ko)",
+   "id": "getstar ko",
+   "location": "天魔塔3f",
+   "note": "",
+   "exp": 180000,
+   "source": "zap"
+  },
+  {
+   "name": "貓族三代弟子 迎春(cat maid)",
+   "id": "cat maid",
+   "location": "不夜天",
+   "note": "意寒神功",
+   "exp": 185000,
+   "source": "zap"
+  },
+  {
+   "name": "錢莊當家(bank boss)",
+   "id": "bank boss",
+   "location": "衡山",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "姥姥(grandma)",
+   "id": "grandma",
+   "location": "古墓",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "玉蜂(bee)",
+   "id": "bee",
+   "location": "古墓森林、百花谷",
+   "note": "auto k、放毒",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "武當山 第四代弟子(wudon taoist)",
+   "id": "wudon taoist",
+   "location": "武當",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "大閘蟹(crab)",
+   "id": "crab",
+   "location": "桃花島",
+   "note": "有蟹肉",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "樹精(tree ghost)",
+   "id": "tree ghost",
+   "location": "桃花島",
+   "note": "auto k",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "桃花島第二代徒弟 傻姑(Sha Gu)",
+   "id": "sha gu",
+   "location": "桃花島",
+   "note": "落英掌",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "蠍子(scorpin)",
+   "id": "scorpin",
+   "location": "明教沙漠",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "隱屍(die body)",
+   "id": "die body",
+   "location": "惡魔森林",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "巨蝙蝠(big bat)",
+   "id": "big bat",
+   "location": "惡魔森林",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "毒磨菇(mushroom)",
+   "id": "mushroom",
+   "location": "神龍島森林",
+   "note": "auto k、放毒",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "赤尾邪靈蛇(snake)",
+   "id": "snake",
+   "location": "神龍島森林",
+   "note": "auto k、放毒",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "噬魂催狂蛇(snake)",
+   "id": "snake",
+   "location": "神龍島森林",
+   "note": "auto k、放毒",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "王家侍衛(Soldier)",
+   "id": "soldier",
+   "location": "契丹",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "全真七子「清淨散人」孫不二(taoist sun)",
+   "id": "taoist sun",
+   "location": "全真",
+   "note": "全真劍",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "「牙修羅」扶桑浪人(bakayaro)",
+   "id": "bakayaro",
+   "location": "礦坑、天魔塔箱子",
+   "note": "auto k",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "巨大火龜(fire turtle)",
+   "id": "fire turtle",
+   "location": "冰火島",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "獅面人(lion man)",
+   "id": "lion man",
+   "location": "谷湖",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "大盜 五右衛門(Wei Men)",
+   "id": "wei men",
+   "location": "東瀛忍窟1f",
+   "note": "auto k、醉刀",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "襄陽守軍 大隊長(guard)",
+   "id": "guard",
+   "location": "襄陽",
+   "note": "血刀",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "「郭大小姐」郭芙(kou fu)",
+   "id": "kou fu",
+   "location": "襄陽",
+   "note": "全真劍、一陽指、太乙先天功",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "「襄陽安撫使」呂文德(lu win de)",
+   "id": "lu win de",
+   "location": "襄陽",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "「長鬚公」樊一翁(fa e won)",
+   "id": "fa e won",
+   "location": "絕情谷",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "「陸地神龍」言達平(yan da-pin)",
+   "id": "yan da-pin",
+   "location": "江陵",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "「鐵鎖橫江」戚長發(chi chang-fang)",
+   "id": "chi chang-fang",
+   "location": "江陵",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "「五雲手」萬震山(wuan jen-shan)",
+   "id": "wuan jen-shan",
+   "location": "江陵",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "守備團 回族戰士(Warrior)",
+   "id": "warrior",
+   "location": "回族",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "神手 向陽天(shi yuang tan)",
+   "id": "shi yuang tan",
+   "location": "大雪山",
+   "note": "暴風刀",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "恐怖妖草「被妖草上身的石人」唐家石人(stone man)",
+   "id": "stone man",
+   "location": "唐門",
+   "note": "auto k、隱形",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "守門者(door man)",
+   "id": "door man",
+   "location": "大理",
+   "note": "降龍掌、降龍神功、放龍",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "萬劫谷 鍾靈(jong ling)",
+   "id": "jong ling",
+   "location": "無量山",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "藍衣禁衛軍(blue troops)",
+   "id": "blue troops",
+   "location": "大理",
+   "note": "毒龍鞭、吸星大法",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "黑衣衛隊(black troops)",
+   "id": "black troops",
+   "location": "大理",
+   "note": "醉刀、降龍神功",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "黃衣禁衛軍(yellow troops)",
+   "id": "yellow troops",
+   "location": "大理",
+   "note": "雪山劍、意寒神功",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 守門僕(door man)",
+   "id": "door man",
+   "location": "三絕門",
+   "note": "春風刀、天邪心法、下k群體攻擊",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 門徒(lesson)",
+   "id": "lesson",
+   "location": "三絕門",
+   "note": "春風刀、天邪心法、下k群體攻擊",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "打掃小廝(small sz)",
+   "id": "small sz",
+   "location": "三絕門",
+   "note": "春風刀、貓宮二樓招式-掌",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "立春堂 藥舖伙計(yaopu gi)",
+   "id": "yaopu gi",
+   "location": "蘇州",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "衙役(ya yi)",
+   "id": "ya yi",
+   "location": "蘇州",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "花椰島村民(villager)",
+   "id": "villager",
+   "location": "南海小島",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "赤炎洞弟子(pupil)",
+   "id": "pupil",
+   "location": "南海小島",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "鐵螯島學徒(trainee)",
+   "id": "trainee",
+   "location": "南海小島",
+   "note": "",
+   "exp": 200000,
+   "source": "zap"
+  },
+  {
+   "name": "捕快(head guard)",
+   "id": "head guard",
+   "location": "大理",
+   "note": "連城劍、太乙先天功",
+   "exp": 220000,
+   "source": "zap"
+  },
+  {
+   "name": "青龍門 守衛(leader guard)",
+   "id": "leader guard",
+   "location": "大理",
+   "note": "白雲杖、神照功",
+   "exp": 225000,
+   "source": "zap"
+  },
+  {
+   "name": "白虎門 守衛(leader guard)",
+   "id": "leader guard",
+   "location": "大理",
+   "note": "全真劍、意寒神功",
+   "exp": 225000,
+   "source": "zap"
+  },
+  {
+   "name": "孟星魂(Meng Shing Huan)",
+   "id": "meng shing huan",
+   "location": "快活林",
+   "note": "貓宮二樓招式-掌、貓宮二樓招式-劍",
+   "exp": 230000,
+   "source": "zap"
+  },
+  {
+   "name": "老道(old taoist)",
+   "id": "old taoist",
+   "location": "古墓",
+   "note": "",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "白猿(white ape)",
+   "id": "white ape",
+   "location": "古墓",
+   "note": "auto k",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "獨眼獸(One eye)",
+   "id": "one eye",
+   "location": "惡魔森林",
+   "note": "",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "蜈蚣(centipede)",
+   "id": "centipede",
+   "location": "明教沙漠",
+   "note": "",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "火魔人「火魔巴立克」巴立克",
+   "id": "",
+   "location": "冰火島",
+   "note": "ask 變身後",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "冰魔人「冰魔蘇力亞」蘇力亞",
+   "id": "",
+   "location": "冰火島",
+   "note": "ask 變身後",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "五彩雲蛛(spider)",
+   "id": "spider",
+   "location": "神龍島森林",
+   "note": "auto k、定人、放毒",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "橫霸四方 忽必烈(king)",
+   "id": "king",
+   "location": "蒙古",
+   "note": "",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "「中級」戶隱忍者(ninja)",
+   "id": "ninja",
+   "location": "東瀛忍窟2f",
+   "note": "auto k",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "「中級」甲賀忍者(ninja)",
+   "id": "ninja",
+   "location": "東瀛忍窟2f",
+   "note": "auto k",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "「中級」伊賀忍者(ninja)",
+   "id": "ninja",
+   "location": "東瀛忍窟2f",
+   "note": "auto k",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "東瀛 禁衛隊(japan guard)",
+   "id": "japan guard",
+   "location": "東瀛",
+   "note": "血刀",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "護衛首領 久米義廣(japan leader)",
+   "id": "japan leader",
+   "location": "東瀛",
+   "note": "狂風刀",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "朱雀門 守衛(leaderguard)",
+   "id": "leaderguard",
+   "location": "大理門",
+   "note": "獨孤劍、吸星大法",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "寒冰烈火龜(ice fire turtle)",
+   "id": "ice fire turtle",
+   "location": "冰火島、天魔塔箱子",
+   "note": "auto k",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "邪虎寨首領 邪虎(chief header)",
+   "id": "chief header",
+   "location": "邪虎寨",
+   "note": "",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "「天權閣」「中等」狗腿幫眾(prog)",
+   "id": "prog",
+   "location": "天魔塔4f",
+   "note": "auto k",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "罰惡使 張三(chang san)",
+   "id": "chang san",
+   "location": "隨機",
+   "note": "經驗超過 150萬 rb時追殺玩家 (同格其他mob會一起k)",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "罰惡使 李四(Lee sui)",
+   "id": "lee sui",
+   "location": "隨機",
+   "note": "經驗超過 150萬 rb時追殺玩家 (同格其他mob會一起k)",
+   "exp": 250000,
+   "source": "zap"
+  },
+  {
+   "name": "暗黑貓(dark cat)",
+   "id": "dark cat",
+   "location": "惡魔森林",
+   "note": "",
+   "exp": 260000,
+   "source": "zap"
+  },
+  {
+   "name": "烈陽玄陰蟒(fireice serpent)",
+   "id": "fireice serpent",
+   "location": "冰火島、天魔塔箱子",
+   "note": "auto k",
+   "exp": 260000,
+   "source": "zap"
+  },
+  {
+   "name": "浙南雁蕩山 何三七(ho san-chi)",
+   "id": "ho san-chi",
+   "location": "衡山",
+   "note": "",
+   "exp": 260000,
+   "source": "zap"
+  },
+  {
+   "name": "「天魔塔「天魔七獸」」鹿魁(deer head)",
+   "id": "deer head",
+   "location": "天魔塔4f",
+   "note": "auto k",
+   "exp": 270000,
+   "source": "zap"
+  },
+  {
+   "name": "仙人掌(catus)",
+   "id": "catus",
+   "location": "明教沙漠",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "沙漠變形蟲(bug)",
+   "id": "bug",
+   "location": "明教沙漠",
+   "note": "auto k",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "古墓派第四代女弟子 洪凌波(Hon lin poh)",
+   "id": "hon lin poh",
+   "location": "古墓森林",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "牢房典獄長(jail room leader)",
+   "id": "jail room leader",
+   "location": "拜月山莊",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "大蛞蝓(big slug)",
+   "id": "big slug",
+   "location": "毒龍潭",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "夜梟(shadow owl)",
+   "id": "shadow owl",
+   "location": "天之叢林",
+   "note": "用扣精的打",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "影虎(Dark tiger)",
+   "id": "dark tiger",
+   "location": "天之叢林",
+   "note": "用扣精的打",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "巨蝙蝠(Bat)",
+   "id": "bat",
+   "location": "天之叢林",
+   "note": "用扣精的打",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "沼澤腐屍(Marsh body)",
+   "id": "marsh body",
+   "location": "天之叢林",
+   "note": "用扣精的打",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "綠蜥(Marsh lizard)",
+   "id": "marsh lizard",
+   "location": "天之叢林",
+   "note": "auto k、用扣精的打",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "半獸人(wildhuman)",
+   "id": "wildhuman",
+   "location": "惡魔森林",
+   "note": "auto k",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "山精(mountain ghost)",
+   "id": "mountain ghost",
+   "location": "桃花島",
+   "note": "auto k",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "隱魚(invisible fish)",
+   "id": "invisible fish",
+   "location": "古墓下水道",
+   "note": "auto k、隱形",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "嵩山派「大嵩陽手」嵩山弟子(fei pupil)",
+   "id": "fei pupil",
+   "location": "冰火戰爭",
+   "note": "大嵩陽掌、沒信物auto k",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "葵水派「九日聚三花－三花精英」葵水門人(polly pupil)",
+   "id": "polly pupil",
+   "location": "冰火戰爭",
+   "note": "毒龍鞭、沒信物auto k",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "泰山派「泰山精英」護法道人(rules pupil)",
+   "id": "rules pupil",
+   "location": "冰火戰爭",
+   "note": "泰山十八盤、沒信物auto k",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "恐怖妖草 霸王食人花(eatflower pupil)",
+   "id": "eatflower pupil",
+   "location": "冰火戰爭",
+   "note": "把內力變錢、沒信物auto k",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "突擊團 回族戰士(Warrior)",
+   "id": "warrior",
+   "location": "回族",
+   "note": "血刀",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "梅莊四友 丹青生(dam chin zon)",
+   "id": "dam chin zon",
+   "location": "梅莊",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "范驊(fan hau)",
+   "id": "fan hau",
+   "location": "大理",
+   "note": "白雲杖、桃花心法",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "華赫艮(hua he gen)",
+   "id": "hua he gen",
+   "location": "大理",
+   "note": "太極劍、八極心法",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "高昇泰(kao sheng tai)",
+   "id": "kao sheng tai",
+   "location": "大理",
+   "note": "一陽指、太乙先天功",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "丐幫分舵主(beggar clan leader)",
+   "id": "beggar clan leader",
+   "location": "大理",
+   "note": "桃花心法",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "龍游幫幫主(clan leader)",
+   "id": "clan leader",
+   "location": "大理",
+   "note": "毒龍鞭、降龍神功",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "古篤誠(gu du cheng)",
+   "id": "gu du cheng",
+   "location": "大理",
+   "note": "雪山劍",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "四聖獸 朱雀使(fire bird)",
+   "id": "fire bird",
+   "location": "珍獸森林",
+   "note": "把人轟到別格、火傷",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "恐怖妖草 食人花(t-door eatflower)",
+   "id": "t-door eatflower",
+   "location": "唐門",
+   "note": "把內力變錢、auto k",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "恐怖妖草 嗜血花(t-door eatflower)",
+   "id": "t-door eatflower",
+   "location": "唐門",
+   "note": "把內力變錢、auto k",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "軍營 守門人(japan guard)",
+   "id": "japan guard",
+   "location": "東瀛",
+   "note": "醉刀",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "「魑魅牙修羅」桑田(leader)",
+   "id": "leader",
+   "location": "礦坑",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "雪山弟子「寒梅女俠」花萬紫(flower)",
+   "id": "flower",
+   "location": "雪山",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "雪山弟子 柯萬鈞(cu wan jun)",
+   "id": "cu wan jun",
+   "location": "雪山",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "雪山弟子 聞萬夫(won wan fo)",
+   "id": "won wan fo",
+   "location": "雪山",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "雪山弟子「風火神龍」封萬里(fon wan li)",
+   "id": "fon wan li",
+   "location": "雪山",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "雪山弟子 汪萬翼(won wan ee)",
+   "id": "won wan ee",
+   "location": "雪山",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "雪山弟子 耿萬鐘(gon wan jun)",
+   "id": "gon wan jun",
+   "location": "雪山",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "雪山弟子 王萬仞(wang wan zen)",
+   "id": "wang wan zen",
+   "location": "雪山",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "雪山弟子 呼延萬善(huen wan son)",
+   "id": "huen wan son",
+   "location": "雪山",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "武當第三代「迎賓道長」古虛子(taoist gu)",
+   "id": "taoist gu",
+   "location": "武當",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "武當山 第三代弟子(wudon taoist)",
+   "id": "wudon taoist",
+   "location": "武當",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "老頭(oldman)",
+   "id": "oldman",
+   "location": "武當後山",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "瘟鬼(plague ghost)",
+   "id": "plague ghost",
+   "location": "妖靈窟",
+   "note": "auto k",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "食屍鬼(corpse ghost)",
+   "id": "corpse ghost",
+   "location": "妖靈窟",
+   "note": "auto k",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "餓死鬼(hungry ghost)",
+   "id": "hungry ghost",
+   "location": "妖靈窟",
+   "note": "auto k",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "「天權閣主「跌打庸醫」」閻基(ian gi)",
+   "id": "ian gi",
+   "location": "天魔塔4f",
+   "note": "auto k",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "秦家寨「寨主」姚伯當(bo dang yao)",
+   "id": "bo dang yao",
+   "location": "燕子鄔",
+   "note": "",
+   "exp": 300000,
+   "source": "zap"
+  },
+  {
+   "name": "海沙幫幫主 潘吼(pan hou)",
+   "id": "pan hou",
+   "location": "衡山",
+   "note": "",
+   "exp": 310000,
+   "source": "zap"
+  },
+  {
+   "name": "朱丹臣(ju den chen)",
+   "id": "ju den chen",
+   "location": "大理郊區",
+   "note": "全真劍、一陽指、太乙先天功",
+   "exp": 330000,
+   "source": "zap"
+  },
+  {
+   "name": "桃花精(ghost)",
+   "id": "ghost",
+   "location": "桃花島",
+   "note": "auto k",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "捕快(leader guard)",
+   "id": "leader guard",
+   "location": "金礦坑南方小鎮",
+   "note": "",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "天堂鳥(paradise bird)",
+   "id": "paradise bird",
+   "location": "毒龍潭",
+   "note": "",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "一字電劍 丁堅(din jan)",
+   "id": "din jan",
+   "location": "梅莊",
+   "note": "",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "梅莊四友 禿筆翁(To pe oang)",
+   "id": "to pe oang",
+   "location": "梅莊",
+   "note": "劍訣",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "金翼玄冰蟒(fly ice serpent)",
+   "id": "fly ice serpent",
+   "location": "冰火島",
+   "note": "auto k、吐冰",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "金剛火猿(keco fire ape)",
+   "id": "keco fire ape",
+   "location": "冰火島",
+   "note": "auto k、吐火",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "安撫使府 貼身護衛(guard)",
+   "id": "guard",
+   "location": "襄陽",
+   "note": "血刀",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "忍中之王 服部半藏(Ban Tzang)",
+   "id": "ban tzang",
+   "location": "東瀛忍窟2f",
+   "note": "auto k、落英掌、彈指",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代俗家弟子 柳惜憐(Liou Shi Lian)",
+   "id": "liou shi lian",
+   "location": "峨嵋",
+   "note": "",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代俗家弟子 方雨睛(Fang Yu Jing)",
+   "id": "fang yu jing",
+   "location": "峨嵋",
+   "note": "",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代俗家弟子 陸飛卿(Lu Fei Ching)",
+   "id": "lu fei ching",
+   "location": "峨嵋",
+   "note": "",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代俗家弟子 任香雪(Ren Shiang Shiue)",
+   "id": "ren shiang shiue",
+   "location": "峨嵋",
+   "note": "",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "「天璣閣」「上等」狗腿幫眾(prog)",
+   "id": "prog",
+   "location": "天魔塔5f",
+   "note": "auto k",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "曲江二友「神筆」盧西思(lu xi-si)",
+   "id": "lu xi-si",
+   "location": "衡山",
+   "note": "下k群體攻擊",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "捕快(leader guard)",
+   "id": "leader guard",
+   "location": "蘇州、金礦坑南方小鎮",
+   "note": "",
+   "exp": 350000,
+   "source": "zap"
+  },
+  {
+   "name": "丐幫長老(elder)",
+   "id": "elder",
+   "location": "衡山",
+   "note": "",
+   "exp": 370000,
+   "source": "zap"
+  },
+  {
+   "name": "南四奇「仁義陸大刀」陸天抒(lu tian-shu)",
+   "id": "lu tian-shu",
+   "location": "大雪山",
+   "note": "",
+   "exp": 370000,
+   "source": "zap"
+  },
+  {
+   "name": "南四奇「冷月劍」水岱(shuei dai)",
+   "id": "shuei dai",
+   "location": "大雪山",
+   "note": "",
+   "exp": 370000,
+   "source": "zap"
+  },
+  {
+   "name": "「天魔塔「天魔七獸」」猴怪(monkey monster)",
+   "id": "monkey monster",
+   "location": "天魔塔5f",
+   "note": "auto k",
+   "exp": 370000,
+   "source": "zap"
+  },
+  {
+   "name": "南四奇「中平無敵」花鐵幹(hua tie-gan)",
+   "id": "hua tie-gan",
+   "location": "大雪山",
+   "note": "",
+   "exp": 380000,
+   "source": "zap"
+  },
+  {
+   "name": "六合門 夏老(xia lao)",
+   "id": "xia lao",
+   "location": "衡山",
+   "note": "",
+   "exp": 390000,
+   "source": "zap"
+  },
+  {
+   "name": "曲江二友「神刀」白克(bai ke)",
+   "id": "bai ke",
+   "location": "衡山",
+   "note": "下k群體攻擊",
+   "exp": 380000,
+   "source": "zap"
+  },
+  {
+   "name": "嵩山派「大嵩陽手」費彬(fei bin)",
+   "id": "fei bin",
+   "location": "衡山",
+   "note": "大嵩陽掌",
+   "exp": 390000,
+   "source": "zap"
+  },
+  {
+   "name": "惡魔蛇(evil snake)",
+   "id": "evil snake",
+   "location": "古墓下水道",
+   "note": "auto k、隱形",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "拜月教 月圓(moon full)",
+   "id": "moon full",
+   "location": "拜月山莊",
+   "note": "拜月掌",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "褚萬里(chu wan li)",
+   "id": "chu wan li",
+   "location": "大理",
+   "note": "八極棍、八極心法",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "傅思歸(fu si gui)",
+   "id": "fu si gui",
+   "location": "大理",
+   "note": "八極棍、八極心法",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "巴天石(ba tian shi)",
+   "id": "ba tian shi",
+   "location": "大理",
+   "note": "落英掌",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "藍衣將軍(blue general)",
+   "id": "blue general",
+   "location": "大理",
+   "note": "打狗棍、降龍神功",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "黑衣將軍(black general)",
+   "id": "black general",
+   "location": "大理",
+   "note": "八極棍、八極心法",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "黃衣將軍(yellow general)",
+   "id": "yellow general",
+   "location": "大理",
+   "note": "獨孤劍、吸星大法",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "紅花會 囉嘍(red pupil)",
+   "id": "red pupil",
+   "location": "紅花會",
+   "note": "御劍萬里、沒信物auto k",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "「高級」戶隱忍者(ninja)",
+   "id": "ninja",
+   "location": "東瀛忍窟3f",
+   "note": "auto k",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "「高級」甲賀忍者(ninja)",
+   "id": "ninja",
+   "location": "東瀛忍窟3f",
+   "note": "auto k",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "「高級」伊賀忍者(ninja)",
+   "id": "ninja",
+   "location": "東瀛忍窟3f",
+   "note": "auto k",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "禁衛首領 伊達晴宗(japan leader)",
+   "id": "japan leader",
+   "location": "東瀛",
+   "note": "狂風刀",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "五路神 施令威(Si lin wiae)",
+   "id": "si lin wiae",
+   "location": "梅莊",
+   "note": "",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "古墓派第四代女弟子 陸無雙(Lu wu cwan)",
+   "id": "lu wu cwan",
+   "location": "古墓",
+   "note": "",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "吸血水蛭(bloodsucker leech)",
+   "id": "bloodsucker leech",
+   "location": "毒龍潭",
+   "note": "auto k",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "「武家媳婦」完顏萍(one an pin)",
+   "id": "one an pin",
+   "location": "襄陽",
+   "note": "",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "南四奇「柔雲劍」劉乘風(liou cheng-feng)",
+   "id": "liou cheng-feng",
+   "location": "大雪山",
+   "note": "",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "「天璣閣主「鐵面」」游坦之(yu tan-ge)",
+   "id": "yu tan-ge",
+   "location": "天魔塔5f",
+   "note": "auto k",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "青城派 司馬林(si ma lin)",
+   "id": "si ma lin",
+   "location": "燕子鄔",
+   "note": "松風劍",
+   "exp": 400000,
+   "source": "zap"
+  },
+  {
+   "name": "余滄海(yu cang-hai)",
+   "id": "yu cang-hai",
+   "location": "衡山",
+   "note": "松風劍",
+   "exp": 420000,
+   "source": "zap"
+  },
+  {
+   "name": "「殺人魔」幽冥鬼王(ghost king)",
+   "id": "ghost king",
+   "location": "谷湖",
+   "note": "丟冰箭、桃花心法",
+   "exp": 450000,
+   "source": "zap"
+  },
+  {
+   "name": "梅莊四友 黑白子(Black white son)",
+   "id": "black white son",
+   "location": "梅莊",
+   "note": "九陰爪",
+   "exp": 450000,
+   "source": "zap"
+  },
+  {
+   "name": "巨鳥(big bird)",
+   "id": "big bird",
+   "location": "黑木崖山道",
+   "note": "",
+   "exp": 450000,
+   "source": "zap"
+  },
+  {
+   "name": "大黑熊(big bear)",
+   "id": "big bear",
+   "location": "黑木崖山道",
+   "note": "auto k",
+   "exp": 450000,
+   "source": "zap"
+  },
+  {
+   "name": "大野狼(big wolf)",
+   "id": "big wolf",
+   "location": "黑木崖山道",
+   "note": "auto k",
+   "exp": 450000,
+   "source": "zap"
+  },
+  {
+   "name": "征南大將軍 蒙古將軍(general)",
+   "id": "general",
+   "location": "襄陽",
+   "note": "全真劍、太乙先天功",
+   "exp": 450000,
+   "source": "zap"
+  },
+  {
+   "name": "「天璇閣」「高級」狗腿幫眾(prog)",
+   "id": "prog",
+   "location": "天魔塔6f",
+   "note": "auto k",
+   "exp": 450000,
+   "source": "zap"
+  },
+  {
+   "name": "地底老婦(old woman)",
+   "id": "old woman",
+   "location": "絕情谷",
+   "note": "",
+   "exp": 450000,
+   "source": "zap"
+  },
+  {
+   "name": "「絕情谷主」公孫止(valley leader)",
+   "id": "valley leader",
+   "location": "絕情谷",
+   "note": "有護身符",
+   "exp": 450000,
+   "source": "zap"
+  },
+  {
+   "name": "守護獸 七彩雲天夢幻蛇(super snake)",
+   "id": "super snake",
+   "location": "神龍島森林",
+   "note": "auto k、把人轟到別格、放毒",
+   "exp": 450000,
+   "source": "zap"
+  },
+  {
+   "name": "「天魔塔「天魔七獸」」血豹(blood leopard)",
+   "id": "blood leopard",
+   "location": "天魔塔6f",
+   "note": "auto k",
+   "exp": 470000,
+   "source": "zap"
+  },
+  {
+   "name": "青年男子(young man)",
+   "id": "young man",
+   "location": "珍獸森林",
+   "note": "降龍神功、把人轟到別格、下k變身",
+   "exp": 480000,
+   "source": "zap"
+  },
+  {
+   "name": "貓族三代靈使「四靈使-貅獅」塏孅(cat minister)",
+   "id": "cat minister",
+   "location": "不夜天",
+   "note": "四靈土",
+   "exp": 490000,
+   "source": "zap"
+  },
+  {
+   "name": "唐賊(T coco)",
+   "id": "t coco",
+   "location": "唐門五毒區",
+   "note": "偷錢偷銀子、吸內力、解定",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "四不象(momon)",
+   "id": "momon",
+   "location": "黑木崖山道",
+   "note": "auto k",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "心硯(shin yan)",
+   "id": "shin yan",
+   "location": "紅花會",
+   "note": "",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "安洗髮(annihir)",
+   "id": "annihir",
+   "location": "金礦坑南方小鎮",
+   "note": "血刀、落英掌、意寒神功",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "逍遙門第一十三代精英 輝凌使(fly pupil)",
+   "id": "fly pupil",
+   "location": "冰火戰爭",
+   "note": "白雲杖、沒信物auto k",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "大遼國將軍 紫印劍帥(gold pupil)",
+   "id": "gold pupil",
+   "location": "冰火戰爭",
+   "note": "雪山劍、沒信物auto k",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "紫衫龍王黛琦絲(Die chis)",
+   "id": "die chis",
+   "location": "明教",
+   "note": "auto k",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "青翼蝠王韋一笑(Wei yishow)",
+   "id": "wei yishow",
+   "location": "明教",
+   "note": "auto k",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "白眉鷹王殷天正(Inn tengin)",
+   "id": "inn tengin",
+   "location": "明教",
+   "note": "auto k",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "炎蛛(Fire spider)",
+   "id": "fire spider",
+   "location": "天之叢林",
+   "note": "auto k、用扣精的打",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "藍蛛(Blue spider)",
+   "id": "blue spider",
+   "location": "天之叢林",
+   "note": "auto k、用扣精的打",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "全真七子「廣寧子」郝大通(taoist hao)",
+   "id": "taoist hao",
+   "location": "全真",
+   "note": "全真劍",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "全真七子「長真子」譚處端(taoist tan)",
+   "id": "taoist tan",
+   "location": "全真",
+   "note": "全真劍",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "全真七子「玉陽子」王處一(taoist wang)",
+   "id": "taoist wang",
+   "location": "全真",
+   "note": "全真劍",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "魔教 丹青生(dam chin zon)",
+   "id": "dam chin zon",
+   "location": "梅莊",
+   "note": "auto k、劍訣、黯然掌、ask 變身",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "梅莊四友 黃鐘公(Hwang zong koang)",
+   "id": "hwang zong koang",
+   "location": "梅莊",
+   "note": "暴風刀",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "「天璇閣主「混元手」」成昆(chan qun)",
+   "id": "chan qun",
+   "location": "天魔塔6f",
+   "note": "auto k",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 春風堂 弟子(pupil)",
+   "id": "pupil",
+   "location": "三絕門",
+   "note": "春風刀、天邪心法、下k群體攻擊",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 穿雲堂 弟子(pupil)",
+   "id": "pupil",
+   "location": "三絕門",
+   "note": "飛燕鞭、天邪心法、下k群體攻擊",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 落雁堂 弟子(pupil)",
+   "id": "pupil",
+   "location": "三絕門",
+   "note": "迴風手、天邪心法、下k群體攻擊",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "猛虎大將軍蒙古將軍(General)",
+   "id": "general",
+   "location": "蒙古",
+   "note": "全真劍、太乙先天功",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "「武家媳婦」耶律燕(ya lu an)",
+   "id": "ya lu an",
+   "location": "襄陽",
+   "note": "全真劍、太乙先天功",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "「武家兄弟」武敦儒(wu dun ru)",
+   "id": "wu dun ru",
+   "location": "襄陽",
+   "note": "全真劍、一陽指、太乙先天功",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "「武家兄弟」武修文(wu sho win)",
+   "id": "wu sho win",
+   "location": "襄陽",
+   "note": "全真劍、一陽指、太乙先天功",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派 第五代弟子(emei pupil)",
+   "id": "emei pupil",
+   "location": "峨嵋",
+   "note": "殘紅劍",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "武當第三代「首席大弟子」宋青書(song ching shu)",
+   "id": "song ching shu",
+   "location": "武當",
+   "note": "太極劍",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "雄遠鑣局「雙刀女俠」俞秀蓮(yu shiow lian)",
+   "id": "yu shiow lian",
+   "location": "武當後山",
+   "note": "",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "武當派「俗家弟子」李慕白(li muh bair)",
+   "id": "li muh bair",
+   "location": "武當後山",
+   "note": "太極拳",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "玉府「千金」玉嬌龍(yuh jiau long)",
+   "id": "yuh jiau long",
+   "location": "武當後山",
+   "note": "下k群體攻擊、情意劍",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "馬賊「半天雲」羅小虎(tiger lou)",
+   "id": "tiger lou",
+   "location": "武當後山",
+   "note": "下k群體攻擊",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "貓族第三代靈使「四靈使-牂豹」颯嫣(cat minister)",
+   "id": "cat minister",
+   "location": "不夜天",
+   "note": "四靈風",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "一代劍豪 宮本武藏(Gung Ben)",
+   "id": "gung ben",
+   "location": "東瀛忍窟3f",
+   "note": "auto k、雪山劍、黯然掌",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "譚青(tan ching)",
+   "id": "tan ching",
+   "location": "追魂莊",
+   "note": "白雲杖、定人、意寒神功",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "保定帝 段正明(duan jeng ming)",
+   "id": "duan jeng ming",
+   "location": "大理",
+   "note": "一陽指、六脈劍、太乙先天功、凌波微步",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "「俏夜叉」甘寶寶(gan bao bao)",
+   "id": "gan bao bao",
+   "location": "萬劫谷",
+   "note": "",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "鎮南王妃「玉虛散人」刀白鳳(dau bair fenq)",
+   "id": "dau bair fenq",
+   "location": "大理",
+   "note": "",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "鎮南王 段正淳(duan cheng chun)",
+   "id": "duan cheng chun",
+   "location": "大理",
+   "note": "六脈劍、降龍神功、凌波微步",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "「修羅刀」秦紅棉(chyn horng mian)",
+   "id": "chyn horng mian",
+   "location": "大理郊區",
+   "note": "",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "錢莊老闆 安洗碗(annihir)",
+   "id": "annihir",
+   "location": "大理",
+   "note": "咒術、定人pf",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "煉藥僮「不乾不淨‧吃了沒病」小僮(chako pill)",
+   "id": "chako pill",
+   "location": "神龍島",
+   "note": "化解酒氣pf、解定",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "俠客島 僕人(pupil)",
+   "id": "pupil",
+   "location": "俠客島",
+   "note": "auto k、八極棍、六合童子功",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "花椰島島主 黎夫人(madam li)",
+   "id": "madam li",
+   "location": "南海小島",
+   "note": "採燕功(定人)",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "赤炎洞洞主 端木元(duan mu yuan)",
+   "id": "duan mu yuan",
+   "location": "南海小島",
+   "note": "地火功[五斗米功](沒中會持續放pf)、小心地形傷害",
+   "exp": 500000,
+   "source": "zap"
+  },
+  {
+   "name": "黑衣老者(oldman)",
+   "id": "oldman",
+   "location": "衡山",
+   "note": "黑血針",
+   "exp": 510000,
+   "source": "zap"
+  },
+  {
+   "name": "吐蕃國武士(foreign soldier)",
+   "id": "foreign soldier",
+   "location": "天龍寺",
+   "note": "金拔",
+   "exp": 530000,
+   "source": "zap"
+  },
+  {
+   "name": "貓族三代靈使「四靈使-嫵貍」泠嫚(cat minister)",
+   "id": "cat minister",
+   "location": "不夜天",
+   "note": "四靈水",
+   "exp": 530000,
+   "source": "zap"
+  },
+  {
+   "name": "小型 招財貓(money cat)",
+   "id": "money cat",
+   "location": "金礦坑",
+   "note": "送錢",
+   "exp": 550000,
+   "source": "zap"
+  },
+  {
+   "name": "小型 討債鼠(money rat)",
+   "id": "money rat",
+   "location": "金礦坑",
+   "note": "偷錢",
+   "exp": 550000,
+   "source": "zap"
+  },
+  {
+   "name": "囚犯 任我行(Zin wo shin)",
+   "id": "zin wo shin",
+   "location": "梅莊",
+   "note": "琵琶爪",
+   "exp": 550000,
+   "source": "zap"
+  },
+  {
+   "name": "「天樞閣」「超級」狗腿幫眾(prog)",
+   "id": "prog",
+   "location": "天魔塔7f",
+   "note": "auto k",
+   "exp": 550000,
+   "source": "zap"
+  },
+  {
+   "name": "貓族三代靈使「四靈使-貔虎」炘妍(cat minister)",
+   "id": "cat minister",
+   "location": "不夜天",
+   "note": "四靈火",
+   "exp": 550000,
+   "source": "zap"
+  },
+  {
+   "name": "石像(stone)",
+   "id": "stone",
+   "location": "黑木崖秘道",
+   "note": "auto k",
+   "exp": 550000,
+   "source": "zap"
+  },
+  {
+   "name": "夜叉像(stoner)",
+   "id": "stoner",
+   "location": "黑木崖秘道",
+   "note": "auto k",
+   "exp": 550000,
+   "source": "zap"
+  },
+  {
+   "name": "守護石怪(stone man)",
+   "id": "stone man",
+   "location": "黑木崖秘道",
+   "note": "auto k",
+   "exp": 550000,
+   "source": "zap"
+  },
+  {
+   "name": "妙齡女孩(girl)",
+   "id": "girl",
+   "location": "有間客棧",
+   "note": "白蓮鞭、美女拳",
+   "exp": 560000,
+   "source": "zap"
+  },
+  {
+   "name": "蒙古王子 霍都(huo du)",
+   "id": "huo du",
+   "location": "襄陽",
+   "note": "鐵骨扇",
+   "exp": 560000,
+   "source": "zap"
+  },
+  {
+   "name": "「天魔塔「天魔七獸」」虎煞(tiger sa)",
+   "id": "tiger sa",
+   "location": "天魔塔7f",
+   "note": "auto k",
+   "exp": 570000,
+   "source": "zap"
+  },
+  {
+   "name": "古墓派第三代女弟子 李莫愁(Lee mo tho)",
+   "id": "lee mo tho",
+   "location": "古墓",
+   "note": "錢多多",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "紅花會 幫眾(red pupil)",
+   "id": "red pupil",
+   "location": "紅花會",
+   "note": "白蓮鞭 or 毒龍鞭、沒信物auto k",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "光明右使范遙(Fin yeng)",
+   "id": "fin yeng",
+   "location": "明教",
+   "note": "",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "光明左使楊逍(Yen showen)",
+   "id": "yen showen",
+   "location": "明教",
+   "note": "",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "神農幫幫主 司空玄(sy kong shyuan)",
+   "id": "sy kong shyuan",
+   "location": "無量山",
+   "note": "放毒",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "無量劍派「東宗掌門」左子穆(tzuoo tzyy muh)",
+   "id": "tzuoo tzyy muh",
+   "location": "無量山",
+   "note": "",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "萬劫谷主「馬王神」鍾萬仇(jong wann chour)",
+   "id": "jong wann chour",
+   "location": "萬劫谷",
+   "note": "精內傷",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "魔教 禿筆翁(To pe oang)",
+   "id": "to pe oang",
+   "location": "梅莊",
+   "note": "劍訣、ask 變身",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "翠羽黃衫 霍青桐(hua chen ton)",
+   "id": "hua chen ton",
+   "location": "回族",
+   "note": "用扣神的打",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "慕容世家「青雲莊」護衛(guard)",
+   "id": "guard",
+   "location": "燕子鄔",
+   "note": "星移斗轉(全體傷)",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "慕容世家「玄霜莊」護衛(guard)",
+   "id": "guard",
+   "location": "燕子鄔",
+   "note": "無形幻影(精內傷)、神照功",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "慕容世家「赤霞莊」護衛(guard)",
+   "id": "guard",
+   "location": "燕子鄔",
+   "note": "快劍(內傷)",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "俠客島 僕人(pupil)",
+   "id": "pupil",
+   "location": "俠客島",
+   "note": "auto k、獨孤劍、六合童子功",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "俠客島 僕人(pupil)",
+   "id": "pupil",
+   "location": "俠客島",
+   "note": "auto k、拜月掌、六合童子功",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "俠客島 僕人(pupil)",
+   "id": "pupil",
+   "location": "俠客島",
+   "note": "auto k、毒龍鞭、六合童子功",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "珠崖雙怪 小怪(shiau guai)",
+   "id": "shiau guai",
+   "location": "南海小島",
+   "note": "金銀雙索(配合大怪會定人)",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "珠崖雙怪 大怪(dai guai)",
+   "id": "dai guai",
+   "location": "南海小島",
+   "note": "金銀雙索(配合小怪會定人)",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "碧磷洞弟子(pupil)",
+   "id": "pupil",
+   "location": "飄渺峰",
+   "note": "碧磷針法",
+   "exp": 600000,
+   "source": "zap"
+  },
+  {
+   "name": "暴風魔龜(Storm turtle)",
+   "id": "storm turtle",
+   "location": "古墓下水道",
+   "note": "錢多多、auto k、吐風、有魔龜甲",
+   "exp": 610000,
+   "source": "zap"
+  },
+  {
+   "name": "泰山派掌門 天門道長(tian men)",
+   "id": "tian men",
+   "location": "衡山",
+   "note": "泰山十八盤",
+   "exp": 610000,
+   "source": "zap"
+  },
+  {
+   "name": "恆山派 定逸師太(ding yi)",
+   "id": "ding yi",
+   "location": "衡山",
+   "note": "恆山劍",
+   "exp": 620000,
+   "source": "zap"
+  },
+  {
+   "name": "衡山派 劉正風(liu zheng-feng)",
+   "id": "liu zheng-feng",
+   "location": "衡山",
+   "note": "神山劍",
+   "exp": 620000,
+   "source": "zap"
+  },
+  {
+   "name": "彩蝶(butterfly)",
+   "id": "butterfly",
+   "location": "百花谷",
+   "note": "",
+   "exp": 650000,
+   "source": "zap"
+  },
+  {
+   "name": "木婉清(mu wan ching)",
+   "id": "mu wan ching",
+   "location": "大理郊區",
+   "note": "放毒",
+   "exp": 650000,
+   "source": "zap"
+  },
+  {
+   "name": "青衣老者(oldman)",
+   "id": "oldman",
+   "location": "衡山",
+   "note": "神山劍",
+   "exp": 670000,
+   "source": "zap"
+  },
+  {
+   "name": "桃谷六仙 桃根仙(tao-gen)",
+   "id": "tao-gen",
+   "location": "長安",
+   "note": "配合其他桃仙有必暈pf分屍",
+   "exp": 670000,
+   "source": "zap"
+  },
+  {
+   "name": "桃谷六仙 桃幹仙(tao-gan)",
+   "id": "tao-gan",
+   "location": "長安",
+   "note": "配合其他桃仙有必暈pf分屍",
+   "exp": 670000,
+   "source": "zap"
+  },
+  {
+   "name": "桃谷六仙 桃枝仙(tao-qi)",
+   "id": "tao-qi",
+   "location": "長安",
+   "note": "配合其他桃仙有必暈pf分屍",
+   "exp": 670000,
+   "source": "zap"
+  },
+  {
+   "name": "桃谷六仙 桃葉仙(tao-ye)",
+   "id": "tao-ye",
+   "location": "長安",
+   "note": "配合其他桃仙有必暈pf分屍",
+   "exp": 670000,
+   "source": "zap"
+  },
+  {
+   "name": "桃谷六仙 桃實仙(tao-shi)",
+   "id": "tao-shi",
+   "location": "長安",
+   "note": "配合其他桃仙有必暈pf分屍",
+   "exp": 670000,
+   "source": "zap"
+  },
+  {
+   "name": "桃谷六仙 桃花仙(tao-hua)",
+   "id": "tao-hua",
+   "location": "長安",
+   "note": "配合其他桃仙有必暈pf分屍",
+   "exp": 670000,
+   "source": "zap"
+  },
+  {
+   "name": "火狐(fire fox)",
+   "id": "fire fox",
+   "location": "黑木崖山道",
+   "note": "auto k",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "「練鏢童子」唐門弟子(t pupil)",
+   "id": "t pupil",
+   "location": "唐門",
+   "note": "auto k",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "「聽音童子」唐門弟子(t pupil)",
+   "id": "t pupil",
+   "location": "唐門",
+   "note": "auto k",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "「勝手童子」唐門弟子(t pupil)",
+   "id": "t pupil",
+   "location": "唐門",
+   "note": "",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "全真七子「長生子」劉處玄(taoist liu)",
+   "id": "taoist liu",
+   "location": "全真",
+   "note": "全真劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代俗家弟子 貝錦儀(Bei Jin Yi)",
+   "id": "bei jin yi",
+   "location": "峨嵋",
+   "note": "殘紅劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代出家弟子 靜迦師太(Jing Jia)",
+   "id": "jing jia",
+   "location": "峨嵋",
+   "note": "",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代出家弟子 靜照師太(Jing Jau)",
+   "id": "jing jau",
+   "location": "峨嵋",
+   "note": "殘紅劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代出家弟子 靜真師太(Jing Jen)",
+   "id": "jing jen",
+   "location": "峨嵋",
+   "note": "殘紅劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代俗家弟子 紀曉芙(Ji Shiau Fu)",
+   "id": "ji shiau fu",
+   "location": "峨嵋",
+   "note": "殘紅劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代出家弟子 靜虛師太(Jing Shiu)",
+   "id": "jing shiu",
+   "location": "峨嵋",
+   "note": "殘紅劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代出家弟子 靜空師太(Jing Kung)",
+   "id": "jing kung",
+   "location": "峨嵋",
+   "note": "",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代出家弟子 靜閑師太(Jing Shian)",
+   "id": "jing shian",
+   "location": "峨嵋",
+   "note": "殘紅劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代俗家弟子 丁敏君(Ding Min Jiun)",
+   "id": "ding min jiun",
+   "location": "峨嵋",
+   "note": "殘紅劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代出家弟子 靜玄師太(Jing Shiuan)",
+   "id": "jing shiuan",
+   "location": "峨嵋",
+   "note": "殘紅劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派第四代出家弟子 靜慧師太(Jing Huei)",
+   "id": "jing huei",
+   "location": "峨嵋",
+   "note": "殘紅劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "草妖(Agrestal boggle)",
+   "id": "agrestal boggle",
+   "location": "百花谷",
+   "note": "",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "樹怪(Tree monster)",
+   "id": "tree monster",
+   "location": "百花谷",
+   "note": "定人",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "中型 招財貓(money cat)",
+   "id": "money cat",
+   "location": "金礦坑",
+   "note": "送銀子",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "中型 討債鼠(money rat)",
+   "id": "money rat",
+   "location": "金礦坑",
+   "note": "偷銀子",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "魔教 黑白子(Black white son)",
+   "id": "black white son",
+   "location": "梅莊",
+   "note": "auto k、九陰爪、ask 變身",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "阿珂(a ke)",
+   "id": "a ke",
+   "location": "大理",
+   "note": "",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "四大惡人「窮凶極惡」雲中鶴(yun jong heh)",
+   "id": "yun jong heh",
+   "location": "追魂莊",
+   "note": "對女性神內傷",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "武當七俠「玄虛刀法」俞岱嚴(yu day yan)",
+   "id": "yu day yan",
+   "location": "武當",
+   "note": "太極拳",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "武當七俠「太極拳法」俞蓮舟(yu lian jou)",
+   "id": "yu lian jou",
+   "location": "武當",
+   "note": "太極拳",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "武當七俠「太極劍法」殷梨亭(in li tyang)",
+   "id": "in li tyang",
+   "location": "武當",
+   "note": "太極劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "武當七俠「足智多謀」張松溪(jang song shi)",
+   "id": "jang song shi",
+   "location": "武當",
+   "note": "太極劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "武當七俠「劍術精妙」莫聲谷(moh sheng guu)",
+   "id": "moh sheng guu",
+   "location": "武當",
+   "note": "太極劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "武當七俠「銀鉤鐵劃」張翠山(jang tsuey shan)",
+   "id": "jang tsuey shan",
+   "location": "武當",
+   "note": "太極劍",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "弁慶七寶 武藏坊弁慶(Bian Ching)",
+   "id": "bian ching",
+   "location": "東瀛",
+   "note": "血刀、白雲杖、降龍掌、毒龍鞭、獨孤劍、星梭器",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 春風堂 幫眾(highpupil)",
+   "id": "highpupil",
+   "location": "三絕門",
+   "note": "春風刀、天邪心法、下k群體攻擊",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 春風堂「妙璇子」孤辰風(gou wind cheng)",
+   "id": "gou wind cheng",
+   "location": "三絕門",
+   "note": "春風刀、天邪心法、下k群體攻擊",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 穿雲堂 幫眾(high pupil)",
+   "id": "high pupil",
+   "location": "三絕門",
+   "note": "飛燕鞭、天邪心法、下k群體攻擊",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 穿雲堂「玉璣子」許雪翎(shuie ling)",
+   "id": "shuie ling",
+   "location": "三絕門",
+   "note": "飛燕鞭、天邪心法、下k群體攻擊",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 落雁堂 幫眾(highpupil)",
+   "id": "highpupil",
+   "location": "三絕門",
+   "note": "迴風手、天邪心法、下k群體攻擊",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 落雁堂「絕鳴子」凌雲飛(ling cloud fly)",
+   "id": "ling cloud fly",
+   "location": "三絕門",
+   "note": "迴風手、天邪心法、下k群體攻擊",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "吸血姬(girl vampire)",
+   "id": "girl vampire",
+   "location": "茅山",
+   "note": "神內傷",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "土道人(earth taoist)",
+   "id": "earth taoist",
+   "location": "玉靈洞",
+   "note": "auto k、四靈土、死亡時機率召土龍(會亂跑撞傷人)",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "黑衣侍衛(black cloth soldier)",
+   "id": "black cloth soldier",
+   "location": "金礦坑南方廢墟密道",
+   "note": "連城劍、落英掌、意寒神功",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "鐵螯島島主 哈大霸(ha da ba)",
+   "id": "ha da ba",
+   "location": "南海小島",
+   "note": "鐵鉗功(普功去武器)",
+   "exp": 700000,
+   "source": "zap"
+  },
+  {
+   "name": "毛茸茸 土撥鼠(marmot)",
+   "id": "marmot",
+   "location": "金礦坑",
+   "note": "pf閃不掉必暈",
+   "exp": 710000,
+   "source": "zap"
+  },
+  {
+   "name": "金道人(golden taoist)",
+   "id": "golden taoist",
+   "location": "玉靈洞",
+   "note": "auto k、依照身上錢量給予不等傷害pf",
+   "exp": 710000,
+   "source": "zap"
+  },
+  {
+   "name": "火道人(fire taoist)",
+   "id": "fire taoist",
+   "location": "玉靈洞",
+   "note": "auto k、召喚火球妖",
+   "exp": 720000,
+   "source": "zap"
+  },
+  {
+   "name": "長毛殭屍(hairy zombie)",
+   "id": "hairy zombie",
+   "location": "茅山",
+   "note": "撞人(全體傷)",
+   "exp": 730000,
+   "source": "zap"
+  },
+  {
+   "name": "「惡鬼道」子夜叉(child monster)",
+   "id": "child monster",
+   "location": "茅山",
+   "note": "撞人(全體傷)",
+   "exp": 730000,
+   "source": "zap"
+  },
+  {
+   "name": "神泉水怪(well monster)",
+   "id": "well monster",
+   "location": "鳳尾竹林深處",
+   "note": "auto k",
+   "exp": 740000,
+   "source": "zap"
+  },
+  {
+   "name": "華山劍派第十三代代掌門人 岳靈珊(yueh lingshan)",
+   "id": "yueh lingshan",
+   "location": "華山",
+   "note": "不能fight",
+   "exp": 750000,
+   "source": "zap"
+  },
+  {
+   "name": "雲之軒(un chi-shuen)",
+   "id": "un chi-shuen",
+   "location": "華山",
+   "note": "錢多多、解定",
+   "exp": 750000,
+   "source": "zap"
+  },
+  {
+   "name": "神鵰(God eagle)",
+   "id": "god eagle",
+   "location": "古墓森林",
+   "note": "錢多多",
+   "exp": 750000,
+   "source": "zap"
+  },
+  {
+   "name": "螳螂(Mantis)",
+   "id": "mantis",
+   "location": "百花谷",
+   "note": "螳螂爪",
+   "exp": 750000,
+   "source": "zap"
+  },
+  {
+   "name": "花仙(Flower dobby)",
+   "id": "flower dobby",
+   "location": "百花谷",
+   "note": "放毒",
+   "exp": 750000,
+   "source": "zap"
+  },
+  {
+   "name": "殺人蜂(Killer bee)",
+   "id": "killer bee",
+   "location": "百花谷",
+   "note": "放毒",
+   "exp": 750000,
+   "source": "zap"
+  },
+  {
+   "name": "五彩毒蜈蚣(T centipede)",
+   "id": "t centipede",
+   "location": "唐門五毒區",
+   "note": "auto k、放毒、隱形、要用特殊打法",
+   "exp": 750000,
+   "source": "zap"
+  },
+  {
+   "name": "天南段家第十七代直傳弟子 書生(scholar)",
+   "id": "scholar",
+   "location": "天龍寺",
+   "note": "",
+   "exp": 750000,
+   "source": "override",
+   "otherExp": [
+    40000
+   ]
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖入口、黑木崖承德堂",
+   "note": "白雲杖",
+   "exp": 750000,
+   "source": "zap"
+  },
+  {
+   "name": "浴血鬼(bloody ghost)",
+   "id": "bloody ghost",
+   "location": "茅山",
+   "note": "咬人(全體傷)",
+   "exp": 750000,
+   "source": "zap"
+  },
+  {
+   "name": "「修羅道」母夜叉(mother monster)",
+   "id": "mother monster",
+   "location": "茅山",
+   "note": "咬人(全體傷)",
+   "exp": 750000,
+   "source": "zap"
+  },
+  {
+   "name": "「冥間使者」鬼差(soul catcher)",
+   "id": "soul catcher",
+   "location": "茅山",
+   "note": "勾魂(全體傷)",
+   "exp": 750000,
+   "source": "zap"
+  },
+  {
+   "name": "古稀 蟲靈(bug spirit)",
+   "id": "bug spirit",
+   "location": "玉靈洞",
+   "note": "咬人(全體傷)",
+   "exp": 750000,
+   "source": "zap"
+  },
+  {
+   "name": "冷若皇(lan lu-wang)",
+   "id": "lan lu-wang",
+   "location": "江陵",
+   "note": "錢多多、解定",
+   "exp": 760000,
+   "source": "zap"
+  },
+  {
+   "name": "木道人(wooden taoist)",
+   "id": "wooden taoist",
+   "location": "茅山",
+   "note": "各種劍法、定人",
+   "exp": 760000,
+   "source": "zap"
+  },
+  {
+   "name": "竹中情仙(love god)",
+   "id": "love god",
+   "location": "鳳尾竹林深處",
+   "note": "auto k",
+   "exp": 760000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖入口、黑木崖青龍堂",
+   "note": "情意劍",
+   "exp": 780000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖承德堂",
+   "note": "全真劍",
+   "exp": 780000,
+   "source": "zap"
+  },
+  {
+   "name": "水道人(liquid taoist)",
+   "id": "liquid taoist",
+   "location": "茅山",
+   "note": "變身成其他玩家角色 (wiz也可能)",
+   "exp": 780000,
+   "source": "zap"
+  },
+  {
+   "name": "丁典(din)",
+   "id": "din",
+   "location": "雪羽港",
+   "note": "錢多多、連城劍、解定",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "武僧(monk warrior)",
+   "id": "monk warrior",
+   "location": "天龍寺",
+   "note": "六脈掌、凌波微步、封招、神照功",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "大輪明王 鳩摩智(jiou mo jr)",
+   "id": "jiou mo jr",
+   "location": "天龍寺",
+   "note": "金拔",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "火麒麟(Fire kylin)",
+   "id": "fire kylin",
+   "location": "火焰山",
+   "note": "錢多多、吐火、有麒麟甲",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "白駝山莊 護衛(guard)",
+   "id": "guard",
+   "location": "白駝山莊",
+   "note": "靈蛇杖、靈蛇拳、蛤蟆功",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "白駝山莊 女弟子(girl guard)",
+   "id": "girl guard",
+   "location": "白駝山莊",
+   "note": "靈蛇拳、蛤蟆功",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "白駝山莊 弟子(guard)",
+   "id": "guard",
+   "location": "白駝山莊",
+   "note": "靈蛇拳、蛤蟆功",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "石敢當 章進(jang jin)",
+   "id": "jang jin",
+   "location": "紅花會",
+   "note": "八極棍",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "紅花會 高級幫眾(red pupil)",
+   "id": "red pupil",
+   "location": "紅花會",
+   "note": "八極棍 or 靈蛇杖、沒信物auto k",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "金笛秀才 余魚同(tu yu tung)",
+   "id": "tu yu tung",
+   "location": "紅花會",
+   "note": "太極劍",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "「錢多多」小財神(little money god)",
+   "id": "little money god",
+   "location": "隨機出現",
+   "note": "錢多多、搖錢扇、送銀子",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "「好窮阿～」小窮神(little poor god)",
+   "id": "little poor god",
+   "location": "長安",
+   "note": "定人、把裝備吐在地上",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "死要錢的傢伙「好衰阿～」小衰神(little bad god)",
+   "id": "little bad god",
+   "location": "長安",
+   "note": "錢多多、討債拳、死掉偷光身上的錢",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "魔教 黃鐘公(Hwang zong koang)",
+   "id": "hwang zong koang",
+   "location": "梅莊",
+   "note": "auto k、暴風刀、ask 變身",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "「郭家女婿」耶律齊(ya lu chi)",
+   "id": "ya lu chi",
+   "location": "襄楊",
+   "note": "全真劍、降龍掌、降龍神功、放龍",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "四大惡人「兇神惡煞」南海鱷神(nahi ru seng)",
+   "id": "nahi ru seng",
+   "location": "追魂莊",
+   "note": "卸武器",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "「萬死不惜」唐典(t din)",
+   "id": "t din",
+   "location": "唐門五毒區",
+   "note": "auto k、解定",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "貪婪奪寶者(greedy capture man)",
+   "id": "greedy capture man",
+   "location": "金礦坑南方廢墟密道",
+   "note": "auto k、打狗棍、落英掌、太乙先天功",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖入口",
+   "note": "auto k、打狗棍",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖(青龍堂、風雷堂)",
+   "note": "auto k、牛蛇鞭",
+   "exp": 800000,
+   "source": "zap"
+  },
+  {
+   "name": "唐門高手-三師兄 唐松(t tiab)",
+   "id": "t tiab",
+   "location": "唐門",
+   "note": "偷身上裝備、下k群體攻擊",
+   "exp": 810000,
+   "source": "zap"
+  },
+  {
+   "name": "大型 討債鼠(money rat)",
+   "id": "money rat",
+   "location": "金礦坑",
+   "note": "偷銀子、ko長安有窮神 衰神",
+   "exp": 820000,
+   "source": "zap"
+  },
+  {
+   "name": "唐門高手-四師兄 唐竹(t tiac)",
+   "id": "t tiac",
+   "location": "唐門",
+   "note": "打神、定人、下k群體攻擊",
+   "exp": 830000,
+   "source": "zap"
+  },
+  {
+   "name": "大型 招財貓(money cat)",
+   "id": "money cat",
+   "location": "金礦坑",
+   "note": "送銀子、ko有財神啪啪造",
+   "exp": 830000,
+   "source": "zap"
+  },
+  {
+   "name": "唐門高手-六師姐 唐遙(t tiau)",
+   "id": "t tiau",
+   "location": "唐門",
+   "note": "把人轟到別格、下k群體攻擊",
+   "exp": 840000,
+   "source": "zap"
+  },
+  {
+   "name": "「唐門精銳弟子」虎勝童(t pupil)",
+   "id": "t pupil",
+   "location": "冰火戰爭",
+   "note": "錢多多、一陽指、沒信物auto k",
+   "exp": 850000,
+   "source": "zap"
+  },
+  {
+   "name": "「高級天山門弟子」蒼夜姬(sky pupil)",
+   "id": "sky pupil",
+   "location": "冰火戰爭",
+   "note": "錢多多、井中刀、沒信物auto k",
+   "exp": 850000,
+   "source": "zap"
+  },
+  {
+   "name": "神龍教 教徒(lesson)",
+   "id": "lesson",
+   "location": "神龍島",
+   "note": "落英掌、下k群體攻擊",
+   "exp": 850000,
+   "source": "zap"
+  },
+  {
+   "name": "神龍教 教徒(lesson)",
+   "id": "lesson",
+   "location": "神龍島",
+   "note": "柔虹指、下k群體攻擊",
+   "exp": 850000,
+   "source": "zap"
+  },
+  {
+   "name": "鐮倉戰神 源義經(Yuan Yi Jing)",
+   "id": "yuan yi jing",
+   "location": "東瀛",
+   "note": "八極棍、狂風刀、唐門器、連城劍、牛蛇鞭",
+   "exp": 850000,
+   "source": "zap"
+  },
+  {
+   "name": "西藏聖僧「蒙古第一護國大師」金輪法王(golden wheel)",
+   "id": "golden wheel",
+   "location": "襄楊",
+   "note": "五輪大法",
+   "exp": 850000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖青龍堂",
+   "note": "八極棍",
+   "exp": 850000,
+   "source": "zap"
+  },
+  {
+   "name": "燕赤霞(yan chi xia)",
+   "id": "yan chi xia",
+   "location": "玉靈洞",
+   "note": "定人、神內傷、補血",
+   "exp": 850000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖(入口、白虎堂、承德堂)",
+   "note": "auto k、血刀",
+   "exp": 860000,
+   "source": "zap"
+  },
+  {
+   "name": "妖中殘 魑(chy)",
+   "id": "chy",
+   "location": "妖靈窟",
+   "note": "auto k、八極棍、四靈火、解定",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "殘中鬼 魅(mey)",
+   "id": "mey",
+   "location": "妖靈窟",
+   "note": "auto k、毒龍鞭、四靈水、解定",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "鬼中暴 魍(woang)",
+   "id": "woang",
+   "location": "妖靈窟",
+   "note": "auto k、黯然掌、四靈風、解定",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "暴中魂 魎(leang)",
+   "id": "leang",
+   "location": "妖靈窟",
+   "note": "auto k、狂風刀、四靈土、解定",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖(入口、白虎堂)",
+   "note": "auto k、毒龍鞭",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖承德堂",
+   "note": "auto k、狂風刀",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖承德堂",
+   "note": "auto k、六脈劍",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "「發錢囉」大財神(big money god)",
+   "id": "big money god",
+   "location": "隨機出現",
+   "note": "錢多多、搖錢扇",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "四大惡人「無惡不作」葉二娘(ya runeng)",
+   "id": "ya runeng",
+   "location": "追魂莊",
+   "note": "",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 春風堂「親衛隊」護法(guard)",
+   "id": "guard",
+   "location": "三絕門、快活林",
+   "note": "快活林auto k、春風刀、天邪心法、下k群體攻擊",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 春風堂主「快意魔刀」島左近(doug light jin)",
+   "id": "doug light jin",
+   "location": "三絕門",
+   "note": "春風刀、天邪心法、下k群體攻擊",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 穿雲堂「親衛隊」護法(guard)",
+   "id": "guard",
+   "location": "三絕門、快活林",
+   "note": "快活林auto k、飛燕鞭、天邪心法、下k群體攻擊",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 穿雲堂主「穿雲鞭魔」洛飛燕(lou fly yang)",
+   "id": "lou fly yang",
+   "location": "三絕門",
+   "note": "飛燕鞭、天邪心法、下k群體攻擊",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 落雁堂「親衛隊」護法(guard)",
+   "id": "guard",
+   "location": "三絕門、快活林",
+   "note": "快活林auto k、迴風手、天邪心法、下k群體攻擊",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 落雁堂主「落雁之手」王嵐(wang lang)",
+   "id": "wang lang",
+   "location": "三絕門",
+   "note": "迴風手、天邪心法、下k群體攻擊",
+   "exp": 900000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖承德堂",
+   "note": "auto k、打狗棍",
+   "exp": 920000,
+   "source": "zap"
+  },
+  {
+   "name": "唐門高手-五師兄 唐梅(t tiaa)",
+   "id": "t tiaa",
+   "location": "唐門",
+   "note": "pf命中必暈、下k群體攻擊",
+   "exp": 940000,
+   "source": "zap"
+  },
+  {
+   "name": "老婦人(old woman)",
+   "id": "old woman",
+   "location": "金礦坑南方小鎮",
+   "note": "",
+   "exp": 950000,
+   "source": "zap"
+  },
+  {
+   "name": "青龍堂 弟子(pupil)",
+   "id": "pupil",
+   "location": "黑木崖青龍堂",
+   "note": "auto k、血刀、情意劍",
+   "exp": 960000,
+   "source": "zap"
+  },
+  {
+   "name": "白虎堂弟子(pupil)",
+   "id": "pupil",
+   "location": "黑木崖白虎堂",
+   "note": "auto k、玉女劍",
+   "exp": 980000,
+   "source": "zap"
+  },
+  {
+   "name": "明教教主 張無忌(Jang wu ji)",
+   "id": "jang wu ji",
+   "location": "明教",
+   "note": "錢多多、太極劍、太極拳、武當心法",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "蒙古郡主 趙敏(Jau Min)",
+   "id": "jau min",
+   "location": "蒙古",
+   "note": "玉女劍",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "石貓(Stone cat)",
+   "id": "stone cat",
+   "location": "不夜天",
+   "note": "",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "貓族二代長老 淖媛(Cat elder)",
+   "id": "cat elder",
+   "location": "不夜天",
+   "note": "四靈水",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "五爪天龍(dragon)",
+   "id": "dragon",
+   "location": "天龍寺",
+   "note": "",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "初級峨嵋派 骷髏人(emei guard)",
+   "id": "emei guard",
+   "location": "峨嵋禁區1f",
+   "note": "三皇棍、峨眉心法、沒信物auto k",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "初級武當派 骷髏人(wudon guard)",
+   "id": "wudon guard",
+   "location": "峨嵋禁區1f",
+   "note": "太極劍、沒信物auto k",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "初級全真派 骷髏人(alltruth guard)",
+   "id": "alltruth guard",
+   "location": "峨嵋禁區1f",
+   "note": "全真劍、沒信物auto k",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "十步毒蟾(T toad)",
+   "id": "t toad",
+   "location": "唐門五毒區、白駝山莊",
+   "note": "auto k、放毒",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "萬蠱毒蛛(T spider)",
+   "id": "t spider",
+   "location": "唐門五毒區、白駝山莊、桃花島、快活林",
+   "note": "五毒區以外auto k、放毒",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "劇毒催魂蛇(T snake)",
+   "id": "t snake",
+   "location": "唐門五毒區、白駝山莊",
+   "note": "auto k、定人、放毒",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "絕毒魔蠍(T scorpion)",
+   "id": "t scorpion",
+   "location": "唐門五毒區",
+   "note": "auto k、放毒",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "唐門戰狗(t-door dog)",
+   "id": "t-door dog",
+   "location": "唐門",
+   "note": "",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "唐門高手-二師兄 唐道(t tian)",
+   "id": "t tian",
+   "location": "唐門",
+   "note": "打神、定人、下k群體攻擊",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "假情假劍無心無意「惡名昭彰」唐小凡(t un)",
+   "id": "t un",
+   "location": "唐門五毒區",
+   "note": "情意劍、解定",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "打掃小廝(small sz)",
+   "id": "small sz",
+   "location": "白駝山莊",
+   "note": "靈蛇杖、靈蛇拳、蛤蟆功",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "鴛鴦刀 駱冰(lou bing)",
+   "id": "lou bing",
+   "location": "紅花會",
+   "note": "暴風刀",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "「我是大好人」財神爺(money god)",
+   "id": "money god",
+   "location": "隨機出現",
+   "note": "錢多多、搖錢扇",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "妖怪武狀元相狀(shiang juanq)",
+   "id": "shiang juanq",
+   "location": "妖靈窟",
+   "note": "auto k、獨孤劍、吸星大法、解定",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "人肉屠魔耆戈(chi ge)",
+   "id": "chi ge",
+   "location": "妖靈窟",
+   "note": "auto k、血刀、神照功、解定",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "鐵掌門幫眾(Fistpupil)",
+   "id": "fistpupil",
+   "location": "百花谷迷宮",
+   "note": "鐵掌",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "瘋子 任我行(Zin wo shin)",
+   "id": "zin wo shin",
+   "location": "梅莊",
+   "note": "auto k、琵琶爪、ask 變身",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "錢莊老闆 安惜邇(annihir)",
+   "id": "annihir",
+   "location": "長安",
+   "note": "咒術、定人pf",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "錢莊老闆 安洗米(annihir)",
+   "id": "annihir",
+   "location": "襄楊",
+   "note": "咒術、定人pf",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "「劍聖」雲非凡(unfai-fan)",
+   "id": "unfai-fan",
+   "location": "天魔塔廢街",
+   "note": "錢多多、情意劍、解定",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "本因方丈(ben tin fang jang)",
+   "id": "ben tin fang jang",
+   "location": "天龍寺",
+   "note": "六脈掌、凌波微步、封招",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "本參大師(ben tsan da shr)",
+   "id": "ben tsan da shr",
+   "location": "天龍寺",
+   "note": "六脈掌、凌波微步、封招",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "本觀大師(ben guan da shr)",
+   "id": "ben guan da shr",
+   "location": "天龍寺",
+   "note": "六脈掌、凌波微步、封招",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "本相大師(ben shiang da shr)",
+   "id": "ben shiang da shr",
+   "location": "天龍寺",
+   "note": "六脈掌、凌波微步、封招",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "四大惡人「惡貫滿盈」段延慶(dwung en chen)",
+   "id": "dwung en chen",
+   "location": "追魂莊",
+   "note": "精內傷",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "「七星魔君」丁春秋(din chanchu)",
+   "id": "din chanchu",
+   "location": "天魔塔7f",
+   "note": "auto k",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "大尖爪 大螃蟹(super crab)",
+   "id": "super crab",
+   "location": "金礦坑南方廢墟密道",
+   "note": "auto k、內傷、定人",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "正在沉思中 白自在(White dz dai)",
+   "id": "white dz dai",
+   "location": "俠客島",
+   "note": "一陽指、六合童子功",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "正在沉思中 愚茶道長(U-tsa taoist)",
+   "id": "u-tsa taoist",
+   "location": "俠客島",
+   "note": "太極劍、六合童子功",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "正在演練中 丁不四(Din-bu sui)",
+   "id": "din-bu sui",
+   "location": "俠客島",
+   "note": "毒龍鞭、六合童子功",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "正在悲傷中 溫仁厚(Wan-lan ho)",
+   "id": "wan-lan ho",
+   "location": "俠客島",
+   "note": "八極棍、六合童子功",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "雪山派前掌門人 威德(Wan der)",
+   "id": "wan der",
+   "location": "俠客島",
+   "note": "雪山劍",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "正在悔恨中 解文豹(Dzai-wun bau)",
+   "id": "dzai-wun bau",
+   "location": "俠客島",
+   "note": "牛蛇鞭、六合童子功",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "白虎堂弟子(pupil)",
+   "id": "pupil",
+   "location": "黑木崖白虎堂",
+   "note": "auto k、全真劍",
+   "exp": 1000000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖(青龍堂、風雷堂、承德堂)",
+   "note": "auto k、拜月掌",
+   "exp": 1010000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖(風雷堂、承德堂)",
+   "note": "auto k、黯然掌",
+   "exp": 1020000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖風雷堂",
+   "note": "auto k、降龍掌",
+   "exp": 1030000,
+   "source": "zap"
+  },
+  {
+   "name": "銅頭鱷魚 蔣四根(jia sz gen)",
+   "id": "jia sz gen",
+   "location": "紅花會",
+   "note": "瘋魔杖",
+   "exp": 1050000,
+   "source": "zap"
+  },
+  {
+   "name": "鐵塔 楊成協(yang cheng shie)",
+   "id": "yang cheng shie",
+   "location": "紅花會",
+   "note": "貓宮二樓招式-鞭",
+   "exp": 1050000,
+   "source": "zap"
+  },
+  {
+   "name": "鬼見愁 石雙英(dan shuan ying)",
+   "id": "dan shuan ying",
+   "location": "紅花會",
+   "note": "暴風刀",
+   "exp": 1050000,
+   "source": "zap"
+  },
+  {
+   "name": "武諸葛 徐天宏(shiu tian hung)",
+   "id": "shiu tian hung",
+   "location": "紅花會",
+   "note": "暴風刀",
+   "exp": 1050000,
+   "source": "zap"
+  },
+  {
+   "name": "九命錦豹子 衛春華(wei chuen hua)",
+   "id": "wei chuen hua",
+   "location": "紅花會",
+   "note": "連城劍",
+   "exp": 1050000,
+   "source": "zap"
+  },
+  {
+   "name": "蛤蟆精(toad goblin)",
+   "id": "toad goblin",
+   "location": "金礦坑南方廢墟密道",
+   "note": "auto k、放毒、內傷、定人",
+   "exp": 1050000,
+   "source": "zap"
+  },
+  {
+   "name": "白虎堂弟子(pupil)",
+   "id": "pupil",
+   "location": "黑木崖白虎堂",
+   "note": "auto k、太極劍",
+   "exp": 1050000,
+   "source": "zap"
+  },
+  {
+   "name": "白虎堂弟子(pupil)",
+   "id": "pupil",
+   "location": "黑木崖白虎堂",
+   "note": "auto k、雪山劍",
+   "exp": 1060000,
+   "source": "zap"
+  },
+  {
+   "name": "日月神教 教眾(guard)",
+   "id": "guard",
+   "location": "黑木崖承德堂",
+   "note": "auto k、六脈掌",
+   "exp": 1070000,
+   "source": "zap"
+  },
+  {
+   "name": "白虎堂弟子(pupil)",
+   "id": "pupil",
+   "location": "黑木崖白虎堂",
+   "note": "auto k、連城劍",
+   "exp": 1070000,
+   "source": "zap"
+  },
+  {
+   "name": "青龍堂 弟子(pupil)",
+   "id": "pupil",
+   "location": "黑木崖青龍堂",
+   "note": "auto k、狂風刀、美女拳",
+   "exp": 1070000,
+   "source": "zap"
+  },
+  {
+   "name": "中級峨嵋派 骷髏人(emei guard)",
+   "id": "emei guard",
+   "location": "峨嵋禁區2f",
+   "note": "殘紅劍、峨眉心法、沒信物auto k",
+   "exp": 1100000,
+   "source": "zap"
+  },
+  {
+   "name": "中級血刀門 骷髏人(bloodblade guard)",
+   "id": "bloodblade guard",
+   "location": "峨嵋禁區2f",
+   "note": "血刀、神照功、沒信物auto k",
+   "exp": 1100000,
+   "source": "zap"
+  },
+  {
+   "name": "中級魔刀門 骷髏人(ghostblade guard)",
+   "id": "ghostblade guard",
+   "location": "峨嵋禁區2f",
+   "note": "狂風刀、神照功、沒信物auto k",
+   "exp": 1100000,
+   "source": "zap"
+  },
+  {
+   "name": "殺人不眨眼 酒妖(wine goblin)",
+   "id": "wine goblin",
+   "location": "金礦坑南方廢墟密道",
+   "note": "井中刀、狂風刀、醉刀、降龍神功",
+   "exp": 1100000,
+   "source": "zap"
+  },
+  {
+   "name": "「順我者昌，逆我者亡」法師(fa shr)",
+   "id": "fa shr",
+   "location": "金礦坑南方廢墟密道",
+   "note": "精氣內傷",
+   "exp": 1100000,
+   "source": "zap"
+  },
+  {
+   "name": "「扶桑」浪人(ninja)",
+   "id": "ninja",
+   "location": "黑木崖(承德堂、後花園)",
+   "note": "auto k、降龍掌",
+   "exp": 1100000,
+   "source": "zap"
+  },
+  {
+   "name": "「扶桑」浪人(ninja)",
+   "id": "ninja",
+   "location": "黑木崖後花園",
+   "note": "auto k、一陽指",
+   "exp": 1100000,
+   "source": "zap"
+  },
+  {
+   "name": "虛食百生炎顱(yan lu)",
+   "id": "yan lu",
+   "location": "妖靈窟",
+   "note": "auto k、落英掌、解定",
+   "exp": 1100000,
+   "source": "zap"
+  },
+  {
+   "name": "噬魂修羅夜叉(yeh cha)",
+   "id": "yeh cha",
+   "location": "妖靈窟",
+   "note": "auto k、拜月心法、解定",
+   "exp": 1100000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 長老「傲璣長老」冷隱(elder ying)",
+   "id": "elder ying",
+   "location": "三絕門",
+   "note": "飛燕鞭、天邪心法、下k群體攻擊",
+   "exp": 1100000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 長老「傲璇長老」倉千月(elder moon)",
+   "id": "elder moon",
+   "location": "三絕門",
+   "note": "迴風手、天邪心法、下k群體攻擊",
+   "exp": 1100000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 長老「玄清長老」周天廣(elder sky)",
+   "id": "elder sky",
+   "location": "三絕門",
+   "note": "春風刀、天邪心法、下k群體攻擊",
+   "exp": 1100000,
+   "source": "zap"
+  },
+  {
+   "name": "三絕門 長老「玄麟長老」凌無心(elder lin)",
+   "id": "elder lin",
+   "location": "三絕門",
+   "note": "春風刀、天邪心法、下k群體攻擊",
+   "exp": 1100000,
+   "source": "zap"
+  },
+  {
+   "name": "「扶桑」浪人(ninja)",
+   "id": "ninja",
+   "location": "黑木崖後花園",
+   "note": "毒龍鞭",
+   "exp": 1120000,
+   "source": "zap"
+  },
+  {
+   "name": "九黎族長蚩尤(chy yo)",
+   "id": "chy yo",
+   "location": "妖靈窟",
+   "note": "auto k、醉刀、降龍神功、解定",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "白龍門「五龍少年」教眾(pupil)",
+   "id": "pupil",
+   "location": "神龍教",
+   "note": "假一陽指、桃花心法、下k群體攻擊",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "黑龍門「五龍少年」教眾(pupil)",
+   "id": "pupil",
+   "location": "神龍教",
+   "note": "假毒龍鞭、下k群體攻擊",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "黃龍門「五龍少年」教眾(pupil)",
+   "id": "pupil",
+   "location": "神龍教",
+   "note": "傷害pf、意寒神功、下k群體攻擊",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "青龍門「五龍少女」教眾(pupil)",
+   "id": "pupil",
+   "location": "神龍教",
+   "note": "假獨孤劍、太乙先天功、下k群體攻擊",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "赤龍門「五龍少女」教眾(pupil)",
+   "id": "pupil",
+   "location": "神龍教",
+   "note": "enforce歸0pf、下k群體攻擊",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "教主護法「親衛隊」教眾(guard)",
+   "id": "guard",
+   "location": "神龍教",
+   "note": "假醉刀、六合童子功、下k群體攻擊",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "西川雙俠 常赫志(chang he jr)",
+   "id": "chang he jr",
+   "location": "紅花會",
+   "note": "柔虹指、下k群體攻擊",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "西川雙俠 常伯志(chang bor jr)",
+   "id": "chang bor jr",
+   "location": "紅花會",
+   "note": "落英掌、下k群體攻擊",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "紅花會總舵主 陳家洛(chen gu lo)",
+   "id": "chen gu lo",
+   "location": "紅花會",
+   "note": "百花錯拳",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "神秘人物(mistery man) 變身 銀狼(silver wolf)",
+   "id": "silver wolf",
+   "location": "金礦坑南方廢墟密道",
+   "note": "傷害pf、全體中毒、把龍狗變不見",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "忽隱忽現 忍者(ninja)",
+   "id": "ninja",
+   "location": "金礦坑南方廢墟密道",
+   "note": "拜月掌、拜月神功、傷害pf、必暈pf",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "神仙 土地公(tu di gung)",
+   "id": "tu di gung",
+   "location": "金礦坑南方廢墟密道",
+   "note": "八極棍、八極心法、內傷",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "色魔 大金剛(bigmonkey)",
+   "id": "bigmonkey",
+   "location": "金礦坑南方廢墟密道",
+   "note": "一陽指、桃花心法、內傷、偷裝備、打死只會中毒",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "白虎堂弟子(pupil)",
+   "id": "pupil",
+   "location": "黑木崖白虎堂",
+   "note": "auto k、獨孤劍",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "蝦兵蟹將 小花蟹(Little Hua crab)",
+   "id": "little hua crab",
+   "location": "仙靈島",
+   "note": "由潛水大金剛召喚、傷害pf、內傷",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "蝦兵蟹將小青蛙(Little frog)",
+   "id": "little frog",
+   "location": "仙靈島",
+   "note": "由潛水大金剛召喚、傷害pf、內傷",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "蝦兵蟹將小郭魚(Little Wu Guo fish)",
+   "id": "little wu guo fish",
+   "location": "仙靈島",
+   "note": "由潛水大金剛召喚、傷害pf、去武器",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "蝦兵蟹將 小斑節蝦(Little Ban Jie shrimp)",
+   "id": "little ban jie shrimp",
+   "location": "仙靈島",
+   "note": "由潛水大金剛召喚、傷害pf、放毒",
+   "exp": 1200000,
+   "source": "zap"
+  },
+  {
+   "name": "「扶桑」浪人(ninja)",
+   "id": "ninja",
+   "location": "黑木崖後花園",
+   "note": "牛蛇鞭",
+   "exp": 1240000,
+   "source": "zap"
+  },
+  {
+   "name": "我好恨啊 怨靈(evil ghost)",
+   "id": "evil ghost",
+   "location": "金礦坑南方廢墟密道",
+   "note": "白雲杖、八極棍、毒龍鞭、牛蛇鞭、六合童子功、解定",
+   "exp": 1250000,
+   "source": "zap"
+  },
+  {
+   "name": "苗人鳳(miau ren feng)",
+   "id": "miau ren feng",
+   "location": "成都",
+   "note": "苗家劍",
+   "exp": 1260000,
+   "source": "zap"
+  },
+  {
+   "name": "胡斐(hu fei)",
+   "id": "hu fei",
+   "location": "大雪山",
+   "note": "胡家刀",
+   "exp": 1270000,
+   "source": "zap"
+  },
+  {
+   "name": "崔秋山(tsuei chiou shan)",
+   "id": "tsuei chiou shan",
+   "location": "廣州",
+   "note": "伏虎掌",
+   "exp": 1290000,
+   "source": "zap"
+  },
+  {
+   "name": "段譽(duan yu)",
+   "id": "duan yu",
+   "location": "無量山",
+   "note": "六脈掌、吸星大法、凌波微步、解定",
+   "exp": 1300000,
+   "source": "zap"
+  },
+  {
+   "name": "「七彩門-入世弟子」一色砂(t pupil)",
+   "id": "t pupil",
+   "location": "冰火戰爭",
+   "note": "錢多多、沒信物auto k",
+   "exp": 1300000,
+   "source": "zap"
+  },
+  {
+   "name": "「東瀛-大日派高手」風間水月(wind pupil)",
+   "id": "wind pupil",
+   "location": "冰火戰爭",
+   "note": "錢多多、拜月掌、沒信物auto k",
+   "exp": 1300000,
+   "source": "zap"
+  },
+  {
+   "name": "「扶桑」浪人(ninja)",
+   "id": "ninja",
+   "location": "黑木崖後花園",
+   "note": "auto k、狂風刀",
+   "exp": 1300000,
+   "source": "zap"
+  },
+  {
+   "name": "萬蠱毒蛛王(t spider)",
+   "id": "t spider",
+   "location": "白駝煉蠱洞",
+   "note": "auto k、放毒",
+   "exp": 1300000,
+   "source": "zap"
+  },
+  {
+   "name": "劇毒催魂蛇王(t snake)",
+   "id": "t snake",
+   "location": "白駝煉蠱洞",
+   "note": "auto k、定人、放毒",
+   "exp": 1300000,
+   "source": "zap"
+  },
+  {
+   "name": "奔雷手 文泰來(wen tai lai)",
+   "id": "wen tai lai",
+   "location": "紅花會",
+   "note": "五行拳",
+   "exp": 1300000,
+   "source": "zap"
+  },
+  {
+   "name": "千臂如來 趙半山(jau ban shan)",
+   "id": "jau ban shan",
+   "location": "紅花會",
+   "note": "星梭手法",
+   "exp": 1300000,
+   "source": "zap"
+  },
+  {
+   "name": "高級峨嵋派 骷髏人(emei guard)",
+   "id": "emei guard",
+   "location": "峨嵋禁區3f",
+   "note": "auto k、三皇棍、峨眉心法",
+   "exp": 1400000,
+   "source": "zap"
+  },
+  {
+   "name": "高級天龍寺 骷髏人(bonze guard)",
+   "id": "bonze guard",
+   "location": "峨嵋禁區3f",
+   "note": "auto k、一陽指、太乙先天功",
+   "exp": 1400000,
+   "source": "zap"
+  },
+  {
+   "name": "高級古墓派 骷髏人(oldtomb guard)",
+   "id": "oldtomb guard",
+   "location": "峨嵋禁區3f",
+   "note": "auto k、美女拳",
+   "exp": 1400000,
+   "source": "zap"
+  },
+  {
+   "name": "青龍堂「黃面尊者」賈布(boo)",
+   "id": "boo",
+   "location": "黑木崖青龍堂",
+   "note": "auto k、拜月掌",
+   "exp": 1400000,
+   "source": "zap"
+  },
+  {
+   "name": "風雷堂 童百熊(Tung Bai Shiung)",
+   "id": "tung bai shiung",
+   "location": "黑木崖風雷堂",
+   "note": "auto k、黯然掌",
+   "exp": 1400000,
+   "source": "zap"
+  },
+  {
+   "name": "白虎堂「雕俠」上官雲(Shang Guan Yun)",
+   "id": "shang guan yun",
+   "location": "黑木崖白虎堂",
+   "note": "auto k、六脈劍",
+   "exp": 1400000,
+   "source": "zap"
+  },
+  {
+   "name": "「放浪者」某洞主、島主、海主、山主(kinds leader)",
+   "id": "kinds leader",
+   "location": "飄渺峰",
+   "note": "憾天銅鎚(內傷)",
+   "exp": 1400000,
+   "source": "zap"
+  },
+  {
+   "name": "「青衫客」某洞主、島主、海主、山主(kinds leader)",
+   "id": "kinds leader",
+   "location": "飄渺峰",
+   "note": "控蛇功(放毒、內傷、精內傷)",
+   "exp": 1400000,
+   "source": "zap"
+  },
+  {
+   "name": "「破戒僧」某洞主、島主、海主、山主(kindsleader)",
+   "id": "kindsleader",
+   "location": "飄渺峰",
+   "note": "戒刀刀法(扣內力)",
+   "exp": 1400000,
+   "source": "zap"
+  },
+  {
+   "name": "金鳳凰(golden phoenix)",
+   "id": "golden phoenix",
+   "location": "天之叢林",
+   "note": "錢多多、刮風",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "枯榮大師(ku rung da shr)",
+   "id": "ku rung da shr",
+   "location": "天龍寺",
+   "note": "六脈掌、凌波微步、封招",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "追魂奪命劍 無塵道人(taoist wu)",
+   "id": "taoist wu",
+   "location": "紅花會",
+   "note": "奪命劍",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "石破天(Shr Po-Tian)",
+   "id": "shr po-tian",
+   "location": "俠客島",
+   "note": "金烏刀法",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "正在發洩中 西門觀止(Simangundz)",
+   "id": "simangundz",
+   "location": "俠客島",
+   "note": "降龍掌、降龍神功、放龍",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "正在沉悶中 黑衣人(Blacker)",
+   "id": "blacker",
+   "location": "俠客島",
+   "note": "井中刀、六合童子功",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "正在思女中 梅文馨(Me wan sin)",
+   "id": "me wan sin",
+   "location": "俠客島",
+   "note": "六脈掌、六合童子功",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "青眼怒暴中 天虛道人(Sky-helt taoist)",
+   "id": "sky-helt taoist",
+   "location": "俠客島",
+   "note": "六脈劍、六合童子功",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "全身皮膚泛青中 范一飛(Fa i fen)",
+   "id": "fa i fen",
+   "location": "俠客島",
+   "note": "唐門器、六合童子功",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "考驗官 木島主(Mo ladder)",
+   "id": "mo ladder",
+   "location": "俠客島",
+   "note": "八極棍、六合童子功、放狗",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "雪妖(snow goblin)",
+   "id": "snow goblin",
+   "location": "金礦坑南方廢墟密道",
+   "note": "全體放毒、全體傷pf、自動攻擊貪婪奪寶者",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "酒鬼(drunk man)",
+   "id": "drunk man",
+   "location": "快活林",
+   "note": "貓宮二樓招式-劍、貓宮二樓招式-掌",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "玄冥二老 鶴筆翁(crane pen man)",
+   "id": "crane pen man",
+   "location": "快活林",
+   "note": "解定",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "玄冥二老 鹿杖客(deer staff man)",
+   "id": "deer staff man",
+   "location": "冰火島",
+   "note": "解定",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋禁地 守門人 「劍豪」雲中天(un Jung Tian)",
+   "id": "un jung tian",
+   "location": "峨嵋禁區1f",
+   "note": "情意劍、桃花心法",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "貓宮守門人 猥瑣大叔(borwen guard)",
+   "id": "borwen guard",
+   "location": "貓宮外圍",
+   "note": "auto k、白雲杖",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "貓宮守門人 苦行僧(borwen guard)",
+   "id": "borwen guard",
+   "location": "貓宮外圍",
+   "note": "auto k、六脈掌",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "貓宮守門人 無幻子(borwen guard)",
+   "id": "borwen guard",
+   "location": "貓宮外圍",
+   "note": "auto k、星梭手法",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "貓宮守門人 刀衛(borwen guard)",
+   "id": "borwen guard",
+   "location": "貓宮外圍",
+   "note": "auto k、狂風刀",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "貓宮守門人 魚人啾咪(borwen guard)",
+   "id": "borwen guard",
+   "location": "貓宮外圍",
+   "note": "auto k、辟邪劍",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "貓宮守門人 水中仙(borwen guard)",
+   "id": "borwen guard",
+   "location": "貓宮外圍",
+   "note": "auto k、飛燕鞭",
+   "exp": 1500000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「九天九部」玄天宮女(eagle girl)",
+   "id": "eagle girl",
+   "location": "飄渺雪山",
+   "note": "連城劍",
+   "exp": 1700000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「九天九部」鸞天宮女(eagle girl)",
+   "id": "eagle girl",
+   "location": "飄渺雪山",
+   "note": "唐門器、武器回歸",
+   "exp": 1700000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「九天九部」赤天宮女(eagle girl)",
+   "id": "eagle girl",
+   "location": "飄渺雪山",
+   "note": "春風刀",
+   "exp": 1700000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「九天九部」幽天宮女(eagle girl)",
+   "id": "eagle girl",
+   "location": "靈鷲宮花園",
+   "note": "毒龍鞭",
+   "exp": 1700000,
+   "source": "zap"
+  },
+  {
+   "name": "武林公敵「萬惡罪人」唐隱(t in)",
+   "id": "t in",
+   "location": "唐門五毒區",
+   "note": "auto k、打精氣神、解定",
+   "exp": 2000000,
+   "source": "zap"
+  },
+  {
+   "name": "罪魁禍首 唐馬(t ma)",
+   "id": "t ma",
+   "location": "唐門五毒區",
+   "note": "auto k、井中刀",
+   "exp": 2000000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋禁地 守門人 「高麗刀聖」金震東(Jin Jen Dung)",
+   "id": "jin jen dung",
+   "location": "峨嵋禁區2f",
+   "note": "醉刀、降龍神功",
+   "exp": 2000000,
+   "source": "zap"
+  },
+  {
+   "name": "黃龍使 殷錦(in jiun)",
+   "id": "in jiun",
+   "location": "神龍教",
+   "note": "錢多多、打精、意寒神功、解定、下k群體攻擊",
+   "exp": 2000000,
+   "source": "zap"
+  },
+  {
+   "name": "白龍使 鐘志靈(li ji)",
+   "id": "li ji",
+   "location": "神龍教",
+   "note": "錢多多、內傷pf、桃花心法、解定、下k群體攻擊",
+   "exp": 2000000,
+   "source": "zap"
+  },
+  {
+   "name": "赤龍使 無根道人(wu gen)",
+   "id": "wu gen",
+   "location": "神龍教",
+   "note": "錢多多、打精氣神、解定、下k群體攻擊",
+   "exp": 2000000,
+   "source": "zap"
+  },
+  {
+   "name": "青龍使 許雪亭(shuie ting)",
+   "id": "shuie ting",
+   "location": "神龍教",
+   "note": "傷害pf、太乙先天功、解定、下k群體攻擊",
+   "exp": 2000000,
+   "source": "zap"
+  },
+  {
+   "name": "江南四大才子 唐伯虎(bo hu tang)",
+   "id": "bo hu tang",
+   "location": "蘇州",
+   "note": "全真劍、太乙先天功",
+   "exp": 2000000,
+   "source": "zap"
+  },
+  {
+   "name": "慕容世家「姑蘇」慕容復(moon fu)",
+   "id": "moon fu",
+   "location": "燕子逋",
+   "note": "快劍(內傷)、星移斗轉(全體傷)、無形幻影(精內傷)",
+   "exp": 2000000,
+   "source": "zap"
+  },
+  {
+   "name": "碧磷洞洞主 桑土公(sang tu gung)",
+   "id": "sang tu gung",
+   "location": "飄渺峰",
+   "note": "碧磷針法",
+   "exp": 2000000,
+   "source": "zap"
+  },
+  {
+   "name": "黃金鳥(gold bird)",
+   "id": "gold bird",
+   "location": "梅莊",
+   "note": "auto k、吐火",
+   "exp": 2100000,
+   "source": "zap"
+  },
+  {
+   "name": "黑龍使 張淡月(dan yue)",
+   "id": "dan yue",
+   "location": "神龍島",
+   "note": "錢多多、enforce歸0pf、解定、下k群體攻擊",
+   "exp": 2100000,
+   "source": "zap"
+  },
+  {
+   "name": "小惡魔 風鬼(weather ghost)",
+   "id": "weather ghost",
+   "location": "神龍教地下道",
+   "note": "錢多多、autok、把人轟到別格、太乙先天功、解定",
+   "exp": 2100000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「九天九部」陽天宮女(eagle girl)",
+   "id": "eagle girl",
+   "location": "靈鷲宮瀟湘園",
+   "note": "翎羽絕針(連擊、內傷、定人)、武器回歸",
+   "exp": 2100000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「九天九部」朱天宮女(eagle girl)",
+   "id": "eagle girl",
+   "location": "靈鷲宮瑤璿閣",
+   "note": "意快連斬(打精神、精神內傷)",
+   "exp": 2100000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「九天九部」昊天宮女(eagle girl)",
+   "id": "eagle girl",
+   "location": "靈鷲宮莩林院",
+   "note": "佛光普照(封招、精氣神內傷)",
+   "exp": 2100000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「九天九部」鈞天宮女(eagle girl)",
+   "id": "eagle girl",
+   "location": "靈鷲宮杳竹軒",
+   "note": "花劍三訣(定人、去武器)",
+   "exp": 2100000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「九天九部」成天宮女(eagle girl)",
+   "id": "eagle girl",
+   "location": "靈鷲宮談客間",
+   "note": "毒旋化鷲(中毒)",
+   "exp": 2100000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋禁地 守門人 「箭神」后羿(Hou Yi)",
+   "id": "hou yi",
+   "location": "峨嵋禁區3f",
+   "note": "狂龍箭訣",
+   "exp": 2200000,
+   "source": "zap"
+  },
+  {
+   "name": "地獄守門犬(inferno dog)",
+   "id": "inferno dog",
+   "location": "神龍教地下道",
+   "note": "auto k、吐火彈、解定",
+   "exp": 2200000,
+   "source": "zap"
+  },
+  {
+   "name": "食腥魔 嚎鬼(blood ghost)",
+   "id": "blood ghost",
+   "location": "神龍教地下道",
+   "note": "錢多多、auto k、傷害pf、解定",
+   "exp": 2200000,
+   "source": "zap"
+  },
+  {
+   "name": "四大護法 哀(i)",
+   "id": "i",
+   "location": "神龍教地下道",
+   "note": "錢多多、美女拳、四靈風、桃花心法、解定、下k群體攻擊",
+   "exp": 2200000,
+   "source": "zap"
+  },
+  {
+   "name": "四大護法 樂(l)",
+   "id": "l",
+   "location": "神龍教地下道",
+   "note": "錢多多、六脈掌、四靈土、桃花心法、解定、下k群體攻擊",
+   "exp": 2200000,
+   "source": "zap"
+  },
+  {
+   "name": "巨型 花蟹(Hua crab)",
+   "id": "hua crab",
+   "location": "仙靈島",
+   "note": "傷害pf、內傷",
+   "exp": 2200000,
+   "source": "zap"
+  },
+  {
+   "name": "巨型 青蛙(Big frog)",
+   "id": "big frog",
+   "location": "仙靈島",
+   "note": "傷害pf、內傷",
+   "exp": 2200000,
+   "source": "zap"
+  },
+  {
+   "name": "巨型 吳郭魚(Wu Guo fish)",
+   "id": "wu guo fish",
+   "location": "仙靈島",
+   "note": "傷害pf、去武器",
+   "exp": 2200000,
+   "source": "zap"
+  },
+  {
+   "name": "巨型 斑節蝦(Ban Jie shrimp)",
+   "id": "ban jie shrimp",
+   "location": "仙靈島",
+   "note": "把人轟到別格、放毒",
+   "exp": 2200000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「鈞天部首領」程青霜(cheng chingshuang)",
+   "id": "cheng chingshuang",
+   "location": "靈鷲宮杳竹軒",
+   "note": "花劍三訣(定人、去武器)",
+   "exp": 2200000,
+   "source": "zap"
+  },
+  {
+   "name": "蛇髮女妖(snake girl)",
+   "id": "snake girl",
+   "location": "神龍教地下道",
+   "note": "auto k、定人、解定",
+   "exp": 2300000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「朱天部首領」石嫂(woman shr)",
+   "id": "woman shr",
+   "location": "靈鷲宮瑤璿閣",
+   "note": "意快連斬(打精神、精神內傷)",
+   "exp": 2300000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「昊天部首領」余婆婆(grandma yu)",
+   "id": "grandma yu",
+   "location": "靈鷲宮莩林院",
+   "note": "佛光普照(封招、精氣神內傷)",
+   "exp": 2300000,
+   "source": "zap"
+  },
+  {
+   "name": "滅世之龍 毒龍王(dragon king)",
+   "id": "dragon king",
+   "location": "神龍教地下道",
+   "note": "auto k、放毒、解定",
+   "exp": 2400000,
+   "source": "zap"
+  },
+  {
+   "name": "螺衛(jfk guard)",
+   "id": "jfk guard",
+   "location": "貓宮1f",
+   "note": "auto k、全真劍、太乙先天功",
+   "exp": 2400000,
+   "source": "zap"
+  },
+  {
+   "name": "峨嵋派 第四代掌門 周芷若(Jou Jr Ruo)",
+   "id": "jou jr ruo",
+   "location": "峨嵋禁區3f",
+   "note": "九陰爪、峨眉心法",
+   "exp": 2500000,
+   "source": "zap"
+  },
+  {
+   "name": "武林高手 買賣商人(seller)",
+   "id": "seller",
+   "location": "神龍島沙灘",
+   "note": "六脈掌、六合童子功、解定",
+   "exp": 2500000,
+   "source": "zap"
+  },
+  {
+   "name": "精神魔 靈鬼(lin ghost)",
+   "id": "lin ghost",
+   "location": "神龍島沙灘",
+   "note": "錢多多、autok、定人、看殺氣給傷害pf、解定",
+   "exp": 2500000,
+   "source": "zap"
+  },
+  {
+   "name": "樹精靈(elf guard)",
+   "id": "elf guard",
+   "location": "貓宮2f",
+   "note": "auto k、貓宮二樓招式-鞭",
+   "exp": 2500000,
+   "source": "zap"
+  },
+  {
+   "name": "天風洞洞主 安洞主(leader an)",
+   "id": "leader an",
+   "location": "飄渺峰",
+   "note": "八卦遊龍掌(解定、內傷、內出血、麻痺)",
+   "exp": 2500000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「陽天部首領」符敏儀(fu min yi)",
+   "id": "fu min yi",
+   "location": "靈鷲宮瀟湘園",
+   "note": "翎羽絕針(連擊、內傷、定人)、武器回歸",
+   "exp": 2500000,
+   "source": "zap"
+  },
+  {
+   "name": "四大護法 怒(o)",
+   "id": "o",
+   "location": "神龍教地下道",
+   "note": "錢多多、拜月掌、四靈水、桃花心法、解定",
+   "exp": 2600000,
+   "source": "zap"
+  },
+  {
+   "name": "螺衛首領(jfk header)",
+   "id": "jfk header",
+   "location": "貓宮1f",
+   "note": "auto k、全真劍、太乙先天功",
+   "exp": 2600000,
+   "source": "zap"
+  },
+  {
+   "name": "邪虎(chief header)",
+   "id": "chief header",
+   "location": "貓宮1f",
+   "note": "auto k、血刀、神照功",
+   "exp": 2600000,
+   "source": "zap"
+  },
+  {
+   "name": "霧精靈(elf guard)",
+   "id": "elf guard",
+   "location": "貓宮2f",
+   "note": "auto k、貓宮二樓招式-劍",
+   "exp": 2600000,
+   "source": "zap"
+  },
+  {
+   "name": "風精靈(elf guard)",
+   "id": "elf guard",
+   "location": "貓宮2f",
+   "note": "auto k、貓宮二樓招式-刀",
+   "exp": 2700000,
+   "source": "zap"
+  },
+  {
+   "name": "神龍教主「一代天王」洪安通(an tung)",
+   "id": "an tung",
+   "location": "神龍教",
+   "note": "錢多多、打精氣神、桃花心法、解定、下k群體攻擊",
+   "exp": 2800000,
+   "source": "zap"
+  },
+  {
+   "name": "四大護法 喜(c)",
+   "id": "c",
+   "location": "神龍教地下道",
+   "note": "錢多多、一陽指、四靈火、桃花心法、解定",
+   "exp": 2800000,
+   "source": "zap"
+  },
+  {
+   "name": "地精靈(elf guard)",
+   "id": "elf guard",
+   "location": "貓宮2f",
+   "note": "auto k、貓宮二樓招式-掌",
+   "exp": 2800000,
+   "source": "zap"
+  },
+  {
+   "name": "三十六洞七十二島「召集人」烏老大(boss wu)",
+   "id": "boss wu",
+   "location": "飄渺峰",
+   "note": "烏氏刀招(放毒)、武器回歸",
+   "exp": 2800000,
+   "source": "zap"
+  },
+  {
+   "name": "無量魔 魎鬼(liang ghost)",
+   "id": "liang ghost",
+   "location": "神龍教地下道",
+   "note": "錢多多、傷害pf、桃花心法、解定",
+   "exp": 2900000,
+   "source": "zap"
+  },
+  {
+   "name": "妖精鬥士(imp guard)",
+   "id": "imp guard",
+   "location": "貓宮2f",
+   "note": "auto k、貓宮二樓招式-刀",
+   "exp": 2900000,
+   "source": "zap"
+  },
+  {
+   "name": "全真七子「長春子」丘處機(taoist cho)",
+   "id": "taoist cho",
+   "location": "全真",
+   "note": "全真劍、自療內傷",
+   "exp": 3000000,
+   "source": "zap"
+  },
+  {
+   "name": "「鐵掌水上飄」裘千仞(Chiou Chian Ren)",
+   "id": "chiou chian ren",
+   "location": "百花谷迷宮",
+   "note": "錢多多、鐵掌",
+   "exp": 3000000,
+   "source": "zap"
+  },
+  {
+   "name": "怪盜-負心(seiko)",
+   "id": "seiko",
+   "location": "黑木崖秘道",
+   "note": "四段變身分別使用不同武器&SK",
+   "exp": 3000000,
+   "source": "zap"
+  },
+  {
+   "name": "超大型 潛水大金剛(Big Jin Gang)",
+   "id": "big jin gang",
+   "location": "仙靈島",
+   "note": "九陰爪、蛤蟆功、內傷、定人、召怪",
+   "exp": 3000000,
+   "source": "zap"
+  },
+  {
+   "name": "貓仙 新手田螺(jfk)",
+   "id": "jfk",
+   "location": "貓宮1f",
+   "note": "auto k、全真劍、太乙先天功、打精氣神、解定",
+   "exp": 3000000,
+   "source": "zap"
+  },
+  {
+   "name": "精靈巡守(elf leader)",
+   "id": "elf leader",
+   "location": "貓宮2f",
+   "note": "auto k、貓宮二樓招式-劍",
+   "exp": 3000000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「四使婢」梅劍(maid mei)",
+   "id": "maid mei",
+   "location": "靈鷲宮偏殿",
+   "note": "四君子劍(連擊、配合其他四使婢定人)",
+   "exp": 3000000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「四使婢」蘭劍(maid lan)",
+   "id": "maid lan",
+   "location": "靈鷲宮偏殿",
+   "note": "四君子劍(連擊、配合其他四使婢定人)",
+   "exp": 3000000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「四使婢」竹劍(maid ju)",
+   "id": "maid ju",
+   "location": "靈鷲宮偏殿",
+   "note": "四君子劍(連擊、配合其他四使婢定人)",
+   "exp": 3000000,
+   "source": "zap"
+  },
+  {
+   "name": "靈鷲宮「四使婢」菊劍(maid jiu)",
+   "id": "maid jiu",
+   "location": "靈鷲宮偏殿",
+   "note": "四君子劍(連擊、配合其他四使婢定人)",
+   "exp": 3000000,
+   "source": "zap"
+  },
+  {
+   "name": "芙蓉仙子 崔綠華(tsuei liu hua)",
+   "id": "tsuei liu hua",
+   "location": "飄渺峰",
+   "note": "芙蓉劍法(召怪)、武器回歸",
+   "exp": 3000000,
+   "source": "zap"
+  },
+  {
+   "name": "精靈長老(old elf)",
+   "id": "old elf",
+   "location": "貓宮2f",
+   "note": "貓宮二樓招式-掌",
+   "exp": 3300000,
+   "source": "zap"
+  },
+  {
+   "name": "「妖精女神」溫妮(elf god wenny)",
+   "id": "elf god wenny",
+   "location": "貓宮2f",
+   "note": "貓宮二樓招式-劍",
+   "exp": 3300000,
+   "source": "zap"
+  },
+  {
+   "name": "孟星蝶(Meang shing Die)",
+   "id": "meang shing die",
+   "location": "三絕門",
+   "note": "貓宮二樓招式-劍、貓宮二樓招式-掌",
+   "exp": 3400000,
+   "source": "zap"
+  },
+  {
+   "name": "高寄萍(Gau Ji Ping)",
+   "id": "gau ji ping",
+   "location": "唐門五毒區",
+   "note": "貓宮二樓招式-劍",
+   "exp": 3400000,
+   "source": "zap"
+  },
+  {
+   "name": "蒂德莉特(deedolit)",
+   "id": "deedolit",
+   "location": "貓宮2f",
+   "note": "貓宮二樓招式-劍",
+   "exp": 3400000,
+   "source": "zap"
+  },
+  {
+   "name": "芙爾蒂‧費拉(flowdy fela)",
+   "id": "flowdy fela",
+   "location": "貓宮2f",
+   "note": "貓宮二樓招式-劍",
+   "exp": 3400000,
+   "source": "zap"
+  },
+  {
+   "name": "帥哥鑑定師「超級無敵霹靂帥」唐本光依(ide t ba)",
+   "id": "ide t ba",
+   "location": "唐門",
+   "note": "井中刀、降龍神功",
+   "exp": 3500000,
+   "source": "zap"
+  },
+  {
+   "name": "「襄陽客卿」郭靖(kou gin)",
+   "id": "kou gin",
+   "location": "襄陽",
+   "note": "降龍掌、降龍神功、放龍",
+   "exp": 3500000,
+   "source": "zap"
+  },
+  {
+   "name": "「老頑童」周伯通(Jou Ba Ton)",
+   "id": "jou ba ton",
+   "location": "百花谷",
+   "note": "錢多多、空明拳、太乙先天功",
+   "exp": 3500000,
+   "source": "zap"
+  },
+  {
+   "name": "神月‧法勒斯(moon falans)",
+   "id": "moon falans",
+   "location": "貓宮2f",
+   "note": "貓宮二樓招式-劍",
+   "exp": 3500000,
+   "source": "zap"
+  },
+  {
+   "name": "逍遙派殘魂琴顛(zither ghost)",
+   "id": "zither ghost",
+   "location": "靈鷲宮禁區",
+   "note": "八采配-琴(變更enforce)、武器回歸",
+   "exp": 3600000,
+   "source": "zap"
+  },
+  {
+   "name": "逍遙派殘魂棋魔(chess ghost)",
+   "id": "chess ghost",
+   "location": "靈鷲宮禁區",
+   "note": "八采配-棋(連擊、內傷)、武器回歸",
+   "exp": 3600000,
+   "source": "zap"
+  },
+  {
+   "name": "逍遙派殘魂書獃(book ghost)",
+   "id": "book ghost",
+   "location": "靈鷲宮禁區",
+   "note": "八采配-書(增防、減傷)、武器回歸",
+   "exp": 3600000,
+   "source": "zap"
+  },
+  {
+   "name": "逍遙派殘魂畫狂(draw ghost)",
+   "id": "draw ghost",
+   "location": "靈鷲宮禁區",
+   "note": "八采配-畫(麻痺)、武器回歸",
+   "exp": 3600000,
+   "source": "zap"
+  },
+  {
+   "name": "逍遙派殘魂神醫(cure ghost)",
+   "id": "cure ghost",
+   "location": "靈鷲宮禁區",
+   "note": "八采配-醫(中毒、吸內力)、武器回歸",
+   "exp": 3600000,
+   "source": "zap"
+  },
+  {
+   "name": "逍遙派殘魂巧匠(work ghost)",
+   "id": "work ghost",
+   "location": "靈鷲宮禁區",
+   "note": "八采配-匠(召怪)、武器回歸",
+   "exp": 3600000,
+   "source": "zap"
+  },
+  {
+   "name": "逍遙派殘魂花癡(flower ghost)",
+   "id": "flower ghost",
+   "location": "靈鷲宮禁區",
+   "note": "八采配-花(附帶普攻特效[連擊、中毒、額外傷害])、武器回歸",
+   "exp": 3600000,
+   "source": "zap"
+  },
+  {
+   "name": "逍遙派殘魂戲迷(drama ghost)",
+   "id": "drama ghost",
+   "location": "靈鷲宮禁區",
+   "note": "八采配-戲(定人)、武器回歸",
+   "exp": 3600000,
+   "source": "zap"
+  },
+  {
+   "name": "練丹師「最強守門員」唐三長(t gi)",
+   "id": "t gi",
+   "location": "唐門",
+   "note": "打精神、定人、解定",
+   "exp": 4000000,
+   "source": "zap"
+  },
+  {
+   "name": "一字慧劍門「劍神」卓不凡(juo bu fan)",
+   "id": "juo bu fan",
+   "location": "飄渺峰",
+   "note": "慧門一劍(連擊、內傷、去武器)、解定、武器回歸",
+   "exp": 4000000,
+   "source": "zap"
+  },
+  {
+   "name": "「要命的小方」方偉(fu wa)",
+   "id": "fu wa",
+   "location": "衡山",
+   "note": "拇指飛刀",
+   "exp": 4850000,
+   "source": "zap"
+  },
+  {
+   "name": "「上善若水」小粉姑娘(bubble)",
+   "id": "bubble",
+   "location": "玉靈洞",
+   "note": "傷害pf、太乙先天功",
+   "exp": 5000000,
+   "source": "zap"
+  },
+  {
+   "name": "聖獸 朱雀(holy bird)",
+   "id": "holy bird",
+   "location": "隨機出現",
+   "note": "四靈火、內傷、放毒",
+   "exp": 10000000,
+   "source": "zap"
+  },
+  {
+   "name": "青龍(holy dragon)",
+   "id": "holy dragon",
+   "location": "隨機出現",
+   "note": "四靈風、內傷、偷錢、偷裝備",
+   "exp": 10000000,
+   "source": "zap"
+  },
+  {
+   "name": "麒麟(holy kylin) & 聖獸 麒麟(holy kylin)",
+   "id": "holy kylin",
+   "location": "隨機出現",
+   "note": "四靈水、內傷、放毒",
+   "exp": 10000000,
+   "source": "zap"
+  },
+  {
+   "name": "聖獸 白虎(holy tiger)",
+   "id": "holy tiger",
+   "location": "隨機出現",
+   "note": "內傷",
+   "exp": 10000000,
+   "source": "zap"
+  },
+  {
+   "name": "聖獸 玄武(holy turtle)",
+   "id": "holy turtle",
+   "location": "隨機出現",
+   "note": "四靈土、內傷、卸武器",
+   "exp": 10000000,
+   "source": "zap"
+  },
+  {
+   "name": "落魄書生(dire scholar)",
+   "id": "dire scholar",
+   "location": "隨機出現",
+   "note": "六脈掌",
+   "exp": null,
+   "source": "zap"
+  },
+  {
+   "name": "「捕魚高手」漁夫(Fisherman)",
+   "id": "fisherman",
+   "location": "",
+   "note": "難找，別殺到強的那隻漁夫",
+   "exp": 0,
+   "source": "newstart"
+  },
+  {
+   "name": "村婦(Village woman)",
+   "id": "village woman",
+   "location": "",
+   "note": "老歐巴桑，沒遇過它",
+   "exp": 0,
+   "source": "newstart"
+  },
+  {
+   "name": "店小二(Waiter)",
+   "id": "waiter",
+   "location": "",
+   "note": "賣東西的傻蛋，殺它先看人",
+   "exp": 5,
+   "source": "newstart"
+  },
+  {
+   "name": "野狗(Dog)",
+   "id": "dog",
+   "location": "",
+   "note": "肉類來源，肚子餓別客氣",
+   "exp": 5,
+   "source": "newstart"
+  },
+  {
+   "name": "收破爛的(Scavenger)",
+   "id": "scavenger",
+   "location": "",
+   "note": "肉腳，讓它投胎吧",
+   "exp": 10,
+   "source": "newstart"
+  },
+  {
+   "name": "農夫(Farmer)",
+   "id": "farmer",
+   "location": "",
+   "note": "會逃的肉腳，追不到",
+   "exp": 20,
+   "source": "newstart"
+  },
+  {
+   "name": "瘋狗(Crazy dog)",
+   "id": "crazy dog",
+   "location": "",
+   "note": "會自動攻擊，新手小心",
+   "exp": 100,
+   "source": "newstart"
+  },
+  {
+   "name": "叫化子(Beggar)",
+   "id": "beggar",
+   "location": "",
+   "note": "新手的箭靶子，哈哈",
+   "exp": 100,
+   "source": "newstart"
+  },
+  {
+   "name": "醉漢(Drunk)",
+   "id": "drunk",
+   "location": "",
+   "note": "路邊的笨蛋，讓它投胎吧",
+   "exp": 100,
+   "source": "newstart"
+  },
+  {
+   "name": "樵夫(Woodcutter)",
+   "id": "woodcutter",
+   "location": "",
+   "note": "不容易見的笨怪物，給它死",
+   "exp": 100,
+   "source": "newstart"
+  },
+  {
+   "name": "華山劍派第十三代弟子 初級入門弟子(First trainee)",
+   "id": "first trainee",
+   "location": "",
+   "note": "笨蛋中的笨蛋，讓它死吧",
+   "exp": 100,
+   "source": "newstart"
+  },
+  {
+   "name": "掃地僧(Work bonze)",
+   "id": "work bonze",
+   "location": "",
+   "note": "肉腳一隻，別跟它客氣",
+   "exp": 200,
+   "source": "newstart"
+  },
+  {
+   "name": "野狼(Wildwolf)",
+   "id": "wildwolf",
+   "location": "",
+   "note": "蠢狼，給它死吧",
+   "exp": 200,
+   "source": "newstart"
+  },
+  {
+   "name": "獨臂道人(Taoist)",
+   "id": "taoist",
+   "location": "",
+   "note": "會逃跑的笨蛋，耐心的追吧",
+   "exp": 300,
+   "source": "newstart"
+  },
+  {
+   "name": "腳伕(Liu)",
+   "id": "liu",
+   "location": "",
+   "note": "還算簡單，先挑戰再說",
+   "exp": 400,
+   "source": "newstart"
+  },
+  {
+   "name": "蒙古小女孩(Girl)",
+   "id": "girl",
+   "location": "",
+   "note": "笨小鬼，讓它躺下吧",
+   "exp": 500,
+   "source": "newstart"
+  },
+  {
+   "name": "蒙古小男孩(Mboy)",
+   "id": "mboy",
+   "location": "",
+   "note": "笨蛋一個，呼夕",
+   "exp": 500,
+   "source": "newstart"
+  },
+  {
+   "name": "小道士(Little taoist)",
+   "id": "little taoist",
+   "location": "",
+   "note": "肉腳，超度它吧",
+   "exp": 500,
+   "source": "newstart"
+  },
+  {
+   "name": "牛(Cattle)",
+   "id": "cattle",
+   "location": "",
+   "note": "賤牛一隻，新手離它遠點",
+   "exp": 600,
+   "source": "newstart"
+  },
+  {
+   "name": "黑熊(Bear)",
+   "id": "bear",
+   "location": "",
+   "note": "稍微可怕點，新手小心",
+   "exp": 600,
+   "source": "newstart"
+  },
+  {
+   "name": "華山劍派第十三代弟子 高級入門弟子(High trainee)",
+   "id": "high trainee",
+   "location": "",
+   "note": "笨蛋一個，別跟它客氣",
+   "exp": 600,
+   "source": "newstart"
+  },
+  {
+   "name": "知客(Greeting taoist)",
+   "id": "greeting taoist",
+   "location": "",
+   "note": "小意思，給它躺下啦",
+   "exp": 700,
+   "source": "newstart"
+  },
+  {
+   "name": "小沙彌(Bonze)",
+   "id": "bonze",
+   "location": "",
+   "note": "肉腳，給它死啦",
+   "exp": 800,
+   "source": "newstart"
+  },
+  {
+   "name": "當鋪老闆 大笨丹(Avbb)",
+   "id": "avbb",
+   "location": "",
+   "note": "新手小心，會打狗棒",
+   "exp": 1000,
+   "source": "newstart"
+  },
+  {
+   "name": "大臣(Noble)",
+   "id": "noble",
+   "location": "",
+   "note": "簡單啦，身上還有十兩銀子",
+   "exp": 1000,
+   "source": "newstart"
+  },
+  {
+   "name": "第五代全真弟子(Alltruth taoist)",
+   "id": "alltruth taoist",
+   "location": "",
+   "note": "好打，簡單啦",
+   "exp": 1000,
+   "source": "newstart"
+  },
+  {
+   "name": "小藥僧(Bonze)",
+   "id": "bonze",
+   "location": "",
+   "note": "天龍寺，肉腳好打",
+   "exp": 1200,
+   "source": "newstart"
+  },
+  {
+   "name": "桑鄰藥鋪 楊掌櫃(Herbalist)",
+   "id": "herbalist",
+   "location": "",
+   "note": "打不到，在長安安全區",
+   "exp": 1300,
+   "source": "newstart"
+  },
+  {
+   "name": "醫死不用錢 老闆(Herbaboss)",
+   "id": "herbaboss",
+   "location": "",
+   "note": "打不到，在蒙古安全區",
+   "exp": 1300,
+   "source": "newstart"
+  },
+  {
+   "name": "火猴(Fire monky)",
+   "id": "fire monky",
+   "location": "",
+   "note": "好打，早就該給它躺下了",
+   "exp": 1500,
+   "source": "newstart"
+  },
+  {
+   "name": "知客僧(Greeting bonze)",
+   "id": "greeting bonze",
+   "location": "",
+   "note": "好打，早就該殺了",
+   "exp": 2000,
+   "source": "newstart"
+  },
+  {
+   "name": "第四代全真弟子(Alltruth taoist)",
+   "id": "alltruth taoist",
+   "location": "",
+   "note": "肉腳，練好玩的",
+   "exp": 2000,
+   "source": "newstart"
+  },
+  {
+   "name": "火猿(Fire ape)",
+   "id": "fire ape",
+   "location": "",
+   "note": "肉腳，不自量力的笨蛋",
+   "exp": 2500,
+   "source": "newstart"
+  },
+  {
+   "name": "冰猴(Ice monky)",
+   "id": "ice monky",
+   "location": "",
+   "note": "肉腳，不自量力的笨蛋",
+   "exp": 3000,
+   "expMin": 2000,
+   "expMax": 3000,
+   "source": "newstart"
+  },
+  {
+   "name": "第三代全真弟子(Alltruth taoist)",
+   "id": "alltruth taoist",
+   "location": "",
+   "note": "肉腳，練好玩的",
+   "exp": 3000,
+   "source": "newstart"
+  },
+  {
+   "name": "土匪(Bandit)",
+   "id": "bandit",
+   "location": "",
+   "note": "很難說，少打為妙",
+   "exp": 6000,
+   "expMin": 3000,
+   "expMax": 6000,
+   "source": "newstart"
+  },
+  {
+   "name": "跛僧人(Cripple bonze)",
+   "id": "cripple bonze",
+   "location": "",
+   "note": "好打，不過內力略多，小心",
+   "exp": 4000,
+   "source": "newstart"
+  },
+  {
+   "name": "毒蛇(Venomsnake)",
+   "id": "venomsnake",
+   "location": "",
+   "note": "會follow，中毒，小心",
+   "exp": 4000,
+   "source": "newstart"
+  },
+  {
+   "name": "蒙古美女(Woman)",
+   "id": "woman",
+   "location": "",
+   "note": "肉腳，早就可以殺了",
+   "exp": 4000,
+   "source": "newstart"
+  },
+  {
+   "name": "伊志敬(Yin ze gin)",
+   "id": "yin ze gin",
+   "location": "",
+   "note": "也是震斷武器較好打",
+   "exp": 5000,
+   "source": "newstart"
+  },
+  {
+   "name": "僧人(Bonze)",
+   "id": "bonze",
+   "location": "",
+   "note": "肉腳，同藥僧",
+   "exp": 6000,
+   "source": "newstart"
+  },
+  {
+   "name": "藥僧(Bonze)",
+   "id": "bonze",
+   "location": "",
+   "note": "肉腳，exp比它低都可以打好玩",
+   "exp": 7000,
+   "source": "newstart"
+  },
+  {
+   "name": "伊志平(Yin ze pin)",
+   "id": "yin ze pin",
+   "location": "",
+   "note": "震斷武器較好打",
+   "exp": 7000,
+   "source": "newstart"
+  },
+  {
+   "name": "淫賊 田伯光(Ten bo kuang)",
+   "id": "ten bo kuang",
+   "location": "",
+   "note": "蠻強的，震斷武器試試",
+   "exp": 8000,
+   "source": "newstart"
+  },
+  {
+   "name": "丐幫長老 魯有腳(Luyuleg)",
+   "id": "luyuleg",
+   "location": "",
+   "note": "震斷武器等於白癡，給它死",
+   "exp": 8000,
+   "source": "newstart"
+  },
+  {
+   "name": "冰人族 冰精獵人(Ice hunter)",
+   "id": "ice hunter",
+   "location": "",
+   "note": "震斷武器的於白癡，給它死",
+   "exp": 8000,
+   "source": "newstart"
+  },
+  {
+   "name": "火人族 火精獵人(Fire hunter)",
+   "id": "fire hunter",
+   "location": "",
+   "note": "震斷武器等於白癡，給它死",
+   "exp": 8000,
+   "source": "newstart"
+  },
+  {
+   "name": "絕情谷園丁(gardener)",
+   "id": "gardener",
+   "location": "",
+   "note": "enforce設高，還算中等",
+   "exp": 10000,
+   "source": "newstart"
+  },
+  {
+   "name": "巨型寄居蟹(Large hermit crab)",
+   "id": "large hermit crab",
+   "location": "",
+   "note": "好打，跟大螃蟹一樣笨",
+   "exp": 15000,
+   "source": "newstart"
+  },
+  {
+   "name": "老虎(tiger)",
+   "id": "tiger",
+   "location": "長安城",
+   "note": "",
+   "exp": 500,
+   "source": "override"
+  }
+ ]
+}

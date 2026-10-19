@@ -104,4 +104,24 @@ function applyOverrides(mobs, overrides) {
   return { mobs: result, problems };
 }
 
-module.exports = { normalize, parseZapMobHtml, parseNewstartHtml, mergeSources, applyOverrides };
+const SOURCES = ['https://zap.muds.me/ot1.htm', 'https://catworld.muds.tw/help/newstart.3'];
+
+// 來源改版時解析結果會突然變少，這時寧可失敗也不要產生一份殘缺的資料
+function buildData({ zapHtml, newstartHtml, overrides }, { minZap = 100, minNewstart = 20 } = {}) {
+  const zap = parseZapMobHtml(zapHtml);
+  const newstart = parseNewstartHtml(newstartHtml);
+  if (zap.length < minZap || newstart.length < minNewstart) {
+    throw new Error(`來源解析異常：zap ${zap.length} 筆（至少 ${minZap}）、newstart ${newstart.length} 筆（至少 ${minNewstart}）`);
+  }
+  const merged = mergeSources(zap, newstart);
+  const { mobs, problems } = applyOverrides(merged.mobs, overrides);
+  const unknown = mobs.filter(mob => mob.exp === null);
+  const report = [
+    `zap ${zap.length} 筆、newstart ${newstart.length} 筆、合併後 ${mobs.length} 筆`,
+    ...merged.conflicts.map(line => `數值差異：${line}`),
+    ...unknown.map(mob => `強度不明：${mob.name}（${mob.location}）`),
+  ];
+  return { data: { sources: SOURCES, mobs }, report, problems };
+}
+
+module.exports = { normalize, parseZapMobHtml, parseNewstartHtml, mergeSources, applyOverrides, buildData, SOURCES };
