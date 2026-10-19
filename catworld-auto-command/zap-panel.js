@@ -125,8 +125,9 @@ function attach(root, { readExp, startSteps }) {
   });
 
   // 搜尋框要能取得游標：面板其他地方為了不搶遊戲輸入框的游標擋掉 mousedown，這裡放行；
+  // click 也要擋：遊戲的 window.onclick 對 type 不是 text／password 的元素會把游標搶回遊戲輸入框（搜尋框是 type=search）；
   // 打字也不讓遊戲的快捷鍵收到
-  search.addEventListener('mousedown', event => event.stopPropagation());
+  ['mousedown', 'click'].forEach(type => search.addEventListener(type, event => event.stopPropagation()));
   ['keydown', 'keyup', 'keypress'].forEach(type => search.addEventListener(type, event => event.stopPropagation()));
 
   // 查詢是非同步的（背景第一次要載入資料），連續操作時只採用最後一次的結果

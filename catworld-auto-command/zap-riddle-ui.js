@@ -42,9 +42,10 @@ const el = (name, props = {}, ...children) => {
   return node;
 };
 
-// 面板其他地方為了不搶遊戲輸入框的游標擋掉 mousedown，輸入框要放行；打字也不讓遊戲的快捷鍵收到
+// 面板其他地方為了不搶遊戲輸入框的游標擋掉 mousedown，輸入框要放行；click 也要擋（遊戲的 window.onclick 會把游標搶回
+// 遊戲輸入框，type 是 text／password 以外都會）；打字也不讓遊戲的快捷鍵收到
 function typable(node) {
-  node.addEventListener('mousedown', event => event.stopPropagation());
+  ['mousedown', 'click'].forEach(type => node.addEventListener(type, event => event.stopPropagation()));
   ['keydown', 'keyup', 'keypress'].forEach(type => node.addEventListener(type, event => event.stopPropagation()));
   return node;
 }

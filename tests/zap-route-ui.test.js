@@ -87,3 +87,13 @@ ui('turning the monster and item features off hides the row and stops lookups', 
   say('\n  ※華山弟子(a) [fight][kill]');
   assert.ok(await waitFor(() => calls.includes('ZAP_LOOKUP')));
 });
+
+ui('clicking the search box does not reach the game window.onclick that steals focus back', async () => {
+  const { shadow, w } = boot({ items: [] });
+  let reached = 0;
+  w.addEventListener('click', () => { reached += 1; });
+  shadow.querySelector('input[type="search"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true, composed: true }));
+  assert.equal(reached, 0);
+  shadow.querySelector('.zap-open').dispatchEvent(new w.MouseEvent('click', { bubbles: true, composed: true }));
+  assert.equal(reached, 1, 'other buttons are unaffected');
+});
