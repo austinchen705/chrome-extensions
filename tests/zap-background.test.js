@@ -7,8 +7,9 @@ const listeners = [];
 let fetchCalls = 0;
 let failNextFetch = false;
 const mobs = [{ name: '甲(a)', id: 'a', exp: 250000, location: '蒙古', note: '', source: 'zap' }];
+const items = [{ name: '明朝古董木雕', level: 1, note: '', weapon: '' }];
 
-globalThis.importScripts = name => require(path.join(extensionDir, name));
+globalThis.importScripts = (...names) => names.forEach(name => require(path.join(extensionDir, name)));
 globalThis.fetch = async url => {
   fetchCalls += 1;
   if (failNextFetch) {
@@ -16,7 +17,7 @@ globalThis.fetch = async url => {
     throw new Error('network down');
   }
   assert.equal(url, 'zap-data.json');
-  return { ok: true, json: async () => ({ mobs }) };
+  return { ok: true, json: async () => ({ mobs, items }) };
 };
 const noop = { addListener() {} };
 globalThis.chrome = {
@@ -59,4 +60,12 @@ test('background reports a load failure and retries on the next message', async 
 test('background ignores messages that are not ZAP_*', () => {
   const answered = listeners.some(listener => listener({ type: 'START' }, { tab: { id: 1 } }, () => {}) === true);
   assert.equal(answered, false);
+});
+
+test('background answers ZAP_ITEM from the same loaded data', async () => {
+  const before = fetchCalls;
+  const reply = await ask({ type: 'ZAP_ITEM', sentences: ['一尊明朝古董木雕'], mainWeapon: '劍' });
+  assert.equal(reply.ok, true);
+  assert.equal(reply.results[0].candidates[0].advice.action, 'sell');
+  assert.equal(fetchCalls, before, 'no extra fetch once the data is loaded');
 });
