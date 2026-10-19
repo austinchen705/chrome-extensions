@@ -56,6 +56,26 @@ function searchRiddles(riddles, query) {
 }
 
 // 換行也當分隔：編輯框裡多行的文字不能原封不動送出（單行輸入框會吃掉換行，指令會黏成 run elook）
+// 共用頁（石牢＆入古墓＆入明教 在同一頁）只該顯示這個謎自己的那一段，不然點「入古墓」看到的是石牢的步驟。
+// 以步驟的小標題分段：標題包含謎名的段落就是它的；沒有標題的開頭那段，屬於「名字沒出現在任何標題、但同頁其他謎有」的謎。
+// 認不出來就回傳整頁（寧可多顯示，不要漏）。回傳的是步驟在該頁的 1 起算位置，編輯與儲存都用這個位置。
+function sectionSteps(riddle, page) {
+  const all = page.steps.map((_, index) => index + 1);
+  if (!riddle.shared?.length) return all;
+  const starts = page.steps.map((step, index) => (step.heading ? index : -1)).filter(index => index >= 0);
+  if (!starts.length) return all;
+  const groups = starts.map((from, k) => ({ heading: page.steps[from].heading, from, to: starts[k + 1] ?? page.steps.length }));
+  const range = ({ from, to }) => Array.from({ length: to - from }, (_, i) => from + i + 1);
+  const mine = groups.filter(group => group.heading.includes(riddle.name));
+  if (mine.length) return mine.flatMap(range);
+  const othersHaveHeadings = riddle.shared.some(name => groups.some(group => group.heading.includes(name)));
+  if (starts[0] > 0 && othersHaveHeadings) return range({ from: 0, to: starts[0] });
+  return all;
+}
+
+// 路徑是不是從醉仙樓客棧出發（`run e 5n o…`／`run e 5n 2o…`）；不是的路徑接在上一步的位置後面，不能亂標
+const startsAtInn = commands => /^run e 5n (?:2o|o)(?:[\s;]|$)/.test(String(commands ?? ''));
+
 const splitCommands = text => String(text ?? '').split(/[;；\r\n]+/).map(piece => piece.trim()).filter(Boolean);
 const joinCommands = list => list.join(';');
 
@@ -119,7 +139,7 @@ function handleMessage(data, message) {
 }
 
 globalThis.CatworldZapRiddles = {
-  DIFFICULTY_ORDER, parseCondition, classify, groupRiddles, searchRiddles, splitCommands, joinCommands,
+  DIFFICULTY_ORDER, parseCondition, classify, groupRiddles, searchRiddles, sectionSteps, startsAtInn, splitCommands, joinCommands,
   effectiveStep, setEdit, parseImport, handleMessage,
 };
 })();

@@ -165,3 +165,19 @@ test('parseRiddlePage reads a labelled step like 男：1.先到…', () => {
   assert.ok(male, 'the male route step 1 exists');
   assert.equal(male.heading, '男：');
 });
+
+test('sectionSteps picks the right steps on the real shared page qu6-3', () => {
+  require('../catworld-auto-command/zap-riddles.js');
+  const R = globalThis.CatworldZapRiddles;
+  const sealed = page('qu6-3.htm');
+  const texts = indexes => indexes.map(index => sealed.steps[index - 1].text);
+  const grave = texts(R.sectionSteps({ name: '入古墓', shared: ['石牢', '入明教'] }, sealed));
+  assert.match(grave[0], /^run e 5n o 2s e s t 3sw/);
+  assert.match(grave.at(-1), /林朝英/);
+  assert.ok(grave.every(text => !text.includes('洪凌波') && !text.includes('touch 石壁')));
+  const cult = texts(R.sectionSteps({ name: '入明教', shared: ['石牢', '入古墓'] }, sealed));
+  assert.match(cult[0], /touch 石壁/);
+  const prison = texts(R.sectionSteps({ name: '石牢', shared: ['入古墓', '入明教'] }, sealed));
+  assert.match(prison[0], /洪凌波開始/);
+  assert.equal(prison.length, 2);
+});

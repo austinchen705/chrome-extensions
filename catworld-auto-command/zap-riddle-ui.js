@@ -23,7 +23,8 @@ const STYLE = `
   .rd-btn[disabled] { opacity: .35; cursor: default; }
   .rd-main { max-height: 320px; overflow: auto; font-size: 14px; user-select: text; }
   .rd-group { color: #bbb; font-weight: 700; padding: 6px 0 2px; }
-  .rd-row { padding: 3px 0; border-top: 1px solid #3a3a3e; overflow-wrap: anywhere; }
+  .rd-row { padding: 3px 4px; border-top: 1px solid #3a3a3e; overflow-wrap: anywhere; cursor: pointer; }
+  .rd-row:hover { background: #2c2c32; }
   .rd-name { cursor: pointer; font-weight: 600; color: #8cc4ff; }
   .rd-meta { color: #999; font-size: 13px; }
   .rd-step { padding: 5px 0; border-top: 1px solid #3a3a3e; overflow-wrap: anywhere; }
@@ -74,6 +75,7 @@ function attach(root, { readStats, startSteps }) {
   let edits = {};
   let done = {};
   let current = null;
+  let fullPage = false;
 
   const send = async message => {
     try {
@@ -102,9 +104,17 @@ function attach(root, { readStats, startSteps }) {
       renderList();
     });
     const name = el('span', { className: 'rd-name', textContent: riddle.name });
-    name.addEventListener('click', () => { current = riddle; say(''); renderDetail(); });
     const meta = [riddle.condition && `條件：${riddle.condition}`, riddle.hint, riddle.reward && `獎勵：${riddle.reward}`].filter(Boolean).join('　');
-    return el('div', { className: 'rd-row' }, check, ' ', name, ` ${riddle.difficulty}`, el('div', { className: 'rd-meta', textContent: meta }));
+    const row = el('div', { className: 'rd-row', title: '點一下看步驟' }, check, ' ', name, ` ${riddle.difficulty} ›`, el('div', { className: 'rd-meta', textContent: meta }));
+    // 整列都可以點（勾選框是「已解過」，不算）
+    row.addEventListener('click', event => {
+      if (event.target === check) return;
+      current = riddle;
+      fullPage = false;
+      say('');
+      renderDetail();
+    });
+    return row;
   }
 
   function renderList() {
@@ -158,6 +168,7 @@ function attach(root, { readStats, startSteps }) {
       step.heading ? el('div', { className: 'rd-group', textContent: step.heading }) : '',
       el('div', { textContent: `${step.no}. ${step.text}` }),
       el('div', { className: 'rd-cmd', textContent: cmdText }),
+      R.startsAtInn(effective.commands) ? el('div', { className: 'rd-note', textContent: '這條路徑從醉仙樓客棧出發：先 recall 回去再送出' }) : '',
       effective.stale && effective.source === 'edited' ? el('div', { className: 'rd-warn', textContent: '步驟已變動，請確認這個補充的指令還對' }) : '',
       el('div', { className: 'rd-actions' }, editButton, sendButton), edit);
   }
@@ -170,15 +181,25 @@ function attach(root, { readStats, startSteps }) {
       back,
       el('div', { className: 'rd-group', textContent: riddle.name }),
       el('div', { className: 'rd-meta', textContent: [`條件：${riddle.condition}`, `難度：${riddle.difficulty}`, `獎勵：${riddle.reward}`].join('　') }));
-    if (riddle.shared.length) main.append(el('div', { className: 'rd-note', textContent: `這一頁同時包含：${riddle.shared.join('、')}` }));
     const page = riddle.page ? data.pages[riddle.page] : null;
+    // 共用頁只顯示這個謎自己的那一段；認不出來就是整頁。可以切換看整頁（萬一分段分錯了）
+    const mine = page ? R.sectionSteps(riddle, page) : [];
+    const sectioned = Boolean(page) && mine.length < page.steps.length;
+    if (riddle.shared.length) {
+      main.append(el('div', { className: 'rd-note', textContent: `這一頁同時包含：${riddle.shared.join('、')}${sectioned && !fullPage ? `；下面只顯示「${riddle.name}」這一段（${mine.length} 步）` : ''}` }));
+    }
+    if (sectioned) {
+      const toggle = el('button', { className: 'rd-btn', textContent: fullPage ? `只看「${riddle.name}」這一段` : '顯示整頁步驟' });
+      toggle.addEventListener('click', () => { fullPage = !fullPage; renderDetail(); });
+      main.append(toggle);
+    }
     if (!riddle.page) main.append(el('div', { className: 'rd-note', textContent: '沒有步驟頁' }));
     else if (!page) main.append(el('div', { className: 'rd-note', textContent: '沒有步驟頁資料' }));
     else if (!page.steps.length) main.append(el('div', { className: 'rd-text', textContent: page.text }));
     else {
       // 第一步之前的文字常有準備事項（要先設的點、要先收集的東西），不顯示會漏掉前置條件
       if (page.preamble) main.append(el('div', { className: 'rd-text', textContent: page.preamble }));
-      page.steps.forEach((_, i) => main.append(stepRow(riddle, page, i + 1)));
+      (fullPage ? page.steps.map((_, i) => i + 1) : mine).forEach(index => main.append(stepRow(riddle, page, index)));
     }
   }
 

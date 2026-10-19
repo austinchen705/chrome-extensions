@@ -145,3 +145,28 @@ test('handleMessage answers ZAP_RIDDLES and ignores other types', () => {
   assert.deepEqual(R.handleMessage({}, { type: 'ZAP_RIDDLES' }), { ok: true, riddles: [], pages: {} });
   assert.equal(R.handleMessage(data, { type: 'ZAP_ITEM' }), null);
 });
+
+const mark = (no, heading) => ({ no, text: `s${no}`, commands: '', ...(heading ? { heading } : {}) });
+const sharedPage = { steps: [mark(1), mark(2), mark(1, '入古墓：'), mark(2), mark(1, '入明教：'), mark(2)] };
+
+test('sectionSteps shows only its own section on a shared page', () => {
+  assert.deepEqual(R.sectionSteps({ name: '入古墓', shared: ['石牢', '入明教'] }, sharedPage), [3, 4]);
+  assert.deepEqual(R.sectionSteps({ name: '入明教', shared: ['石牢', '入古墓'] }, sharedPage), [5, 6]);
+  assert.deepEqual(R.sectionSteps({ name: '石牢', shared: ['入古墓', '入明教'] }, sharedPage), [1, 2]);
+});
+
+test('sectionSteps falls back to every step when nothing identifies a section', () => {
+  const plain = { steps: [mark(1), mark(2), mark(3)] };
+  assert.deepEqual(R.sectionSteps({ name: '玉蕭劍法', shared: ['彈指神通'] }, plain), [1, 2, 3]);
+  assert.deepEqual(R.sectionSteps({ name: '獨孤九劍', shared: [] }, sharedPage), [1, 2, 3, 4, 5, 6]);
+  const noMatch = { steps: [mark(1, '男：'), mark(2), mark(1, '女：'), mark(2)] };
+  assert.deepEqual(R.sectionSteps({ name: '自宮', shared: ['葵花神功'] }, noMatch), [1, 2, 3, 4]);
+});
+
+test('startsAtInn recognises paths that start from the inn', () => {
+  assert.equal(R.startsAtInn('run e 5n 2o sw t'), true);
+  assert.equal(R.startsAtInn('run e 5n o 2s e s t 3sw 2su wu s 2w;ask taoist about 古墓'), true);
+  assert.equal(R.startsAtInn('run nw n;search key'), false);
+  assert.equal(R.startsAtInn('ask taoist about 古墓'), false);
+  assert.equal(R.startsAtInn(''), false);
+});
