@@ -97,7 +97,101 @@ function compareEquipment(candidate, baseline, { mainWeapon, exp } = {}) {
   return { verdict, text: VERDICT_TEXT[verdict], reasons, against: weakest.item.name, blocked };
 }
 
+// ---- 基準（現在穿的裝備）----
+// Store = { [類別]: [ { name, primary, attrs, needExp, readAt } ] }；同類別可能穿兩件（兩枚戒指），所以是清單
+const toBaselineItem = (block, now) => ({
+  name: block.name, primary: block.primary, attrs: block.attrs, needExp: block.needExp, readAt: now,
+});
+
+function replaceBaseline(blocks, now) {
+  const store = {};
+  blocks.forEach(block => {
+    (store[block.category] ??= []).push(toBaselineItem(block, now));
+  });
+  return store;
+}
+
+function upsertBaseline(store, block, now) {
+  const list = [...(store[block.category] ?? [])];
+  const index = list.findIndex(item => item.name === block.name);
+  const item = toBaselineItem(block, now);
+  if (index >= 0) list[index] = item;
+  else list.push(item);
+  return { ...store, [block.category]: list };
+}
+
+// 背包（i）輸出裡穿著的行：有「ˇ」標記，同一行有 view #編號 的連結（武器是 unwield）。
+// 名稱常被 <span> 拆開（「金線」＋「手套」），去掉標籤後取到「(英文 id)」之前
+function parseWornHtml(html) {
+  const worn = [];
+  for (const line of String(html ?? '').split(/\r?\n/)) {
+    const id = /target="view #(\d+)"/.exec(line)?.[1];
+    if (!line.includes('ˇ') || !id) continue;
+    const text = line.replace(/<[^>]*>/g, '');
+    const name = /ˇ\s*([^(\s]+?)\s*\(/.exec(text)?.[1];
+    if (name) worn.push({ name, id, weapon: /target="unwield #/.test(line) });
+  }
+  return worn;
+}
+
+// ---- 鑑定過程追蹤 ----
+// 「你想請…鑑定所有無名物」到「共鑑定…樣無名物」之間出現的區塊是候選（要和基準比），之外的區塊（自己 view 的）
+// 只用來更新基準。區塊可能跨封包：新增的文字先放進緩衝，呼叫端靜止一小段時間後呼叫 flush 才一次解析。
+const RUN_START = /你想請[^\n]{0,12}鑑定所有無名物/;
+const RUN_END = /共鑑定[^\n，。]{0,8}樣無名物/;
+
+function createTracker({ runTimeoutMs = 30000 } = {}) {
+  let segments = [];
+  let inRun = false;
+  let lastActivity = 0;
+  let worn = [];
+
+  function feed(text, now) {
+    let rest = String(text ?? '');
+    while (rest) {
+      const marker = (inRun ? RUN_END : RUN_START).exec(rest);
+      if (!marker) {
+        segments.push({ text: rest, inRun });
+        if (inRun && rest.includes('此物名曰')) lastActivity = now;
+        return;
+      }
+      const cut = marker.index + marker[0].length;
+      const head = inRun ? rest.slice(0, cut) : rest.slice(0, marker.index);
+      if (head) segments.push({ text: head, inRun });
+      if (inRun && head.includes('此物名曰')) lastActivity = now;
+      inRun = !inRun;
+      if (inRun) lastActivity = now;
+      rest = rest.slice(cut);
+    }
+  }
+
+  function flush() {
+    const groups = [];
+    segments.forEach(segment => {
+      const last = groups[groups.length - 1];
+      if (last && last.inRun === segment.inRun) last.text += segment.text;
+      else groups.push({ ...segment });
+    });
+    segments = [];
+    const result = { candidates: [], passive: [] };
+    groups.forEach(group => {
+      result[group.inRun ? 'candidates' : 'passive'].push(...parseEquipmentBlocks(group.text));
+    });
+    return result;
+  }
+
+  return {
+    feed,
+    flush,
+    running: now => inRun && now - lastActivity <= runTimeoutMs,
+    setWorn: list => { worn = list; },
+    wornNames: () => worn.map(item => item.name),
+    isPassiveUpdatable: name => worn.filter(item => item.name === name).length === 1,
+  };
+}
+
 globalThis.CatworldZapEquipment = {
   PRIMARY_GAP, IGNORED_ATTRS, normalizeAttrName, parseEquipmentBlocks, relatedAttrNames, scoreAttrs, compareEquipment,
+  toBaselineItem, replaceBaseline, upsertBaseline, parseWornHtml, createTracker,
 };
 })();

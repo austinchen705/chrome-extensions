@@ -159,3 +159,87 @@ test('compareEquipment copes with an unset main weapon', () => {
   const result = E.compareEquipment(piece('甲', 31, [{ name: '攻擊', value: 5 }]), [base('乙', 30)], { exp: 1000 });
   assert.equal(result.verdict, 'better');
 });
+
+test('parseWornHtml reads the real inventory', () => {
+  const worn = E.parseWornHtml(fixture('inventory.html'));
+  assert.equal(worn.length, 11);
+  assert.deepEqual(worn.find(item => item.name === '吳鉤劍').weapon, true);
+  assert.equal(worn.find(item => item.name === '金線手套').weapon, false, 'a name split across spans is joined');
+  assert.ok(worn.some(item => item.name === '青絲頭巾'));
+  assert.ok(worn.every(item => /^\d+$/.test(item.id)));
+  assert.ok(!worn.some(item => item.name.includes('蜆精') || item.name.includes('禮盒')), 'unworn items are left out');
+});
+
+test('parseWornHtml pairs the mark and the view link on the same line only', () => {
+  const html = [
+    '<span> *</span><span>ˇ</span><span>勁衣</span>(power cloth) [<a target="view #111">view</a>][<a target="remove #111">remove</a>]',
+    '<span> *</span>  三瓶<span>蜆精</span>(clam essence) [<a target="view #222">view</a>]',
+  ].join('\n');
+  assert.deepEqual(E.parseWornHtml(html), [{ name: '勁衣', id: '111', weapon: false }]);
+});
+
+const worn = (name, id = '1', weapon = false) => ({ name, id, weapon });
+
+test('baseline helpers group by category and never mutate', () => {
+  const [cloak] = E.parseEquipmentBlocks(fixture('view-samples.txt'));
+  const [armor] = E.parseEquipmentBlocks(fixture('view-sample-armor.txt'));
+  const store = E.replaceBaseline([cloak, armor], 5000);
+  assert.deepEqual(Object.keys(store).sort(), ['披風類防具', '盔甲類防具']);
+  assert.deepEqual(store['披風類防具'][0], { name: '暮歌', primary: 31, attrs: cloak.attrs, needExp: 400000, readAt: 5000 });
+  const before = JSON.stringify(store);
+  const updated = E.upsertBaseline(store, { ...cloak, primary: 33 }, 6000);
+  assert.equal(updated['披風類防具'].length, 1, 'same category and name replaces');
+  assert.equal(updated['披風類防具'][0].primary, 33);
+  assert.equal(updated['披風類防具'][0].readAt, 6000);
+  const added = E.upsertBaseline(store, { ...cloak, name: '另一件' }, 6000);
+  assert.equal(added['披風類防具'].length, 2, 'a different name is added');
+  assert.equal(JSON.stringify(store), before, 'the input store is untouched');
+});
+
+test('tracker splits an identify run into candidates and later view blocks into passive ones', () => {
+  const tracker = E.createTracker();
+  tracker.feed(fixture('identify-sample.txt'), 1000);
+  const first = tracker.flush(1100);
+  assert.equal(first.candidates.length, 10);
+  assert.deepEqual(first.passive, []);
+  tracker.feed(fixture('view-samples.txt'), 2000);
+  const second = tracker.flush(2100);
+  assert.deepEqual(second.candidates, []);
+  assert.deepEqual(second.passive.map(block => block.name), ['暮歌']);
+});
+
+test('tracker joins a block that arrives in two feeds', () => {
+  const tracker = E.createTracker();
+  tracker.feed('> 你想請馬鑑定師鑑定所有無名物。\n此物名曰 ：星河，項鍊類防具\n硬    度 ：64\n防 禦 力 ：10 / 10\n', 1000);
+  tracker.feed('屬    性 ：+5   抵抗\n佩帶條件 ：經驗 150000\n馬鑑定師說道：共鑑定一樣無名物，歡迎再次光臨。\n', 1200);
+  const { candidates } = tracker.flush(1300);
+  assert.equal(candidates.length, 1);
+  assert.deepEqual(candidates[0].attrs, [{ name: '抵抗', value: 5 }]);
+  assert.equal(candidates[0].needExp, 150000);
+});
+
+test('tracker knows when an identify run is open', () => {
+  const tracker = E.createTracker();
+  assert.equal(tracker.running(0), false);
+  tracker.feed('> 你想請馬鑑定師鑑定所有無名物。\n', 0);
+  assert.equal(tracker.running(1000), true);
+  tracker.feed('馬鑑定師說道：共鑑定十樣無名物，歡迎再次光臨。\n', 2000);
+  assert.equal(tracker.running(2500), false);
+});
+
+test('tracker closes a run that never ends after the timeout', () => {
+  const tracker = E.createTracker({ runTimeoutMs: 30000 });
+  tracker.feed('> 你想請馬鑑定師鑑定所有無名物。\n', 0);
+  tracker.feed('此物名曰 ：星河，項鍊類防具\n防 禦 力 ：10 / 10\n', 1000);
+  assert.equal(tracker.running(30000), true);
+  assert.equal(tracker.running(31001), false);
+});
+
+test('tracker only allows a passive update for a uniquely named worn piece', () => {
+  const tracker = E.createTracker();
+  tracker.setWorn([worn('暮歌'), worn('暮歌', '2'), worn('勁衣', '3')]);
+  assert.equal(tracker.isPassiveUpdatable('勁衣'), true);
+  assert.equal(tracker.isPassiveUpdatable('暮歌'), false, 'two worn pieces share the name');
+  assert.equal(tracker.isPassiveUpdatable('銅棒'), false, 'not worn at all');
+  assert.deepEqual(tracker.wornNames().sort(), ['勁衣', '暮歌', '暮歌']);
+});
