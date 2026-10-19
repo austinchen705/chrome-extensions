@@ -45,13 +45,13 @@
 - `zap-mobs.js` 不碰 DOM，content script、background、popup、測試共用：manifest、popup.html、popup 的備援注入（`files` 清單）都要載入它，且在 `zap-panel.js`、`content.js` 之前；漏了備援注入的清單，`content.js` 會因為找不到 `CatworldZapPanel` 而出錯。
 - 資料只在 background 第一次被問到時載入（`ZAP_LOOKUP`、`ZAP_SUITABLE`），不隨每個遊戲分頁載入。分級看 `q = 強度 × 2 ÷ #exp`，門檻存在 `chrome.storage.local.zapThresholds`。
 - 怪物出現提示（`zap-panel.js`）自己觀察 `#content` 新增的文字、略過浮動視窗，與 `active()` 無關；怪物行是 `※名稱(ID) <戰鬥中> [fight][kill]`（`<…>` 狀態不一定有，解析時去掉），比對鍵是完整名稱（不分大小寫、忽略所有空白），同名多隻不猜、全部列出。遊戲把一行拆成多個節點（`※`、稱號、名稱各在自己的 `<span>`），所以新增節點的文字要直接相接（`textFromAdded`），不能用換行連接。UI 放在面板 shadow DOM 內，搜尋框要擋掉 `mousedown` 與按鍵事件的冒泡。
-- 測試：`npm test`（`node --test`，Node 18 以上；不要寫成 `node --test tests/`，新版 Node 會把資料夾當檔案）。
+- 測試：`npm test`（`node --test`，Node 18 以上；不要寫成 `node --test tests/`，新版 Node 會把資料夾當檔案）。介面測試（`tests/zap-equipment-ui.test.js`）需要 jsdom（devDependency，`npm install`），沒裝會自動跳過；測試裡把介面的等待時間縮小 `SCALE` 倍。
 
 ## 裝備比較
 
 - `zap-equipment.js` 不碰 DOM（解析、屬性正規化與計分、比較、基準存放、穿著清單解析、鑑定追蹤器）。「此物名曰」區塊的欄位標籤中間有空白，不認得的行（文字圖案、`特殊物品非無名裝備…`、`共鑑定…`）一律略過；改解析要用 `tests/fixtures/equipment/` 的真實樣本驗證。
 - 比較規則與權重集中在 `zap-equipment.js`（`PRIMARY_GAP`、`IGNORED_ATTRS`、相關屬性別名）：同類別才比、同類別多件時和最弱的比、主要數值相差 `PRIMARY_GAP` 以上以高者為準、否則比屬性分數。
-- 追蹤器把「你想請…鑑定所有無名物」到「共鑑定…樣無名物」之間的區塊當候選，之外的區塊只用來更新基準（名稱必須是穿著名單內唯一一件）；區塊可能跨封包，所以新增文字先緩衝，靜止 `FLUSH_MS` 後才 `flush`。
+- 追蹤器把「你想請…鑑定所有無名物」到「共鑑定…樣無名物」之間的區塊當候選，之外的區塊只用來更新基準（名稱必須是穿著名單內唯一一件）；區塊可能跨封包，所以新增文字先緩衝，靜止 `FLUSH_MS` 後才 `flush`（連續輸出最多延後 `FLUSH_MAX_WAIT_MS`）。開始／結束句也可能被切在兩個封包之間，追蹤器保留上一批最後 40 個字一起比對；結束句一直沒來時超過逾時就關閉這次鑑定，之後的區塊算被動更新。基準依角色分開存（`wornEquipment: { [角色]: Store }`，角色取分頁標題「角色名 - …」），讀取目前穿著用 `mergeBaseline`（沒回應但還在穿的保留舊的、已經沒穿的丟掉），不能整份換掉。
 - 「讀取目前穿著」只能走 `startMacro`（`zap-equipment-ui.js` 的 `deps.startSteps`）：先送 `i`，從穿著行（`ˇ` 標記與同一行的 `view #編號`，需要 DOM 節點的 HTML，不是只有文字）拿到編號，再送 `view` 巨集；鑑定每次都不送指令。UI 借用 `zap-panel.js` 回傳的浮層區段與計時；失敗（沒讀到背包、指令被拒、解析不到）都要顯示原因。
 
 ## 無名物品
@@ -62,7 +62,7 @@
 - 比對先用帶洞數的完整名稱，沒命中才用去括號的鍵；名稱必須出現在句子結尾、前面只能是「數詞加至多一個量詞字」（`QUANTIFIER`），否則短名稱會誤配表上沒有的物品。`tools/zap-overrides.json` 帶 `item` 欄位的項目是物品補充（`applyItemOverrides`），其餘是怪物補充。
 - 鑑定結果在浮層裡是**累積**的（接在舊結果後面、最多留 8 筆，`addItemResults`），怪物提示則每次整個取代；「提示過」要等查詢成功才記，失敗不能讓同一件被擋 10 秒。
 - 查詢失敗不能靜默：背景回 `ok:false` 或 `sendMessage` 丟例外（例如 extension 剛重新載入、頁面還是舊的 content script）都要把原因顯示在浮層（`showFailure`／`addItemNote`），並提示重新整理遊戲頁；雜物鑑定另外在「偵測到交給衰老頭／偵測到鑑定結果」時先顯示小字，沒反應時才分得出是偵測沒動還是查詢失敗。
-- 浮層由怪物與鑑定結果共用，各一個區段、共用一個 10 秒計時；觀察器每一批新增文字同時交給兩邊，不能因為其中一邊沒內容就跳過另一邊。
+- 浮層由怪物、雜物鑑定、裝備比較共用，各一個區段、各自的停留時間（`zap-panel.js` 的 `SECTION_MS`：怪物 10 秒、雜物 30 秒、裝備 60 秒），全部區段都空了才隱藏，右上角 ✕ 全部關掉；觀察器每一批新增文字同時交給兩邊，不能因為其中一邊沒內容就跳過另一邊。
 
 ## 解謎
 

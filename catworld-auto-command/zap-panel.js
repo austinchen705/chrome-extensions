@@ -9,7 +9,8 @@ const ZI = globalThis.CatworldZapItems;
 const THRESHOLDS_KEY = 'zapThresholds';
 const WEAPON_KEY = 'mainWeapon';
 const GAME_WINDOWS = '#monitor, #map_table, #macro_table, #setting_table';
-const HINT_MS = 10000;
+// 浮層各區段的停留時間：怪物提示常常換所以短；鑑定結果很少出現又要慢慢看，留久一點（也可以按 ✕ 關掉）
+const SECTION_MS = { mobs: 10000, items: 30000, equipment: 60000 };
 const HINT_MAX = 8;
 const ITEM_BLOCK_MAX = 8;
 const DEDUPE_MS = 10000;
@@ -34,7 +35,10 @@ const STYLE = `
   .zap-item .meta { color: #999; font-size: 13px; }
   .zap-more { color: #999; font-size: 13px; padding-top: 4px; }
   .zap-hint { padding: 6px 12px 10px; border-top: 1px solid #3a3a3e; font-size: 14px; user-select: text; max-height: 280px; overflow: auto; }
+  .zap-hint { position: relative; }
   .zap-hint .title { color: #999; font-size: 13px; }
+  .zap-close { all: unset; position: absolute; top: 4px; right: 8px; cursor: pointer; color: #888; font-size: 13px; line-height: 1; padding: 2px 4px; }
+  .zap-close:hover { color: #fff; }
 `;
 
 const el = (name, props = {}, ...children) => {
@@ -69,9 +73,10 @@ function attach(root, { readExp }) {
   const box = el('div', { className: 'zap-box', hidden: true },
     el('div', { className: 'zap-tools' }, search, el('label', {}, yellow, ' 含黃色')), list);
   const hint = el('div', { className: 'zap-hint', hidden: true });
-  // 怪物與鑑定結果共用這個浮層，各占一個區段；任何一個區段更新都重設自動消失的計時
+  // 怪物、雜物鑑定、裝備鑑定共用這個浮層，各占一個區段，各自有自己的停留時間
   const sections = { mobs: el('div'), items: el('div'), equipment: el('div') };
-  hint.append(sections.mobs, sections.items, sections.equipment);
+  const close = el('button', { className: 'zap-close', textContent: '✕', title: '關閉這個提示' });
+  hint.append(close, sections.mobs, sections.items, sections.equipment);
   root.append(style);
   root.querySelector('.body').append(row, box);
   root.querySelector('.panel').append(hint);
@@ -141,20 +146,21 @@ function attach(root, { readExp }) {
   });
 
   // ---- 怪物出現 ----
-  let hideTimer = null;
+  const hideTimers = {};
   const itemBlocks = [];
-  // 任何一個區段更新都顯示浮層並重設自動消失的計時
-  function touchHint() {
-    hint.hidden = false;
-    clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => {
-      sections.mobs.replaceChildren();
-      sections.items.replaceChildren();
-      sections.equipment.replaceChildren();
-      itemBlocks.length = 0;
-      hint.hidden = true;
-    }, HINT_MS);
+  // 區段更新就顯示浮層並重設「那一個區段」自動消失的計時；全部區段都空了才隱藏整個浮層
+  function clearSection(name) {
+    clearTimeout(hideTimers[name]);
+    sections[name].replaceChildren();
+    if (name === 'items') itemBlocks.length = 0;
+    if (!Object.values(sections).some(section => section.firstChild)) hint.hidden = true;
   }
+  function touchHint(name) {
+    hint.hidden = false;
+    clearTimeout(hideTimers[name]);
+    hideTimers[name] = setTimeout(() => clearSection(name), SECTION_MS[name]);
+  }
+  close.addEventListener('click', () => Object.keys(sections).forEach(clearSection));
   function showHints(results, hidden, expReadable) {
     const nodes = [el('div', { className: 'title', textContent: expReadable ? '這裡的怪物' : '這裡的怪物（讀不到經驗，無法分級）' })];
     results.forEach(({ name, count, candidates }) => {
@@ -167,7 +173,7 @@ function attach(root, { readExp }) {
     });
     if (hidden) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${hidden} 種` }));
     sections.mobs.replaceChildren(...nodes);
-    touchHint();
+    touchHint('mobs');
   }
 
   // ---- 鑑定結果（雜物拿給衰老頭鑑定後的真名）----
@@ -195,7 +201,7 @@ function attach(root, { readExp }) {
     while (itemBlocks.length > ITEM_BLOCK_MAX) itemBlocks.shift().remove();
     // 超過一批上限的件數只是提示，不算在保留的結果裡
     if (hidden) section.append(el('div', { className: 'zap-more zap-overflow', textContent: `…還有 ${hidden} 件` }));
-    touchHint();
+    touchHint('items');
   }
 
   // 提示用的小字（偵測到、查詢中、查詢失敗）；不算在保留的鑑定結果裡。pending=true 的會在結果回來時被清掉
@@ -205,13 +211,13 @@ function attach(root, { readExp }) {
     if (!section.firstChild) section.append(el('div', { className: 'title', textContent: '鑑定結果' }));
     const note = el('div', { className: `zap-more${pending ? ' zap-pending' : ''}`, textContent: text });
     section.append(note);
-    touchHint();
+    touchHint('items');
     return note;
   }
   function showFailure(section, title, reason) {
     section.replaceChildren(el('div', { className: 'title', textContent: title }),
       el('div', { className: 'zap-more', textContent: `查詢失敗：${reason || '沒有回應'}${FAIL_HINT}` }));
-    touchHint();
+    touchHint('mobs');
   }
 
   const inGameOutput = node => {
@@ -273,7 +279,7 @@ function attach(root, { readExp }) {
   });
   observer.observe(document.body, { subtree: true, childList: true, characterData: true });
   // 裝備比較的 UI 借用同一個浮層（區段與自動消失的計時）
-  return { sections, touchHint, el };
+  return { sections, touchHint: () => touchHint('equipment'), el };
 }
 
 globalThis.CatworldZapPanel = { attach };

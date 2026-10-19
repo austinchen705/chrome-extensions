@@ -127,7 +127,7 @@ test('compareEquipment decides by attributes when the primary values are close',
   assert.ok(better.reasons.includes('多了 攻擊 +5'));
   const worse = E.compareEquipment(piece('甲', 30), [base('乙', 31, plus)], stats);
   assert.equal(worse.verdict, 'worse');
-  assert.ok(worse.reasons.includes('少了 攻擊 +5'));
+  assert.ok(worse.reasons.includes('少了 攻擊 5'));
   const equal = E.compareEquipment(piece('甲', 30, plus), [base('乙', 30, plus)], stats);
   assert.equal(equal.verdict, 'equal');
   assert.equal(equal.text, '相當');
@@ -242,4 +242,58 @@ test('tracker only allows a passive update for a uniquely named worn piece', () 
   assert.equal(tracker.isPassiveUpdatable('暮歌'), false, 'two worn pieces share the name');
   assert.equal(tracker.isPassiveUpdatable('銅棒'), false, 'not worn at all');
   assert.deepEqual(tracker.wornNames().sort(), ['勁衣', '暮歌', '暮歌']);
+});
+
+test('tracker recognises an end line that is split across two feeds', () => {
+  const tracker = E.createTracker();
+  tracker.feed('> 你想請馬鑑定師鑑定所有無名物。\n此物名曰 ：星河，項鍊類防具\n防 禦 力 ：10 / 10\n馬鑑定師說道：共鑑定一', 1000);
+  tracker.feed('樣無名物，歡迎再次光臨。\n', 1200);
+  assert.equal(tracker.flush(1300).candidates.length, 1);
+  assert.equal(tracker.running(1500), false, 'the run is closed by the split end line');
+  tracker.feed('此物名曰 ：吳鉤劍，劍類武器\n傷 害 力 ：66 / 66\n', 120000);
+  const later = tracker.flush(120100);
+  assert.deepEqual([later.candidates.length, later.passive.length], [0, 1], 'a later view block is passive');
+});
+
+test('tracker recognises a start line that is split across two feeds', () => {
+  const tracker = E.createTracker();
+  tracker.feed('> 你想請馬鑑定師鑑', 1000);
+  tracker.feed('定所有無名物。\n此物名曰 ：星河，項鍊類防具\n防 禦 力 ：10 / 10\n', 1100);
+  assert.equal(tracker.running(1200), true);
+  assert.equal(tracker.flush(1300).candidates.length, 1);
+});
+
+test('tracker closes a run that timed out even when no end line ever arrives', () => {
+  const tracker = E.createTracker({ runTimeoutMs: 30000 });
+  tracker.feed('> 你想請馬鑑定師鑑定所有無名物。\n此物名曰 ：星河，項鍊類防具\n防 禦 力 ：10 / 10\n', 1000);
+  assert.equal(tracker.flush(1100).candidates.length, 1);
+  tracker.feed('此物名曰 ：吳鉤劍，劍類武器\n傷 害 力 ：66 / 66\n', 100000);
+  const later = tracker.flush(100100);
+  assert.deepEqual([later.candidates.length, later.passive.length], [0, 1]);
+});
+
+test('mergeBaseline keeps the old entry of a piece that was expected but not read', () => {
+  const [cloak] = E.parseEquipmentBlocks(fixture('view-samples.txt'));
+  const [armor] = E.parseEquipmentBlocks(fixture('view-sample-armor.txt'));
+  const old = E.replaceBaseline([cloak, armor], 1000);
+  const [fresh] = E.parseEquipmentBlocks(fixture('view-samples.txt'));
+  const merged = E.mergeBaseline(old, [{ ...fresh, primary: 33 }], ['暮歌', '黑羽長風鎧'], 5000);
+  assert.equal(merged['披風類防具'][0].primary, 33, 'the freshly read piece is updated');
+  assert.equal(merged['披風類防具'][0].readAt, 5000);
+  assert.equal(merged['盔甲類防具'][0].name, '黑羽長風鎧', 'the piece that did not answer is kept');
+  assert.equal(merged['盔甲類防具'][0].readAt, 1000, 'with its old timestamp');
+});
+
+test('mergeBaseline drops pieces that are no longer worn', () => {
+  const [cloak] = E.parseEquipmentBlocks(fixture('view-samples.txt'));
+  const old = E.replaceBaseline([cloak], 1000);
+  assert.deepEqual(E.mergeBaseline(old, [], ['勁衣'], 5000), {}, 'not in the worn list and not read');
+});
+
+test('compareEquipment phrases a missing attribute without a misleading plus sign', () => {
+  const candidate = piece('甲', 30, [{ name: '攻擊', value: -20 }]);
+  const result = E.compareEquipment(candidate, [base('乙', 30)], stats);
+  assert.ok(result.reasons.includes('少了 攻擊 20'));
+  const gone = E.compareEquipment(piece('甲', 30), [base('乙', 30, [{ name: '攻擊', value: 5 }])], stats);
+  assert.ok(gone.reasons.includes('少了 攻擊 5'));
 });

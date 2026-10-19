@@ -89,7 +89,7 @@ function compareEquipment(candidate, baseline, { mainWeapon, exp } = {}) {
   names.forEach(name => {
     const delta = valueOf(candidate.attrs, name) - valueOf(weakest.item.attrs, name);
     if (delta > 0) reasons.push(`多了 ${name} +${delta}`);
-    else if (delta < 0) reasons.push(`少了 ${name} +${-delta}`);
+    else if (delta < 0) reasons.push(`少了 ${name} ${-delta}`);
   });
   const scoreDiff = scoreAttrs(candidate.attrs, related) - weakest.score;
   const decided = Math.abs(diff) >= PRIMARY_GAP ? diff : scoreDiff;
@@ -120,6 +120,19 @@ function upsertBaseline(store, block, now) {
   return { ...store, [block.category]: list };
 }
 
+// 按「讀取目前穿著」之後用：新讀到的更新；沒有回應的（被中斷、逾時）但還在穿著名單裡的，保留舊的；已經不在穿著名單的丟掉。
+// 這樣讀到一半被中斷不會把整份基準換成只有幾件
+function mergeBaseline(oldStore, blocks, expectedNames, now) {
+  const store = replaceBaseline(blocks, now);
+  Object.entries(oldStore ?? {}).forEach(([category, list]) => {
+    list.forEach(item => {
+      const fresh = (store[category] ?? []).some(entry => entry.name === item.name);
+      if (!fresh && expectedNames.includes(item.name)) (store[category] ??= []).push(item);
+    });
+  });
+  return store;
+}
+
 // 背包（i）輸出裡穿著的行：有「ˇ」標記，同一行有 view #編號 的連結（武器是 unwield）。
 // 名稱常被 <span> 拆開（「金線」＋「手套」），去掉標籤後取到「(英文 id)」之前
 function parseWornHtml(html) {
@@ -145,27 +158,42 @@ function createTracker({ runTimeoutMs = 30000 } = {}) {
   let inRun = false;
   let lastActivity = 0;
   let worn = [];
+  // 開始句與結束句可能被切在兩個封包之間（「共鑑定一」＋「樣無名物…」）：保留上一批最後幾個字，
+  // 比對標記時接在新文字前面（標記不會跨行，所以這幾個字夠了）
+  let tail = '';
+  const TAIL_CHARS = 40;
+
+  // 結束句一直沒來（斷線、被切壞）時，超過逾時就當這次鑑定已經結束，之後的區塊不再算候選
+  const closeIfTimedOut = now => {
+    if (inRun && now - lastActivity > runTimeoutMs) inRun = false;
+  };
 
   function feed(text, now) {
+    closeIfTimedOut(now);
     let rest = String(text ?? '');
     while (rest) {
-      const marker = (inRun ? RUN_END : RUN_START).exec(rest);
-      if (!marker) {
+      const hay = tail + rest;
+      const marker = (inRun ? RUN_END : RUN_START).exec(hay);
+      const markerEnd = marker ? marker.index + marker[0].length : -1;
+      if (!marker || markerEnd <= tail.length) {
         segments.push({ text: rest, inRun });
         if (inRun && rest.includes('此物名曰')) lastActivity = now;
+        tail = hay.slice(-TAIL_CHARS);
         return;
       }
-      const cut = marker.index + marker[0].length;
-      const head = inRun ? rest.slice(0, cut) : rest.slice(0, marker.index);
+      const cut = markerEnd - tail.length;
+      const head = inRun ? rest.slice(0, cut) : rest.slice(0, Math.max(0, marker.index - tail.length));
       if (head) segments.push({ text: head, inRun });
       if (inRun && head.includes('此物名曰')) lastActivity = now;
       inRun = !inRun;
       if (inRun) lastActivity = now;
       rest = rest.slice(cut);
+      tail = '';
     }
   }
 
-  function flush() {
+  function flush(now = Date.now()) {
+    closeIfTimedOut(now);
     const groups = [];
     segments.forEach(segment => {
       const last = groups[groups.length - 1];
@@ -192,6 +220,6 @@ function createTracker({ runTimeoutMs = 30000 } = {}) {
 
 globalThis.CatworldZapEquipment = {
   PRIMARY_GAP, IGNORED_ATTRS, normalizeAttrName, parseEquipmentBlocks, relatedAttrNames, scoreAttrs, compareEquipment,
-  toBaselineItem, replaceBaseline, upsertBaseline, parseWornHtml, createTracker,
+  toBaselineItem, replaceBaseline, upsertBaseline, mergeBaseline, parseWornHtml, createTracker,
 };
 })();
