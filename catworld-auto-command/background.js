@@ -1,4 +1,5 @@
 // content script 不能直接彈系統通知、也不能開分頁，由這裡代為處理
+importScripts('zap-mobs.js');
 // 面板上的 ⚙：按一下在新分頁開啟設定頁（popup.html 當成分頁開，?tab= 帶遊戲分頁的 id），再按一次關閉並切回遊戲分頁。
 // 「遊戲分頁 → 設定分頁」的對應放在 storage.session，service worker 被收掉再醒來也還在
 const settingsKey = gameTabId => `settingsTab:${gameTabId}`;
@@ -57,4 +58,25 @@ chrome.notifications.onClicked.addListener(id => {
   chrome.tabs.update(tabId, { active: true });
   chrome.windows.update(windowId, { focused: true });
   chrome.notifications.clear(id);
+});
+
+// 怪物資料（約 1MB）只在第一次被問到時才載入並留在記憶體，不隨每個遊戲分頁載入；載入失敗不快取，下次再試
+let zapMobsPromise = null;
+function loadZapMobs() {
+  zapMobsPromise ??= fetch(chrome.runtime.getURL('zap-data.json'))
+    .then(response => response.json())
+    .then(data => data.mobs)
+    .catch(error => {
+      zapMobsPromise = null;
+      throw error;
+    });
+  return zapMobsPromise;
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!String(message?.type).startsWith('ZAP_')) return;
+  loadZapMobs()
+    .then(mobs => sendResponse(CatworldZapMobs.handleMessage(mobs, message) ?? { ok: false, error: '未知的查詢' }))
+    .catch(error => sendResponse({ ok: false, error: error.message }));
+  return true;
 });
