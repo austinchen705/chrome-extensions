@@ -590,6 +590,19 @@ function initPanel() {
   } catch (error) {
     console.error('[catworld] 怪物列初始化失敗', error);
   }
+  // 「解謎」列：狀態讀不到要給 NaN（不是 0），否則會被當成「經驗／內力不夠」；「送出」走巨集（算 active()、驗證碼時取消）
+  const readNumber = id => {
+    const text = (document.getElementById(id)?.textContent || '').replace(/[,\s]/g, '');
+    return text ? Number(text) : NaN;
+  };
+  try {
+    CatworldZapRiddleUI.attach(root, {
+      readStats: () => ({ exp: readNumber('exp'), force: readNumber('max_force') }),
+      startSteps: text => startMacro(text),
+    });
+  } catch (error) {
+    console.error('[catworld] 解謎列初始化失敗', error);
+  }
 
   // 點面板不要讓遊戲輸入框失去游標
   root.addEventListener('mousedown', e => e.preventDefault());

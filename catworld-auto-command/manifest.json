@@ -31,7 +31,9 @@
         "macro-notes.js",
         "zap-mobs.js",
         "zap-items.js",
+        "zap-riddles.js",
         "zap-panel.js",
+        "zap-riddle-ui.js",
         "content.js"
       ],
       "css": [
