@@ -10,7 +10,7 @@ const THRESHOLDS_KEY = 'zapThresholds';
 const WEAPON_KEY = 'mainWeapon';
 const GAME_WINDOWS = '#monitor, #map_table, #macro_table, #setting_table';
 // 浮層各區段的停留時間：怪物提示常常換所以短；鑑定結果很少出現又要慢慢看，留久一點（也可以按 ✕ 關掉）
-const SECTION_MS = { mobs: 10000, items: 30000, equipment: 60000 };
+const SECTION_MS = { mobs: 5000, items: 15000, equipment: 20000 };
 const HINT_MAX = 8;
 const ITEM_BLOCK_MAX = 8;
 const DEDUPE_MS = 10000;

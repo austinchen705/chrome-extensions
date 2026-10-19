@@ -16,6 +16,15 @@ const root = path.join(__dirname, '..', 'catworld-auto-command');
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures', 'equipment', name), 'utf8');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const SCALE = 50; // 把介面裡的等待時間（秒）縮成毫秒，測試才不用真的等
+// 浮層的提示只停很短（縮小後不到半秒），所以不能睡固定時間再檢查，要輪詢到條件成立為止
+const waitFor = async (condition, ms = 3000) => {
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    if (condition()) return true;
+    await sleep(5);
+  }
+  return condition();
+};
 
 const WORN = [
   ['狩獵腰帶', '腰帶類防具', 12], ['勁衣', '衣物類防具', 8], ['青絲頭巾', '頭盔類防具', 9], ['鐵盾', '盾牌類防具', 15],
@@ -132,21 +141,20 @@ ui('an interrupted read keeps the old baseline of the pieces that did not answer
   page.add(fixture('inventory.html'));
   await sleep(150);
   page.add(viewBlock(['貓斗篷', '披風類防具', 33])); // 只有一件回應，其餘被中斷
-  await sleep(1000); // 讀取閒置逾時（20 秒縮成約 0.4 秒）之後結束
+  // 讀取閒置逾時（20 秒縮成約 0.4 秒）之後結束，並提示只讀到幾件
+  assert.ok(await waitFor(() => /只讀到 1\/11 件/.test(page.overlay())), page.overlay());
   const saved = store(page);
   assert.equal(saved['披風類防具'][0].primary, 33, 'the piece that answered is updated');
   assert.equal(saved['盔甲類防具'][0].name, '貓皮甲', 'a worn piece that did not answer keeps its old entry');
   assert.equal(saved['帽子類防具'], undefined, 'a piece that is no longer worn is dropped');
-  assert.match(page.overlay(), /只讀到 1\/11 件/);
 });
 
 ui('no inventory output means no view is ever sent', async () => {
   const page = boot();
   await sleep(20);
   page.click();
-  await sleep(500); // 10 秒縮成 0.2 秒
+  assert.ok(await waitFor(() => /沒有讀到背包/.test(page.overlay())), '逾時後要提示（10 秒縮成 0.2 秒）');
   assert.deepEqual(page.sent, ['i']);
-  assert.match(page.overlay(), /沒有讀到背包/);
   assert.equal(page.button().disabled, false, 'the button works again');
 });
 
