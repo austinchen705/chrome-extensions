@@ -5,7 +5,9 @@
 if (globalThis.CatworldZapPanel) return;
 
 const Z = globalThis.CatworldZapMobs;
+const ZI = globalThis.CatworldZapItems;
 const THRESHOLDS_KEY = 'zapThresholds';
+const WEAPON_KEY = 'mainWeapon';
 const GAME_WINDOWS = '#monitor, #map_table, #macro_table, #setting_table';
 const HINT_MS = 10000;
 const HINT_MAX = 8;
@@ -18,6 +20,7 @@ const GRADE = {
   red: { color: '#ff5c4d', label: '紅' },
   unknown: { color: '#999999', label: '未知' },
 };
+const ADVICE_COLOR = { sell: '#ff8a7a', keep: '#3ecf6e', fit: '#6ec1ff' };
 
 const STYLE = `
   .zap-box { padding: 4px 0 8px; }
@@ -65,6 +68,9 @@ function attach(root, { readExp }) {
   const box = el('div', { className: 'zap-box', hidden: true },
     el('div', { className: 'zap-tools' }, search, el('label', {}, yellow, ' 含黃色')), list);
   const hint = el('div', { className: 'zap-hint', hidden: true });
+  // 怪物與鑑定結果共用這個浮層，各占一個區段；任何一個區段更新都重設自動消失的計時
+  const sections = { mobs: el('div'), items: el('div') };
+  hint.append(sections.mobs, sections.items);
   root.append(style);
   root.querySelector('.body').append(row, box);
   root.querySelector('.panel').append(hint);
@@ -79,10 +85,17 @@ function attach(root, { readExp }) {
   };
 
   let thresholds = Z.normalizeThresholds(undefined);
+  let mainWeapon = '';
+  const validWeapon = value => (ZI.WEAPON_TYPES.includes(value) ? value : '');
   const refresh = () => { if (!box.hidden) runQuery(); };
-  chrome.storage.local.get(THRESHOLDS_KEY).then(data => { thresholds = Z.normalizeThresholds(data[THRESHOLDS_KEY]); });
+  chrome.storage.local.get([THRESHOLDS_KEY, WEAPON_KEY]).then(data => {
+    thresholds = Z.normalizeThresholds(data[THRESHOLDS_KEY]);
+    mainWeapon = validWeapon(data[WEAPON_KEY]);
+  });
   chrome.storage.onChanged?.addListener((changes, area) => {
-    if (area !== 'local' || !changes[THRESHOLDS_KEY]) return;
+    if (area !== 'local') return;
+    if (changes[WEAPON_KEY]) mainWeapon = validWeapon(changes[WEAPON_KEY].newValue);
+    if (!changes[THRESHOLDS_KEY]) return;
     thresholds = Z.normalizeThresholds(changes[THRESHOLDS_KEY].newValue);
     refresh();
   });
@@ -128,20 +141,48 @@ function attach(root, { readExp }) {
 
   // ---- 怪物出現 ----
   let hideTimer = null;
-  function showHints(results, hidden, expReadable) {
-    hint.replaceChildren(el('div', { className: 'title', textContent: expReadable ? '這裡的怪物' : '這裡的怪物（讀不到經驗，無法分級）' }));
-    results.forEach(({ name, count, candidates }) => {
-      hint.append(el('div', { className: 'zap-item', textContent: count > 1 ? `${name} ×${count}` : name }));
-      if (!candidates.length) hint.append(el('div', { className: 'zap-more', textContent: '表上無此怪' }));
-      const { shown, hidden: more } = Z.limitHints(candidates, CANDIDATE_MAX);
-      // 只靠 ID 命中時同一個 ID 可能有幾十隻，要顯示名稱才分得出來
-      shown.forEach(candidate => hint.append(candidateNode(candidate, candidate.idOnly)));
-      if (more) hint.append(el('div', { className: 'zap-more', textContent: `…還有 ${more} 筆同名候選` }));
-    });
-    if (hidden) hint.append(el('div', { className: 'zap-more', textContent: `…還有 ${hidden} 種` }));
+  function setSection(section, nodes) {
+    section.replaceChildren(...nodes);
     hint.hidden = false;
     clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => { hint.hidden = true; }, HINT_MS);
+    hideTimer = setTimeout(() => {
+      sections.mobs.replaceChildren();
+      sections.items.replaceChildren();
+      hint.hidden = true;
+    }, HINT_MS);
+  }
+  function showHints(results, hidden, expReadable) {
+    const nodes = [el('div', { className: 'title', textContent: expReadable ? '這裡的怪物' : '這裡的怪物（讀不到經驗，無法分級）' })];
+    results.forEach(({ name, count, candidates }) => {
+      nodes.push(el('div', { className: 'zap-item', textContent: count > 1 ? `${name} ×${count}` : name }));
+      if (!candidates.length) nodes.push(el('div', { className: 'zap-more', textContent: '表上無此怪' }));
+      const { shown, hidden: more } = Z.limitHints(candidates, CANDIDATE_MAX);
+      // 只靠 ID 命中時同一個 ID 可能有幾十隻，要顯示名稱才分得出來
+      shown.forEach(candidate => nodes.push(candidateNode(candidate, candidate.idOnly)));
+      if (more) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${more} 筆同名候選` }));
+    });
+    if (hidden) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${hidden} 種` }));
+    setSection(sections.mobs, nodes);
+  }
+
+  // ---- 鑑定結果（雜物拿給衰老頭鑑定後的真名）----
+  function itemNode({ item, advice }) {
+    const tag = el('b', { textContent: advice.text });
+    tag.style.color = ADVICE_COLOR[advice.action];
+    return el('div', { className: 'zap-item' },
+      tag, ` LV${item.level} ${item.name}`, item.note ? el('br') : '', item.note ? el('span', { className: 'meta', textContent: item.note }) : '');
+  }
+  function showItems(results, hidden) {
+    const nodes = [el('div', { className: 'title', textContent: '鑑定結果' })];
+    results.forEach(({ sentence, candidates }) => {
+      nodes.push(el('div', { className: 'zap-item', textContent: sentence }));
+      if (!candidates.length) nodes.push(el('div', { className: 'zap-more', textContent: '表上沒有這個物品' }));
+      const { shown, hidden: more } = Z.limitHints(candidates, CANDIDATE_MAX);
+      shown.forEach(candidate => nodes.push(itemNode(candidate)));
+      if (more) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${more} 筆同名候選` }));
+    });
+    if (hidden) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${hidden} 件` }));
+    setSection(sections.items, nodes);
   }
 
   const inGameOutput = node => {
@@ -150,12 +191,7 @@ function attach(root, { readExp }) {
   };
   const lastShown = {};
   let lookupId = 0;
-  const observer = new MutationObserver(records => {
-    const text = Z.textFromAdded(records
-      .filter(record => inGameOutput(record.target))
-      .flatMap(record => (record.type === 'characterData'
-        ? [record.target.textContent || '']
-        : Array.from(record.addedNodes, node => node.textContent || ''))));
+  function lookupMobs(text) {
     const items = Z.parseMobLines(text);
     if (!items.length) return;
     const fresh = new Set(Z.recentFilter(items.map(item => item.name), Date.now(), lastShown, DEDUPE_MS));
@@ -166,6 +202,32 @@ function attach(root, { readExp }) {
     send({ type: 'ZAP_LOOKUP', exp, thresholds, names: shown }).then(reply => {
       if (reply?.ok && mine === lookupId) showHints(reply.items, hidden, exp > 0);
     });
+  }
+
+  const handState = { handedAt: null };
+  const lastItemShown = {};
+  let itemLookupId = 0;
+  function lookupItems(text) {
+    const now = Date.now();
+    const sentences = [...new Set(ZI.findIdentified(text, now, handState))];
+    const fresh = new Set(Z.recentFilter(sentences, now, lastItemShown, DEDUPE_MS));
+    const { shown, hidden } = Z.limitHints(sentences.filter(sentence => fresh.has(sentence)), HINT_MAX);
+    if (!shown.length) return;
+    const mine = ++itemLookupId;
+    send({ type: 'ZAP_ITEM', sentences: shown, mainWeapon }).then(reply => {
+      if (reply?.ok && mine === itemLookupId) showItems(reply.results, hidden);
+    });
+  }
+
+  // 一批新增文字同時交給怪物與鑑定兩邊，各自判斷，不能因為其中一邊沒東西就跳過另一邊
+  const observer = new MutationObserver(records => {
+    const text = Z.textFromAdded(records
+      .filter(record => inGameOutput(record.target))
+      .flatMap(record => (record.type === 'characterData'
+        ? [record.target.textContent || '']
+        : Array.from(record.addedNodes, node => node.textContent || ''))));
+    lookupMobs(text);
+    lookupItems(text);
   });
   observer.observe(document.body, { subtree: true, childList: true, characterData: true });
 }

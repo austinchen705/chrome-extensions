@@ -30,6 +30,7 @@
         "macro-wait.js",
         "macro-notes.js",
         "zap-mobs.js",
+        "zap-items.js",
         "zap-panel.js",
         "content.js"
       ],
