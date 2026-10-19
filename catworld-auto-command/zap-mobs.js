@@ -72,22 +72,49 @@ function metaText({ mob, q, idOnly }) {
   return [strength, mob.location, mob.note, idOnly ? '僅 ID 命中' : ''].filter(Boolean).join('　');
 }
 
-function describe(mobs, items, exp, thresholds) {
+// 怪物的出沒地點對應「總路徑」表。完全同名優先；否則只接受「其中一個名稱以另一個開頭」（天魔塔2f↔天魔塔、襄陽↔襄陽城），
+// 地名只是夾在別的字中間（往黑木崖渡口、金礦坑南方小鎮）不猜。多個地點時完全同名優先，其次取最長的路線名
+function routeFor(location, routes) {
+  const tokens = String(location ?? '').split(/[、,，/]/).map(compactName).filter(Boolean);
+  let exact = null;
+  let partial = null;
+  tokens.forEach(token => (routes || []).forEach(route => {
+    const name = compactName(route.name);
+    if (!name) return;
+    if (token === name) {
+      if (!exact || name.length > compactName(exact.name).length) exact = route;
+    } else if ((token.startsWith(name) || name.startsWith(token)) && (!partial || name.length > compactName(partial.name).length)) {
+      partial = route;
+    }
+  }));
+  if (exact) return { route: exact, exact: true };
+  return partial ? { route: partial, exact: false } : null;
+}
+
+// 路徑表的路徑都從新長安門口起算；和其他地圖路徑一樣，先從醉仙樓（recall 回來的位置）走到門口
+function routeCommand(route) {
+  return `run e 5n 2o ${route.path}`;
+}
+
+function describe(mobs, items, exp, thresholds, routes) {
   return items.map(({ name, count }) => ({
     name,
     count,
-    candidates: findMobs(mobs, name).map(({ mob, idOnly }) => ({ mob, idOnly, ...gradeOf(mob.exp, exp, thresholds) })),
+    candidates: findMobs(mobs, name).map(({ mob, idOnly }) => ({
+      mob, idOnly, ...gradeOf(mob.exp, exp, thresholds), route: routeFor(mob.location, routes),
+    })),
   }));
 }
 
-function suitable(mobs, exp, thresholds, { grades = ['green'], query = '' } = {}) {
+function suitable(mobs, exp, thresholds, { grades = ['green'], query = '' } = {}, routes) {
   if (!Number.isFinite(exp) || exp <= 0) return [];
   const needle = normalizeName(query);
   return mobs
     .map(mob => ({ mob, ...gradeOf(mob.exp, exp, thresholds) }))
     .filter(item => grades.includes(item.grade))
     .filter(item => !needle || normalizeName(`${item.mob.name} ${item.mob.location}`).includes(needle))
-    .sort((a, b) => b.mob.exp - a.mob.exp);
+    .sort((a, b) => b.mob.exp - a.mob.exp)
+    .map(item => ({ ...item, route: routeFor(item.mob.location, routes) }));
 }
 
 // 浮層一次最多列 max 筆，其餘只算數量
@@ -105,12 +132,12 @@ function recentFilter(names, now, lastShown, windowMs) {
 }
 
 // background 用：回 null 表示不是這個模組的訊息
-function handleMessage(mobs, message) {
+function handleMessage(mobs, message, routes) {
   if (message?.type === 'ZAP_LOOKUP') {
-    return { ok: true, items: describe(mobs, message.names || [], message.exp, message.thresholds) };
+    return { ok: true, items: describe(mobs, message.names || [], message.exp, message.thresholds, routes) };
   }
   if (message?.type === 'ZAP_SUITABLE') {
-    const all = suitable(mobs, message.exp, message.thresholds, { grades: message.grades, query: message.query });
+    const all = suitable(mobs, message.exp, message.thresholds, { grades: message.grades, query: message.query }, routes);
     return { ok: true, items: all.slice(0, SUITABLE_LIMIT), total: all.length };
   }
   return null;
@@ -118,6 +145,6 @@ function handleMessage(mobs, message) {
 
 globalThis.CatworldZapMobs = {
   DEFAULT_THRESHOLDS, SUITABLE_LIMIT, normalizeThresholds, normalizeName, parseMobLines,
-  textFromAdded, gradeOf, findMobs, metaText, describe, suitable, limitHints, recentFilter, handleMessage,
+  textFromAdded, gradeOf, findMobs, metaText, routeFor, routeCommand, describe, suitable, limitHints, recentFilter, handleMessage,
 };
 })();

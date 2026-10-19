@@ -76,7 +76,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!String(message?.type).startsWith('ZAP_')) return;
   loadZapData()
     .then(data => sendResponse(
-      CatworldZapMobs.handleMessage(data.mobs ?? [], message)
+      CatworldZapMobs.handleMessage(data.mobs ?? [], message, data.routes ?? [])
         ?? CatworldZapItems.handleMessage(data.items ?? [], message)
         ?? CatworldZapRiddles.handleMessage(data, message)
         ?? { ok: false, error: '未知的查詢' }))

@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseZapMobHtml, parseNewstartHtml, parseUnknownObjectHtml, applyItemOverrides, mergeSources, applyOverrides } = require('../tools/zap-parse.js');
+const { parseZapMobHtml, parseNewstartHtml, parseUnknownObjectHtml, applyItemOverrides, mergeSources, applyOverrides, parseRoutesHtml } = require('../tools/zap-parse.js');
 
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8');
 const zap = () => parseZapMobHtml(fixture('ot1-sample.html'));
@@ -169,4 +169,29 @@ test('applyItemOverrides reports an unknown item without a level and an invalid 
   assert.equal(result.problems.length, 2);
   assert.equal(result.items.length, base.length);
   assert.equal(result.items.find(entry => entry.name === '明朝古董木雕').weapon, '');
+});
+
+const routesHtml = () => fs.readFileSync(path.join(__dirname, 'fixtures', 'routes', 'map.15.html'), 'utf8');
+
+test('parseRoutesHtml reads every place with its run path', () => {
+  const routes = parseRoutesHtml(routesHtml());
+  assert.equal(routes.length, 64);
+  const byName = name => routes.find(route => route.name === name);
+  assert.equal(byName('長安').path, '2t');
+  assert.equal(byName('蒙古').path, 't 4n 2w t');
+  assert.equal(byName('華山').path, 't 2s nw w t');
+  assert.equal(byName('終南山').path, 't 2s e s t 3sw 2su wu 2su wu w');
+});
+
+test('parseRoutesHtml drops the riddle marker from the path and keeps it as a flag', () => {
+  const grave = parseRoutesHtml(routesHtml()).find(route => route.name === '古墓派');
+  assert.equal(grave.path, 't s e 2s t 3sw 2su wu s 2w');
+  assert.equal(grave.riddle, true);
+  assert.equal(parseRoutesHtml(routesHtml()).find(route => route.name === '華山').riddle, false);
+});
+
+test('parseRoutesHtml never returns a state heading or an empty path', () => {
+  const routes = parseRoutesHtml(routesHtml());
+  assert.ok(routes.every(route => !route.name.includes('﹕') && !route.name.includes('map.')));
+  assert.ok(routes.every(route => /^[0-9a-z ]+$/i.test(route.path) && route.path.length > 0));
 });

@@ -37,6 +37,8 @@ const STYLE = `
   .zap-hint { padding: 6px 12px 10px; border-top: 1px solid #3a3a3e; font-size: 14px; user-select: text; max-height: 280px; overflow: auto; }
   .zap-hint { position: relative; }
   .zap-hint .title { color: #999; font-size: 13px; }
+  .zap-route { margin-top: 2px; }
+  .zap-walk { font-size: 12px; cursor: pointer; }
   .zap-close { all: unset; position: absolute; top: 4px; right: 8px; cursor: pointer; color: #888; font-size: 13px; line-height: 1; padding: 2px 4px; }
   .zap-close:hover { color: #fff; }
 `;
@@ -55,13 +57,29 @@ const gradeTag = grade => {
 };
 
 // 一隻怪的一個候選：顏色、名稱、q、位置、備註
-function candidateNode({ mob, q, grade, idOnly }, showName) {
-  return el('div', { className: 'zap-item' },
+function candidateNode({ mob, q, grade, idOnly, route }, showName, onWalk) {
+  const node = el('div', { className: 'zap-item' },
     gradeTag(grade), ' ', showName ? mob.name : '', showName ? el('br') : '',
     el('span', { className: 'meta', textContent: Z.metaText({ mob, q, idOnly }) }));
+  if (route && onWalk) node.append(routeNode(route, onWalk));
+  return node;
 }
 
-function attach(root, { readExp }) {
+// 路徑表的路線：從醉仙樓出發（先 recall）；地名只是約略對應時要標出來，不當成確定
+function routeNode({ route, exact }, onWalk) {
+  const button = el('button', { className: 'zap-walk', textContent: '走過去' });
+  button.addEventListener('click', () => {
+    button.disabled = true;
+    const sent = onWalk(Z.routeCommand(route));
+    button.textContent = sent === false ? '送不出去' : '已送出';
+    setTimeout(() => { button.disabled = false; button.textContent = '走過去'; }, 1500);
+  });
+  return el('div', { className: 'zap-route' },
+    el('span', { className: 'meta', textContent: `${exact ? '' : `約略對應「${route.name}」　`}路線 ${route.path}（從醉仙樓出發，先 recall）` }),
+    ' ', button);
+}
+
+function attach(root, { readExp, startSteps }) {
   const style = el('style', { textContent: STYLE });
   const row = el('div', { className: 'line' },
     el('span', { className: 't', textContent: '怪物' }),
@@ -131,7 +149,7 @@ function attach(root, { readExp }) {
       status.textContent = reply?.error || '查詢失敗';
       return;
     }
-    reply.items.forEach(item => list.append(candidateNode(item, true)));
+    reply.items.forEach(item => list.append(candidateNode(item, true, startSteps)));
     if (!reply.items.length) list.append(el('div', { className: 'zap-more', textContent: '沒有符合的怪' }));
     if (reply.total > reply.items.length) list.append(el('div', { className: 'zap-more', textContent: `共 ${reply.total} 筆，只列前 ${reply.items.length} 筆` }));
   }
@@ -168,7 +186,7 @@ function attach(root, { readExp }) {
       if (!candidates.length) nodes.push(el('div', { className: 'zap-more', textContent: '表上無此怪' }));
       const { shown, hidden: more } = Z.limitHints(candidates, CANDIDATE_MAX);
       // 只靠 ID 命中時同一個 ID 可能有幾十隻，要顯示名稱才分得出來
-      shown.forEach(candidate => nodes.push(candidateNode(candidate, candidate.idOnly)));
+      shown.forEach(candidate => nodes.push(candidateNode(candidate, candidate.idOnly, startSteps)));
       if (more) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${more} 筆同名候選` }));
     });
     if (hidden) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${hidden} 種` }));

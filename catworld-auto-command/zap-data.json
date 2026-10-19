@@ -3,7 +3,8 @@
   "https://zap.muds.me/ot1.htm",
   "https://catworld.muds.tw/help/newstart.3",
   "https://zap.muds.me/ub.htm",
-  "https://zap.muds.me/qu1.htm"
+  "https://zap.muds.me/qu1.htm",
+  "https://catworld.muds.tw/help/map.15"
  ],
  "mobs": [
   {
@@ -10576,5 +10577,391 @@
    "preamble": "玉龍蘇合散流程：",
    "text": "玉龍蘇合散流程：\n1.run e 5n 2o sw nw t e ne se ne se 2n e t 4s e 3s 3w nw\n看到[金甲獅王\n史叔剛(shi shu gang)]-->設點setplace 2\nask gang about 內傷\nask gang about 九尾靈狐\n等他廢話之後run se 2e 2s 遇到[九尾靈狐] auto k\n打到牠跑掉就ok 回到waiter\n2.run 2se t 7e se 2s e 等[啞僕(YaBa man)]\npay上船到桃花島\nrun ne n-->設點setplace 3\nrun s 2sw w到[九宮花海青龍界碑]\nw n進去之後就是一個迷宮，目的是找[九宮花海朱雀界碑](裡面有mob\n萬蠱毒蛛，樹精)\ns之後到第二段迷宮，目的是找[幽蘭小境](裡面有mob\n萬蠱毒蛛，山精)\n<1>se那格可以climb 桃樹暫時躲避四周的萬蠱毒蛛\n<2>se n;search 糖果;get candy可以撿到糖果一包\n<3>run 2se到[九宮花海白虎界碑]\ns之後到第三段迷宮，目的是找[九宮花海玄武界碑](裡面有萬蠱毒蛛，桃花精)\nrun n ne n\n看到[神算子 瑛姑(Ying ku)]\nask ku about 九尾靈狐\n然後2n拜黃藥師後s可以[squeeze 通道]出去，run 2e到setplace 2的位置\n回到waiter\nPS.去之前要先找黃蓉ask master about 家書\n到黃藥師後give homebook to master就可以拜了\n3.run e 5n o s e 2s t 3sw 2su wu s 2w;worship tomb;run e 4s;enter crack;run se e\n看到[古墓派第四代弟子「神鵰俠」楊過(Master\nYang)]\nask yang about 四味靈藥\n得到一份有四個敘述的紙，到相對位置後search能拿到靈藥之一\n樟腦(Camphor)、洋金花(Flower)、雪球果(Snowball fruit)、當歸(Chinese herb)\nride 3;run 2w;squeeze 通道;s\n看到[神算子 瑛姑(Ying ku)]\nask ku about 救命丹\nn;squeeze 通道;run 2e 回到waiter\n4.run e 5n 2o sw t n nu 5w t w nw w n;touch 石壁;run s 2w s sw se s w sw su wu 2n\nne u e\n看到[藥宗第五代醫神「蝶谷醫仙」胡青牛(master hu)]\nask hu about 救命丹\n拿到後ride 2將藥給史叔剛[give pill to gang]\n他就會給你一張玉龍蘇合散的藥方，製法為：三葉雪桑果+雪龍草\nPS.沒解過是製不出來的"
   }
- }
+ },
+ "routes": [
+  {
+   "name": "長安",
+   "path": "2t",
+   "npc": "歐冶子",
+   "riddle": false
+  },
+  {
+   "name": "蒙古",
+   "path": "t 4n 2w t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "終南山",
+   "path": "t 2s e s t 3sw 2su wu 2su wu w",
+   "npc": "馬鈺、王重陽",
+   "riddle": false
+  },
+  {
+   "name": "古墓派",
+   "path": "t s e 2s t 3sw 2su wu s 2w",
+   "npc": "楊過、小龍女",
+   "riddle": true
+  },
+  {
+   "name": "華山",
+   "path": "t 2s nw w t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "絕情谷",
+   "path": "t 2n 2e eu t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "刀劍山莊",
+   "path": "e t e n ed se e",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "北京",
+   "path": "e n e t 5n",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "三絕宮",
+   "path": "e n e t 5n e 2n",
+   "npc": "冷無雁",
+   "riddle": false
+  },
+  {
+   "name": "杭州",
+   "path": "ne se t 5s",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "江陵城",
+   "path": "se t 2e s e t 2s",
+   "npc": "令狐沖",
+   "riddle": false
+  },
+  {
+   "name": "武當派",
+   "path": "se t e nd 3n 2w t",
+   "npc": "宋遠橋張三豐",
+   "riddle": false
+  },
+  {
+   "name": "襄陽城",
+   "path": "se t 2e nd 3n t",
+   "npc": "黃蓉、洪七公",
+   "riddle": false
+  },
+  {
+   "name": "揚州城",
+   "path": "2se t 7e 2s",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "黑木崖",
+   "path": "2se t 2e 2s",
+   "npc": "東方不敗",
+   "riddle": false
+  },
+  {
+   "name": "蘇州城",
+   "path": "2se t 6e n t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "茅山",
+   "path": "2se t 5e n",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "桃花鄔渡",
+   "path": "2se t 7e se 2s e",
+   "npc": "黃藥師",
+   "riddle": false
+  },
+  {
+   "name": "皇陵",
+   "path": "ne t 2w s",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "毒龍潭",
+   "path": "ne t 2s e ed e n t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "天之叢林",
+   "path": "ne t 2s e ed e n t 2e n w nw sw n wu ne e n ne e u",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "廣州",
+   "path": "2se w t 3e 2s t",
+   "npc": "李書文",
+   "riddle": false
+  },
+  {
+   "name": "邪虎寨",
+   "path": "2se w t 3e nu t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "珍獸森林",
+   "path": "2se w t n nu w t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "衡山",
+   "path": "2se w t n nu w t e 2se e se 2e se 5s t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "俠客島",
+   "path": "2se w t e s e s e s e",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "神槍會",
+   "path": "ne 2e t n 4e s",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "神龍島",
+   "path": "ne 2e t n 4e n nw w n",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "百花谷",
+   "path": "ne 2e t n 4e n eu t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "不夜天",
+   "path": "2ne t 3e 2n nu t",
+   "npc": "白鳳凰",
+   "riddle": false
+  },
+  {
+   "name": "雪羽港",
+   "path": "2ne t 4e s 3e t",
+   "npc": "嚴嫫欣",
+   "riddle": false
+  },
+  {
+   "name": "冰火島",
+   "path": "2ne t 4e s 3e t 2n 2e",
+   "npc": "",
+   "riddle": true
+  },
+  {
+   "name": "東瀛",
+   "path": "2ne t e nw 2e n eu nu wd w wd t n",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "仙靈島",
+   "path": "2ne t 4e s e",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "飄渺峰",
+   "path": "2ne t 4e n eu 2nu e n",
+   "npc": "天山童姥",
+   "riddle": false
+  },
+  {
+   "name": "洛陽",
+   "path": "sw t e n",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "老松寨",
+   "path": "sw t e su t s",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "金礦山",
+   "path": "sw t e su t 2e 3n",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "天魔塔",
+   "path": "sw t su 3w t 5n",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "明教",
+   "path": "sw t n nu 5w t w nw w n",
+   "npc": "胡青牛",
+   "riddle": true
+  },
+  {
+   "name": "s",
+   "path": "2w s sw se s w sw su wu 2n ne 2u",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "唐門",
+   "path": "sw w t s 2w 4n w t",
+   "npc": "唐無敵、唐璦",
+   "riddle": false
+  },
+  {
+   "name": "成都城",
+   "path": "sw w t s 4w 3n w t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "拜月山莊",
+   "path": "sw w t s 4w 3n w t 10n",
+   "npc": "拜月",
+   "riddle": false
+  },
+  {
+   "name": "天龍寺",
+   "path": "sw w t s 2w su s t nu wu nu",
+   "npc": "一燈、玄智",
+   "riddle": false
+  },
+  {
+   "name": "大理",
+   "path": "sw w t s 2w su s t n",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "峨嵋派",
+   "path": "sw w t s 4w 3n w sw",
+   "npc": "滅絕師太",
+   "riddle": false
+  },
+  {
+   "name": "回族",
+   "path": "sw nw t e t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "契丹",
+   "path": "sw nw t e ne se ne e t",
+   "npc": "喬峰",
+   "riddle": false
+  },
+  {
+   "name": "火焰山",
+   "path": "sw nw t e ne t 3w nw 2w",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "惡魔森林",
+   "path": "sw nw t e ne t 3w nw 2w ne nu u nu nw w 2nd wd n",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "谷湖",
+   "path": "sw nw t e ne t 3w nw 2n w",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "紅花會",
+   "path": "sw nw t e ne se ne se 2n 3wu nu n",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "萬獸山莊",
+   "path": "sw nw t e ne se ne se 2n e t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "拉薩",
+   "path": "sw 2w t e n",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "白駝山莊",
+   "path": "sw 2w t s 3w s",
+   "npc": "歐陽峰",
+   "riddle": false
+  },
+  {
+   "name": "礦坑",
+   "path": "sw 2w t w 2n nd e t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "沙漠",
+   "path": "sw 2w t w 2n nd ne nd e t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "雪山派",
+   "path": "sw 2w t 2n w nd ne nd e t",
+   "npc": "白萬劍",
+   "riddle": false
+  },
+  {
+   "name": "(金烏派)",
+   "path": "se s e s e se e s 3se s 4se 2ne e ne 2se ne e se",
+   "npc": "史小翠",
+   "riddle": false
+  },
+  {
+   "name": "2s",
+   "path": "se eu se eu 2e 2eu 2ed n",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "大雪山",
+   "path": "sw 2w t 2n w nd ne nd e t",
+   "npc": "狄雲",
+   "riddle": false
+  },
+  {
+   "name": "se",
+   "path": "s e s e se e s 3se s 4se 2ne e ne 2se ne e se",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "2s",
+   "path": "se eu se eu 2e 2eu nu",
+   "npc": "",
+   "riddle": false
+  }
+ ]
 }

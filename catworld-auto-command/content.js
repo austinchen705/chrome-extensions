@@ -588,7 +588,7 @@ function initPanel() {
   // 怪物列壞了不能牽連後面開始／停止按鈕的綁定
   let zapPanel = null;
   try {
-    zapPanel = CatworldZapPanel.attach(root, { readExp: () => Number((document.getElementById('exp')?.textContent || '').replace(/[,\s]/g, '')) });
+    zapPanel = CatworldZapPanel.attach(root, { startSteps: text => startMacro(text), readExp: () => Number((document.getElementById('exp')?.textContent || '').replace(/[,\s]/g, '')) });
   } catch (error) {
     console.error('[catworld] 怪物列初始化失敗', error);
   }

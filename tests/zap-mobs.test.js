@@ -160,3 +160,59 @@ test('gradeOf matches the game colours the user observed at exp 416944', () => {
   assert.equal(Z.gradeOf(390000, E2).grade, 'green', '六合門 夏老：強度比經驗小');
   assert.equal(Z.gradeOf(500000, E2).grade, 'yellow', '猛虎大將軍 蒙古將軍：強度比經驗大');
 });
+
+const routes = [
+  { name: '華山', path: 't 2s nw w t' },
+  { name: '蒙古', path: 't 4n 2w t' },
+  { name: '天魔塔', path: 't 9n' },
+  { name: '襄陽城', path: 't 3e' },
+  { name: '冰火島', path: 't 5s' },
+  { name: '礦坑', path: 't 2w' },
+  { name: '黑木崖', path: 't 6n' },
+];
+
+test('routeFor matches a location name exactly', () => {
+  const hit = Z.routeFor('華山', routes);
+  assert.equal(hit.exact, true);
+  assert.equal(hit.route.name, '華山');
+});
+
+test('routeFor accepts a location that starts with the place name, or the other way round', () => {
+  assert.deepEqual([Z.routeFor('天魔塔2f', routes).route.name, Z.routeFor('天魔塔2f', routes).exact], ['天魔塔', false]);
+  assert.equal(Z.routeFor('冰火島沙灘', routes).route.name, '冰火島');
+  assert.equal(Z.routeFor('襄陽', routes).route.name, '襄陽城');
+});
+
+test('routeFor does not guess when the place only appears inside the location name', () => {
+  assert.equal(Z.routeFor('往黑木崖渡口', routes), null);
+  assert.equal(Z.routeFor('金礦坑南方小鎮', routes), null);
+  assert.equal(Z.routeFor('隨機出現', routes), null);
+  assert.equal(Z.routeFor('', routes), null);
+  assert.equal(Z.routeFor(undefined, routes), null);
+});
+
+test('routeFor prefers an exact token, then the longest partial one', () => {
+  assert.equal(Z.routeFor('襄陽、華山', routes).route.name, '華山', 'an exact token beats an earlier partial one');
+  const longer = [{ name: '天魔', path: 'a' }, { name: '天魔塔', path: 'b' }];
+  assert.equal(Z.routeFor('天魔塔1f', longer).route.name, '天魔塔');
+});
+
+test('routeCommand starts from the inn like every other map path', () => {
+  assert.equal(Z.routeCommand({ name: '華山', path: 't 2s nw w t' }), 'run e 5n 2o t 2s nw w t');
+});
+
+test('handleMessage attaches the route to monster candidates and to the suitable list', () => {
+  const mobs = [mob('甲(a)', 250000, '華山'), mob('乙(b)', 250000, '三絕門')];
+  const lookup = Z.handleMessage(mobs, { type: 'ZAP_LOOKUP', exp: E, names: [{ name: '甲(a)', count: 1 }, { name: '乙(b)', count: 1 }] }, routes);
+  assert.equal(lookup.items[0].candidates[0].route.route.name, '華山');
+  assert.equal(lookup.items[1].candidates[0].route, null);
+  const list = Z.handleMessage(mobs, { type: 'ZAP_SUITABLE', exp: E }, routes);
+  assert.equal(list.items.find(item => item.mob.name === '甲(a)').route.route.path, 't 2s nw w t');
+  assert.equal(list.items.find(item => item.mob.name === '乙(b)').route, null);
+});
+
+test('most real mobs get a route from the real data', () => {
+  const data = require('../catworld-auto-command/zap-data.json');
+  const withRoute = data.mobs.filter(entry => Z.routeFor(entry.location, data.routes));
+  assert.ok(withRoute.length / data.mobs.length > 0.6, `only ${withRoute.length}/${data.mobs.length}`);
+});

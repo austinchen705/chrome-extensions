@@ -1,10 +1,10 @@
 // 從 zap 攻略站的 MOB 表、無名物品表、解謎總表與步驟頁，以及 catworld 說明站的新手怪列表，加上 tools/zap-overrides.json，
 // 產生 catworld-auto-command/zap-data.json。
 // 用法：node tools/gen-zap-data.js            （連網抓來源）
-//       node tools/gen-zap-data.js --from-dir <資料夾>   （讀 <資料夾>/ot1.htm、newstart.3.html、ub.htm、qu1.htm、list.html 與選單裡的每個 qu*.htm）
+//       node tools/gen-zap-data.js --from-dir <資料夾>   （讀 <資料夾>/ot1.htm、newstart.3.html、ub.htm、map.15.html、qu1.htm、list.html 與選單裡的每個 qu*.htm）
 const fs = require('fs');
 const path = require('path');
-const { buildData, SOURCES, UB_URL, parseRiddleMenu } = require('./zap-parse');
+const { buildData, SOURCES, UB_URL, ROUTES_URL, parseRiddleMenu } = require('./zap-parse');
 
 const SITE = 'https://zap.muds.me/';
 const CONCURRENCY = 6;
@@ -40,10 +40,11 @@ async function loadSources(dir) {
       newstartHtml: await read('newstart.3.html'),
       ubHtml: await read('ub.htm'),
       riddleHtml: await loadRiddles(read),
+      routesHtml: await read('map.15.html'),
     };
   }
   const [zapHtml, newstartHtml, ubHtml] = await Promise.all([...SOURCES, UB_URL].map(get));
-  return { zapHtml, newstartHtml, ubHtml, riddleHtml: await loadRiddles(name => get(`${SITE}${name}`)) };
+  return { zapHtml, newstartHtml, ubHtml, riddleHtml: await loadRiddles(name => get(`${SITE}${name}`)), routesHtml: await get(ROUTES_URL) };
 }
 
 async function main() {

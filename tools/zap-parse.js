@@ -265,6 +265,27 @@ function buildRiddles({ indexHtml, menuHtml, pageHtml }) {
   return { riddles, pages, report };
 }
 
+// 遊戲說明站的「總路徑」（help/map.15）：每個地點一行「│ 地名 路徑 │ NPC │」，路徑都以新長安門口為起點
+// （從醉仙樓出發要先走 run e 5n 2o）。路徑後面若跟「謎」代表那裡有謎，不是路徑的一部分
+const ROUTES_URL = 'https://catworld.muds.tw/help/map.15';
+function parseRoutesHtml(html) {
+  const routes = [];
+  const text = decode(String(html ?? '').replace(/<(style|script)[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, ''));
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^\s*│\s+(\S+)\s+([^│]*?)\s*│\s*([^│]*?)\s*│?\s*$/.exec(line);
+    if (!match || match[1].includes('﹕') || match[1].includes('map.')) continue;
+    const tokens = match[2].split(/\s+/);
+    const pathTokens = [];
+    for (const token of tokens) {
+      if (!/^[0-9a-z]+$/i.test(token)) break;
+      pathTokens.push(token);
+    }
+    if (!pathTokens.length) continue;
+    routes.push({ name: match[1], path: pathTokens.join(' '), npc: match[3].trim(), riddle: match[2].includes('謎') });
+  }
+  return routes;
+}
+
 const SOURCES = ['https://zap.muds.me/ot1.htm', 'https://catworld.muds.tw/help/newstart.3'];
 const UB_URL = 'https://zap.muds.me/ub.htm';
 const RIDDLE_URL = 'https://zap.muds.me/qu1.htm';
@@ -329,7 +350,7 @@ function parseUnknownObjectHtml(html) {
 }
 
 // 來源改版時解析結果會突然變少，這時寧可失敗也不要產生一份殘缺的資料
-function buildData({ zapHtml, newstartHtml, overrides, ubHtml, riddleHtml }, { minZap = 100, minNewstart = 20, minItems = 30, minRiddles = 40, minPages = 30 } = {}) {
+function buildData({ zapHtml, newstartHtml, overrides, ubHtml, riddleHtml, routesHtml }, { minZap = 100, minNewstart = 20, minItems = 30, minRiddles = 40, minPages = 30, minRoutes = 30 } = {}) {
   const zap = parseZapMobHtml(zapHtml);
   const newstart = parseNewstartHtml(newstartHtml);
   if (zap.length < minZap || newstart.length < minNewstart) {
@@ -347,6 +368,10 @@ function buildData({ zapHtml, newstartHtml, overrides, ubHtml, riddleHtml }, { m
   if (riddleData && Object.keys(riddleData.pages).length < minPages) {
     throw new Error(`來源解析異常：解謎步驟頁 ${Object.keys(riddleData.pages).length} 頁（至少 ${minPages}）`);
   }
+  const routes = routesHtml === undefined ? null : parseRoutesHtml(routesHtml);
+  if (routes && routes.length < minRoutes) {
+    throw new Error(`來源解析異常：總路徑 ${routes.length} 個地點（至少 ${minRoutes}）`);
+  }
   const mobOverrides = overrides.filter(override => !('item' in override));
   const itemOverrides = overrides.filter(override => 'item' in override);
   const { mobs, problems: mobProblems, notes } = applyOverrides(merged.mobs, mobOverrides);
@@ -359,14 +384,16 @@ function buildData({ zapHtml, newstartHtml, overrides, ubHtml, riddleHtml }, { m
     ...unknown.map(mob => `強度不明：${mob.name}（${mob.location}）`),
     ...notes,
     ...(riddleData ? [`謎 ${riddleData.riddles.length} 個、步驟頁 ${Object.keys(riddleData.pages).length} 頁`, ...riddleData.report] : []),
+    ...(routes ? [`總路徑 ${routes.length} 個地點`] : []),
   ];
-  const sources = [...SOURCES, ...(ubHtml === undefined ? [] : [UB_URL]), ...(riddleData ? [RIDDLE_URL] : [])];
+  const sources = [...SOURCES, ...(ubHtml === undefined ? [] : [UB_URL]), ...(riddleData ? [RIDDLE_URL] : []), ...(routes ? [ROUTES_URL] : [])];
   return {
     data: {
       sources,
       mobs,
       ...(ubHtml === undefined ? {} : { items: applied.items }),
       ...(riddleData ? { riddles: riddleData.riddles, pages: riddleData.pages } : {}),
+      ...(routes ? { routes } : {}),
     },
     report,
     problems,
@@ -375,5 +402,5 @@ function buildData({ zapHtml, newstartHtml, overrides, ubHtml, riddleHtml }, { m
 
 module.exports = {
   normalize, parseZapMobHtml, parseNewstartHtml, parseUnknownObjectHtml, applyItemOverrides, mergeSources, applyOverrides, buildData, SOURCES, UB_URL,
-  VERBS, extractCommands, parseRiddlePage, parseRiddleIndex, parseRiddleMenu, buildRiddles, RIDDLE_ALIASES,
+  VERBS, extractCommands, parseRiddlePage, parseRiddleIndex, parseRiddleMenu, buildRiddles, RIDDLE_ALIASES, parseRoutesHtml, ROUTES_URL,
 };
