@@ -197,6 +197,22 @@ function attach(root, { readExp }) {
     touchHint();
   }
 
+  // 提示用的小字（偵測到、查詢中、查詢失敗）；不算在保留的鑑定結果裡。pending=true 的會在結果回來時被清掉
+  const FAIL_HINT = '（剛重新載入過 extension 的話，請重新整理遊戲頁）';
+  function addItemNote(text, pending = true) {
+    const section = sections.items;
+    if (!section.firstChild) section.append(el('div', { className: 'title', textContent: '鑑定結果' }));
+    const note = el('div', { className: `zap-more${pending ? ' zap-pending' : ''}`, textContent: text });
+    section.append(note);
+    touchHint();
+    return note;
+  }
+  function showFailure(section, title, reason) {
+    section.replaceChildren(el('div', { className: 'title', textContent: title }),
+      el('div', { className: 'zap-more', textContent: `查詢失敗：${reason || '沒有回應'}${FAIL_HINT}` }));
+    touchHint();
+  }
+
   const inGameOutput = node => {
     const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
     return Boolean(element?.closest('#content')) && !element.closest(GAME_WINDOWS);
@@ -212,7 +228,9 @@ function attach(root, { readExp }) {
     const exp = readExp();
     const mine = ++lookupId;
     send({ type: 'ZAP_LOOKUP', exp, thresholds, names: shown }).then(reply => {
-      if (reply?.ok && mine === lookupId) showHints(reply.items, hidden, exp > 0);
+      if (mine !== lookupId) return;
+      if (reply?.ok) showHints(reply.items, hidden, exp > 0);
+      else showFailure(sections.mobs, '這裡的怪物', reply?.error);
     });
   }
 
@@ -221,12 +239,22 @@ function attach(root, { readExp }) {
   function lookupItems(text) {
     const now = Date.now();
     const recent = sentence => sentence in lastItemShown && now - lastItemShown[sentence] < DEDUPE_MS;
+    const handedBefore = handState.handedAt;
     const sentences = [...new Set(ZI.findIdentified(text, now, handState))].filter(sentence => !recent(sentence));
     const { shown, hidden } = Z.limitHints(sentences, HINT_MAX);
-    if (!shown.length) return;
+    if (!shown.length) {
+      // 只看到「交給衰老頭看」還沒有結果：先讓使用者知道有偵測到，沒反應時才分得出是哪一步沒動
+      if (handState.handedAt !== handedBefore && handState.handedAt === now) addItemNote('偵測到把物品交給衰老頭鑑定，等待結果…');
+      return;
+    }
+    addItemNote(`偵測到鑑定結果：${shown.join('、')}，查詢中…`);
     send({ type: 'ZAP_ITEM', sentences: shown, mainWeapon }).then(reply => {
-      // 查詢失敗就不算「提示過」，下次還能再顯示
-      if (!reply?.ok) return;
+      sections.items.querySelectorAll('.zap-pending').forEach(note => note.remove());
+      if (!reply?.ok) {
+        // 查詢失敗就不算「提示過」，下次還能再顯示；失敗要看得到，不能靜默
+        addItemNote(`查詢失敗：${reply?.error || '沒有回應'}${FAIL_HINT}`, false);
+        return;
+      }
       shown.forEach(sentence => { lastItemShown[sentence] = Date.now(); });
       addItemResults(reply.results, hidden);
     });
