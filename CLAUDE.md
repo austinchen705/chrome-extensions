@@ -56,6 +56,14 @@
 - 鑑定結果在浮層裡是**累積**的（接在舊結果後面、最多留 8 筆，`addItemResults`），怪物提示則每次整個取代；「提示過」要等查詢成功才記，失敗不能讓同一件被擋 10 秒。
 - 浮層由怪物與鑑定結果共用，各一個區段、共用一個 10 秒計時；觀察器每一批新增文字同時交給兩邊，不能因為其中一邊沒內容就跳過另一邊。
 
+## 解謎
+
+- 資料是 `zap-data.json` 的 `riddles`（總表）與 `pages`（步驟頁），由 `tools/zap-parse.js` 產生：總表沒有連結，靠選單名稱對應（`RIDDLE_ALIASES` 列出 6 個對不上的別名），共用頁面（玉蕭劍法／彈指神通／糖果等）整頁共用步驟；總表少於 40 個謎時產生腳本失敗、不覆寫。
+- 步驟的指令抽取是保守的（`extractCommands`）：一步只要有任何一段不認得就整步為空，不給只有一半的指令；`VERBS` 是從真實頁面統計出來的動詞白名單。
+- `zap-riddles.js` 不碰 DOM，要同時加進 manifest 與 popup 備援注入、且在 `zap-panel.js`／`zap-riddle-ui.js` 之前。條件分組：未達優先於需自行確認；讀不到的狀態要傳 `NaN`（不是 0，0 會被當成「不夠」）。
+- 「送出」只能走 `content.js` 的 `startMacro`（`zap-riddle-ui.js` 的 `deps.startSteps`）：這樣才算 `active()`、驗證碼時被 `cancelMacros` 取消；不要另造送出通道、也不要直接操作 `#input`。
+- 補的指令存在 `chrome.storage.local.riddleCommands`，以「頁面檔名＋步驟在該頁的位置」為鍵並記錄當時的步驟數（不用頁面印的編號，共用頁會重新編號）；匯入先驗證形狀，不合法不能動既有資料。UI 在 shadow DOM 內，輸入框要擋掉冒泡。
+
 ## 設定頁
 
 - 面板的 ⚙ 由 `background.js` 把 `popup.html?tab=<遊戲分頁 id>` 開成分頁並記在 `storage.session`，再按一次關閉；`popup.js` 看到 `?tab=` 就控制那個遊戲分頁（`getTab`）並加上 `body.page` 樣式。popup 與設定頁是同一份 HTML/JS，改一份兩邊都會變。
