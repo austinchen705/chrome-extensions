@@ -88,11 +88,11 @@ test('describe grades every candidate of a same-name mob', () => {
   assert.deepEqual(result.candidates.map(c => [c.mob.location, c.grade]), [['桃花島', 'yellow'], ['長安城', 'white']]);
 });
 
-test('suitable returns green by default, sorted by strength', () => {
+test('suitable returns green by default, sorted by strength, weakest first', () => {
   const mobs = [mob('甲(a)', 250000, '蒙古'), mob('乙(b)', 60000, '襄陽'), mob('丙(c)', null, '蒙古')];
   assert.deepEqual(Z.suitable(mobs, E).map(item => item.mob.name), ['甲(a)']);
   const wide = Z.suitable(mobs, E, undefined, { grades: ['green', 'yellow', 'white'] });
-  assert.deepEqual(wide.map(item => item.mob.name), ['甲(a)', '乙(b)']);
+  assert.deepEqual(wide.map(item => item.mob.name), ['乙(b)', '甲(a)']);
   const mongol = Z.suitable(mobs, E, undefined, { grades: ['green', 'white'], query: '蒙古' });
   assert.deepEqual(mongol.map(item => item.mob.name), ['甲(a)']);
   assert.deepEqual(Z.suitable(mobs, NaN), []);

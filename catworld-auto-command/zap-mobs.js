@@ -121,7 +121,7 @@ function suitable(mobs, exp, thresholds, { grades = ['green'], query = '' } = {}
     .map(mob => ({ mob, ...gradeOf(mob.exp, exp, thresholds) }))
     .filter(item => grades.includes(item.grade))
     .filter(item => !needle || normalizeName(`${item.mob.name} ${item.mob.location}`).includes(needle))
-    .sort((a, b) => b.mob.exp - a.mob.exp)
+    .sort((a, b) => a.mob.exp - b.mob.exp)
     .map(item => ({ ...item, route: routeFor(item.mob.location, routes, aliases) }));
 }
 
