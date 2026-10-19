@@ -28,12 +28,12 @@ const mobWith = (route, exact = true) => ({
   q: 1.2, grade: 'green', idOnly: false, route: route && { route, exact },
 });
 
-function boot({ startResult = true, items }) {
+function boot({ startResult = true, items, calls = [] }) {
   const dom = new JSDOM('<html><body><div id="exp">414748</div></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   w.chrome = {
     storage: { local: { get: async () => ({}), set: async () => {} }, onChanged: { addListener() {} } },
-    runtime: { sendMessage: async () => ({ ok: true, items, total: items.length }) },
+    runtime: { sendMessage: async message => { calls.push(message.type); return { ok: true, items, total: items.length }; } },
   };
   ['zap-mobs.js', 'zap-items.js', 'zap-equipment.js', 'zap-panel.js'].forEach(file => w.eval(fs.readFileSync(path.join(root, file), 'utf8')));
   const host = w.document.createElement('div');
@@ -41,9 +41,9 @@ function boot({ startResult = true, items }) {
   shadow.innerHTML = '<div class="panel"><div class="head"></div><div class="body"></div></div>';
   w.document.documentElement.append(host);
   const started = [];
-  w.CatworldZapPanel.attach(shadow, { readExp: () => 414748, startSteps: text => { started.push(text); return startResult; } });
+  const panel = w.CatworldZapPanel.attach(shadow, { readExp: () => 414748, startSteps: text => { started.push(text); return startResult; } });
   shadow.querySelector('.zap-open').click();
-  return { shadow, started };
+  return { shadow, started, panel, w };
 }
 
 ui('the suitable list shows the route and the button sends it from the inn', async () => {
@@ -70,4 +70,20 @@ ui('the button says so when the queue refused the commands', async () => {
   assert.ok(await waitFor(() => shadow.querySelector('.zap-walk')));
   shadow.querySelector('.zap-walk').click();
   assert.equal(shadow.querySelector('.zap-walk').textContent, '送不出去');
+});
+
+ui('turning the monster and item features off hides the row and stops lookups', async () => {
+  const calls = [];
+  const { shadow, panel, w } = boot({ items: [], calls });
+  w.document.body.insertAdjacentHTML('beforeend', '<div id="content"><span id="message"></span></div>');
+  const say = text => w.document.querySelector('#message').append(w.document.createTextNode(text));
+  panel.setEnabled({ mobs: false, items: false });
+  assert.equal(shadow.querySelector('.line').hidden, true);
+  say('  ※華山弟子(a) [fight][kill]\n衰老頭給你一隻奶茶兔吊飾。');
+  await sleep(100);
+  assert.deepEqual(calls.filter(type => type !== 'ZAP_SUITABLE'), []);
+  panel.setEnabled({ mobs: true, items: false });
+  assert.equal(shadow.querySelector('.line').hidden, false);
+  say('\n  ※華山弟子(a) [fight][kill]');
+  assert.ok(await waitFor(() => calls.includes('ZAP_LOOKUP')));
 });

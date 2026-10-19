@@ -273,6 +273,17 @@ function attach(root, { readStats, startSteps }) {
     }
     open();
   });
+
+  // 開關（popup 設定頁）：關掉就隱藏「解謎」列與展開的清單
+  return {
+    setEnabled(on) {
+      row.hidden = on !== true;
+      if (row.hidden) {
+        box.hidden = true;
+        status.textContent = '';
+      }
+    },
+  };
 }
 
 globalThis.CatworldZapRiddleUI = { attach };

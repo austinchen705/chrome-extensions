@@ -597,8 +597,9 @@ function initPanel() {
     const text = (document.getElementById(id)?.textContent || '').replace(/[,\s]/g, '');
     return text ? Number(text) : NaN;
   };
+  let riddleUI = null;
   try {
-    CatworldZapRiddleUI.attach(root, {
+    riddleUI = CatworldZapRiddleUI.attach(root, {
       readStats: () => ({ exp: readNumber('exp'), force: readNumber('max_force') }),
       startSteps: text => startMacro(text),
     });
@@ -606,9 +607,10 @@ function initPanel() {
     console.error('[catworld] 解謎列初始化失敗', error);
   }
   // 「裝備」列：借用怪物列的浮層區段；讀取目前穿著送的 i／view 也走巨集
+  let equipmentUI = null;
   try {
     if (!zapPanel) throw new Error('怪物列沒有初始化，裝備列借用不到浮層');
-    CatworldZapEquipmentUI.attach(root, {
+    equipmentUI = CatworldZapEquipmentUI.attach(root, {
       overlay: { section: zapPanel.sections.equipment, touchHint: zapPanel.touchHint, el: zapPanel.el },
       readExp: () => readNumber('exp'),
       startSteps: text => startMacro(text),
@@ -616,6 +618,17 @@ function initPanel() {
   } catch (error) {
     console.error('[catworld] 裝備列初始化失敗', error);
   }
+  // 怪物／鑑定（含裝備比較）／解謎三組功能的開關，預設全關；popup 設定頁改了馬上生效
+  const applyZapFeatures = features => {
+    zapPanel?.setEnabled({ mobs: features?.mobs === true, items: features?.items === true });
+    equipmentUI?.setEnabled(features?.items === true);
+    riddleUI?.setEnabled(features?.riddles === true);
+  };
+  applyZapFeatures(null);
+  chrome.storage.local.get('zapFeatures').then(data => applyZapFeatures(data.zapFeatures)).catch(() => {});
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.zapFeatures) applyZapFeatures(changes.zapFeatures.newValue);
+  });
 
   // 點面板不要讓遊戲輸入框失去游標
   root.addEventListener('mousedown', e => e.preventDefault());

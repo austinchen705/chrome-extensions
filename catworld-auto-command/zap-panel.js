@@ -292,12 +292,25 @@ function attach(root, { readExp, startSteps }) {
       .flatMap(record => (record.type === 'characterData'
         ? [record.target.textContent || '']
         : Array.from(record.addedNodes, node => node.textContent || ''))));
-    lookupMobs(text);
-    lookupItems(text);
+    if (enabled.mobs) lookupMobs(text);
+    if (enabled.items) lookupItems(text);
   });
   observer.observe(document.body, { subtree: true, childList: true, characterData: true });
   // 裝備比較的 UI 借用同一個浮層（區段與自動消失的計時）
-  return { sections, touchHint: () => touchHint('equipment'), el };
+  // 開關（popup 設定頁）：關掉的功能不顯示列、不觀察遊戲輸出；怪物與鑑定共用浮層，被關掉的區段要清空
+  const enabled = { mobs: true, items: true };
+  function setEnabled(next) {
+    enabled.mobs = next.mobs === true;
+    enabled.items = next.items === true;
+    row.hidden = !enabled.mobs;
+    if (!enabled.mobs) {
+      box.hidden = true;
+      status.textContent = '';
+      clearSection('mobs');
+    }
+    if (!enabled.items) { clearSection('items'); clearSection('equipment'); }
+  }
+  return { sections, touchHint: () => touchHint('equipment'), el, setEnabled };
 }
 
 globalThis.CatworldZapPanel = { attach };

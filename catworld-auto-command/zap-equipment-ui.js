@@ -266,10 +266,19 @@ function attach(root, { overlay, readExp, startSteps }) {
     const nodes = records
       .filter(record => inGameOutput(record.target))
       .flatMap(record => (record.type === 'characterData' ? [record.target] : Array.from(record.addedNodes)));
-    if (!nodes.length) return;
+    if (!enabled || !nodes.length) return;
     handle(nodes.map(node => node.textContent || '').join(''), nodes.map(node => node.outerHTML ?? node.textContent ?? '').join(''));
   });
   observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+  // 開關（popup 設定頁）：關掉就隱藏「裝備」列、不再看遊戲輸出
+  let enabled = true;
+  return {
+    setEnabled(on) {
+      enabled = on === true;
+      row.hidden = !enabled;
+      if (!enabled) section.replaceChildren();
+    },
+  };
 }
 
 globalThis.CatworldZapEquipmentUI = { attach };

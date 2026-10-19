@@ -41,6 +41,8 @@
 
 ## 怪物查詢
 
+- 怪物、無名物品（含裝備比較）、解謎三組功能有開關，存在 `chrome.storage.local.zapFeatures`（`{ mobs, items, riddles }`，缺值＝關閉，預設全關）；`content.js` 的 `applyZapFeatures` 呼叫各 UI 的 `setEnabled`：關掉就隱藏列、清掉浮層區段、觀察器不再處理文字（`zap-panel.js` 的怪物／鑑定共用一個觀察器，各自看自己的開關）。新增這類功能要接同一個開關。
+
 - 資料是 `catworld-auto-command/zap-data.json`，由 `node tools/gen-zap-data.js` 從 zap 攻略站（`ot1.htm`）與 catworld 說明站（`help/newstart.3`）產生，加上 `tools/zap-overrides.json`（手動補充，優先於網站）；不要手改。解析與合併邏輯在 `tools/zap-parse.js`，來源解析出的筆數異常少時產生腳本會失敗、不覆寫。
 - `zap-mobs.js` 不碰 DOM，content script、background、popup、測試共用：manifest、popup.html、popup 的備援注入（`files` 清單）都要載入它，且在 `zap-panel.js`、`content.js` 之前；漏了備援注入的清單，`content.js` 會因為找不到 `CatworldZapPanel` 而出錯。
 - 資料只在 background 第一次被問到時載入（`ZAP_LOOKUP`、`ZAP_SUITABLE`），不隨每個遊戲分頁載入。分級看 `q = 強度 × 2 ÷ #exp`，門檻存在 `chrome.storage.local.zapThresholds`。

@@ -107,6 +107,12 @@ $('persistentAlert').addEventListener('change', () => {
   chrome.storage.local.set({ persistentAlert: $('persistentAlert').checked });
 });
 
+// 三組輔助功能的開關（預設關閉）：存成一個物件，遊戲頁的面板監聽 storage 變化，馬上生效
+const FEATURE_BOXES = { mobs: 'featureMobs', items: 'featureItems', riddles: 'featureRiddles' };
+Object.values(FEATURE_BOXES).forEach(id => $(id).addEventListener('change', () => {
+  chrome.storage.local.set({ zapFeatures: Object.fromEntries(Object.entries(FEATURE_BOXES).map(([key, box]) => [key, $(box).checked])) });
+}));
+
 // 主要武器類型：存起來，遊戲頁的面板監聽 storage 變化，馬上生效。不合法的值當成未設定
 const weaponValue = value => (CatworldZapItems.WEAPON_TYPES.includes(value) ? value : '');
 $('mainWeapon').replaceChildren(...['', ...CatworldZapItems.WEAPON_TYPES].map(type => element('option', { value: type, textContent: type || '未設定' })));
@@ -403,7 +409,8 @@ async function refreshLive() {
 }
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon']);
+  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures']);
+  Object.entries(FEATURE_BOXES).forEach(([key, id]) => { $(id).checked = data.zapFeatures?.[key] === true; });
   $('persistentAlert').checked = data.persistentAlert === true;
   $('mainWeapon').value = weaponValue(data.mainWeapon);
   zapThresholds = CatworldZapMobs.normalizeThresholds(data.zapThresholds);
