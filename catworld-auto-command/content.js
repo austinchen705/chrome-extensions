@@ -268,7 +268,7 @@ function sendCommand(command) {
   const typed = input.value;
   const selection = [input.selectionStart, input.selectionEnd];
   input.focus();
-  input.value = command;
+  input.value = CatworldTimer.commandText(command);
   input.dispatchEvent(new Event('input', { bubbles: true }));
   input.form.requestSubmit();
   // 遊戲送出後會清空輸入框或全選剛送出的指令，把使用者原本正在輸入的文字還回去

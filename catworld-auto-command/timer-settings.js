@@ -37,5 +37,9 @@ function delayMs(item, random = Math.random) {
   return (item.minSeconds + random() * (item.maxSeconds - item.minSeconds)) * 1000;
 }
 
-globalThis.CatworldTimer = { DEFAULT_MIN, DEFAULT_MAX, normalizeRandomItems, pickRandomItem, delayMs };
+// 指令欄位裡的 <enter>（整個指令就只有它）＝送一個空白行，等於在遊戲輸入框按 Enter（翻下一頁）；
+// 遊戲收到空字串會送純換行。各處的欄位會把空白指令濾掉，所以要用文字代號表示
+const commandText = command => (/^\s*<enter>\s*$/i.test(String(command ?? '')) ? '' : String(command ?? ''));
+
+globalThis.CatworldTimer = { DEFAULT_MIN, DEFAULT_MAX, normalizeRandomItems, pickRandomItem, delayMs, commandText };
 })();
