@@ -10962,6 +10962,13 @@
    "path": "se eu se eu 2e 2eu nu",
    "npc": "",
    "riddle": false
+  },
+  {
+   "name": "古墓下水道",
+   "path": "",
+   "command": "run e 5n 2o t s e 2s t 3sw 2su wu s 2w;worship tomb;run e 2s w s;jump well;",
+   "npc": "",
+   "riddle": false
   }
  ],
  "routeAliases": {

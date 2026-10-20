@@ -231,3 +231,17 @@ test('every alias in the alias file points to a real route', () => {
   const data = require('../catworld-auto-command/zap-data.json');
   Object.entries(data.routeAliases).forEach(([place, target]) => assert.ok(data.routes.some(route => route.name === target), `${place} → ${target}`));
 });
+
+test('a route with its own command is sent as written, without the inn prefix', () => {
+  const custom = { name: '古墓下水道', path: '', command: 'run e 5n 2o t s;worship tomb;jump well;' };
+  const hit = Z.routeFor('古墓下水道', [...routes, custom]);
+  assert.equal(hit.exact, true);
+  assert.equal(Z.routeCommand(hit.route), 'run e 5n 2o t s;worship tomb;jump well;');
+});
+
+test('the real data sends the tomb sewer mobs through the given command', () => {
+  const data = require('../catworld-auto-command/zap-data.json');
+  const hit = Z.routeFor('古墓下水道', data.routes, data.routeAliases);
+  assert.equal(hit.exact, true);
+  assert.match(Z.routeCommand(hit.route), /worship tomb;run e 2s w s;jump well;$/);
+});

@@ -3,6 +3,10 @@
 `catworld-auto-command` 的版本紀錄，新的在上面。版本號規則：新功能升 minor、小修正升 patch。
 日期是 commit 的日期。沒有單獨 commit 的版本，會註明是和哪個版本一起發布的。
 
+## 1.26.1（2026-10-20）
+
+- **古墓下水道的「走過去」改用指定指令**：隱魚、惡魔蛇、暴風魔龜（位置都是古墓下水道）按「走過去」送 `run e 5n 2o t s e 2s t 3sw 2su wu s 2w;worship tomb;run e 2s w s;jump well;`。新增 `tools/zap-route-commands.json`（位置 → 完整指令，送出時不再加 `run e 5n 2o` 前綴），產生資料時併進 `routes`。
+
 ## 1.26.0（2026-10-20）
 
 - **指令欄位可以送 Enter**：定時、觸發、解謎步驟、有 `@等待` 的巨集的指令裡，單獨寫 `<enter>` 會送出一個空白行，等於在遊戲輸入框按 Enter，可用來翻分頁輸出的下一頁（例如 `ps;<enter>`）。

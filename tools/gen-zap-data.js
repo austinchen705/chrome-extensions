@@ -10,6 +10,7 @@ const SITE = 'https://zap.muds.me/';
 const CONCURRENCY = 6;
 
 const outFile = path.join(__dirname, '..', 'catworld-auto-command', 'zap-data.json');
+const commandsFile = path.join(__dirname, 'zap-route-commands.json');
 const aliasesFile = path.join(__dirname, 'zap-route-aliases.json');
 const overridesFile = path.join(__dirname, 'zap-overrides.json');
 
@@ -59,6 +60,10 @@ async function main() {
       if (!data.routes.some(route => route.name === target)) problems.push(`路線別名指向不存在的地點：${place} → ${target}`);
     });
     data.routeAliases = routeAliases;
+    // 手動指定的完整指令：當成一筆路線放進 routes（名稱就是怪物位置），送出時不再加 run e 5n 2o 前綴
+    Object.entries(JSON.parse(fs.readFileSync(commandsFile, 'utf8'))).forEach(([place, command]) => {
+      data.routes = data.routes.filter(route => route.name !== place).concat({ name: place, path: '', command, npc: '', riddle: false });
+    });
   }
   report.forEach(line => console.log(line));
   if (problems.length) {

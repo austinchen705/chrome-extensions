@@ -101,7 +101,7 @@ function routeFor(location, routes, aliases = {}) {
 
 // 路徑表的路徑都從新長安門口起算；和其他地圖路徑一樣，先從醉仙樓（recall 回來的位置）走到門口
 function routeCommand(route) {
-  return `run e 5n 2o ${route.path}`;
+  return route.command ?? `run e 5n 2o ${route.path}`;
 }
 
 function describe(mobs, items, exp, thresholds, routes, aliases) {

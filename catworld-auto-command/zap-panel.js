@@ -75,7 +75,7 @@ function routeNode({ route, exact }, onWalk) {
     setTimeout(() => { button.disabled = false; button.textContent = '走過去'; }, 1500);
   });
   return el('div', { className: 'zap-route' },
-    el('span', { className: 'meta', textContent: `${exact ? '' : `約略對應「${route.name}」　`}路線 ${route.path}（從醉仙樓出發，先 recall）` }),
+    el('span', { className: 'meta', textContent: `${exact ? '' : `約略對應「${route.name}」　`}路線 ${route.command ?? route.path}（從醉仙樓出發，先 recall）` }),
     ' ', button);
 }
 
