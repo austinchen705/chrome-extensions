@@ -97,3 +97,18 @@ ui('clicking the search box does not reach the game window.onclick that steals f
   shadow.querySelector('.zap-open').dispatchEvent(new w.MouseEvent('click', { bubbles: true, composed: true }));
   assert.equal(reached, 1, 'other buttons are unaffected');
 });
+
+ui('text in the monster list can be selected: mousedown there is not cancelled by the panel, buttons still are', async () => {
+  const { shadow, w } = boot({ items: [mobWith({ name: '華山', path: 't' })] });
+  assert.ok(await waitFor(() => shadow.querySelector('.zap-walk')));
+  // 面板（content.js）對整個 shadow root 擋 mousedown，不讓遊戲輸入框失去游標
+  shadow.addEventListener('mousedown', event => event.preventDefault());
+  const press = node => {
+    const event = new w.MouseEvent('mousedown', { bubbles: true, cancelable: true, composed: true });
+    node.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  assert.equal(press(shadow.querySelector('.zap-item .meta')), false, 'text can start a selection');
+  assert.equal(press(shadow.querySelector('.zap-walk')), true, 'buttons still keep the game input focused');
+  assert.equal(press(shadow.querySelector('.zap-open')), true);
+});

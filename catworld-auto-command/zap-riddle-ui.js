@@ -50,6 +50,14 @@ function typable(node) {
   return node;
 }
 
+// 清單與提示裡的文字要能選取複製：面板其他地方擋掉 mousedown（不搶遊戲輸入框的游標）會讓選取開不了，所以文字區域放行；
+// click 也不傳給遊戲（它的 window.onclick 會把游標搶回輸入框、選取跟著消失）。按鈕與輸入框維持原樣
+function selectable(node) {
+  const plain = event => !event.target.closest?.('button, input, textarea, label, a');
+  ['mousedown', 'click'].forEach(type => node.addEventListener(type, event => { if (plain(event)) event.stopPropagation(); }));
+  return node;
+}
+
 function attach(root, { readStats, startSteps }) {
   const style = el('style', { textContent: STYLE });
   const row = el('div', { className: 'line' },
@@ -60,7 +68,7 @@ function attach(root, { readStats, startSteps }) {
   const showDone = el('input', { type: 'checkbox' });
   const exportButton = el('button', { className: 'rd-btn', textContent: '匯出' });
   const importButton = el('button', { className: 'rd-btn', textContent: '匯入' });
-  const main = el('div', { className: 'rd-main' });
+  const main = selectable(el('div', { className: 'rd-main' }));
   const ioText = typable(el('textarea', { placeholder: '貼上匯出的 JSON' }));
   const ioApply = el('button', { className: 'rd-btn', textContent: '確認匯入' });
   const io = el('div', { className: 'rd-io', hidden: true }, ioText, el('div', { className: 'rd-actions' }, ioApply));

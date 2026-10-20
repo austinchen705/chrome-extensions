@@ -56,6 +56,14 @@ const gradeTag = grade => {
   return node;
 };
 
+// 清單與提示裡的文字要能選取複製：面板其他地方擋掉 mousedown（不搶遊戲輸入框的游標）會讓選取開不了，所以文字區域放行；
+// click 也不傳給遊戲（它的 window.onclick 會把游標搶回輸入框、選取跟著消失）。按鈕與輸入框維持原樣
+function selectable(node) {
+  const plain = event => !event.target.closest?.('button, input, textarea, label, a');
+  ['mousedown', 'click'].forEach(type => node.addEventListener(type, event => { if (plain(event)) event.stopPropagation(); }));
+  return node;
+}
+
 // 一隻怪的一個候選：顏色、名稱、q、位置、備註
 function candidateNode({ mob, q, grade, idOnly, route }, showName, onWalk) {
   const node = el('div', { className: 'zap-item' },
@@ -87,10 +95,10 @@ function attach(root, { readExp, startSteps }) {
     el('span', { className: 'mini' }, el('button', { className: 'zap-open', textContent: '適合的怪' })));
   const search = el('input', { type: 'search', placeholder: '搜尋名稱或位置' });
   const yellow = el('input', { type: 'checkbox' });
-  const list = el('div', { className: 'zap-list' });
+  const list = selectable(el('div', { className: 'zap-list' }));
   const box = el('div', { className: 'zap-box', hidden: true },
     el('div', { className: 'zap-tools' }, search, el('label', {}, yellow, ' 含黃色')), list);
-  const hint = el('div', { className: 'zap-hint', hidden: true });
+  const hint = selectable(el('div', { className: 'zap-hint', hidden: true }));
   // 怪物、雜物鑑定、裝備鑑定共用這個浮層，各占一個區段，各自有自己的停留時間
   const sections = { mobs: el('div'), items: el('div'), equipment: el('div') };
   const close = el('button', { className: 'zap-close', textContent: '✕', title: '關閉這個提示' });
