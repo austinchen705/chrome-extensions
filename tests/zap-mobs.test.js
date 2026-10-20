@@ -268,3 +268,12 @@ test('a location with its own command only matches its exact name, not places th
   assert.equal(Z.routeFor('古墓下水道', all).route.command, 'x');
   assert.equal(Z.routeFor('古墓下水道1f', all), null);
 });
+
+test('the real data sends the white ape and the jade bee through the tomb crack command', () => {
+  const data = require('../catworld-auto-command/zap-data.json');
+  ['白猿(white ape)', '玉蜂(bee)'].forEach(name => {
+    const entry = data.mobs.find(item => item.name === name);
+    const hit = Z.routeForMob(entry, data.routes, data.routeAliases);
+    assert.match(Z.routeCommand(hit.route), /worship tomb;run e 4s;enter crack$/, name);
+  });
+});

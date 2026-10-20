@@ -3,6 +3,8 @@
   "古墓下水道": "run e 5n 2o t s e 2s t 3sw 2su wu s 2w;worship tomb;run e 2s w s;jump well;"
  },
  "mobs": {
+  "白猿(white ape)": "run e 5n 2o t s e 2s t 3sw 2su wu s 2w; worship tomb;run e 4s;enter crack",
+  "玉蜂(bee)": "run e 5n 2o t s e 2s t 3sw 2su wu s 2w; worship tomb;run e 4s;enter crack",
   "蜈蚣(centipede)": "run e 5n 2o sw t n nu 5w t w nw w n;touch 石壁;run s 2w s sw se s w sw su wu 2n ne 2u 2d sw 2s"
  }
 }
