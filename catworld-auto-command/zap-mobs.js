@@ -83,7 +83,7 @@ function routeFor(location, routes, aliases = {}) {
     if (!name || route.mob) return;
     if (token === name) {
       if (!exact || name.length > compactName(exact.name).length) exact = route;
-    } else if ((token.startsWith(name) || name.startsWith(token)) && (!partial || name.length > compactName(partial.name).length)) {
+    } else if (!route.command && (token.startsWith(name) || name.startsWith(token)) && (!partial || name.length > compactName(partial.name).length)) {
       partial = route;
     }
   }));

@@ -260,3 +260,11 @@ test('the real data sends the centipede through its own command only', () => {
   assert.match(Z.routeCommand(Z.routeForMob(find('蜈蚣(centipede)'), data.routes, data.routeAliases).route), /touch 石壁/);
   assert.equal(Z.routeForMob(find('蠍子(scorpin)'), data.routes, data.routeAliases)?.route.command, undefined);
 });
+
+test('a location with its own command only matches its exact name, not places that share a prefix', () => {
+  const sewer = { name: '古墓下水道', path: '', command: 'x' };
+  const all = [...routes, { name: '古墓派', path: 'tomb' }, sewer];
+  assert.equal(Z.routeFor('古墓', all, { 古墓: '古墓派' }).route.name, '古墓派');
+  assert.equal(Z.routeFor('古墓下水道', all).route.command, 'x');
+  assert.equal(Z.routeFor('古墓下水道1f', all), null);
+});
