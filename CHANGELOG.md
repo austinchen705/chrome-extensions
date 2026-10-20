@@ -3,6 +3,10 @@
 `catworld-auto-command` 的版本紀錄，新的在上面。版本號規則：新功能升 minor、小修正升 patch。
 日期是 commit 的日期。沒有單獨 commit 的版本，會註明是和哪個版本一起發布的。
 
+## 1.26.2（2026-10-20）
+
+- **明教沙漠的蜈蚣「走過去」改用指定指令**（經過明教、摸石壁）。`tools/zap-route-commands.json` 分成 `locations`（以位置為名，該位置的怪都適用）和 `mobs`（以「名稱(ID)」為名，只給那一隻，優先於位置）；同位置的蠍子、仙人掌、沙漠變形蟲不受影響。
+
 ## 1.26.1（2026-10-20）
 
 - **古墓下水道的「走過去」改用指定指令**：隱魚、惡魔蛇、暴風魔龜（位置都是古墓下水道）按「走過去」送 `run e 5n 2o t s e 2s t 3sw 2su wu s 2w;worship tomb;run e 2s w s;jump well;`。新增 `tools/zap-route-commands.json`（位置 → 完整指令，送出時不再加 `run e 5n 2o` 前綴），產生資料時併進 `routes`。

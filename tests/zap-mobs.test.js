@@ -245,3 +245,18 @@ test('the real data sends the tomb sewer mobs through the given command', () => 
   assert.equal(hit.exact, true);
   assert.match(Z.routeCommand(hit.route), /worship tomb;run e 2s w s;jump well;$/);
 });
+
+test('a command given for one mob wins over its location and does not leak to the others there', () => {
+  const own = { name: '蜈蚣(centipede)', path: '', command: 'touch 石壁', mob: true };
+  const all = [...routes, { name: '明教沙漠', path: 'x' }, own];
+  assert.equal(Z.routeCommand(Z.routeForMob(mob('蜈蚣(centipede)', 1, '明教沙漠'), all).route), 'touch 石壁');
+  assert.equal(Z.routeForMob(mob('蠍子(scorpin)', 1, '明教沙漠'), all).route.path, 'x');
+  assert.equal(Z.routeFor('蜈蚣(centipede)', all), null, 'a mob entry is never matched as a place');
+});
+
+test('the real data sends the centipede through its own command only', () => {
+  const data = require('../catworld-auto-command/zap-data.json');
+  const find = name => data.mobs.find(entry => entry.name === name);
+  assert.match(Z.routeCommand(Z.routeForMob(find('蜈蚣(centipede)'), data.routes, data.routeAliases).route), /touch 石壁/);
+  assert.equal(Z.routeForMob(find('蠍子(scorpin)'), data.routes, data.routeAliases)?.route.command, undefined);
+});

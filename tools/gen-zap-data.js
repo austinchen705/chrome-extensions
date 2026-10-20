@@ -60,9 +60,16 @@ async function main() {
       if (!data.routes.some(route => route.name === target)) problems.push(`路線別名指向不存在的地點：${place} → ${target}`);
     });
     data.routeAliases = routeAliases;
-    // 手動指定的完整指令：當成一筆路線放進 routes（名稱就是怪物位置），送出時不再加 run e 5n 2o 前綴
-    Object.entries(JSON.parse(fs.readFileSync(commandsFile, 'utf8'))).forEach(([place, command]) => {
-      data.routes = data.routes.filter(route => route.name !== place).concat({ name: place, path: '', command, npc: '', riddle: false });
+    // 手動指定的完整指令：當成一筆路線放進 routes，送出時不再加 run e 5n 2o 前綴。
+    // locations 以怪物位置為名（該位置的怪都適用），mobs 以「名稱(ID)」為名並帶 mob:true（只給那一隻，優先於位置）
+    const commands = JSON.parse(fs.readFileSync(commandsFile, 'utf8'));
+    const custom = [
+      ...Object.entries(commands.locations ?? {}).map(([name, command]) => ({ name, path: '', command, npc: '', riddle: false })),
+      ...Object.entries(commands.mobs ?? {}).map(([name, command]) => ({ name, path: '', command, npc: '', riddle: false, mob: true })),
+    ];
+    data.routes = data.routes.filter(route => !custom.some(item => item.name === route.name && Boolean(item.mob) === Boolean(route.mob))).concat(custom);
+    custom.filter(item => item.mob).forEach(item => {
+      if (!data.mobs.some(mob => mob.name === item.name)) problems.push(`指定指令的怪物不存在：${item.name}`);
     });
   }
   report.forEach(line => console.log(line));

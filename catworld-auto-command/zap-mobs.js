@@ -80,7 +80,7 @@ function routeFor(location, routes, aliases = {}) {
   let partial = null;
   tokens.forEach(token => (routes || []).forEach(route => {
     const name = compactName(route.name);
-    if (!name) return;
+    if (!name || route.mob) return;
     if (token === name) {
       if (!exact || name.length > compactName(exact.name).length) exact = route;
     } else if ((token.startsWith(name) || name.startsWith(token)) && (!partial || name.length > compactName(partial.name).length)) {
@@ -99,6 +99,12 @@ function routeFor(location, routes, aliases = {}) {
   return null;
 }
 
+// 手動指定給單一怪物的指令（routes 裡帶 mob:true 的項目，名稱是怪物全名）優先於位置的比對
+function routeForMob(mob, routes, aliases) {
+  const own = (routes || []).find(route => route.mob && compactName(route.name) === compactName(mob.name));
+  return own ? { route: own, exact: true } : routeFor(mob.location, routes, aliases);
+}
+
 // 路徑表的路徑都從新長安門口起算；和其他地圖路徑一樣，先從醉仙樓（recall 回來的位置）走到門口
 function routeCommand(route) {
   return route.command ?? `run e 5n 2o ${route.path}`;
@@ -109,7 +115,7 @@ function describe(mobs, items, exp, thresholds, routes, aliases) {
     name,
     count,
     candidates: findMobs(mobs, name).map(({ mob, idOnly }) => ({
-      mob, idOnly, ...gradeOf(mob.exp, exp, thresholds), route: routeFor(mob.location, routes, aliases),
+      mob, idOnly, ...gradeOf(mob.exp, exp, thresholds), route: routeForMob(mob, routes, aliases),
     })),
   }));
 }
@@ -122,7 +128,7 @@ function suitable(mobs, exp, thresholds, { grades = ['green'], query = '' } = {}
     .filter(item => grades.includes(item.grade))
     .filter(item => !needle || normalizeName(`${item.mob.name} ${item.mob.location}`).includes(needle))
     .sort((a, b) => a.mob.exp - b.mob.exp)
-    .map(item => ({ ...item, route: routeFor(item.mob.location, routes, aliases) }));
+    .map(item => ({ ...item, route: routeForMob(item.mob, routes, aliases) }));
 }
 
 // 浮層一次最多列 max 筆，其餘只算數量
@@ -153,6 +159,6 @@ function handleMessage(mobs, message, routes, aliases) {
 
 globalThis.CatworldZapMobs = {
   DEFAULT_THRESHOLDS, SUITABLE_LIMIT, normalizeThresholds, normalizeName, parseMobLines,
-  textFromAdded, gradeOf, findMobs, metaText, routeFor, routeCommand, describe, suitable, limitHints, recentFilter, handleMessage,
+  textFromAdded, gradeOf, findMobs, metaText, routeFor, routeForMob, routeCommand, describe, suitable, limitHints, recentFilter, handleMessage,
 };
 })();
