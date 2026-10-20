@@ -277,3 +277,23 @@ test('the real data sends the white ape and the jade bee through the tomb crack 
     assert.match(Z.routeCommand(hit.route), /worship tomb;run e 4s;enter crack$/, name);
   });
 });
+
+test('custom routes: set, clear and apply per mob name', () => {
+  const none = {};
+  const one = Z.setCustomRoute(none, '白猿(white ape)', '  run e;look  ');
+  assert.deepEqual(none, {}, 'does not mutate');
+  assert.equal(Z.applyCustomRoute({ mob: mob('白猿(white ape)', 1, '古墓'), route: null }, one).route.route.command, 'run e;look');
+  assert.equal(Z.applyCustomRoute({ mob: mob('白猿 (white ape)', 1, '古墓'), route: null }, one).route.route.command, 'run e;look', 'spaces in the name are ignored');
+  const item = { mob: mob('乙(b)', 1, '華山'), route: { route: routes[0], exact: true } };
+  assert.equal(Z.applyCustomRoute(item, one), item, 'other mobs are untouched');
+  const applied = Z.applyCustomRoute({ mob: mob('白猿(white ape)', 1, '古墓'), route: { route: routes[0], exact: false } }, one);
+  assert.equal(applied.route.custom, true);
+  assert.equal(applied.route.exact, true);
+  assert.deepEqual(Z.setCustomRoute(one, '白猿(white ape)', '  '), {}, 'an empty command restores the built-in route');
+});
+
+test('parseCustomRoutes accepts a name → command object only', () => {
+  assert.deepEqual(Z.parseCustomRoutes('{"a(b)":"run e"}'), { ok: true, routes: { 'a(b)': 'run e' } });
+  ['not json', '[]', '{"a":5}', '{"":"x"}', 'null'].forEach(text => assert.equal(Z.parseCustomRoutes(text).ok, false, text));
+  assert.deepEqual(Z.parseCustomRoutes('{"a":"  "}'), { ok: true, routes: {} }, 'empty commands are dropped');
+});

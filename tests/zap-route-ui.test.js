@@ -112,3 +112,62 @@ ui('text in the monster list can be selected: mousedown there is not cancelled b
   assert.equal(press(shadow.querySelector('.zap-walk')), true, 'buttons still keep the game input focused');
   assert.equal(press(shadow.querySelector('.zap-open')), true);
 });
+
+const noRoute = () => mobWith(null);
+
+ui('a mob without a route can get one added in the list, stored by name, and the walk button then sends it', async () => {
+  const { shadow, started, w } = boot({ items: [noRoute()] });
+  const saved = [];
+  w.chrome.storage.local.set = async values => { saved.push(values); };
+  assert.ok(await waitFor(() => shadow.querySelector('.zap-routebox .zap-edit')));
+  assert.equal(shadow.querySelector('.zap-walk'), null);
+  shadow.querySelector('.zap-routebox .zap-edit').click();
+  shadow.querySelector('.zap-routeedit textarea').value = 'run e 5n 2o t;enter crack';
+  [...shadow.querySelectorAll('.zap-routeedit .zap-edit')].find(button => button.textContent === '儲存').click();
+  assert.ok(await waitFor(() => shadow.querySelector('.zap-walk')));
+  assert.equal(JSON.stringify(saved), JSON.stringify([{ mobRoutes: { '華山弟子(a)': 'run e 5n 2o t;enter crack' } }]));
+  assert.match(shadow.querySelector('.zap-route').textContent, /已自訂/);
+  shadow.querySelector('.zap-walk').click();
+  assert.deepEqual(started, ['run e 5n 2o t;enter crack']);
+});
+
+ui('restoring the built-in route removes the custom one', async () => {
+  const { shadow, w } = boot({ items: [mobWith({ name: '華山', path: 't 2s' })] });
+  const saved = [];
+  w.chrome.storage.local.set = async values => { saved.push(values); };
+  assert.ok(await waitFor(() => shadow.querySelector('.zap-routebox .zap-edit')));
+  shadow.querySelector('.zap-routebox .zap-edit').click();
+  assert.equal(shadow.querySelector('.zap-routeedit textarea').value, 'run e 5n 2o t 2s', 'starts from the built-in command');
+  shadow.querySelector('.zap-routeedit textarea').value = 'look';
+  [...shadow.querySelectorAll('.zap-routeedit .zap-edit')].find(button => button.textContent === '儲存').click();
+  assert.ok(await waitFor(() => /已自訂/.test(shadow.querySelector('.zap-route')?.textContent || '')));
+  shadow.querySelector('.zap-routebox .zap-edit').click();
+  [...shadow.querySelectorAll('.zap-routeedit .zap-edit')].find(button => button.textContent === '還原內建').click();
+  assert.ok(await waitFor(() => /路線 t 2s/.test(shadow.querySelector('.zap-route')?.textContent || '')));
+  assert.equal(JSON.stringify(saved.at(-1)), JSON.stringify({ mobRoutes: {} }));
+});
+
+ui('clicking edit does not reach the game window.onclick that would steal the focus from the editor', async () => {
+  const { shadow, w } = boot({ items: [noRoute()] });
+  let reached = 0;
+  w.addEventListener('click', () => { reached += 1; });
+  assert.ok(await waitFor(() => shadow.querySelector('.zap-routebox .zap-edit')));
+  shadow.querySelector('.zap-routebox .zap-edit').dispatchEvent(new w.MouseEvent('click', { bubbles: true, composed: true }));
+  assert.equal(reached, 0);
+});
+
+ui('importing validates first and replaces the custom routes', async () => {
+  const { shadow, w } = boot({ items: [noRoute()] });
+  const saved = [];
+  w.chrome.storage.local.set = async values => { saved.push(values); };
+  const imports = [...shadow.querySelectorAll('.zap-tools .zap-edit')].find(button => button.textContent === '匯入路線');
+  imports.click();
+  shadow.querySelector('.zap-io textarea').value = 'not json';
+  shadow.querySelector('.zap-io .zap-edit').click();
+  assert.match(shadow.querySelector('.zap-status').textContent, /匯入失敗/);
+  assert.deepEqual(saved, []);
+  shadow.querySelector('.zap-io textarea').value = '{"華山弟子(a)":"look"}';
+  shadow.querySelector('.zap-io .zap-edit').click();
+  assert.ok(await waitFor(() => saved.length === 1));
+  assert.equal(JSON.stringify(saved[0]), JSON.stringify({ mobRoutes: { '華山弟子(a)': 'look' } }));
+});

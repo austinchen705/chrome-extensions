@@ -8,6 +8,7 @@ const Z = globalThis.CatworldZapMobs;
 const ZI = globalThis.CatworldZapItems;
 const THRESHOLDS_KEY = 'zapThresholds';
 const WEAPON_KEY = 'mainWeapon';
+const ROUTES_KEY = 'mobRoutes';
 const GAME_WINDOWS = '#monitor, #map_table, #macro_table, #setting_table';
 // 浮層各區段的停留時間：怪物提示常常換所以短；鑑定結果很少出現又要慢慢看，留久一點（也可以按 ✕ 關掉）
 const SECTION_MS = { mobs: 5000, items: 15000, equipment: 20000 };
@@ -38,7 +39,9 @@ const STYLE = `
   .zap-hint { position: relative; }
   .zap-hint .title { color: #999; font-size: 13px; }
   .zap-route { margin-top: 2px; }
-  .zap-walk { font-size: 12px; cursor: pointer; }
+  .zap-walk, .zap-edit, .zap-io button { font-size: 12px; cursor: pointer; }
+  .zap-routeedit textarea, .zap-io textarea { all: unset; box-sizing: border-box; display: block; width: 100%; min-height: 54px; margin: 4px 0; padding: 4px 6px; border-radius: 6px; background: #3a3a3e; color: #eee; font: 13px ui-monospace, Consolas, monospace; white-space: pre-wrap; user-select: text; }
+  .zap-io { padding-bottom: 6px; font-size: 13px; color: #bbb; }
   .zap-close { all: unset; position: absolute; top: 4px; right: 8px; cursor: pointer; color: #888; font-size: 13px; line-height: 1; padding: 2px 4px; }
   .zap-close:hover { color: #fff; }
 `;
@@ -64,17 +67,52 @@ function selectable(node) {
   return node;
 }
 
-// 一隻怪的一個候選：顏色、名稱、q、位置、備註
-function candidateNode({ mob, q, grade, idOnly, route }, showName, onWalk) {
-  const node = el('div', { className: 'zap-item' },
-    gradeTag(grade), ' ', showName ? mob.name : '', showName ? el('br') : '',
-    el('span', { className: 'meta', textContent: Z.metaText({ mob, q, idOnly }) }));
-  if (route && onWalk) node.append(routeNode(route, onWalk));
+// 輸入框：面板其他地方擋掉 mousedown／click，輸入框要放行（遊戲的 window.onclick 會把游標搶回遊戲輸入框）；打字也不讓遊戲的快捷鍵收到
+function typable(node) {
+  ['mousedown', 'click'].forEach(type => node.addEventListener(type, event => event.stopPropagation()));
+  ['keydown', 'keyup', 'keypress'].forEach(type => node.addEventListener(type, event => event.stopPropagation()));
   return node;
 }
 
+// 一隻怪的一個候選：顏色、名稱、q、位置、備註、路線。editor 只有清單才給（浮層只停幾秒，編輯到一半會消失）
+function candidateNode(item, showName, onWalk, editor) {
+  const { mob, q, grade, idOnly } = item;
+  const node = el('div', { className: 'zap-item' },
+    gradeTag(grade), ' ', showName ? mob.name : '', showName ? el('br') : '',
+    el('span', { className: 'meta', textContent: Z.metaText({ mob, q, idOnly }) }));
+  if (onWalk) node.append(routeBlock(item, onWalk, editor));
+  return node;
+}
+
+// 路線那一行：有路線就顯示路線與「走過去」；清單裡另有「編輯」（沒有路線的怪是「補路線」）。儲存後就地重畫
+function routeBlock(base, onWalk, editor) {
+  const block = el('div', { className: 'zap-routebox' });
+  const render = () => {
+    const current = Z.applyCustomRoute(base, editor?.custom());
+    const edit = editor && el('button', { className: 'zap-edit', textContent: current.route ? '編輯' : '補路線' });
+    block.replaceChildren();
+    if (current.route) block.append(routeNode(current.route, onWalk, edit));
+    else if (edit) block.append(el('div', { className: 'zap-route' }, el('span', { className: 'meta', textContent: '沒有路線' }), ' ', edit));
+    edit?.addEventListener('click', event => {
+      // 不讓 click 傳到遊戲的 window.onclick：它會把游標搶回遊戲輸入框，輸入框就打不了字
+      event.stopPropagation();
+      const area = typable(el('textarea', { value: current.route ? Z.routeCommand(current.route.route) : '', placeholder: '完整指令，用 ; 分隔（從醉仙樓出發）' }));
+      const save = el('button', { className: 'zap-edit', textContent: '儲存' });
+      const reset = el('button', { className: 'zap-edit', textContent: '還原內建' });
+      const cancel = el('button', { className: 'zap-edit', textContent: '取消' });
+      save.addEventListener('click', async () => { await editor.save(base.mob.name, area.value); render(); });
+      reset.addEventListener('click', async () => { await editor.save(base.mob.name, ''); render(); });
+      cancel.addEventListener('click', render);
+      block.replaceChildren(el('div', { className: 'zap-routeedit' }, area, save, ' ', reset, ' ', cancel));
+      area.focus();
+    });
+  };
+  render();
+  return block;
+}
+
 // 路徑表的路線：從醉仙樓出發（先 recall）；地名只是約略對應時要標出來，不當成確定
-function routeNode({ route, exact }, onWalk) {
+function routeNode({ route, exact, custom }, onWalk, extra) {
   const button = el('button', { className: 'zap-walk', textContent: '走過去' });
   button.addEventListener('click', () => {
     button.disabled = true;
@@ -82,9 +120,10 @@ function routeNode({ route, exact }, onWalk) {
     button.textContent = sent === false ? '送不出去' : '已送出';
     setTimeout(() => { button.disabled = false; button.textContent = '走過去'; }, 1500);
   });
+  const prefix = custom ? '已自訂　' : exact ? '' : `約略對應「${route.name}」　`;
   return el('div', { className: 'zap-route' },
-    el('span', { className: 'meta', textContent: `${exact ? '' : `約略對應「${route.name}」　`}路線 ${route.command ?? route.path}（從醉仙樓出發，先 recall）` }),
-    ' ', button);
+    el('span', { className: 'meta', textContent: `${prefix}路線 ${route.command ?? route.path}（從醉仙樓出發，先 recall）` }),
+    ' ', button, extra ? [' ', extra] : []);
 }
 
 function attach(root, { readExp, startSteps }) {
@@ -96,8 +135,13 @@ function attach(root, { readExp, startSteps }) {
   const search = el('input', { type: 'search', placeholder: '搜尋名稱或位置' });
   const yellow = el('input', { type: 'checkbox' });
   const list = selectable(el('div', { className: 'zap-list' }));
+  const exportRoutes = el('button', { className: 'zap-edit', textContent: '匯出路線' });
+  const importRoutes = el('button', { className: 'zap-edit', textContent: '匯入路線' });
+  const ioText = typable(el('textarea', { placeholder: '貼上匯出的路線 JSON' }));
+  const ioApply = el('button', { className: 'zap-edit', textContent: '確認匯入' });
+  const io = el('div', { className: 'zap-io', hidden: true }, ioText, ioApply);
   const box = el('div', { className: 'zap-box', hidden: true },
-    el('div', { className: 'zap-tools' }, search, el('label', {}, yellow, ' 含黃色')), list);
+    el('div', { className: 'zap-tools' }, search, el('label', {}, yellow, ' 含黃色'), exportRoutes, importRoutes), io, list);
   const hint = selectable(el('div', { className: 'zap-hint', hidden: true }));
   // 怪物、雜物鑑定、裝備鑑定共用這個浮層，各占一個區段，各自有自己的停留時間
   const sections = { mobs: el('div'), items: el('div'), equipment: el('div') };
@@ -118,15 +162,30 @@ function attach(root, { readExp, startSteps }) {
 
   let thresholds = Z.normalizeThresholds(undefined);
   let mainWeapon = '';
+  // 使用者補的路線（怪物名稱 → 指令）：存本機，浮層也套用（但只有清單能編輯）
+  let customRoutes = {};
+  const editor = {
+    custom: () => customRoutes,
+    async save(name, command) {
+      customRoutes = Z.setCustomRoute(customRoutes, name, command);
+      try {
+        await chrome.storage.local.set({ [ROUTES_KEY]: customRoutes });
+      } catch (error) {
+        status.textContent = `儲存路線失敗：${error.message}`;
+      }
+    },
+  };
   const validWeapon = value => (ZI.WEAPON_TYPES.includes(value) ? value : '');
   const refresh = () => { if (!box.hidden) runQuery(); };
-  chrome.storage.local.get([THRESHOLDS_KEY, WEAPON_KEY]).then(data => {
+  chrome.storage.local.get([THRESHOLDS_KEY, WEAPON_KEY, ROUTES_KEY]).then(data => {
+    customRoutes = Z.parseCustomRoutes(JSON.stringify(data[ROUTES_KEY] ?? {})).routes ?? {};
     thresholds = Z.normalizeThresholds(data[THRESHOLDS_KEY]);
     mainWeapon = validWeapon(data[WEAPON_KEY]);
   });
   chrome.storage.onChanged?.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes[WEAPON_KEY]) mainWeapon = validWeapon(changes[WEAPON_KEY].newValue);
+    if (changes[ROUTES_KEY]) customRoutes = Z.parseCustomRoutes(JSON.stringify(changes[ROUTES_KEY].newValue ?? {})).routes ?? {};
     if (!changes[THRESHOLDS_KEY]) return;
     thresholds = Z.normalizeThresholds(changes[THRESHOLDS_KEY].newValue);
     refresh();
@@ -135,8 +194,7 @@ function attach(root, { readExp, startSteps }) {
   // 搜尋框要能取得游標：面板其他地方為了不搶遊戲輸入框的游標擋掉 mousedown，這裡放行；
   // click 也要擋：遊戲的 window.onclick 對 type 不是 text／password 的元素會把游標搶回遊戲輸入框（搜尋框是 type=search）；
   // 打字也不讓遊戲的快捷鍵收到
-  ['mousedown', 'click'].forEach(type => search.addEventListener(type, event => event.stopPropagation()));
-  ['keydown', 'keyup', 'keypress'].forEach(type => search.addEventListener(type, event => event.stopPropagation()));
+  typable(search);
 
   // 查詢是非同步的（背景第一次要載入資料），連續操作時只採用最後一次的結果
   let queryId = 0;
@@ -158,10 +216,43 @@ function attach(root, { readExp, startSteps }) {
       status.textContent = reply?.error || '查詢失敗';
       return;
     }
-    reply.items.forEach(item => list.append(candidateNode(item, true, startSteps)));
+    reply.items.forEach(item => list.append(candidateNode(item, true, startSteps, editor)));
     if (!reply.items.length) list.append(el('div', { className: 'zap-more', textContent: '沒有符合的怪' }));
     if (reply.total > reply.items.length) list.append(el('div', { className: 'zap-more', textContent: `共 ${reply.total} 筆，只列前 ${reply.items.length} 筆` }));
   }
+
+  // 匯出／匯入自己補的路線（怪物名稱 → 指令）：匯出複製成 JSON 文字，匯入驗證通過才取代既有的
+  exportRoutes.addEventListener('click', async event => {
+    event.stopPropagation();
+    const text = JSON.stringify(customRoutes, null, 1);
+    try {
+      await navigator.clipboard.writeText(text);
+      status.textContent = `已複製 ${Object.keys(customRoutes).length} 筆路線`;
+    } catch {
+      io.hidden = false;
+      ioText.value = text;
+      status.textContent = '無法寫入剪貼簿，請從下面的文字框複製';
+    }
+  });
+  importRoutes.addEventListener('click', event => { event.stopPropagation(); io.hidden = !io.hidden; });
+  ioApply.addEventListener('click', async event => {
+    event.stopPropagation();
+    const parsed = Z.parseCustomRoutes(ioText.value);
+    if (!parsed.ok) {
+      status.textContent = `匯入失敗：${parsed.error}`;
+      return;
+    }
+    customRoutes = parsed.routes;
+    try {
+      await chrome.storage.local.set({ [ROUTES_KEY]: customRoutes });
+      status.textContent = `已匯入 ${Object.keys(customRoutes).length} 筆路線`;
+      io.hidden = true;
+      ioText.value = '';
+      refresh();
+    } catch (error) {
+      status.textContent = `匯入失敗：${error.message}`;
+    }
+  });
 
   let searchTimer = null;
   search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(runQuery, 300); });
@@ -195,7 +286,7 @@ function attach(root, { readExp, startSteps }) {
       if (!candidates.length) nodes.push(el('div', { className: 'zap-more', textContent: '表上無此怪' }));
       const { shown, hidden: more } = Z.limitHints(candidates, CANDIDATE_MAX);
       // 只靠 ID 命中時同一個 ID 可能有幾十隻，要顯示名稱才分得出來
-      shown.forEach(candidate => nodes.push(candidateNode(candidate, candidate.idOnly, startSteps)));
+      shown.forEach(candidate => nodes.push(candidateNode(Z.applyCustomRoute(candidate, customRoutes), candidate.idOnly, startSteps)));
       if (more) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${more} 筆同名候選` }));
     });
     if (hidden) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${hidden} 種` }));

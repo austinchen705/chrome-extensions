@@ -105,6 +105,40 @@ function routeForMob(mob, routes, aliases) {
   return own ? { route: own, exact: true } : routeFor(mob.location, routes, aliases);
 }
 
+// 使用者在面板補的路線（chrome.storage.local.mobRoutes：怪物名稱（忽略空白）→ 完整指令），只給那一隻怪、優先於內建資料
+const customKey = name => compactName(name);
+
+function applyCustomRoute(item, custom) {
+  const command = custom?.[customKey(item.mob.name)];
+  return command ? { ...item, route: { route: { name: item.mob.name, path: '', command }, exact: true, custom: true } } : item;
+}
+
+// 回傳新物件；指令清空就移除（還原成內建路線）
+function setCustomRoute(custom, name, command) {
+  const next = { ...custom };
+  const text = String(command ?? '').trim();
+  if (text) next[customKey(name)] = text;
+  else delete next[customKey(name)];
+  return next;
+}
+
+// 匯入前先驗證形狀，不合法不能動既有資料
+function parseCustomRoutes(text) {
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return { ok: false, error: '不是有效的 JSON' };
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, error: '格式不對：要是「怪物名稱: 指令」的物件' };
+  const routes = {};
+  for (const [name, command] of Object.entries(value)) {
+    if (!name.trim() || typeof command !== 'string') return { ok: false, error: `格式不對：「${name}」` };
+    if (command.trim()) routes[customKey(name)] = command.trim();
+  }
+  return { ok: true, routes };
+}
+
 // 路徑表的路徑都從新長安門口起算；和其他地圖路徑一樣，先從醉仙樓（recall 回來的位置）走到門口
 function routeCommand(route) {
   return route.command ?? `run e 5n 2o ${route.path}`;
@@ -159,6 +193,6 @@ function handleMessage(mobs, message, routes, aliases) {
 
 globalThis.CatworldZapMobs = {
   DEFAULT_THRESHOLDS, SUITABLE_LIMIT, normalizeThresholds, normalizeName, parseMobLines,
-  textFromAdded, gradeOf, findMobs, metaText, routeFor, routeForMob, routeCommand, describe, suitable, limitHints, recentFilter, handleMessage,
+  textFromAdded, gradeOf, findMobs, metaText, routeFor, routeForMob, routeCommand, customKey, applyCustomRoute, setCustomRoute, parseCustomRoutes, describe, suitable, limitHints, recentFilter, handleMessage,
 };
 })();
