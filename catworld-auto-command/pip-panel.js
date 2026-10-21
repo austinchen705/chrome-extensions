@@ -134,13 +134,16 @@ function create({ host, pipApi, sizeStore, notify = () => {}, onChange = () => {
       host.setAttribute('data-pip', '');
       pipWindow = win;
       win.addEventListener('pagehide', restore, { once: true });
-      // 玩家拖拉調整視窗時記下最後的大小；和開窗時一樣的大小不用記
+      // 玩家拖拉調整視窗時記下最後的大小。基準是視窗「開起來之後的實際大小」：Chrome 會把請求的大小縮小
+      // （保持長寬比，拖拉卻可以拉得更大），不能把瀏覽器自己縮的當成玩家調整，蓋掉玩家原本記的大小；
+      // 開窗當下量不到實際大小就退回請求的大小
       lastSize = null;
+      const opened = normalizeSize({ width: win.innerWidth, height: win.innerHeight }) ?? size;
       win.addEventListener('resize', () => {
         const now = normalizeSize({ width: win.innerWidth, height: win.innerHeight });
         if (!now) return;
-        // 和開窗時一樣大＝玩家拖回原來的大小，不用記（原本記住的仍然正確，不能留著中間的值）
-        lastSize = now.width === size.width && now.height === size.height ? null : now;
+        // 和開起來時一樣大＝玩家拖回原來的大小，不用記（原本記住的仍然正確，不能留著中間的值）
+        lastSize = now.width === opened.width && now.height === opened.height ? null : now;
       });
       onChange(true, win);
       return true;

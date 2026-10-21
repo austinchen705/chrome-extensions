@@ -17,7 +17,7 @@ const root = path.join(__dirname, '..', 'catworld-auto-command');
 const source = fs.readFileSync(process.env.PIP_SOURCE_PATH || path.join(root, 'pip-panel.js'), 'utf8');
 
 // 主頁面（有面板宿主，前後各有一個鄰居，才看得出「放回原位」）加上假的 documentPictureInPicture
-function boot({ requestWindow, sizeStore, hostHeight } = {}) {
+function boot({ requestWindow, sizeStore, hostHeight, openAs } = {}) {
   const main = new JSDOM('<html><body><div id="before"></div><div id="host" style="position:fixed;top:12px;right:12px;"></div><div id="after"></div></body></html>', { runScripts: 'outside-only' });
   const mw = main.window;
   const host = mw.document.getElementById('host');
@@ -32,7 +32,7 @@ function boot({ requestWindow, sizeStore, hostHeight } = {}) {
   pw.close = () => pw.dispatchEvent(new pw.Event('pagehide'));
   const calls = [];
   const pipApi = requestWindow === undefined
-    ? { requestWindow: async options => { calls.push(options); return pw; } }
+    ? { requestWindow: async options => { calls.push(options); const actual = openAs ? openAs(options) : options; pw.innerWidth = actual.width; pw.innerHeight = actual.height; return pw; } }
     : requestWindow === null ? undefined : { requestWindow };
   // jsdom 不做排版：用假的高度模擬「收合時矮、展開（data-pip）時高」
   if (hostHeight) host.getBoundingClientRect = () => ({ height: host.hasAttribute('data-pip') ? hostHeight.expanded : hostHeight.collapsed });
@@ -549,4 +549,44 @@ ui('a slow size read that finishes after a save does not overwrite what was just
   await controller.ready;
   await controller.open();
   assert.deepEqual([calls[1].width, calls[1].height], [450, 600], 'the size from this session wins over the late read');
+});
+
+// Chrome 開置頂視窗時會把請求的大小縮小（保持長寬比），但拖拉可以更大：基準是「開起來之後的實際大小」
+ui('when the browser opens the window smaller than requested and the user does nothing, the remembered size stays as it was', async () => {
+  const store = memoryStore({ width: 1437, height: 830 });
+  const { pw, calls, controller } = boot({ sizeStore: store, openAs: () => ({ width: 947, height: 547 }) });
+  await controller.ready;
+  await controller.open();
+  assert.deepEqual([calls[0].width, calls[0].height], [1437, 830], 'we still ask for what the user chose');
+  pw.dispatchEvent(new pw.Event('resize')); // 瀏覽器開窗時自己觸發的 resize
+  controller.close();
+  assert.deepEqual(store.saved, [], 'the browser shrinking it is not the user changing it');
+});
+
+ui('after the browser shrank the window, a real drag is remembered, and dragging back to the opened size is not', async () => {
+  const store = memoryStore({ width: 1437, height: 830 });
+  const { pw, controller } = boot({ sizeStore: store, openAs: () => ({ width: 947, height: 547 }) });
+  await controller.ready;
+  await controller.open();
+  resize(pw, 1100, 650);
+  controller.close();
+  assert.deepEqual(store.saved, [{ width: 1100, height: 650 }]);
+  const againStore = memoryStore({ width: 1437, height: 830 });
+  const again = boot({ sizeStore: againStore, openAs: () => ({ width: 947, height: 547 }) });
+  await again.controller.ready;
+  await again.controller.open();
+  resize(again.pw, 1100, 650);
+  resize(again.pw, 947, 547);
+  again.controller.close();
+  assert.deepEqual(againStore.saved, [], 'back at the opened size: nothing new to remember');
+});
+
+ui('a window that reports no size at all right after opening falls back to the requested size as the baseline', async () => {
+  const store = memoryStore(undefined);
+  const { pw, controller } = boot({ sizeStore: store, openAs: () => ({ width: 0, height: 0 }) });
+  await controller.ready;
+  await controller.open();
+  resize(pw, 500, 600);
+  controller.close();
+  assert.deepEqual(store.saved, [{ width: 500, height: 600 }]);
 });
