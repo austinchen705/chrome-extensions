@@ -7,20 +7,30 @@ if (globalThis.CatworldSharedData) return;
 
 const MAX_SEGMENT = 500;
 const MAX_ROWS = 2000;
+const MAX_BUY = 20;
+const MAX_PAY = 100;
 const DISABLE = '停用';
 const PUBLISH_HINT = '要用「檔案 → 共用 → 發布到網路」選那個分頁、格式選 CSV，再貼上產生的連結';
 
-// 第一個詞在這份清單裡的指令段才收；走路的方向（n、2e、nu…）與 @等待 另外判斷
-// 清單是從解謎步驟、內建路線與玩家整理的路線表實際用到的動詞統計出來的：只收走路與互動類。
-// 不收會丟東西、賣東西、離線、打怪、施招、換裝備、拜師或改狀態的（drop sell quit kill k do perform exert wield unwield wear apprentice enable…）；
-// README「共用資料」一節的「允許的動詞」要和這份一樣（測試會對照）
+// 第一個詞在這份清單裡的指令段才收；走路的方向（n、2e、nu…）與 @等待 另外判斷。
+// 只收走路與互動類，不收會打怪、丟東西、賣東西、離線、施招、換裝備、拜師、公開說話或把東西放進容器的。
+// give、buy、pay 會轉移財物，另外限制參數（見 checkCommand）。README「共用資料」一節的「允許的動詞」要和這份一樣（測試會對照）
 const ALLOWED_VERBS = new Set([
   'run', 'push', 'touch', 'enter', 'climb', 'worship', 'open', 'squeeze', 'dis', 'jump', 'walk', 'knife',
   'pay', 'out', 'ask', 'give', 'buy', 'study', 'move', 'see', 'diving',
-  'ride', 'say', 'search', 'unlock', 'nod', 'knock', 'insert', 'wash', 'fly', 'tan', 'recall', 'get', 'put', 'up', 'down',
+  'ride', 'search', 'unlock', 'nod', 'knock', 'insert', 'wash', 'fly', 'tan', 'recall', 'get', 'up', 'down',
 ]);
 const DIRECTION = /^\d*(?:ne|nw|se|sw|nu|nd|eu|ed|su|sd|wu|wd|n|s|e|w|u|d)$/;
 const WAIT = /^@(?:等待|wait)$/i;
+
+// 會轉移財物的指令只看第一個詞不夠（give all to bob、pay 5000 都會過）：不收 all 與 *，buy 的數量與 pay 的金額有上限
+function refuseArguments(verb, args) {
+  const numbers = args.filter(arg => /^\d+$/.test(arg)).map(Number);
+  if ((verb === 'give' || verb === 'buy') && args.some(arg => /^(?:all|\*)$/i.test(arg))) return `「${verb}」不能用 all 或 *`;
+  if (verb === 'buy' && numbers.some(n => n > MAX_BUY)) return `「buy」數量不能超過 ${MAX_BUY}`;
+  if (verb === 'pay' && numbers.some(n => n > MAX_PAY)) return `「pay」金額不能超過 ${MAX_PAY}`;
+  return '';
+}
 
 function checkCommand(command) {
   // 遊戲只用 ASCII 的 ; 切指令；換行與全形分號不是合法的分隔，可能用來夾帶第二個指令，直接拒絕
@@ -33,6 +43,8 @@ function checkCommand(command) {
     if (!ALLOWED_VERBS.has(verb.toLowerCase()) && !DIRECTION.test(verb.toLowerCase()) && !WAIT.test(verb)) {
       return { ok: false, reason: `不允許的指令「${verb}」` };
     }
+    const refused = refuseArguments(verb.toLowerCase(), segment.split(/\s+/).slice(1));
+    if (refused) return { ok: false, reason: refused };
   }
   return { ok: true };
 }
@@ -243,9 +255,21 @@ const SHEET_LABELS = {
 
 // 設定頁每個分頁的結果文字：尚未設定／尚未抓取／上次更新的筆數（超過上限沒讀的另外說明）／更新失敗的原因與目前還在用的資料。
 // timeText 把時間戳轉成文字（由呼叫端給，這裡不碰時區）
+const lacksGid = url => {
+  try {
+    return !new URL(url).searchParams.has('gid');
+  } catch {
+    return false;
+  }
+};
 function describeSheet(kind, url, entry, timeText, enabled = true) {
+  if (!url) return `${SHEET_LABELS[kind].title}：尚未設定`;
+  const text = describeFetched(kind, url, entry, timeText, enabled);
+  // 沒有 gid 的連結讀到的是試算表的第一個分頁，貼到第二個分頁的欄位會讀錯；連結本身仍然收（單一分頁的表沒有問題）
+  return enabled && lacksGid(url) ? `${text}\n注意：這條連結沒有 gid，讀到的是試算表的第一個分頁（發布時要選那個分頁，連結才會有 gid）` : text;
+}
+function describeFetched(kind, url, entry, timeText, enabled) {
   const { title, used, unmatched } = SHEET_LABELS[kind];
-  if (!url) return `${title}：尚未設定`;
   // 怪物查詢與解謎都關著時 background 不抓，上次的結果已經沒有意義，不能繼續顯示得像現在還在用
   if (!enabled) return `${title}：怪物查詢與解謎都關著，不會抓取`;
   if (!entry) return `${title}：尚未抓取（怪物查詢或解謎要開著；開著的話查一次，或按「立即更新」）`;

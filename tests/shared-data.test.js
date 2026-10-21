@@ -489,36 +489,61 @@ test('a rejected link says it was not saved and which link is still in use', () 
 
 // ---- 白名單定稿與 README ----
 test('the interaction verbs found in the riddle steps and the sheets are allowed', () => {
-  ['ride 2', 'say 芝麻開門', 'search 金色粉末', 'unlock door', 'nod chian', 'knock pallow', 'insert stick', 'wash face', 'fly tree', 'tan qin', 'recall', 'get stone', 'put key into box', 'up', 'down'].forEach(command => {
+  ['ride 2', 'search 金色粉末', 'unlock door', 'nod chian', 'knock pallow', 'insert stick', 'wash face', 'fly tree', 'tan qin', 'recall', 'get stone', 'up', 'down'].forEach(command => {
     assert.deepEqual(S.checkCommand(command), { ok: true }, command);
   });
 });
 
-test('verbs that fight, change equipment, change your master or sell stay refused', () => {
-  ['k yuen', 'kill wian', 'do kill *', 'wield sword', 'unwield 1', 'wear suit', 'apprentice master', 'enable move none', 'respirate 10', 'meditate 10', 'mp founder', 'view @staff', 'drop x', 'sell x', 'quit', 'perform x', 'exert heal', 'rum s'].forEach(command => {
+test('verbs that fight, change equipment, change your master, sell, speak aloud or put things away stay refused', () => {
+  ['k yuen', 'kill wian', 'do kill *', 'wield sword', 'unwield 1', 'wear suit', 'apprentice master', 'enable move none', 'respirate 10', 'meditate 10', 'mp founder', 'view @staff', 'drop x', 'sell x', 'quit', 'perform x', 'exert heal', 'rum s', 'say 大家好', 'put key into box'].forEach(command => {
     assert.equal(S.checkCommand(command).ok, false, command);
   });
 });
 
+test('give, buy and pay are allowed only with small, specific arguments', () => {
+  ['give wrapper to master', 'give 5 coin to x', 'buy 10', 'buy 20', 'buy sword 3', 'pay', 'pay 100', 'pay 50 to x'].forEach(command => {
+    assert.deepEqual(S.checkCommand(command), { ok: true }, command);
+  });
+  [['give all to bob', /give/], ['GIVE ALL TO bob', /give/], ['give * to bob', /give/], ['buy all', /buy/], ['buy 21', /buy/], ['buy sword 999', /buy/], ['pay 101', /pay/], ['pay 5000 to x', /pay/]].forEach(([command, word]) => {
+    const result = S.checkCommand(command);
+    assert.equal(result.ok, false, command);
+    assert.match(result.reason, word, command);
+  });
+  assert.equal(S.checkCommand('run n;give all to bob;run s').ok, false, 'one bad segment refuses the whole command');
+});
+
+test('a link without gid is accepted but the summary warns that it reads the first tab', () => {
+  const withGid = 'https://docs.google.com/spreadsheets/d/e/2PACX-x/pub?gid=77&single=true&output=csv';
+  const noGid = 'https://docs.google.com/spreadsheets/d/e/2PACX-x/pub?output=csv';
+  assert.equal(S.checkUrl(noGid).ok, true, 'a working single-tab link must keep working');
+  assert.match(S.describeSheet('mob', noGid, okEntry({ url: noGid }), at), /沒有 gid.*第一個分頁/);
+  assert.doesNotMatch(S.describeSheet('mob', withGid, okEntry({ url: withGid }), at), /gid/);
+  assert.doesNotMatch(S.describeSheet('mob', 'u', okEntry(), at), /gid/, 'an unparsable link is not our business here');
+  assert.match(S.describeSheet('mob', noGid, null, at), /沒有 gid/, 'also before the first fetch');
+});
+
 const README = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8').replace(/\r\n/g, '\n');
-const readmeSection = README.slice(README.indexOf('## 共用資料（Google 試算表）'), README.indexOf('## 裝備比較'));
+const readmeStart = README.indexOf('## 共用資料（Google 試算表）');
+const readmeSection = README.slice(readmeStart, README.indexOf('\n## ', readmeStart + 5));
 
 test('README lists exactly the verbs the module allows', () => {
   assert.ok(readmeSection.length > 200, 'README has the shared data section');
-  const line = readmeSection.split('\n').find(text => text.includes('允許的動詞：'));
+  const line = readmeSection.split('\n').find(text => text.startsWith('允許的動詞：'));
   assert.ok(line, 'the allowed verbs line exists');
   const listed = [...line.matchAll(/`([a-z]+)`/g)].map(match => match[1]).sort();
   assert.deepEqual(listed, [...S.ALLOWED_VERBS].sort());
 });
 
-test('the header rows README tells people to paste are accepted by the parsers', () => {
-  const header = label => {
-    const line = readmeSection.split('\n').find(text => text.startsWith(label));
-    assert.ok(line, `README has the ${label} header row`);
-    return line.slice(label.length).trim().replace(/\t/g, ',');
-  };
-  const mobHeader = header('怪物路線標題列：');
-  const riddleHeader = header('解謎指令標題列：');
-  assert.equal(S.buildMobRoutes(`${mobHeader}\n老虎(tiger),,run e,,小明,\n`, WILD).report.used, 1);
-  assert.equal(S.buildRiddleSteps(`${riddleHeader}\n獨孤九劍,1,run e,,小明,,\n`, RIDDLES, PAGES).report.used, 1);
+// 標題列放在程式碼區塊裡，Tab 才不會被 Markdown 渲染成空白、也不會併成一段
+test('the header rows in README code blocks keep their tabs and put every column where the parsers expect it', () => {
+  const blocks = [...readmeSection.matchAll(/```\n([^\n]*)\n```/g)].map(match => match[1]);
+  assert.equal(blocks.length, 2, 'one block for each sheet, mob first');
+  blocks.forEach(block => assert.ok(block.includes('\t'), 'tabs are kept'));
+  const [mobHeader, riddleHeader] = blocks.map(block => block.replace(/\t/g, ','));
+  const mob = S.buildMobRoutes(`${mobHeader}\n老虎(tiger),桃花島,run e,備註X,小明,2026-10-21 14:30\n`, WILD);
+  assert.deepEqual(Object.values(mob.routes).map(entry => [entry.command, entry.note, entry.by]), [['run e', '備註X', '小明']]);
+  assert.ok(mob.routes[`${Z.customKey('老虎(tiger)')}|${Z.customKey('桃花島')}`], 'the location column is the second one');
+  const riddle = S.buildRiddleSteps(`${riddleHeader}\n獨孤九劍,2,run e,備註X,小明,2026-10-21 14:30,3\n`, RIDDLES, PAGES);
+  const entry = riddle.steps['a.htm'][2];
+  assert.deepEqual([entry.command, entry.note, entry.by, entry.n], ['run e', '備註X', '小明', 3]);
 });
