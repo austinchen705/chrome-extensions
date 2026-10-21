@@ -6,10 +6,20 @@
 if (globalThis.CatworldPip) return;
 
 const DEFAULT_WIDTH = 360;
-const MIN_HEIGHT = 200;
+const DEFAULT_MIN_HEIGHT = 200;
 // 記住的視窗大小只收合理範圍內的數字：零、負數、不是數字、超大都當作沒記過，回到預設，不能讓浮窗開不出來
 const MIN_SIZE = { width: 200, height: 120 };
 const MAX_SIZE = { width: 1600, height: 1600 };
+
+// 記住的大小不能比螢幕大：夾在螢幕可用範圍內（量不到螢幕大小時不夾）
+function fitToScreen(size, view) {
+  const maxWidth = view?.screen?.availWidth;
+  const maxHeight = view?.screen?.availHeight;
+  return {
+    width: maxWidth > 0 ? Math.min(size.width, maxWidth) : size.width,
+    height: maxHeight > 0 ? Math.min(size.height, maxHeight) : size.height,
+  };
+}
 
 function normalizeSize(value) {
   const width = typeof value?.width === 'number' ? Math.round(value.width) : NaN;
@@ -38,8 +48,13 @@ function create({ host, pipApi, sizeStore, notify = () => {}, onChange = () => {
   // 讀不到或壞掉就當沒有。lastSize 是這次開著期間最後一次量到的大小，關閉時才存（關閉當下視窗可能已經量不到）
   let remembered = null;
   let lastSize = null;
+  let savedThisSession = false;
   let pending = (async () => {
-    try { remembered = normalizeSize(await sizeStore?.load()); } catch { remembered = null; }
+    try {
+      const loaded = normalizeSize(await sizeStore?.load());
+      // 讀取比這次開窗的儲存還晚完成時，以這次存下的為準，不能用舊值蓋掉
+      if (!savedThisSession) remembered = loaded;
+    } catch { /* 讀不到就當沒記過 */ }
   })();
 
   // 提示條：說明面板在浮窗裡，並提供收回；同時兼作「原位置」的標記，放回時靠它找位置
@@ -85,6 +100,7 @@ function create({ host, pipApi, sizeStore, notify = () => {}, onChange = () => {
     lastSize = null;
     if (!size || !sizeStore) return;
     remembered = size;
+    savedThisSession = true;
     try {
       pending = Promise.resolve(sizeStore.save(size)).catch(() => {});
     } catch { /* 存不進去就算了 */ }
@@ -100,10 +116,12 @@ function create({ host, pipApi, sizeStore, notify = () => {}, onChange = () => {
     let win = null;
     let styled = false;
     try {
-      // 沒有記住的大小：高度要以「展開後」的面板為準（浮窗裡收合會被展開），所以先掛上 data-pip 再量
+      // 預設高度要以「展開後」的面板為準（浮窗裡收合會被展開），所以量的當下暫時掛上 data-pip，量完馬上拿掉：
+      // 等瀏覽器建立視窗期間，主頁面的面板不能先變成浮窗的樣子
       host.setAttribute('data-pip', '');
-      const height = Math.max(MIN_HEIGHT, Math.ceil(host.getBoundingClientRect().height) + 16);
-      const size = remembered ?? { width: DEFAULT_WIDTH, height };
+      const height = Math.max(DEFAULT_MIN_HEIGHT, Math.ceil(host.getBoundingClientRect().height) + 16);
+      host.removeAttribute('data-pip');
+      const size = remembered ? fitToScreen(remembered, host.ownerDocument.defaultView) : { width: DEFAULT_WIDTH, height };
       win = await pipApi.requestWindow(size);
       home = host.ownerDocument;
       strip = makeStrip(host.ownerDocument);
@@ -120,7 +138,9 @@ function create({ host, pipApi, sizeStore, notify = () => {}, onChange = () => {
       lastSize = null;
       win.addEventListener('resize', () => {
         const now = normalizeSize({ width: win.innerWidth, height: win.innerHeight });
-        if (now && !(now.width === size.width && now.height === size.height)) lastSize = now;
+        if (!now) return;
+        // 和開窗時一樣大＝玩家拖回原來的大小，不用記（原本記住的仍然正確，不能留著中間的值）
+        lastSize = now.width === size.width && now.height === size.height ? null : now;
       });
       onChange(true, win);
       return true;

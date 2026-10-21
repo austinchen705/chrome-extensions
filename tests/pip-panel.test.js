@@ -215,7 +215,7 @@ ui('the floating window scrolls when the panel grows taller than the window', as
   assert.match(pw.document.body.style.cssText, /overflow:\s*auto/);
 });
 
-// ---- 票 02：提示條 ----
+// ---- 提示條 ----
 const placeholderOf = doc => doc.getElementById('catworld-panel-placeholder');
 
 ui('while the panel is in the floating window a strip stays at its old spot, saying so, with a way back', async () => {
@@ -288,7 +288,7 @@ ui('the change callback hands over the floating window when it opens, so the pag
   assert.ok(wins[1] === undefined);
 });
 
-// ---- 票 02：浮窗裡的互動也算互動（警報提示靠它停止）----
+// ---- 浮窗裡的互動也算互動（警報提示靠它停止）----
 ui('the interaction hub reports events from the page window, and from the floating window once it is added', () => {
   const { mw, pw } = boot();
   const hub = mw.CatworldPip.createInteractionHub(mw);
@@ -368,7 +368,7 @@ test('wiring: the alert that stops on interaction listens through the hub, so th
   assert.match(handler, /interactionHub\.removeWindow\(/);
 });
 
-// ---- 票 03：視窗大小 ----
+// ---- 視窗大小 ----
 const memoryStore = initial => {
   const store = { value: initial, saved: [], load: async () => store.value, save: async size => { store.saved.push(JSON.parse(JSON.stringify(size))); store.value = size; } };
   return store;
@@ -501,4 +501,52 @@ test('wiring: the floating window size is remembered in local storage through th
   assert.match(create, /chrome\.storage\.local\.set\(\{ \[PIP_SIZE_KEY\]/);
   assert.match(content, /const PIP_SIZE_KEY = 'pipSize'/);
   assert.doesNotMatch(content, /chrome\.storage\.sync/);
+});
+
+// ---- 視窗大小的邊界情況 ----
+ui('dragging the window back to the size it opened with does not remember the size in between', async () => {
+  const store = memoryStore({ width: 380, height: 520 });
+  const { pw, controller } = boot({ sizeStore: store });
+  await controller.ready;
+  await controller.open();
+  resize(pw, 600, 700);
+  resize(pw, 380, 520);
+  controller.close();
+  assert.deepEqual(store.saved, [], 'what was remembered before is still right');
+});
+
+ui('the panel only looks expanded while it is measured, not while the browser is still creating the window', async () => {
+  const ctx = {};
+  const seen = [];
+  const b = boot({ hostHeight: { collapsed: 100, expanded: 500 }, requestWindow: async options => { seen.push({ marked: ctx.host.hasAttribute('data-pip'), options }); return ctx.pw; } });
+  ctx.host = b.host;
+  ctx.pw = b.pw;
+  await b.controller.open();
+  assert.equal(seen[0].marked, false, 'the page shows the panel unchanged while the window is being created');
+  assert.equal(seen[0].options.height, 516, 'but the height was still measured as expanded');
+  assert.equal(b.host.hasAttribute('data-pip'), true, 'and the mark is there once the panel is in the window');
+});
+
+ui('a remembered size bigger than the screen is cut down to what the screen can show', async () => {
+  const { mw, calls, controller } = boot({ sizeStore: memoryStore({ width: 1500, height: 1500 }) });
+  await controller.ready;
+  Object.defineProperty(mw.screen, 'availWidth', { value: 1000, configurable: true });
+  Object.defineProperty(mw.screen, 'availHeight', { value: 700, configurable: true });
+  await controller.open();
+  assert.deepEqual([calls[0].width, calls[0].height], [1000, 700]);
+});
+
+ui('a slow size read that finishes after a save does not overwrite what was just saved', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const store = memoryStore(undefined);
+  store.load = async () => { await gate; return { width: 300, height: 300 }; };
+  const { pw, calls, controller } = boot({ sizeStore: store });
+  await controller.open();
+  resize(pw, 450, 600);
+  controller.close();
+  release();
+  await controller.ready;
+  await controller.open();
+  assert.deepEqual([calls[1].width, calls[1].height], [450, 600], 'the size from this session wins over the late read');
 });
