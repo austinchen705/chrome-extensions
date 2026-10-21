@@ -132,8 +132,7 @@ function sharedSummary(field, url, entry) {
   const ok = entry.at && entry.report
     ? `上次更新 ${timeText(entry.at)}：共 ${entry.report.rows} 列，生效 ${entry.report.used} ${field.used}，丟掉 ${entry.report.dropped.length} 列，對不到${field.unmatched} ${entry.report.unmatched.length} 筆`
     : '沒有可用的資料';
-  return entry.error ? `${field.title}：更新失敗（${timeText(entry.error.at)}）：${entry.error.reason}
-目前使用：${ok}` : `${field.title}：${ok}`;
+  return entry.error ? `${field.title}：更新失敗（${timeText(entry.error.at)}）：${entry.error.reason}\n目前使用：${ok}` : `${field.title}：${ok}`;
 }
 async function showShared() {
   const data = await chrome.storage.local.get(['sharedSources', 'sharedCache']);
@@ -143,14 +142,15 @@ async function showShared() {
     $(field.result).textContent = sharedSummary(field, url, data.sharedCache?.[kind]?.url === url ? data.sharedCache[kind] : null);
   });
 }
+const setAllShared = text => Object.values(SHARED_FIELDS).forEach(field => { $(field.result).textContent = `${field.title}：${text}`; });
 async function refreshShared() {
-  Object.values(SHARED_FIELDS).forEach(field => { $(field.result).textContent = `${field.title}：更新中…`; });
+  setAllShared('更新中…');
   try {
     const reply = await chrome.runtime.sendMessage({ type: 'SHARED_REFRESH' });
-    if (!reply?.ok) Object.values(SHARED_FIELDS).forEach(field => { $(field.result).textContent = `${field.title}：更新失敗：${reply?.error || '沒有回應'}`; });
+    if (!reply?.ok) setAllShared(`更新失敗：${reply?.error || '沒有回應'}`);
     else await showShared();
   } catch (error) {
-    Object.values(SHARED_FIELDS).forEach(field => { $(field.result).textContent = `${field.title}：更新失敗：${error.message}`; });
+    setAllShared(`更新失敗：${error.message}`);
   }
 }
 Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {

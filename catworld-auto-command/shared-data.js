@@ -165,7 +165,8 @@ function buildMobRoutes(csvText, mobs) {
 }
 
 // 解謎指令分頁：謎名稱 | 步驟 | 指令 | 備註 | 更新者 | 更新時間 | 步驟數（選填）。
-// 步驟是面板上顯示的序號（步驟檔裡印的 no；共用頁每個謎各自編號，所以只在那個謎自己的那一段裡找），換算成步驟在該頁的 1 起算位置當鍵。
+// 步驟是「這個謎的第幾步」（面板每個步驟旁標出來，從 1 起算、一定唯一；不看頁面印的編號，一頁有兩個編號清單時印的編號會重複），
+// 對到這個謎自己那一段（sectionSteps）的第 N 個步驟，換算成步驟在該頁的 1 起算位置當鍵。
 // 步驟數是存檔當時該頁的步驟數，有填而且和現在不同就標「步驟已變動」，留空就不警告。
 // 回 { ok, steps: { 頁面檔名: { 位置: { command, by, note, at, n?, disabled? } } }, report }；
 // 謎或步驟對不到的列沒有位置可放，只列在 report.unmatched（{row, name, step}），不進共用層
@@ -186,7 +187,7 @@ function buildRiddleSteps(csvText, riddles, pages) {
     if (!made.entry) return report.dropped.push({ row, reason: made.reason });
     const riddle = byName.get(customKey(name));
     const page = riddle?.page && pages?.[riddle.page];
-    const position = page && globalThis.CatworldZapRiddles.sectionSteps(riddle, page).find(index => page.steps[index - 1].no === no);
+    const position = page && globalThis.CatworldZapRiddles.sectionSteps(riddle, page)[no - 1];
     if (!position) return report.unmatched.push({ row, name, step: no });
     const n = Number(cell('步驟數'));
     if (Number.isInteger(n) && n > 0) made.entry.n = n;

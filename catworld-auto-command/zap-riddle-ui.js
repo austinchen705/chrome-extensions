@@ -143,15 +143,17 @@ function attach(root, { readStats, startSteps }) {
   }
 
   // ---- 步驟檢視 ----
-  function stepRow(riddle, page, index) {
+  // ordinal 是這一步在這個謎自己那一段裡的第幾步（0＝不在這一段），也是共用試算表「步驟」欄要填的數字
+  function stepRow(riddle, page, index, ordinal) {
     const step = page.steps[index - 1];
     const effective = R.effectiveStep(page, index, edits, riddle.page, data.shared);
     // 共用（試算表）的步驟標出更新者與備註；共用寫「停用」的步驟沒有指令
-    const sharedLabel = effective.shared ? `共用（${effective.shared.by || '未署名'}）${effective.shared.note ? `：${effective.shared.note}` : ''}` : '';
+    const by = effective.shared?.by || '未署名';
+    const sharedNote = effective.shared?.note ? `　備註：${effective.shared.note}` : '';
     const cmdText = effective.source === 'shared-off'
-      ? `${sharedLabel}　已停用這一步的指令`
+      ? `共用（${by}）已停用這一步的指令${sharedNote}`
       : effective.commands
-        ? `指令（${{ edited: '已補', shared: sharedLabel, site: '網站' }[effective.source]}）：${effective.commands}`
+        ? `指令（${{ edited: '已補', shared: `共用，${by}`, site: '網站' }[effective.source]}）：${effective.commands}${sharedNote}`
         : '（沒有指令）';
     const editor = typable(el('textarea', { value: effective.commands }));
     const save = el('button', { className: 'rd-btn', textContent: '儲存' });
@@ -180,6 +182,7 @@ function attach(root, { readStats, startSteps }) {
     return el('div', { className: 'rd-step' },
       step.heading ? el('div', { className: 'rd-group', textContent: step.heading }) : '',
       el('div', { textContent: `${step.no}. ${step.text}` }),
+      ordinal ? el('div', { className: 'rd-meta', textContent: `共用表步驟欄填：${ordinal}` }) : '',
       el('div', { className: 'rd-cmd', textContent: cmdText }),
       R.startsAtInn(effective.commands) ? el('div', { className: 'rd-note', textContent: '這條路徑從醉仙樓客棧出發：先 recall 回去再送出' }) : '',
       effective.stale ? el('div', { className: 'rd-warn', textContent: '步驟已變動，請確認這個補充的指令還對' }) : '',
@@ -212,7 +215,7 @@ function attach(root, { readStats, startSteps }) {
     else {
       // 第一步之前的文字常有準備事項（要先設的點、要先收集的東西），不顯示會漏掉前置條件
       if (page.preamble) main.append(el('div', { className: 'rd-text', textContent: page.preamble }));
-      (fullPage ? page.steps.map((_, i) => i + 1) : mine).forEach(index => main.append(stepRow(riddle, page, index)));
+      (fullPage ? page.steps.map((_, i) => i + 1) : mine).forEach(index => main.append(stepRow(riddle, page, index, mine.indexOf(index) + 1)));
     }
   }
 
@@ -271,9 +274,12 @@ function attach(root, { readStats, startSteps }) {
         say(`讀取已存的資料失敗：${error.message}`);
       }
     }
-    // 共用的步驟每次打開都重新要一次（背景一小時內不會重抓），不然要重新整理遊戲頁才看得到別人新補的
-    const sharedReply = await send({ type: 'ZAP_RIDDLE_SHARED' });
-    data.shared = sharedReply?.ok ? sharedReply.steps : {};
+    // 共用的步驟每次打開都重新要一次（背景一小時內不會重抓），不然要重新整理遊戲頁才看得到別人新補的。
+    // 不等它：共用抓取卡住（逾時最久 15 秒）時清單照常先出來，回來後如果正在看步驟（而且沒有編輯框開著）再重畫
+    send({ type: 'ZAP_RIDDLE_SHARED' }).then(reply => {
+      data.shared = reply?.ok ? reply.steps : {};
+      if (!box.hidden && current && !main.querySelector('.rd-edit:not([hidden])')) renderDetail();
+    });
     if (box.hidden) return;
     renderList();
   }

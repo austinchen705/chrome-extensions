@@ -345,15 +345,27 @@ test('riddle commands go through the same whitelist, and 停用 hides the step\'
   assert.deepEqual([off.command, off.disabled, off.by, off.note], ['', true, '小明', '指令是錯的']);
 });
 
-test('with the real riddle data a row is placed on the position whose printed number matches', () => {
+// 步驟欄是「這個謎的第幾步」，不看頁面印的編號（一頁有兩個編號清單時印的編號會重複）
+test('printed step numbers may repeat on a page: a row still lands on the n-th step of the riddle', () => {
+  const pages = { 'a.htm': { steps: [step(1), step(2), step(1), step(2), step(3)] } };
+  const csv = [RIDDLE_HEADER, '獨孤九劍,3,run third,,甲,', '獨孤九劍,5,run fifth,,甲,', '獨孤九劍,6,run none,,甲,'].join('\n');
+  const result = S.buildRiddleSteps(csv, RIDDLES, pages);
+  assert.deepEqual(Object.entries(result.steps['a.htm']).map(([position, entry]) => [position, entry.command]), [['3', 'run third'], ['5', 'run fifth']]);
+  assert.deepEqual(result.report.unmatched.map(item => [item.row, item.step]), [[4, 6]]);
+});
+
+test('with the real riddle data every step of every riddle can be reached by its own number', () => {
   const data = JSON.parse(require('node:fs').readFileSync(path.join(__dirname, '..', 'catworld-auto-command', 'zap-data.json'), 'utf8'));
-  const riddle = data.riddles.find(item => item.shared.length);
-  const page = data.pages[riddle.page];
-  const mine = R.sectionSteps(riddle, page);
-  const target = mine[mine.length - 1];
-  const no = page.steps[target - 1].no;
-  const result = S.buildRiddleSteps(`${RIDDLE_HEADER}\n${riddle.name},${no},run real,,甲,\n`, data.riddles, data.pages);
-  assert.equal(result.steps[riddle.page][target].command, 'run real');
+  data.riddles.filter(riddle => data.pages[riddle.page]?.steps.length).forEach(riddle => {
+    const mine = R.sectionSteps(riddle, data.pages[riddle.page]);
+    const lines = mine.map((_, i) => `${riddle.name},${i + 1},run ${i + 1},,甲,`);
+    const result = S.buildRiddleSteps([RIDDLE_HEADER, ...lines].join('\n'), data.riddles, data.pages);
+    assert.equal(result.report.unmatched.length, 0, riddle.name);
+    const reached = Object.keys(result.steps[riddle.page] ?? {}).map(Number);
+    assert.ok(reached.every(position => mine.includes(position)), riddle.name);
+    // 同一頁只有一個謎時，每一步都各有自己的鍵（共用頁與沒分段的頁，同頁的謎共用同一組位置）
+    if (!data.riddles.some(other => other !== riddle && other.page === riddle.page)) assert.deepEqual(reached.sort((a, b) => a - b), mine, riddle.name);
+  });
 });
 
 test('the shared step is used in place of the site\'s command, but your own edit still wins', () => {

@@ -26,7 +26,7 @@ const waitFor = async (condition, ms = 3000) => {
 const riddles = [{ id: 'a/獨孤九劍', category: 'a', name: '獨孤九劍', condition: '無', difficulty: '易', reward: '技能', hint: '', page: 'qu1.htm', shared: [] }];
 const pages = { 'qu1.htm': { preamble: '', text: '', steps: [{ no: 1, text: '第一步', commands: 'run site' }, { no: 2, text: '第二步', commands: '' }, { no: 3, text: '第三步', commands: 'run site3' }] } };
 
-function boot({ shared, personal = {}, calls = [], started = [] }) {
+function boot({ shared, personal = {}, calls = [], started = [], sharedGate = null }) {
   const dom = new JSDOM('<html><body></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   w.chrome = {
@@ -35,7 +35,10 @@ function boot({ shared, personal = {}, calls = [], started = [] }) {
       sendMessage: async message => {
         calls.push(message.type);
         if (message.type === 'ZAP_RIDDLES') return { ok: true, riddles, pages };
-        if (message.type === 'ZAP_RIDDLE_SHARED') return { ok: true, steps: shared };
+        if (message.type === 'ZAP_RIDDLE_SHARED') {
+          if (sharedGate) await sharedGate;
+          return { ok: true, steps: shared };
+        }
         return { ok: false };
       },
     },
@@ -61,7 +64,8 @@ const openRiddle = async shadow => {
 ui('a shared step shows who wrote it and the note, and send uses its command', async () => {
   const dom = boot({ shared: { 'qu1.htm': { 2: { command: 'run shared;push stone', by: '小明', note: '先買水', n: 3 } } } });
   const steps = await openRiddle(dom.shadow);
-  assert.match(steps[1].querySelector('.rd-cmd').textContent, /指令（共用（小明）：先買水）：run shared;push stone/);
+  assert.match(steps[1].querySelector('.rd-cmd').textContent, /指令（共用，小明）：run shared;push stone/);
+  assert.match(steps[1].textContent, /備註：先買水/);
   assert.equal(steps[1].querySelector('.rd-warn'), null, 'the step count matches');
   assert.match(steps[0].querySelector('.rd-cmd').textContent, /指令（網站）：run site/, 'steps without a shared row keep the site command');
   [...steps[1].querySelectorAll('.rd-btn')].find(button => button.textContent === '送出').click();
@@ -78,7 +82,7 @@ ui('a shared step whose step count differs from the page now is flagged', async 
 ui('a shared 停用 hides the command and the send button is off', async () => {
   const dom = boot({ shared: { 'qu1.htm': { 3: { command: '', disabled: true, by: '小華', note: '錯的' } } } });
   const steps = await openRiddle(dom.shadow);
-  assert.match(steps[2].querySelector('.rd-cmd').textContent, /共用（小華）：錯的　已停用這一步的指令/);
+  assert.match(steps[2].querySelector('.rd-cmd').textContent, /共用（小華）已停用這一步的指令　備註：錯的/);
   assert.doesNotMatch(steps[2].textContent, /run site3/);
   assert.equal([...steps[2].querySelectorAll('.rd-btn')].find(button => button.textContent === '送出').disabled, true);
 });
@@ -94,4 +98,52 @@ ui('the panel still works when the shared layer cannot be fetched', async () => 
   const dom = boot({ shared: undefined });
   const steps = await openRiddle(dom.shadow);
   assert.match(steps[0].querySelector('.rd-cmd').textContent, /指令（網站）：run site/);
+});
+
+ui('every step is labelled with the number to put in the step column', async () => {
+  const dom = boot({ shared: {} });
+  const steps = await openRiddle(dom.shadow);
+  assert.deepEqual(steps.map(node => /共用表步驟欄填：(\d+)/.exec(node.textContent)?.[1]), ['1', '2', '3']);
+});
+
+ui('on a page that prints the same number twice the labels are still 1, 2, 3, 4', async () => {
+  const savedSteps = pages['qu1.htm'].steps;
+  pages['qu1.htm'].steps = [{ no: 1, text: 'a', commands: '' }, { no: 2, text: 'b', commands: '' }, { no: 1, text: 'c', commands: '' }, { no: 2, text: 'd', commands: '' }];
+  try {
+    const dom = boot({ shared: {} });
+    const steps = await openRiddle(dom.shadow);
+    assert.deepEqual(steps.map(node => /共用表步驟欄填：(\d+)/.exec(node.textContent)?.[1]), ['1', '2', '3', '4']);
+  } finally {
+    pages['qu1.htm'].steps = savedSteps;
+  }
+});
+
+ui('the list shows at once even when the shared steps have not come back yet, and they appear when they do', async () => {
+  let release;
+  const sharedGate = new Promise(resolve => { release = resolve; });
+  const dom = boot({ shared: { 'qu1.htm': { 1: { command: 'run late', by: '小明', note: '', n: 3 } } }, sharedGate });
+  const steps = await openRiddle(dom.shadow);
+  assert.match(steps[0].querySelector('.rd-cmd').textContent, /指令（網站）：run site/, 'site data until the shared layer arrives');
+  release();
+  assert.ok(await waitFor(() => /指令（共用，小明）：run late/.test(dom.shadow.querySelector('.rd-step .rd-cmd')?.textContent ?? '')));
+});
+
+ui('in the whole-page view only the riddle own steps carry a label, numbered inside that riddle', async () => {
+  const savedRiddles = riddles.slice();
+  const savedSteps = pages['qu1.htm'].steps;
+  riddles[0] = { ...riddles[0], name: '彈指神通', shared: ['玉蕭劍法'] };
+  pages['qu1.htm'].steps = [{ no: 1, text: 'j1', commands: '', heading: '玉蕭劍法：' }, { no: 2, text: 'j2', commands: '' }, { no: 1, text: 'f1', commands: '', heading: '彈指神通：' }, { no: 2, text: 'f2', commands: '' }];
+  try {
+    const dom = boot({ shared: {} });
+    let steps = await openRiddle(dom.shadow);
+    assert.equal(steps.length, 2, 'only the riddle own section by default');
+    const toggle = [...dom.shadow.querySelectorAll('.rd-btn')].find(button => button.textContent === '顯示整頁步驟');
+    toggle.click();
+    assert.ok(await waitFor(() => dom.shadow.querySelectorAll('.rd-step').length === 4));
+    steps = [...dom.shadow.querySelectorAll('.rd-step')];
+    assert.deepEqual(steps.map(node => /共用表步驟欄填：(\d+)/.exec(node.textContent)?.[1] ?? null), [null, null, '1', '2']);
+  } finally {
+    riddles.splice(0, riddles.length, ...savedRiddles);
+    pages['qu1.htm'].steps = savedSteps;
+  }
 });

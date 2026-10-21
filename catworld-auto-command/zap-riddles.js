@@ -79,8 +79,8 @@ const startsAtInn = commands => /^run e 5n (?:2o|o)(?:[\s;]|$)/.test(String(comm
 const splitCommands = text => String(text ?? '').split(/[;；\r\n]+/).map(piece => piece.trim()).filter(Boolean);
 const joinCommands = list => list.join(';');
 
-// 「步驟已變動」是逐步判斷的：只有有補指令的那一步、而且它存檔當時的步驟數（ns[序號]，舊資料沒有就用整頁的 n）
-// 和現在不同才算。改一步不能讓同頁其他還沒重新確認過的補充指令跟著變成「沒問題」。
+// 「步驟已變動」是逐步判斷的：只有帶著指令（自己補的或共用的）的那一步、而且它存檔當時的步驟數和現在不同才算
+// （自己補的記在 ns[序號]，舊資料沒有就用整頁的 n；共用的記在試算表的步驟數欄）。改一步不能讓同頁其他還沒重新確認過的補充指令跟著變成「沒問題」。
 // 優先順序：個人補的 > 共用（試算表，shared[頁面檔名][位置]）> 網站。共用的步驟數 n 有填而且和現在不同才算已變動，留空不警告；
 // 共用寫「停用」（disabled）的步驟沒有指令（來源 shared-off），網站的指令也不採用
 function effectiveStep(page, index, edits, file, shared) {
