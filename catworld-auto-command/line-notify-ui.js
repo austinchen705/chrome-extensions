@@ -34,9 +34,11 @@ function attach(doc) {
     token.value = data[KEY]?.token ?? '';
     userId.value = data[KEY]?.userId ?? '';
     enabledBox.checked = data[KEY]?.enabled === true;
-  }).catch(() => {}).finally(() => {
     loaded = true;
     [token, userId, enabledBox].forEach(field => { field.disabled = false; });
+  }).catch(() => {
+    // 讀不到已存的設定時欄位維持停用：這時打字會把「空的」存回去，蓋掉已存的憑證與開關
+    resultBox.textContent = '讀取設定失敗，請重新整理設定頁再試';
   });
 
   // 最近一次結果由 background 寫在 storage.session（關掉瀏覽器就沒了）；打開頁面時讀一次，之後跟著變更
@@ -47,8 +49,17 @@ function attach(doc) {
   });
 
   const save = async () => { if (loaded) await chrome.storage.local.set({ [KEY]: credentials() }); };
-  token.addEventListener('input', save);
-  userId.addEventListener('input', save);
+  // 開關開著時把任一個憑證清空：開關自動關掉並明講，否則警報會被靜默地丟掉，使用者還以為手機有被涵蓋
+  const onCredentialInput = () => {
+    const { token: t, userId: u } = credentials();
+    if (loaded && enabledBox.checked && (!t || !u)) {
+      enabledBox.checked = false;
+      resultBox.textContent = '憑證已清空，手機通知已自動關閉';
+    }
+    save();
+  };
+  token.addEventListener('input', onCredentialInput);
+  userId.addEventListener('input', onCredentialInput);
 
   // 總開關預設關閉；token 或 userId 沒填就開不起來（關掉不受限）
   enabledBox.addEventListener('change', () => {

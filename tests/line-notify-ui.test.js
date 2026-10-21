@@ -134,11 +134,17 @@ ui('the fields stay disabled until the saved credentials have loaded, so early t
   assert.equal($('lineUserId').value, USER_ID, 'the stored userId survived');
 });
 
-ui('a failing storage load still enables the fields', async () => {
+ui('a failing storage load keeps the fields locked and says why, so nothing stored can be overwritten', async () => {
   const gate = Promise.reject(new Error('storage down'));
   gate.catch(() => {});
-  const { $ } = boot({ gate });
-  assert.ok(await waitFor(() => $('lineToken').disabled === false));
+  const { $, writes } = boot({ gate });
+  assert.ok(await waitFor(() => /讀取設定失敗/.test($('lineResult').textContent)));
+  assert.equal($('lineToken').disabled, true);
+  assert.equal($('lineUserId').disabled, true);
+  assert.equal($('lineEnabled').disabled, true);
+  $('lineToken').dispatchEvent(new (new JSDOM('').window.Event)('input', { bubbles: true }));
+  await sleep(20);
+  assert.equal(writes.local.length, 0);
 });
 
 ui('when the background cannot be reached the box says so instead of staying on "sending"', async () => {
@@ -215,4 +221,14 @@ ui('the result says whether it came from the test button or from an alert', asyn
   assert.ok(await waitFor(() => /04:06:06/.test($('lineResult').textContent)));
   assert.match($('lineResult').textContent, /測試/);
   assert.doesNotMatch($('lineResult').textContent, /警報/);
+});
+
+ui('emptying a credential while the switch is on turns the switch off visibly, instead of silently dropping alerts', async () => {
+  const { $, type, writes } = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID, enabled: true } } });
+  assert.ok(await waitFor(() => $('lineEnabled').checked === true));
+  type('lineToken', '');
+  assert.equal($('lineEnabled').checked, false);
+  assert.match($('lineResult').textContent, /已自動關閉/);
+  assert.ok(await waitFor(() => writes.local.length > 0));
+  assert.equal(JSON.stringify(writes.local.at(-1)), JSON.stringify({ lineNotify: { token: '', userId: USER_ID, enabled: false } }));
 });

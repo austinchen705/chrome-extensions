@@ -179,14 +179,15 @@ test('wiring: the popup has the master switch', () => {
   assert.match(ext('popup.html'), /id="lineEnabled"[^>]*type="checkbox"|type="checkbox"[^>]*id="lineEnabled"/);
 });
 
-test('wiring: every ALERT also goes to LINE after the system notification, and a LINE failure cannot affect it', () => {
+test('wiring: every ALERT also goes to LINE independently of the system notification, and a LINE failure cannot affect it', () => {
   const background = ext('background.js');
   const start = background.indexOf("if (message.type !== 'ALERT') return;");
   assert.ok(start > 0, 'ALERT handler found');
   const block = background.slice(start, background.indexOf('chrome.notifications.onButtonClicked', start));
   const notification = block.indexOf('chrome.notifications.create');
   const line = block.indexOf('notifyLine(');
-  assert.ok(notification >= 0 && line > notification, 'the system notification is created first, LINE second');
+  // LINE 是非同步、不會同步丟錯，所以先啟動它：系統通知若同步丟錯（圖示、權限問題），手機通知也不會跟著丟
+  assert.ok(line >= 0 && notification > line, 'LINE is started first so a throwing system notification cannot drop it');
   assert.match(background, /CatworldLineNotify\.notifyAlert/);
   assert.match(background, /LINE_RESULT_KEY/);
   assert.match(block, /notifyLine\([^)]*\)\.catch\(/, 'a rejected push must never reach the ALERT handler');

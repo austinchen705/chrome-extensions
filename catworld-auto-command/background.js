@@ -65,6 +65,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
   if (message.type !== 'ALERT') return;
+  // 手機通知（LINE）：所有警報都走這個出口。notifyLine 是非同步、不會同步丟錯，先啟動它，
+  // 系統通知若同步丟錯（圖示、權限問題）手機通知也不會跟著丟；LINE 失敗也不能影響系統通知
+  notifyLine(message.reason).catch(() => {});
   chrome.notifications.create(`catworld-${sender.tab.id}-${sender.tab.windowId}`, {
     type: 'basic',
     iconUrl: 'icon.png',
@@ -75,8 +78,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // 警報響鈴中（提示音只有按「確認」才停）：通知上也放一顆確認，不用回到遊戲分頁
     ...(message.confirmable ? { buttons: [{ title: '確認（停止提示音）' }] } : {})
   });
-  // 手機通知（LINE）：所有警報都走這個出口，系統通知先建，LINE 失敗不能影響它
-  notifyLine(message.reason).catch(() => {});
 });
 
 chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => {
