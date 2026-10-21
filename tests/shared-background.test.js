@@ -1,6 +1,6 @@
 // 共用資料的 background 行為測試：在記憶體裡實際執行 background.js，假的 chrome（storage.local）與 fetch，
 // 檢查發了幾次請求、查詢回覆有沒有套上共用路線、快取存了什麼。
-const test = require('node:test');
+const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
@@ -24,6 +24,11 @@ globalThis.importScripts = (...names) => names.forEach(name => require(path.join
 globalThis.fetch = async (url, options) => {
   if (url === 'zap-data.json') return { ok: true, json: async () => ({ mobs, items: [], riddles: [], pages: {}, routes: [], routeAliases: {} }) };
   csvCalls.push({ url, signal: options?.signal });
+  if (csvFailure === 'hang') {
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+    });
+  }
   if (csvFailure === 'network') throw new Error('network down');
   if (csvFailure === 'http') return { ok: false, status: 403, text: async () => 'denied' };
   return { ok: true, status: 200, text: async () => csvBody };
@@ -185,4 +190,29 @@ test('other ZAP messages are answered without touching the sheet', async () => {
   reset();
   await ask({ type: 'ZAP_RIDDLES' });
   assert.equal(csvCalls.length, 0);
+});
+
+test('"update now" is not swallowed by a lookup that is already checking the cache', async () => {
+  reset();
+  await lookup();
+  const pending = lookup();
+  const refreshed = ask({ type: 'SHARED_REFRESH' }, settingsPage);
+  await Promise.all([pending, refreshed]);
+  assert.equal(csvCalls.length, 2, 'the forced update still fetched');
+});
+
+test('a sheet that never answers is given up on after the timeout and the reason says so', async () => {
+  reset();
+  csvFailure = 'hang';
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const pending = lookup();
+    while (!csvCalls.length) await new Promise(resolve => setImmediate(resolve));
+    mock.timers.tick(15000);
+    const reply = await pending;
+    assert.equal(reply.ok, true, 'the built-in lookup still answers');
+  } finally {
+    mock.timers.reset();
+  }
+  assert.match(store.sharedCache.mob.error.reason, /逾時/);
 });

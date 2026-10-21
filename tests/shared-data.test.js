@@ -179,3 +179,18 @@ test('overlay with no shared layer returns the reply as is', () => {
   const failed = { ok: false, error: 'x' };
   assert.ok(S.overlayReply(failed, { a: { command: 'run n' } }) === failed);
 });
+
+test('commands carrying a line break or a full-width semicolon are refused (they could hide a second command)', () => {
+  ['run n\ndrop all', 'run n\r\ndrop all', 'run n；drop all'].forEach(command => {
+    const result = S.checkCommand(command);
+    assert.equal(result.ok, false, JSON.stringify(command));
+    assert.match(result.reason, /換行|全形/);
+  });
+});
+
+test('an update time outside the calendar is unreadable instead of rolling over to another date', () => {
+  ['2026-13-45 25:61', '2026-02-31 10:00', '2026-10-21 24:00', '2026-10-21 10:60', '2026-00-10 10:00'].forEach(text => {
+    assert.ok(Number.isNaN(S.parseTime(text)), text);
+  });
+  ['2026-10-21 23:59:59', '2026-02-28', '2026/1/5 0:00'].forEach(text => assert.ok(Number.isFinite(S.parseTime(text)), text));
+});

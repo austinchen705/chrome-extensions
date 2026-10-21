@@ -17,6 +17,8 @@ const DIRECTION = /^\d*(?:ne|nw|se|sw|nu|nd|eu|ed|su|sd|wu|wd|n|s|e|w|u|d)$/;
 const WAIT = /^@(?:等待|wait)$/i;
 
 function checkCommand(command) {
+  // 遊戲只用 ASCII 的 ; 切指令；換行與全形分號不是合法的分隔，可能用來夾帶第二個指令，直接拒絕
+  if (/[\r\n；]/.test(String(command ?? ''))) return { ok: false, reason: '指令裡有換行或全形分號（；），要用半形的 ;' };
   for (const raw of String(command ?? '').split(';')) {
     const segment = raw.trim();
     if (!segment) continue;
@@ -83,7 +85,11 @@ function parseTime(text) {
   const match = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(String(text ?? '').trim());
   if (!match) return NaN;
   const [y, mo, d, h, mi, s] = match.slice(1).map(part => Number(part ?? 0));
-  return new Date(y, mo - 1, d, h, mi, s).getTime();
+  const date = new Date(y, mo - 1, d, h, mi, s);
+  // 超出日曆的值（13 月、2/31、25 點）Date 會自己進位成別天，要當成讀不到
+  const same = date.getFullYear() === y && date.getMonth() === mo - 1 && date.getDate() === d
+    && date.getHours() === h && date.getMinutes() === mi && date.getSeconds() === s;
+  return same ? date.getTime() : NaN;
 }
 
 // 以標題文字找欄位（順序不拘）；缺必要欄位回 error

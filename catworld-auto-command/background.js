@@ -178,10 +178,15 @@ async function refreshShared(force) {
   return cache;
 }
 
-// 同時有多個請求時共用同一次抓取
+// 同時有多個請求時共用同一次抓取；但「立即更新」（force）不能被一個可能直接用快取返回的進行中請求吞掉，要等它結束後再抓一次
 function refreshSharedOnce(force) {
-  sharedInflight ??= refreshShared(force).finally(() => { sharedInflight = null; });
-  return sharedInflight;
+  const run = () => {
+    const task = refreshShared(force).finally(() => { if (sharedInflight === task) sharedInflight = null; });
+    sharedInflight = task;
+    return task;
+  };
+  if (!sharedInflight) return run();
+  return force ? sharedInflight.catch(() => {}).then(run) : sharedInflight;
 }
 
 // 儲存或網路出任何問題都不能弄壞內建資料的查詢：回空的共用層
