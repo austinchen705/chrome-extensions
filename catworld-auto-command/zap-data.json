@@ -10820,12 +10820,6 @@
    "riddle": true
   },
   {
-   "name": "s",
-   "path": "2w s sw se s w sw su wu 2n ne 2u",
-   "npc": "",
-   "riddle": false
-  },
-  {
    "name": "唐門",
    "path": "sw w t s 2w 4n w t",
    "npc": "唐無敵、唐璦",
@@ -10929,38 +10923,14 @@
   },
   {
    "name": "雪山派",
-   "path": "sw 2w t 2n w nd ne nd e t",
-   "npc": "白萬劍",
-   "riddle": false
-  },
-  {
-   "name": "(金烏派)",
-   "path": "se s e s e se e s 3se s 4se 2ne e ne 2se ne e se",
-   "npc": "史小翠",
-   "riddle": false
-  },
-  {
-   "name": "2s",
-   "path": "se eu se eu 2e 2eu 2ed n",
-   "npc": "",
+   "path": "sw 2w t 2n w nd ne nd e t se s e s e se e s 3se s 4se 2ne e ne 2se ne e se 2s se eu se eu 2e 2eu 2ed n",
+   "npc": "白萬劍、史小翠",
    "riddle": false
   },
   {
    "name": "大雪山",
-   "path": "sw 2w t 2n w nd ne nd e t",
+   "path": "sw 2w t 2n w nd ne nd e t se s e s e se e s 3se s 4se 2ne e ne 2se ne e se 2s se eu se eu 2e 2eu nu",
    "npc": "狄雲",
-   "riddle": false
-  },
-  {
-   "name": "se",
-   "path": "s e s e se e s 3se s 4se 2ne e ne 2se ne e se",
-   "npc": "",
-   "riddle": false
-  },
-  {
-   "name": "2s",
-   "path": "se eu se eu 2e 2eu nu",
-   "npc": "",
    "riddle": false
   },
   {

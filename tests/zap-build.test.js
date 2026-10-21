@@ -77,7 +77,7 @@ const routesHtml = () => fs.readFileSync(path.join(__dirname, 'fixtures', 'route
 
 test('buildData includes routes and rejects a routes page that parses to too few places', () => {
   const ok = buildData({ ...input([]), routesHtml: routesHtml() }, { minZap: 1, minNewstart: 1 });
-  assert.equal(ok.data.routes.length, 64);
+  assert.equal(ok.data.routes.length, 59);
   assert.ok(ok.data.sources.includes('https://catworld.muds.tw/help/map.15'));
   assert.throws(() => buildData({ ...input([]), routesHtml: '<html></html>' }, { minZap: 1, minNewstart: 1 }), /來源解析異常/);
 });

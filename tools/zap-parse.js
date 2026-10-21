@@ -266,7 +266,9 @@ function buildRiddles({ indexHtml, menuHtml, pageHtml }) {
 }
 
 // 遊戲說明站的「總路徑」（help/map.15）：每個地點一行「│ 地名 路徑 │ NPC │」，路徑都以新長安門口為起點
-// （從醉仙樓出發要先走 run e 5n 2o）。路徑後面若跟「謎」代表那裡有謎，不是路徑的一部分
+// （從醉仙樓出發要先走 run e 5n 2o）。路徑後面若跟「謎」代表那裡有謎，不是路徑的一部分。
+// 太長的路徑會折到下一行：地名欄是空的（第一個字就是路徑）或只有括號註記（「(金烏派)」），要接回上一個地點；
+// 上一個地點已經遇到「謎」的話，折行是謎之後的路，不接（明教要先 touch 石壁 才走得過去）
 const ROUTES_URL = 'https://catworld.muds.tw/help/map.15';
 function parseRoutesHtml(html) {
   const routes = [];
@@ -274,14 +276,25 @@ function parseRoutesHtml(html) {
   for (const line of text.split(/\r?\n/)) {
     const match = /^\s*│\s+(\S+)\s+([^│]*?)\s*│\s*([^│]*?)\s*│?\s*$/.exec(line);
     if (!match || match[1].includes('﹕') || match[1].includes('map.')) continue;
-    const tokens = match[2].split(/\s+/);
+    const wrappedPath = /^[0-9a-z]+$/i.test(match[1]);
+    const continuation = wrappedPath || match[1].startsWith('(');
+    const tokens = (wrappedPath ? `${match[1]} ${match[2]}` : match[2]).split(/\s+/);
     const pathTokens = [];
     for (const token of tokens) {
       if (!/^[0-9a-z]+$/i.test(token)) break;
       pathTokens.push(token);
     }
+    const npc = match[3].trim();
+    const riddle = match[2].includes('謎');
+    const previous = routes[routes.length - 1];
+    if (continuation && previous) {
+      if (!previous.riddle && pathTokens.length) previous.path += ` ${pathTokens.join(' ')}`;
+      if (npc && !previous.npc.includes(npc)) previous.npc = previous.npc ? `${previous.npc}、${npc}` : npc;
+      previous.riddle = previous.riddle || riddle;
+      continue;
+    }
     if (!pathTokens.length) continue;
-    routes.push({ name: match[1], path: pathTokens.join(' '), npc: match[3].trim(), riddle: match[2].includes('謎') });
+    routes.push({ name: match[1], path: pathTokens.join(' '), npc, riddle });
   }
   return routes;
 }

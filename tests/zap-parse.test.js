@@ -175,7 +175,7 @@ const routesHtml = () => fs.readFileSync(path.join(__dirname, 'fixtures', 'route
 
 test('parseRoutesHtml reads every place with its run path', () => {
   const routes = parseRoutesHtml(routesHtml());
-  assert.equal(routes.length, 64);
+  assert.equal(routes.length, 59);
   const byName = name => routes.find(route => route.name === name);
   assert.equal(byName('長安').path, '2t');
   assert.equal(byName('蒙古').path, 't 4n 2w t');
@@ -188,6 +188,23 @@ test('parseRoutesHtml drops the riddle marker from the path and keeps it as a fl
   assert.equal(grave.path, 't s e 2s t 3sw 2su wu s 2w');
   assert.equal(grave.riddle, true);
   assert.equal(parseRoutesHtml(routesHtml()).find(route => route.name === '華山').riddle, false);
+});
+
+// 總路徑表太長的路徑會折到下一行（地名欄空白或只有括號註記），折行要接回上一個地點，不能變成「s」「2s」這種獨立地點
+test('parseRoutesHtml joins wrapped path lines onto the place above them', () => {
+  const routes = parseRoutesHtml(routesHtml());
+  const byName = name => routes.find(route => route.name === name);
+  assert.equal(byName('雪山派').path, 'sw 2w t 2n w nd ne nd e t se s e s e se e s 3se s 4se 2ne e ne 2se ne e se 2s se eu se eu 2e 2eu 2ed n');
+  assert.equal(byName('雪山派').npc, '白萬劍、史小翠');
+  assert.equal(byName('大雪山').path, 'sw 2w t 2n w nd ne nd e t se s e s e se e s 3se s 4se 2ne e ne 2se ne e se 2s se eu se eu 2e 2eu nu');
+  assert.ok(routes.every(route => !/^[0-9a-z]+$/i.test(route.name) && !route.name.startsWith('(')), JSON.stringify(routes.map(r => r.name)));
+});
+
+// 折行在「謎」之後（明教：先 touch 石壁 才走得過去）：謎之後的路不能直接接上，否則「走過去」會在牆前卡住
+test('parseRoutesHtml keeps the path before a riddle even when the rest wraps to the next line', () => {
+  const ming = parseRoutesHtml(routesHtml()).find(route => route.name === '明教');
+  assert.equal(ming.path, 'sw t n nu 5w t w nw w n');
+  assert.equal(ming.riddle, true);
 });
 
 test('parseRoutesHtml never returns a state heading or an empty path', () => {
