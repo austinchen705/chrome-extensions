@@ -19,6 +19,7 @@
 ## 驗證碼圖形偵測
 
 - 偵測規則在 `captcha-art.js`（`artText`、`looksLikeAsciiArt`、`looksLikeNoiseCaptcha`、`createWatcher`；content script 與測試共用，manifest 與 popup 的備援注入都要載入、且在 `content.js` 之前）。偵測規則都是看「連續好幾行」，而遊戲輸出常分成好幾批新增文字到達（一張圖可能被切成一行一批），所以 `content.js` 的 `captchaObserver` 不能只看單一批：一律經 `artWatcher.feed`（把最近 5 秒的新增文字接在一起、最多 120 行，偵測到就清空；`armDetection` 重新開始時也清）。
+- 診斷：驗證碼偵測沒反應時看遊戲頁 console（篩 `[catworld]`）：`疑似驗證碼的批次`（有在跑，印這一批的行數、長行數、背景色標記數與是否偵測到）、`看到疑似驗證碼，但定時、觸發、巨集都沒有在跑`（沒功能在跑本來就不偵測，每 5 秒最多印一次）。不要為了這個把規則放寬到會誤判一般輸出。
 - 測試：`tests/captcha-art.test.js`（jsdom，用 `tests/fixtures/captcha/` 的真實樣本：英數亂碼塊、B3 背景空白拼的數字圖、一般輸出；分批大小 1～4 行都要抓到、一般輸出逐行餵也不能誤判、隔太久的片段不能接在一起）。新增驗證碼樣式時先把真實輸出放進 fixtures 再改偵測。
 
 ## 定時分頁的隨機指令

@@ -58,6 +58,25 @@ function looksLikeNoiseCaptcha(text) {
   return false;
 }
 
+// 診斷用：一批新增文字的概況（有內容的行數、長行數、背景色標記數）。驗證碼偵測沒反應時，
+// 靠這個看那一刻偵測器到底看到了什麼，而不是猜
+function describeBatch(text) {
+  const marks = ((text || '').match(new RegExp(`[${NOISE_MARK}${BLOCK}]`, 'g')) || []).length;
+  let lines = 0;
+  let longLines = 0;
+  for (const line of (text || '').split('\n')) {
+    if (!line.trim()) continue;
+    lines += 1;
+    if (line.length >= 30) longLines += 1;
+  }
+  return { lines, longLines, marks };
+}
+// 長得像驗證碼（有一批長行或不少背景色標記）：只用來決定要不要在 console 印診斷，不是偵測規則
+function isArtLike(text) {
+  const { longLines, marks } = describeBatch(text);
+  return marks >= 5 || longLines >= 5;
+}
+
 // 最近 windowMs 內新增的文字接在一起（最多 maxLines 行）交給上面兩個偵測；偵測到就清空，同一張圖剩下的幾行不會再觸發一次。
 // 批次之間隔太久的不接，不然一般輸出裡零星的幾行會被拼成圖
 function createWatcher({ now = Date.now, windowMs = 5000, maxLines = 120 } = {}) {
@@ -77,5 +96,5 @@ function createWatcher({ now = Date.now, windowMs = 5000, maxLines = 120 } = {})
   };
 }
 
-globalThis.CatworldCaptchaArt = { BLOCK, NOISE_MARK, artText, looksLikeAsciiArt, looksLikeNoiseCaptcha, createWatcher };
+globalThis.CatworldCaptchaArt = { BLOCK, NOISE_MARK, artText, looksLikeAsciiArt, looksLikeNoiseCaptcha, describeBatch, isArtLike, createWatcher };
 })();

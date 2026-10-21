@@ -83,3 +83,17 @@ ui('after a detection the buffer is empty, so the leftover lines of the same pic
   assert.equal(watcher.feed(textOf(Art, SPRITE)), true);
   assert.equal(watcher.feed(textOf(Art, SPRITE.slice(0, 2))), false);
 });
+
+ui('describeBatch counts the long lines and the highlighted marks, so a captcha batch can be told from ordinary output', () => {
+  const Art = boot();
+  const picture = Art.describeBatch(textOf(Art, SPRITE));
+  assert.ok(picture.marks >= 10, 'the digit picture is made of marks');
+  const noise = Art.describeBatch(textOf(Art, NOISE));
+  assert.ok(noise.longLines >= 8 && noise.marks >= 8);
+  const ordinary = Art.describeBatch(textOf(Art, ORDINARY));
+  assert.equal(ordinary.marks, 0);
+  assert.equal(Art.isArtLike(textOf(Art, SPRITE)), true);
+  assert.equal(Art.isArtLike(textOf(Art, NOISE)), true);
+  assert.equal(Art.isArtLike(textOf(Art, ORDINARY)), false);
+  assert.equal(Art.isArtLike(''), false);
+});

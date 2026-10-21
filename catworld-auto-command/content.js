@@ -31,7 +31,7 @@ const REPEAT_BEEP_MAX_MS = 5 * 60 * 1000;
 let persistentAlert = false;
 let watchdogTimer = null;
 let lastCommand = '';
-const { artText, createWatcher } = globalThis.CatworldCaptchaArt;
+const { artText, createWatcher, describeBatch, isArtLike } = globalThis.CatworldCaptchaArt;
 // 驗證碼圖形偵測的緩衝：新增文字分批到達時要接在一起判斷（見 captcha-art.js）
 const artWatcher = createWatcher();
 // 自動停止時提醒使用者：系統通知（由 background 建立）、提示音、分頁標題閃爍
@@ -170,8 +170,25 @@ function feedKeywords(records) {
     .join('');
   if (text.trim()) groupList.forEach(group => { if (group.on) group.engine.onText(text); });
 }
+// 診斷（遊戲頁 console 篩 [catworld]）：驗證碼偵測沒反應時，靠這幾行看那一刻偵測器看到了什麼、做了什麼決定。
+// 沒有任何功能在跑時本來就不偵測，看到疑似驗證碼的批次就說一聲（最多每 5 秒一次，不洗版）
+let lastIdleLog = 0;
+function logIdleCaptcha(allRecords) {
+  const now = Date.now();
+  if (now - lastIdleLog < 5000) return;
+  const text = allRecords
+    .filter(record => !inGameWindow(record.target))
+    .flatMap(record => (record.type === 'characterData' ? [record.target.textContent || ''] : Array.from(record.addedNodes, artText)))
+    .join('');
+  if (!isArtLike(text)) return;
+  lastIdleLog = now;
+  console.info('[catworld] 看到疑似驗證碼，但定時、觸發、巨集都沒有在跑，所以沒有偵測', describeBatch(text));
+}
 const captchaObserver = new MutationObserver(allRecords => {
-  if (!active()) return;
+  if (!active()) {
+    logIdleCaptcha(allRecords);
+    return;
+  }
   const records = allRecords.filter(record => !inGameWindow(record.target));
   if (!records.length) return;
   const addedTexts = records.flatMap(record => record.type === 'characterData'
@@ -181,7 +198,9 @@ const captchaObserver = new MutationObserver(allRecords => {
     if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
   }
   const addedText = addedTexts.join('');
-  if (artWatcher.feed(addedText)) {
+  const artHit = artWatcher.feed(addedText);
+  if (artHit || isArtLike(addedText)) console.info('[catworld] 疑似驗證碼的批次', describeBatch(addedText), artHit ? '→ 偵測到，停止' : '→ 規則還不成立（可能分批，會和前幾秒的新增文字一起判斷）');
+  if (artHit) {
     stopAndAlert('偵測到驗證碼圖形，已停止；請完成驗證後再按開始');
     return;
   }
