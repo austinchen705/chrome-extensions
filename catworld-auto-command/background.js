@@ -43,8 +43,9 @@ async function sendLine(text) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // 設定頁的測試訊息：設定頁是開成分頁的（sender.tab 有值），所以看訊息是不是來自擴充功能自己的頁面（content script 的 sender.url 是遊戲網址）；
   // 要在下面「沒有 sender.tab 就略過」的檢查之前處理
-  if (message?.type === 'LINE_TEST' && sender.url?.startsWith(chrome.runtime.getURL(''))) {
-    sendLine('【CatWorld】這是一則測試訊息').then(sendResponse);
+  if (message?.type === 'LINE_TEST' && sender.id === chrome.runtime.id && sender.url?.startsWith(chrome.runtime.getURL(''))) {
+    // 讀儲存失敗也要回應：沒回應的話設定頁會一直等
+    sendLine('【CatWorld】這是一則測試訊息').catch(error => ({ at: Date.now(), ok: false, status: 0, reason: String(error?.name ?? 'Error') })).then(sendResponse);
     return true;
   }
   if (!sender.tab) return;

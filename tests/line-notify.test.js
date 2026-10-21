@@ -106,3 +106,23 @@ test('wiring: the popup stores credentials in local storage only and never logs 
   assert.doesNotMatch(source, /chrome\.storage\.sync/);
   assert.doesNotMatch(source, /console\.[a-z]+\([^)]*(token|userId|Token|UserId)/);
 });
+
+test('guard: content scripts never touch the LINE credentials', () => {
+  // storage.local 預設內容 script 也讀得到（而且 onChanged 會把新值送給每個監聽者），所以只能靠「內容 script 完全不碰它」守住
+  ['content.js', 'macro-notes.js', 'macro-wait.js', 'zap-panel.js', 'zap-riddle-ui.js', 'zap-equipment-ui.js', 'zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'trigger-engine.js', 'timer-settings.js']
+    .forEach(file => assert.doesNotMatch(ext(file), /lineNotify|lineLastResult|line-notify|CatworldLineNotify/, file));
+});
+
+test('wiring: the background always answers LINE_TEST and only trusts the extension itself', () => {
+  const background = ext('background.js');
+  const condition = background.split(/\r?\n/).find(line => line.includes("message?.type === 'LINE_TEST'")) ?? '';
+  assert.match(condition, /sender\.id === chrome\.runtime\.id/);
+  const start = background.indexOf("message?.type === 'LINE_TEST'");
+  const block = background.slice(start, background.indexOf('return true;', start));
+  assert.match(block, /\.catch\(/, 'a rejected storage read must still answer, or the page waits forever');
+  assert.doesNotMatch(block, /console\./);
+});
+
+test('wiring: a failure in the LINE block cannot stop the rest of the popup from wiring up', () => {
+  assert.match(ext('popup.js'), /try \{\s*CatworldLineNotifyUI\.attach\(document\);\s*\} catch/);
+});

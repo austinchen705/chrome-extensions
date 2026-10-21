@@ -33,19 +33,22 @@ const HTML = `<html><body>
   <div id="lineResult"></div>
 </body></html>`;
 
-function boot({ local = {}, session = {}, reply = { at: 0, ok: true, status: 200, reason: '' } } = {}) {
+function boot({ local = {}, session = {}, reply = { at: 0, ok: true, status: 200, reason: '' }, gate = null, sendError = null } = {}) {
   const dom = new JSDOM(HTML, { runScripts: 'outside-only' });
   const w = dom.window;
   const writes = { local: [], sync: [], session: [] };
   const sent = [];
   const listeners = [];
   const area = (name, store) => ({
-    get: async keys => Object.fromEntries([].concat(keys).map(key => [key, store[key]]).filter(([, value]) => value !== undefined)),
+    get: async keys => {
+      if (name === 'local' && gate) await gate;
+      return Object.fromEntries([].concat(keys).map(key => [key, store[key]]).filter(([, value]) => value !== undefined));
+    },
     set: async values => { writes[name].push(JSON.parse(JSON.stringify(values))); Object.assign(store, JSON.parse(JSON.stringify(values))); },
   });
   w.chrome = {
     storage: { local: area('local', { ...local }), session: area('session', { ...session }), sync: area('sync', {}), onChanged: { addListener: fn => listeners.push(fn) } },
-    runtime: { sendMessage: async message => { sent.push(message); return reply; } },
+    runtime: { sendMessage: async message => { sent.push(message); if (sendError) throw new Error(sendError); return reply; } },
   };
   w.eval(fs.readFileSync(path.join(root, 'line-notify-ui.js'), 'utf8'));
   w.CatworldLineNotifyUI.attach(w.document);
@@ -111,4 +114,53 @@ ui('the last result stored by the background is shown when the page opens and fo
   listeners.forEach(listener => listener({ lineLastResult: { newValue: { at: clock(10, 0, 1), ok: true, status: 200, reason: '' } } }, 'session'));
   assert.ok(await waitFor(() => /10:00:01/.test($('lineResult').textContent)));
   assert.match($('lineResult').textContent, /成功/);
+});
+
+ui('the fields stay disabled until the saved credentials have loaded, so early typing cannot overwrite them', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const { $, writes } = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID } }, gate });
+  assert.equal($('lineToken').disabled, true);
+  assert.equal($('lineUserId').disabled, true);
+  $('lineToken').value = 'x';
+  $('lineToken').dispatchEvent(new (new JSDOM('').window.Event)('input', { bubbles: true }));
+  await sleep(20);
+  assert.equal(writes.local.length, 0, 'nothing is written before the load finishes');
+  release();
+  assert.ok(await waitFor(() => $('lineToken').value === TOKEN));
+  assert.equal($('lineToken').disabled, false);
+  assert.equal($('lineUserId').disabled, false);
+  assert.equal($('lineUserId').value, USER_ID, 'the stored userId survived');
+});
+
+ui('a failing storage load still enables the fields', async () => {
+  const gate = Promise.reject(new Error('storage down'));
+  gate.catch(() => {});
+  const { $ } = boot({ gate });
+  assert.ok(await waitFor(() => $('lineToken').disabled === false));
+});
+
+ui('when the background cannot be reached the box says so instead of staying on "sending"', async () => {
+  const { $ } = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID } }, sendError: 'Receiving end does not exist' });
+  assert.ok(await waitFor(() => $('lineToken').value === TOKEN));
+  $('lineTest').click();
+  assert.ok(await waitFor(() => /沒有回應/.test($('lineResult').textContent)));
+  assert.match($('lineResult').textContent, /Receiving end does not exist/);
+  assert.equal($('lineTest').disabled, false, 'the button works again');
+});
+
+ui('the test button is disabled while a send is in flight, so rapid clicks cannot spend the push quota', async () => {
+  let finish;
+  const { $, sent, w } = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID } } });
+  w.chrome.runtime.sendMessage = message => new Promise(resolve => { sent.push(message); finish = () => resolve({ at: clock(1, 2, 3), ok: true, status: 200, reason: '' }); });
+  assert.ok(await waitFor(() => $('lineToken').value === TOKEN));
+  $('lineTest').click();
+  assert.ok(await waitFor(() => $('lineTest').disabled === true));
+  $('lineTest').click();
+  $('lineTest').click();
+  await sleep(20);
+  assert.equal(sent.length, 1, 'only one message went out');
+  finish();
+  assert.ok(await waitFor(() => /成功/.test($('lineResult').textContent)));
+  assert.equal($('lineTest').disabled, false);
 });

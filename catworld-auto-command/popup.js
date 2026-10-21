@@ -108,7 +108,11 @@ $('persistentAlert').addEventListener('change', () => {
 });
 
 // 手機通知（LINE）：憑證只存本機，發送由 background 做（見 line-notify-ui.js）
-CatworldLineNotifyUI.attach(document);
+try {
+  CatworldLineNotifyUI.attach(document);
+} catch (error) {
+  console.error('[catworld] 手機通知區塊初始化失敗', error.name);
+}
 
 // 三組輔助功能的開關（預設關閉）：存成一個物件，遊戲頁的面板監聽 storage 變化，馬上生效
 const FEATURE_BOXES = { mobs: 'featureMobs', items: 'featureItems', riddles: 'featureRiddles' };

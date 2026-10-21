@@ -24,9 +24,17 @@ function attach(doc) {
   const resultBox = doc.getElementById('lineResult');
   const credentials = () => ({ token: token.value.trim(), userId: userId.value.trim() });
 
+  // 儲存的憑證載入完成之前欄位先停用：否則一打字就會把「還沒載入的空欄位」存回去，蓋掉已存的值；載入失敗也要放行
+  let loaded = false;
+  token.disabled = true;
+  userId.disabled = true;
   chrome.storage.local.get(KEY).then(data => {
     token.value = data[KEY]?.token ?? '';
     userId.value = data[KEY]?.userId ?? '';
+  }).catch(() => {}).finally(() => {
+    loaded = true;
+    token.disabled = false;
+    userId.disabled = false;
   });
 
   // 最近一次結果由 background 寫在 storage.session（關掉瀏覽器就沒了）；打開頁面時讀一次，之後跟著變更
@@ -36,7 +44,7 @@ function attach(doc) {
     if (area === 'session' && changes[RESULT_KEY]) show(changes[RESULT_KEY].newValue);
   });
 
-  const save = () => chrome.storage.local.set({ [KEY]: credentials() });
+  const save = async () => { if (loaded) await chrome.storage.local.set({ [KEY]: credentials() }); };
   token.addEventListener('input', save);
   userId.addEventListener('input', save);
 
@@ -46,10 +54,19 @@ function attach(doc) {
       resultBox.textContent = '請先填 token 與 userId';
       return;
     }
+    // 發送中先停用按鈕：連點會連續花掉 LINE 的推播額度
+    testButton.disabled = true;
     resultBox.textContent = '發送中…';
-    await save();
-    const result = await chrome.runtime.sendMessage({ type: 'LINE_TEST' });
-    resultBox.textContent = result ? formatResult(result) : '沒有回應';
+    try {
+      await save();
+      const result = await chrome.runtime.sendMessage({ type: 'LINE_TEST' });
+      resultBox.textContent = result ? formatResult(result) : '沒有回應';
+    } catch (error) {
+      // background 沒啟動或沒回應（例如擴充功能剛重新載入）；訊息裡只有錯誤文字，不含憑證
+      resultBox.textContent = `沒有回應：${error?.message ?? error}`;
+    } finally {
+      testButton.disabled = false;
+    }
   });
 }
 
