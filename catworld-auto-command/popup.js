@@ -471,12 +471,21 @@ function renderCountdown(status) {
 }
 
 // 每秒向遊戲頁要一次狀態，更新定時倒數與兩組觸發的讀數、規則狀態
+// 定時的狀態文字平常只在按這一頁自己的按鈕時才會改；在面板或置頂面板裡開始、停止時，這裡要跟著變（只在開始／停止翻轉時改，不蓋掉錯誤訊息）
+let lastTimerRunning = null;
 async function refreshLive() {
   let status = null;
   try { status = await send({ type: 'STATUS' }); } catch { /* 連不上遊戲頁：讀數顯示 — */ }
+  if (status && lastTimerRunning !== null && Boolean(status.running) !== lastTimerRunning) setStatus(status.running ? '執行中' : (status.stopReason || '已停止'));
+  if (status) lastTimerRunning = Boolean(status.running);
   renderCountdown(status);
   Object.values(panes).forEach(pane => pane.refresh(status));
 }
+
+// 遊戲頁裡的狀態變了（面板、置頂面板按開始／停止）會通知這裡馬上更新；設定頁開在背景分頁時自己的每秒更新會被降頻，不通知就要切回來才會對
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (message?.type === 'STATE_CHANGED' && (!pageTabId || sender.tab?.id === pageTabId)) refreshLive();
+});
 
 (async () => {
   const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures']);

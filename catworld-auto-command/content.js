@@ -20,6 +20,15 @@ const anyTriggerOn = () => groupList.some(group => group.on);
 // 遊戲巨集（含 @等待）正在執行的清單；執行中算「在跑」，驗證碼偵測與看門狗才會作用
 const macroRuns = new Set();
 let macroNote = null;
+// 設定頁開在背景分頁時自己的每秒更新會被 Chrome 降頻，所以任何功能開始或停止（面板、置頂面板裡按的也算）就主動通知它
+let lastStateKey = null;
+function notifyStateChanged() {
+  try {
+    chrome.runtime.sendMessage({ type: 'STATE_CHANGED' }).catch(() => {});
+  } catch {
+    // 擴充功能剛重新載入，這個頁面的連線已失效
+  }
+}
 function active() { return running || anyTriggerOn() || macroRuns.size > 0; }
 const captchaPattern = /請輸入上(?:方|面)的數字/g;
 function hasCaptchaText(text) { return /請輸入上(?:方|面)的數字/.test(text || ''); }
@@ -886,6 +895,9 @@ function renderPanel() {
   panel.timerText.classList.toggle('alert', captchaStopped);
   panel.start.disabled = running;
   panel.stop.disabled = !running;
+  const stateKey = [running, ...groupList.map(group => group.on), macroRuns.size > 0].join();
+  if (lastStateKey !== null && stateKey !== lastStateKey) notifyStateChanged();
+  lastStateKey = stateKey;
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
