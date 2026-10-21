@@ -583,7 +583,11 @@ function initPanel() {
       .dot.alert { background: #ff5c4d; }
       .label { flex: 1; font-weight: 600; white-space: nowrap; }
       .toggle, .gear, .pip { all: unset; cursor: pointer; padding: 0 6px; color: #aaa; font-size: 20px; line-height: 1; }
-      .pip { font-size: 14px; }
+      /* 置頂按鈕是「彈出」圖示（方框加往右上的箭頭）；面板在浮窗裡時換成箭頭往回的圖示 */
+      .pip { display: inline-flex; }
+      .pip svg { width: 16px; height: 16px; display: block; }
+      .pip .in, .pip[data-open] .out { display: none; }
+      .pip[data-open] .in { display: block; }
       .pip[hidden] { display: none; }
       .confirm { all: unset; cursor: pointer; padding: 2px 12px; border-radius: 6px; background: #d9382c; color: #fff; font-size: 14px; font-weight: 700; }
       .confirm:hover { background: #ef4a3d; }
@@ -608,7 +612,7 @@ function initPanel() {
       :host([data-pip]) .collapsed .body { display: block; }
     </style>
     <div class="panel">
-      <div class="head"><span class="dot"></span><span class="label"></span><button class="confirm" hidden title="停止提示音與標題閃爍">確認</button><button class="pip" title="用永遠置頂的小視窗顯示面板">置頂</button><button class="gear" title="開啟／關閉設定頁">⚙</button><button class="toggle" title="收合／展開">–</button></div>
+      <div class="head"><span class="dot"></span><span class="label"></span><button class="confirm" hidden title="停止提示音與標題閃爍">確認</button><button class="pip" title="用永遠置頂的小視窗顯示面板" aria-label="置頂"><svg class="out" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3H3.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5V9"/><path d="M9.5 2.5h4v4M13.5 2.5l-6 6"/></svg><svg class="in" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3H3.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5V9"/><path d="M11.5 8.5h-4v-4M7.5 8.5l6-6"/></svg></button><button class="gear" title="開啟／關閉設定頁">⚙</button><button class="toggle" title="收合／展開">–</button></div>
       <div class="body">
         <div class="line"><span class="t">定時</span><span class="s timer-text"></span>
           <span class="mini"><button class="start">開始</button><button class="stop">停止</button></span></div>
@@ -773,7 +777,9 @@ function initPanel() {
     },
     notify: text => { macroNote = { text, until: Date.now() + 8000 }; renderPanel(); },
     onChange: (open, win) => {
-      $('.pip').textContent = open ? '收回' : '置頂';
+      $('.pip').toggleAttribute('data-open', open);
+      $('.pip').title = open ? '收回面板到遊戲頁' : '用永遠置頂的小視窗顯示面板';
+      $('.pip').setAttribute('aria-label', open ? '收回' : '置頂');
       // 浮窗裡的互動也算玩家有互動（警報提示靠它停止）；關掉時把它拿掉
       if (open) { pipWindow = win; interactionHub.addWindow(win); }
       else if (pipWindow) { interactionHub.removeWindow(pipWindow); pipWindow = null; }
