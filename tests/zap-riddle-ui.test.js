@@ -26,18 +26,18 @@ const waitFor = async (condition, ms = 3000) => {
 const riddles = [{ id: 'a/獨孤九劍', category: 'a', name: '獨孤九劍', condition: '無', difficulty: '易', reward: '技能', hint: '', page: 'qu1.htm', shared: [] }];
 const pages = { 'qu1.htm': { preamble: '', text: '', steps: [{ no: 1, text: '第一步', commands: 'run site' }, { no: 2, text: '第二步', commands: '' }, { no: 3, text: '第三步', commands: 'run site3' }] } };
 
-function boot({ shared, personal = {}, calls = [], started = [], sharedGate = null }) {
+function boot({ shared, personal = {}, calls = [], started = [], sharedGate = null, changeListeners = [], sharedNow = () => shared }) {
   const dom = new JSDOM('<html><body></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   w.chrome = {
-    storage: { local: { get: async () => ({ riddleCommands: personal, riddleDone: {} }), set: async () => {} }, onChanged: { addListener() {} } },
+    storage: { local: { get: async () => ({ riddleCommands: personal, riddleDone: {} }), set: async () => {} }, onChanged: { addListener: fn => changeListeners.push(fn) } },
     runtime: {
       sendMessage: async message => {
         calls.push(message.type);
         if (message.type === 'ZAP_RIDDLES') return { ok: true, riddles, pages };
         if (message.type === 'ZAP_RIDDLE_SHARED') {
           if (sharedGate) await sharedGate;
-          return { ok: true, steps: shared };
+          return { ok: true, steps: sharedNow() };
         }
         return { ok: false };
       },
@@ -51,7 +51,7 @@ function boot({ shared, personal = {}, calls = [], started = [], sharedGate = nu
   const api = w.CatworldZapRiddleUI.attach(shadow, { readStats: () => ({ exp: 1000000, force: 1000 }), startSteps: text => { started.push(text); return true; } });
   api.setEnabled(true);
   shadow.querySelector('.rd-open').click();
-  return { shadow, started, calls };
+  return { shadow, started, calls, changeListeners };
 }
 
 const openRiddle = async shadow => {
@@ -146,4 +146,24 @@ ui('in the whole-page view only the riddle own steps carry a label, numbered ins
     riddles.splice(0, riddles.length, ...savedRiddles);
     pages['qu1.htm'].steps = savedSteps;
   }
+});
+
+ui('a step being viewed picks up shared steps when the cache changes in another tab', async () => {
+  let current = {};
+  const dom = boot({ shared: {}, sharedNow: () => current });
+  const steps = await openRiddle(dom.shadow);
+  assert.match(steps[0].querySelector('.rd-cmd').textContent, /指令（網站）：run site/);
+  current = { 'qu1.htm': { 1: { command: 'run changed', by: '小華', note: '', n: 3 } } };
+  dom.changeListeners.forEach(listener => listener({ sharedCache: { newValue: {} } }, 'local'));
+  assert.ok(await waitFor(() => /指令（共用，小華）：run changed/.test(dom.shadow.querySelector('.rd-step .rd-cmd')?.textContent ?? '')));
+});
+
+ui('other storage changes do not ask for the shared steps again', async () => {
+  const dom = boot({ shared: {} });
+  await openRiddle(dom.shadow);
+  const before = dom.calls.filter(type => type === 'ZAP_RIDDLE_SHARED').length;
+  dom.changeListeners.forEach(listener => listener({ riddleDone: {} }, 'local'));
+  dom.changeListeners.forEach(listener => listener({ sharedCache: {} }, 'sync'));
+  await sleep(50);
+  assert.equal(dom.calls.filter(type => type === 'ZAP_RIDDLE_SHARED').length, before);
 });

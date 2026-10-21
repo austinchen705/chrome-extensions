@@ -84,7 +84,7 @@ test('a row whose time cannot be read counts as oldest; equal times go to the la
 test('a mob that is not in the data is kept and reported as unmatched', () => {
   const result = build('不存在的怪(nobody),run n,,小明,2026-10-21 14:30');
   assert.ok(result.routes[Z.customKey('不存在的怪(nobody)')]);
-  assert.deepEqual(result.report.unmatched, [{ row: 2, name: '不存在的怪(nobody)' }]);
+  assert.deepEqual(result.report.unmatched, [{ row: 2, name: '不存在的怪(nobody)', reason: '資料裡沒有這個怪物' }]);
 });
 
 test('commands made only of walking and interaction verbs pass', () => {
@@ -385,4 +385,55 @@ test('a shared step is flagged as changed only when its step count was filled in
   const page = { steps: [{ no: 1, text: 't', commands: '' }, { no: 2, text: 't', commands: '' }] };
   const at = n => R.effectiveStep(page, 1, {}, 'x.htm', { 'x.htm': { 1: { command: 'run a', by: '', note: '', n } } }).stale;
   assert.deepEqual([at(2), at(3), at(undefined), at(null)], [false, true, false, false]);
+});
+
+// ---- 報告：原因文字、列數上限、逐列顯示 ----
+test('every unmatched row says what could not be matched', () => {
+  const mob = buildLoc('不存在(x),,run e,,小明,', '老虎(tiger),火星,run e,,小明,');
+  assert.deepEqual(mob.report.unmatched.map(item => item.reason), ['資料裡沒有這個怪物', '這個怪物沒有在「火星」']);
+  const riddle = buildRiddle('不存在的謎,1,run a,,甲,', '獨孤九劍,9,run a,,甲,');
+  assert.deepEqual(riddle.report.unmatched.map(item => item.reason), ['資料裡沒有這個謎', '這個謎沒有第 9 步']);
+});
+
+test('a sheet longer than the row limit reads the first rows only and counts the rest', () => {
+  assert.equal(S.MAX_ROWS, 2000);
+  const lines = Array.from({ length: S.MAX_ROWS + 5 }, (_, i) => `怪物${i}(m${i}),run e,,小明,`);
+  const mob = S.buildMobRoutes(['怪物名稱,指令,備註,更新者,更新時間', ...lines].join('\n'), []);
+  assert.deepEqual([mob.report.rows, mob.report.used, mob.report.overflow], [S.MAX_ROWS + 5, S.MAX_ROWS, 5]);
+  assert.ok(mob.routes[Z.customKey('怪物1999(m1999)')]);
+  assert.equal(mob.routes[Z.customKey('怪物2000(m2000)')], undefined);
+  const riddleLines = Array.from({ length: S.MAX_ROWS + 3 }, () => '獨孤九劍,1,run e,,甲,');
+  const riddle = S.buildRiddleSteps([RIDDLE_HEADER, ...riddleLines].join('\n'), RIDDLES, PAGES);
+  assert.deepEqual([riddle.report.rows, riddle.report.overflow], [S.MAX_ROWS + 3, 3]);
+});
+
+test('a sheet within the limit has no overflow', () => {
+  assert.equal(buildLoc('老虎(tiger),,run e,,小明,').report.overflow, 0);
+});
+
+test('reportLines lists every dropped and unmatched row with its row number and reason', () => {
+  const mob = buildLoc('老虎(tiger),,drop x,,小明,', '不存在(x),,run e,,小明,', '老虎(tiger),火星,run e,,小明,');
+  assert.deepEqual(S.reportLines(mob.report), [
+    '第 2 列：丟掉（不允許的指令「drop」）',
+    '第 3 列：不存在(x)　資料裡沒有這個怪物',
+    '第 4 列：老虎(tiger)（火星）　這個怪物沒有在「火星」',
+  ]);
+  const riddle = buildRiddle('獨孤九劍,9,run a,,甲,');
+  assert.deepEqual(S.reportLines(riddle.report), ['第 2 列：獨孤九劍 第 9 步　這個謎沒有第 9 步']);
+});
+
+test('reportLines mentions rows beyond the limit and cuts a long list', () => {
+  const lines = Array.from({ length: 50 }, (_, i) => `x${i}(x),drop y,,小明,`);
+  const mob = S.buildMobRoutes(['怪物名稱,指令,備註,更新者,更新時間', ...lines].join('\n'), []);
+  const out = S.reportLines(mob.report, 30);
+  assert.equal(out.length, 31);
+  assert.equal(out[30], '…還有 20 筆沒有顯示');
+  const big = S.buildMobRoutes(['怪物名稱,指令,備註,更新者,更新時間', ...Array.from({ length: S.MAX_ROWS + 4 }, (_, i) => `m${i}(m),run e,,,`)].join('\n'), []);
+  assert.ok(S.reportLines(big.report).includes(`第 ${S.MAX_ROWS + 2} 列以後共 4 列超過上限（${S.MAX_ROWS} 列）沒有讀`));
+  assert.deepEqual(S.reportLines(null), [], 'no report, no lines');
+});
+
+test('reportLines puts dropped and unmatched rows in sheet order', () => {
+  const mob = buildLoc('不存在(x),,run e,,小明,', '老虎(tiger),,drop x,,小明,', '不存在(y),,run e,,小明,');
+  assert.deepEqual(S.reportLines(mob.report).map(line => line.slice(0, 5)), ['第 2 列', '第 3 列', '第 4 列']);
 });

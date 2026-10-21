@@ -122,8 +122,8 @@ Object.values(FEATURE_BOXES).forEach(id => $(id).addEventListener('change', () =
 
 // 共用資料（Google 試算表）：兩個分頁的連結只存本機（sharedSources：{ mob, riddle }，不進匯出），抓取由 background 做，結果在 sharedCache
 const SHARED_FIELDS = {
-  mob: { input: 'sharedMobUrl', result: 'sharedMobResult', title: '怪物路線', used: '隻', unmatched: '怪物' },
-  riddle: { input: 'sharedRiddleUrl', result: 'sharedRiddleResult', title: '解謎指令', used: '步', unmatched: '謎或步驟' },
+  mob: { input: 'sharedMobUrl', result: 'sharedMobResult', detail: 'sharedMobDetail', title: '怪物路線', used: '隻', unmatched: '怪物' },
+  riddle: { input: 'sharedRiddleUrl', result: 'sharedRiddleResult', detail: 'sharedRiddleDetail', title: '解謎指令', used: '步', unmatched: '謎或步驟' },
 };
 const timeText = at => new Date(at).toLocaleString('zh-TW', { hour12: false });
 function sharedSummary(field, url, entry) {
@@ -135,11 +135,18 @@ function sharedSummary(field, url, entry) {
   return entry.error ? `${field.title}：更新失敗（${timeText(entry.error.at)}）：${entry.error.reason}\n目前使用：${ok}` : `${field.title}：${ok}`;
 }
 async function showShared() {
-  const data = await chrome.storage.local.get(['sharedSources', 'sharedCache']);
+  const data = await chrome.storage.local.get(['sharedSources', 'sharedCache', 'zapFeatures']);
+  // 怪物查詢與解謎都關著時 background 不會抓，說明一下，不然看起來像壞掉
+  $('sharedOff').hidden = data.zapFeatures?.mobs === true || data.zapFeatures?.riddles === true;
   Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
     const url = data.sharedSources?.[kind] ?? '';
     if (document.activeElement !== $(field.input)) $(field.input).value = url;
-    $(field.result).textContent = sharedSummary(field, url, data.sharedCache?.[kind]?.url === url ? data.sharedCache[kind] : null);
+    const entry = data.sharedCache?.[kind]?.url === url ? data.sharedCache[kind] : null;
+    $(field.result).textContent = sharedSummary(field, url, entry);
+    // 被丟掉與對不到的列逐列列出，填錯的人自己看得出要改表上哪一列
+    const lines = url ? CatworldSharedData.reportLines(entry?.report) : [];
+    $(field.detail).hidden = !lines.length;
+    $(field.detail).textContent = lines.join('\n');
   });
 }
 const setAllShared = text => Object.values(SHARED_FIELDS).forEach(field => { $(field.result).textContent = `${field.title}：${text}`; });
@@ -171,7 +178,7 @@ Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
 });
 $('sharedRefresh').addEventListener('click', refreshShared);
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.sharedSources || changes.sharedCache)) showShared();
+  if (area === 'local' && (changes.sharedSources || changes.sharedCache || changes.zapFeatures)) showShared();
 });
 showShared();
 

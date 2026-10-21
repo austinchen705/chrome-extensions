@@ -28,11 +28,11 @@ const mobWith = (route, exact = true) => ({
   q: 1.2, grade: 'green', idOnly: false, route: route && { route, exact },
 });
 
-function boot({ startResult = true, items, calls = [] }) {
+function boot({ startResult = true, items, calls = [], changeListeners = [] }) {
   const dom = new JSDOM('<html><body><div id="exp">414748</div></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   w.chrome = {
-    storage: { local: { get: async () => ({}), set: async () => {} }, onChanged: { addListener() {} } },
+    storage: { local: { get: async () => ({}), set: async () => {} }, onChanged: { addListener: fn => changeListeners.push(fn) } },
     runtime: { sendMessage: async message => { calls.push(message.type); return { ok: true, items, total: items.length }; } },
   };
   ['zap-mobs.js', 'zap-items.js', 'zap-equipment.js', 'zap-panel.js'].forEach(file => w.eval(fs.readFileSync(path.join(root, file), 'utf8')));
@@ -110,6 +110,19 @@ ui('your own route still beats a shared 停用 in the list', async () => {
   assert.ok(await waitFor(() => dom.shadow.querySelector('.zap-walk')));
   dom.shadow.querySelector('.zap-walk').click();
   assert.deepEqual(dom.started, ['run mine']);
+});
+
+ui('an open list asks again when the shared sheet cache changes in another tab', async () => {
+  const calls = [];
+  const changeListeners = [];
+  boot({ items: [mobWith({ name: '華山', path: 't' })], calls, changeListeners });
+  assert.ok(await waitFor(() => calls.filter(type => type === 'ZAP_SUITABLE').length === 1));
+  changeListeners.forEach(listener => listener({ sharedCache: { newValue: {} } }, 'local'));
+  assert.ok(await waitFor(() => calls.filter(type => type === 'ZAP_SUITABLE').length === 2));
+  changeListeners.forEach(listener => listener({ somethingElse: {} }, 'local'));
+  changeListeners.forEach(listener => listener({ sharedCache: {} }, 'sync'));
+  await sleep(50);
+  assert.equal(calls.filter(type => type === 'ZAP_SUITABLE').length, 2, 'other keys and other storage areas do not trigger a query');
 });
 
 ui('the button says so when the queue refused the commands', async () => {

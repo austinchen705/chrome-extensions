@@ -189,6 +189,8 @@ function attach(root, { readExp, startSteps }) {
     if (area !== 'local') return;
     if (changes[WEAPON_KEY]) mainWeapon = validWeapon(changes[WEAPON_KEY].newValue);
     if (changes[ROUTES_KEY]) customRoutes = Z.parseCustomRoutes(JSON.stringify(changes[ROUTES_KEY].newValue ?? {})).routes ?? {};
+    // 別的分頁（或「立即更新」）抓到新的共用路線：清單開著就重查一次（共用層是 background 套在查詢回覆上的）
+    if (changes.sharedCache) refresh();
     if (!changes[THRESHOLDS_KEY]) return;
     thresholds = Z.normalizeThresholds(changes[THRESHOLDS_KEY].newValue);
     refresh();

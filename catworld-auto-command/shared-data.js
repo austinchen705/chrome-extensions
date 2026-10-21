@@ -6,6 +6,7 @@
 if (globalThis.CatworldSharedData) return;
 
 const MAX_SEGMENT = 500;
+const MAX_ROWS = 2000;
 const DISABLE = '停用';
 const PUBLISH_HINT = '要用「檔案 → 共用 → 發布到網路」選那個分頁、格式選 CSV，再貼上產生的連結';
 
@@ -100,7 +101,8 @@ function parseTime(text) {
 }
 
 // 兩個分頁共用的讀法：解析 CSV、依標題文字找欄位（順序不拘，缺必要欄位就是格式錯誤）、略過空列；
-// 每一列給 { row（試算表上的列號，標題是第 1 列）, cell(欄名)（沒有這個欄位或空的回空字串）}
+// 每一列給 { row（試算表上的列號，標題是第 1 列）, cell(欄名)（沒有這個欄位或空的回空字串）}。
+// 最多讀前 MAX_ROWS 列（壞掉或爆量的表不能拖垮面板），其餘不讀，回 total（全部有資料的列數）、overflow（沒讀的列數）、overflowFrom（第一個沒讀的列號）
 function readSheet(csvText, required) {
   const records = parseCsv(csvText);
   if (!records.length) return { error: '內容是空的，不是 CSV' };
@@ -108,11 +110,18 @@ function readSheet(csvText, required) {
   const missing = required.filter(name => !(name in index));
   if (missing.length) return { error: `缺少欄位「${missing.join('、')}」，第一列要是標題列` };
   const rows = [];
+  let total = 0;
+  let overflowFrom = null;
   records.slice(1).forEach((record, i) => {
     if (record.every(value => !String(value).trim())) return;
+    total += 1;
+    if (rows.length >= MAX_ROWS) {
+      overflowFrom ??= i + 2;
+      return;
+    }
     rows.push({ row: i + 2, cell: name => (name in index ? String(record[index[name]] ?? '').trim() : '') });
   });
-  return { rows };
+  return { rows, total, overflow: total - rows.length, overflowFrom };
 }
 
 // 指令欄的共用規則：空白丟掉；整個詞「停用」是關掉；其餘過白名單。回 { entry, rank } 或 { reason }；
@@ -143,7 +152,7 @@ function buildMobRoutes(csvText, mobs) {
     mobPlaces(mob).forEach(place => known.add(`${customKey(mob.name)}|${place}`));
   });
   const best = new Map();
-  const report = { rows: sheet.rows.length, used: 0, dropped: [], unmatched: [] };
+  const report = { rows: sheet.total, overflow: sheet.overflow, overflowFrom: sheet.overflowFrom, used: 0, dropped: [], unmatched: [] };
   sheet.rows.forEach(({ row, cell }) => {
     const name = cell('怪物名稱');
     if (!name) return report.dropped.push({ row, reason: '怪物名稱是空的' });
@@ -157,7 +166,9 @@ function buildMobRoutes(csvText, mobs) {
   const routes = {};
   best.forEach(({ row, name, location, entry }, key) => {
     routes[key] = entry;
-    if (!known.has(key)) report.unmatched.push(location ? { row, name, location } : { row, name });
+    if (known.has(key)) return;
+    const unmatched = location ? { row, name, location, reason: known.has(customKey(name)) ? `這個怪物沒有在「${location}」` : '資料裡沒有這個怪物' } : { row, name, reason: '資料裡沒有這個怪物' };
+    report.unmatched.push(unmatched);
   });
   report.used = best.size;
   report.unmatched.sort((a, b) => a.row - b.row);
@@ -177,7 +188,7 @@ function buildRiddleSteps(csvText, riddles, pages) {
   const byName = new Map();
   (riddles ?? []).forEach(riddle => { if (!byName.has(customKey(riddle.name))) byName.set(customKey(riddle.name), riddle); });
   const best = new Map();
-  const report = { rows: sheet.rows.length, used: 0, dropped: [], unmatched: [] };
+  const report = { rows: sheet.total, overflow: sheet.overflow, overflowFrom: sheet.overflowFrom, used: 0, dropped: [], unmatched: [] };
   sheet.rows.forEach(({ row, cell }) => {
     const name = cell('謎名稱');
     const no = Number(cell('步驟'));
@@ -188,7 +199,7 @@ function buildRiddleSteps(csvText, riddles, pages) {
     const riddle = byName.get(customKey(name));
     const page = riddle?.page && pages?.[riddle.page];
     const position = page && globalThis.CatworldZapRiddles.sectionSteps(riddle, page)[no - 1];
-    if (!position) return report.unmatched.push({ row, name, step: no });
+    if (!position) return report.unmatched.push({ row, name, step: no, reason: riddle ? `這個謎沒有第 ${no} 步` : '資料裡沒有這個謎' });
     const n = Number(cell('步驟數'));
     if (Number.isInteger(n) && n > 0) made.entry.n = n;
     const key = `${riddle.page}|${position}`;
@@ -201,6 +212,20 @@ function buildRiddleSteps(csvText, riddles, pages) {
   });
   report.used = best.size;
   return { ok: true, steps, report };
+}
+
+// 設定頁用：報告變成一行一行的文字（被丟掉的、對不到的、超過上限沒讀的），最多 max 行，其餘寫「還有 N 筆」
+function reportLines(report, max = 30) {
+  if (!report) return [];
+  const label = item => `${item.name}${item.location ? `（${item.location}）` : ''}${item.step === undefined ? '' : ` 第 ${item.step} 步`}`;
+  const lines = [
+    ...(report.dropped ?? []).map(item => ({ row: item.row, text: `第 ${item.row} 列：丟掉（${item.reason}）` })),
+    ...(report.unmatched ?? []).map(item => ({ row: item.row, text: `第 ${item.row} 列：${label(item)}　${item.reason}` })),
+  ].sort((a, b) => a.row - b.row).map(line => line.text);
+  const shown = lines.length > max ? [...lines.slice(0, max), `…還有 ${lines.length - max} 筆沒有顯示`] : lines;
+  // 超過上限沒讀的提示一定要看得到，不能被長清單截掉
+  if (report.overflow > 0) shown.push(`第 ${report.overflowFrom} 列以後共 ${report.overflow} 列超過上限（${MAX_ROWS} 列）沒有讀`);
+  return shown;
 }
 
 // background 用：把共用層疊在 ZAP_LOOKUP／ZAP_SUITABLE 的回覆上（個人層在面板那邊再蓋過去）。
@@ -223,5 +248,5 @@ function overlayReply(reply, shared) {
   return { ...reply, items: reply.items.map(item => (item.candidates ? { ...item, candidates: item.candidates.map(apply) } : apply(item))) };
 }
 
-globalThis.CatworldSharedData = { MAX_SEGMENT, ALLOWED_VERBS, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, overlayReply };
+globalThis.CatworldSharedData = { MAX_SEGMENT, MAX_ROWS, ALLOWED_VERBS, reportLines, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, overlayReply };
 })();

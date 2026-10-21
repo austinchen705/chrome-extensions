@@ -252,10 +252,19 @@ function attach(root, { readStats, startSteps }) {
     if (area !== 'local') return;
     if (changes[EDITS_KEY]) edits = changes[EDITS_KEY].newValue ?? {};
     if (changes[DONE_KEY]) done = changes[DONE_KEY].newValue ?? {};
+    if (changes.sharedCache && data) loadShared();
     if (data && !current && !box.hidden) renderList();
   });
 
   // ---- 開關與載入 ----
+  // 共用的步驟每次打開都重新要一次（背景一小時內不會重抓），別的分頁抓到新的共用資料時也再要一次，不然要重新整理遊戲頁才看得到別人新補的。
+  // 不等它：共用抓取卡住（逾時最久 15 秒）時清單照常先出來，回來後如果正在看步驟（而且沒有編輯框開著）再重畫
+  function loadShared() {
+    send({ type: 'ZAP_RIDDLE_SHARED' }).then(reply => {
+      data.shared = reply?.ok ? reply.steps : {};
+      if (!box.hidden && current && !main.querySelector('.rd-edit:not([hidden])')) renderDetail();
+    });
+  }
   async function open() {
     if (!data) {
       status.textContent = '載入中…';
@@ -274,12 +283,7 @@ function attach(root, { readStats, startSteps }) {
         say(`讀取已存的資料失敗：${error.message}`);
       }
     }
-    // 共用的步驟每次打開都重新要一次（背景一小時內不會重抓），不然要重新整理遊戲頁才看得到別人新補的。
-    // 不等它：共用抓取卡住（逾時最久 15 秒）時清單照常先出來，回來後如果正在看步驟（而且沒有編輯框開著）再重畫
-    send({ type: 'ZAP_RIDDLE_SHARED' }).then(reply => {
-      data.shared = reply?.ok ? reply.steps : {};
-      if (!box.hidden && current && !main.querySelector('.rd-edit:not([hidden])')) renderDetail();
-    });
+    loadShared();
     if (box.hidden) return;
     renderList();
   }
