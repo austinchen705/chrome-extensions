@@ -8,6 +8,9 @@ const KEY = 'lineNotify';
 const RESULT_KEY = 'lineLastResult';
 const THROTTLE_KEY = 'lineThrottle';
 const DEFAULT_LIMIT = 10;
+// 上限與核心模組一致（popup.html 先載入 line-notify.js）；沒載入時用同樣的數字，不讓設定頁壞掉
+const MAX_DEDUPE_MINUTES = globalThis.CatworldLineNotify?.MAX_DEDUPE_MINUTES ?? 24 * 60;
+const MAX_HOURLY_LIMIT = globalThis.CatworldLineNotify?.MAX_HOURLY_LIMIT ?? 100;
 const pad = value => String(value).padStart(2, '0');
 
 // 最近一次發送結果的顯示：時間、HTTP 狀態、簡短原因；status 0 表示根本沒發出去（沒填憑證或網路錯誤）
@@ -30,11 +33,14 @@ function attach(doc) {
   const skippedBox = doc.getElementById('lineSkipped');
   const testButton = doc.getElementById('lineTest');
   const resultBox = doc.getElementById('lineResult');
-  // 空白或不是正數就存成 null：背景程式會改用預設值（10 分鐘、每小時 10 則）
-  const limit = field => { const number = Number(field.value); return field.value.trim() !== '' && Number.isFinite(number) && number > 0 ? number : null; };
+  // 整數、至少 1、不超過上限；空白或不是正數就存成 null（背景程式會改用預設值 10 分鐘、每小時 10 則）
+  const limit = (field, max) => {
+    const number = Number(field.value);
+    return field.value.trim() !== '' && Number.isFinite(number) && number > 0 ? Math.min(Math.max(1, Math.floor(number)), max) : null;
+  };
   const credentials = () => ({
     token: token.value.trim(), userId: userId.value.trim(), enabled: enabledBox.checked,
-    dedupeMinutes: limit(dedupe), hourlyLimit: limit(hourly),
+    dedupeMinutes: limit(dedupe, MAX_DEDUPE_MINUTES), hourlyLimit: limit(hourly, MAX_HOURLY_LIMIT),
   });
   const lockable = [token, userId, enabledBox, dedupe, hourly];
 
@@ -80,6 +86,9 @@ function attach(doc) {
   userId.addEventListener('input', onCredentialInput);
   dedupe.addEventListener('input', save);
   hourly.addEventListener('input', save);
+  // 離開欄位時把畫面改成「實際生效的值」，使用者才看得出填 0 或 2.5 或太大被換成了什麼
+  dedupe.addEventListener('change', () => { dedupe.value = limit(dedupe, MAX_DEDUPE_MINUTES) ?? DEFAULT_LIMIT; });
+  hourly.addEventListener('change', () => { hourly.value = limit(hourly, MAX_HOURLY_LIMIT) ?? DEFAULT_LIMIT; });
 
   // 總開關預設關閉；token 或 userId 沒填就開不起來（關掉不受限）
   enabledBox.addEventListener('change', () => {

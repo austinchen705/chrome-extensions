@@ -54,6 +54,7 @@ function boot({ local = {}, session = {}, reply = { at: 0, ok: true, status: 200
     storage: { local: area('local', { ...local }), session: area('session', { ...session }), sync: area('sync', {}), onChanged: { addListener: fn => listeners.push(fn) } },
     runtime: { sendMessage: async message => { sent.push(message); if (sendError) throw new Error(sendError); return reply; } },
   };
+  w.eval(fs.readFileSync(path.join(root, 'line-notify.js'), 'utf8'));
   w.eval(fs.readFileSync(path.join(root, 'line-notify-ui.js'), 'utf8'));
   w.CatworldLineNotifyUI.attach(w.document);
   const $ = id => w.document.getElementById(id);
@@ -289,4 +290,35 @@ ui('the limit fields are locked until the saved settings have loaded', async () 
   release();
   assert.ok(await waitFor(() => $('lineDedupe').disabled === false));
   assert.equal($('lineDedupe').value, '3');
+});
+
+ui('limits are whole numbers within the allowed range: what is saved and what the field shows after leaving it match what really applies', async () => {
+  const { $, type, writes, w } = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID } } });
+  assert.ok(await waitFor(() => $('lineToken').value === TOKEN));
+  const leave = id => $(id).dispatchEvent(new w.Event('change', { bubbles: true }));
+  const lastSaved = () => writes.local.at(-1).lineNotify;
+
+  type('lineHourly', '2.5');
+  assert.ok(await waitFor(() => writes.local.length >= 1));
+  assert.equal(lastSaved().hourlyLimit, 2, 'decimals are rounded down');
+  leave('lineHourly');
+  assert.equal($('lineHourly').value, '2', 'the field shows what applies');
+
+  type('lineHourly', '0');
+  assert.ok(await waitFor(() => lastSaved().hourlyLimit === null));
+  leave('lineHourly');
+  assert.equal($('lineHourly').value, '10', 'nonsense shows the default that really applies');
+
+  type('lineHourly', '1000000');
+  assert.ok(await waitFor(() => lastSaved().hourlyLimit === 100));
+  leave('lineHourly');
+  assert.equal($('lineHourly').value, '100');
+
+  type('lineDedupe', '999999');
+  assert.ok(await waitFor(() => lastSaved().dedupeMinutes === 1440));
+  leave('lineDedupe');
+  assert.equal($('lineDedupe').value, '1440');
+
+  type('lineDedupe', '0.4');
+  assert.ok(await waitFor(() => lastSaved().dedupeMinutes === 1), 'never rounds down to zero');
 });

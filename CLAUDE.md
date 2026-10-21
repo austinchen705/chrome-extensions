@@ -94,8 +94,8 @@
 
 ## 手機通知（LINE）
 
-- 所有警報都走同一個出口：content script 送 `ALERT`，background 建系統通知，**同時**呼叫 `notifyLine`（先啟動它，再建系統通知，這樣系統通知同步丟錯也不會連帶丟掉手機通知；LINE 失敗也不能影響系統通知）。新增警報只要照舊送 `ALERT`，不要另開推播出口。
-- 判斷邏輯在 `line-notify.js`（不碰 DOM、不碰 `chrome.*`，`fetch` 與時間由呼叫端注入）：總開關開著且 token 與 userId 都有填才算要發；再依去重（同原因 N 分鐘內只推一次）與滾動一小時的上限決定發或略過，被略過的累計在 `skipped`；開關關閉不算略過。去重紀錄放 `chrome.storage.session` 的 `lineThrottle`，最近一次結果放 `lineLastResult`（帶 `source`：test 或 alert）；兩則警報要排隊依序讀寫紀錄，否則會同時讀到舊紀錄。「發送測試訊息」只在設定頁，不受開關、去重、上限影響也不計數，只接受擴充功能自己的頁面（設定頁是開成分頁的，所以看 `sender.id` 與 `sender.url`，不能看 `sender.tab`）。
+- 所有警報都走同一個出口（現在有驗證碼、看門狗、規則被停用；之後新增的警報也要走這裡）：content script 送 `ALERT`，background 建系統通知，**同時**呼叫 `notifyLine`（先啟動它，再建系統通知，這樣系統通知同步丟錯也不會連帶丟掉手機通知；LINE 失敗也不能影響系統通知）。新增警報只要照舊送 `ALERT`，不要另開推播出口。
+- 判斷邏輯在 `line-notify.js`（不碰 DOM、不碰 `chrome.*`，`fetch` 與時間由呼叫端注入）：總開關開著且 token 與 userId 都有填才算要發；再依去重（同原因 N 分鐘內只推一次）與滾動一小時的上限決定發或略過，被略過的累計在 `skipped`；開關關閉不算略過。去重紀錄放 `chrome.storage.session` 的 `lineThrottle`，最近一次結果放 `lineLastResult`（帶 `source`：test 或 alert）；兩則警報要排隊依序讀寫紀錄，否則會同時讀到舊紀錄；紀錄在請求送出**前**就存（worker 在請求途中被回收也記得）、發送失敗再還原（失敗不佔用視窗與額度）；請求有 15 秒逾時，不然一個掛住的請求會讓後面所有警報永遠排不出去；設定值有上限（去重最多 1440 分鐘、每小時最多 100 則）、每個原因的記憶鍵數有上限、時間在未來的紀錄（時鐘往回調）會被丟掉。「發送測試訊息」只在設定頁，不受開關、去重、上限影響也不計數，只接受擴充功能自己的頁面（設定頁是開成分頁的，所以看 `sender.id` 與 `sender.url`，不能看 `sender.tab`）。
 - **token 與 userId 是機密**：只存 `chrome.storage.local.lineNotify`（不用 `storage.sync`、不進任何匯出）。`storage.local` 預設 content script 也讀得到，而且 `storage.onChanged` 會把新值送給每個監聽者，所以**任何 content script 都不得讀取、監聽或印出它**（`tests/line-notify.test.js` 的守門測試會擋）；結果、錯誤訊息、console 都不得出現 token 與 userId，`send` 會把它們從回應與網路錯誤文字中遮掉。設定頁載入完成前欄位停用，載入失敗維持停用，否則打字會蓋掉已存的憑證。
 - 測試分三個接縫：`tests/line-notify.test.js`（核心模組，假 `fetch`、假時鐘）、`tests/line-notify-ui.test.js`（設定頁 jsdom）、`tests/line-background.test.js`（在 vm 裡實際執行 `background.js`，假 `chrome` 與 `fetch`，檢查發了幾次請求、系統通知有沒有建、`storage.session` 存了什麼）。改 background 的警報處理要在最後一個檔案補行為測試，不要只比對原始碼文字。
 

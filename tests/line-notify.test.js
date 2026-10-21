@@ -258,3 +258,97 @@ test('notifyAlert returns the new state, sends only what decide allows, and neve
   assert.equal(calls.length, 1);
   assert.equal(state.skipped, 1);
 });
+
+// ---- code-review 發現的強化 ----
+const okFetch2 = fakeFetch(200, '{}');
+const clone = value => JSON.parse(JSON.stringify(value));
+
+test('a failed push does not use up the dedupe window or the hourly allowance', async () => {
+  let state;
+  const run = async fetchImpl => {
+    const out = await L.notifyAlert({ fetchImpl, settings: ON, reason: 'A', now: () => T0, state });
+    state = out.state;
+    return out;
+  };
+  const failed = await run(fakeFetch(500, '{}').fetchImpl);
+  assert.equal(failed.result.ok, false);
+  assert.deepEqual(state.sent, []);
+  assert.deepEqual(state.lastByReason, {});
+  const retried = await run(okFetch2.fetchImpl);
+  assert.equal(retried.result.ok, true, 'the same alert can go right after the failure is fixed');
+  assert.equal(state.skipped, 0, 'and it was never counted as skipped');
+});
+
+test('the record is persisted before the request goes out, and rolled back only if the push fails', async () => {
+  const persisted = [];
+  let seenDuringFetch;
+  const fetchImpl = async () => { seenDuringFetch = clone(persisted.at(-1)); return { ok: false, status: 503, text: async () => '{}' }; };
+  await L.notifyAlert({ fetchImpl, settings: ON, reason: 'A', now: () => T0, persist: state => persisted.push(clone(state)) });
+  assert.deepEqual(Object.keys(seenDuringFetch.lastByReason), ['A'], 'a worker killed mid-request still remembers the push');
+  assert.equal(persisted.length, 2);
+  assert.deepEqual(persisted[1].lastByReason, {}, 'rolled back after the failure');
+  const successPersists = [];
+  await L.notifyAlert({ fetchImpl: okFetch2.fetchImpl, settings: ON, reason: 'A', now: () => T0, persist: state => successPersists.push(clone(state)) });
+  assert.equal(successPersists.length, 1, 'a successful push is persisted once and not rolled back');
+});
+
+test('a broken persist callback never stops the alert from being sent', async () => {
+  const { fetchImpl, calls } = fakeFetch(200, '{}');
+  const { result } = await L.notifyAlert({ fetchImpl, settings: ON, reason: 'A', now: () => T0, persist: async () => { throw new Error('storage gone'); } });
+  assert.equal(result.ok, true);
+  assert.equal(calls.length, 1);
+});
+
+test('a request that never answers is cut off, so it cannot block the alerts behind it', async () => {
+  const fetchImpl = (url, init) => new Promise((resolve, reject) => {
+    init.signal.addEventListener('abort', () => reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })));
+  });
+  const result = await L.send({ fetchImpl, token: TOKEN, userId: USER_ID, text: 'x', now: () => NOW, timeoutMs: 20 });
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 0);
+  assert.match(result.reason, /逾時/);
+});
+
+test('the dedupe minutes and the hourly cap are capped, and odd types fall back to the defaults', () => {
+  assert.equal(feed([[0, 'A'], [1441 * MIN, 'A']], { ...ON, dedupeMinutes: 1e308 })[1].send, true, 'one day at most');
+  assert.equal(feed([[0, 'A'], [1000 * MIN, 'A']], { ...ON, dedupeMinutes: 1e308 })[1].send, false);
+  const many = feed(Array.from({ length: 101 }, (_, i) => [i, `r${i}`]), { ...ON, hourlyLimit: 1e9 });
+  assert.equal(many[99].send, true);
+  assert.equal(many[100].send, false, 'never more than 100 an hour');
+  for (const odd of [true, false, [], {}, '12abc']) {
+    assert.equal(feed([[0, 'A'], [5 * MIN, 'A']], { ...ON, dedupeMinutes: odd })[1].send, false, `dedupeMinutes ${JSON.stringify(odd)} uses the default 10`);
+  }
+});
+
+test('a clock that jumps backwards does not leave old records alive', () => {
+  const [a, b] = feed([[0, 'A'], [-5 * MIN, 'A']]);
+  assert.equal(a.send, true);
+  assert.equal(b.send, true, 'the record from the "future" is dropped instead of blocking forever');
+});
+
+test('the per-reason memory is capped even when every alert has a different text', () => {
+  const settings = { ...ON, hourlyLimit: 100 };
+  const decisions = feed(Array.from({ length: 80 }, (_, i) => [i, `座標 ${i}`]), settings);
+  assert.ok(Object.keys(decisions.at(-1).state.lastByReason).length <= 50);
+});
+
+test('persist is also called when an alert is skipped (the counter changes) but never when the feature is off', async () => {
+  const persisted = [];
+  const persist = state => persisted.push(clone(state));
+  const base = { fetchImpl: okFetch2.fetchImpl, reason: 'A', now: () => T0, persist };
+  const first = await L.notifyAlert({ ...base, settings: ON });
+  persisted.length = 0;
+  await L.notifyAlert({ ...base, settings: ON, state: first.state });
+  assert.equal(persisted.length, 1);
+  assert.equal(persisted[0].skipped, 1);
+  persisted.length = 0;
+  await L.notifyAlert({ ...base, settings: { ...ON, enabled: false } });
+  assert.equal(persisted.length, 0, 'off: nothing changed, nothing written');
+});
+
+test('wiring: the popup loads the core module before the settings script that reads its limits', () => {
+  const popup = ext('popup.html');
+  const core = popup.indexOf('src="line-notify.js"');
+  const ui = popup.indexOf('src="line-notify-ui.js"');
+  assert.ok(core >= 0 && ui > core);
+});

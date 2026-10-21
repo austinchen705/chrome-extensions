@@ -28,10 +28,12 @@ const ON = { lineNotify: { enabled: true, token: TOKEN, userId: USER_ID } };
 const clone = value => JSON.parse(JSON.stringify(value));
 const okFetch = async () => ({ ok: true, status: 200, text: async () => '{}' });
 
-function loadBackground({ local = {}, session = {}, fetchImpl = okFetch, notifyThrows = false } = {}) {
+function loadBackground({ local = {}, session = {}, fetchImpl = okFetch, notifyThrows = false, timerScale = 1 } = {}) {
   const store = { local: clone(local), session: clone(session) };
+  const reads = { local: [], session: [] };
   const area = name => ({
     get: async keys => {
+      reads[name].push(keys);
       const all = store[name];
       if (keys === null || keys === undefined) return clone(all);
       return Object.fromEntries([].concat(keys).filter(key => key in all).map(key => [key, clone(all[key])]));
@@ -57,8 +59,11 @@ function loadBackground({ local = {}, session = {}, fetchImpl = okFetch, notifyT
     windows: { update: noop },
   };
   const context = vm.createContext({
-    chrome, console, setTimeout, clearTimeout, URL,
-    fetch: async (url, init) => { pushes.push({ url, init }); return fetchImpl(url, init); },
+    chrome, console, clearTimeout, URL, AbortController,
+    // 縮短逾時，測試才不用真的等 15 秒
+    setTimeout: (fn, ms, ...args) => setTimeout(fn, Math.max(1, ms / timerScale), ...args),
+    // 請求發出的當下，storage.session 裡的紀錄長什麼樣（用來檢查「請求前就已存下紀錄」）
+    fetch: async (url, init) => { pushes.push({ url, init, sessionAtRequest: clone(store.session) }); return fetchImpl(url, init); },
   });
   context.importScripts = (...files) => files.forEach(file => vm.runInContext(read(file), context, { filename: file }));
   // 可以指定「現在」的 Date：背景程式用 Date.now 算時間
@@ -82,7 +87,7 @@ function loadBackground({ local = {}, session = {}, fetchImpl = okFetch, notifyT
   const settingsPage = { id: EXT, url: `chrome-extension://${EXT}/popup.html?tab=1`, tab: { id: 7 } };
   const gamePage = { id: EXT, url: GAME, tab: { id: 1 } };
   const texts = () => pushes.map(push => JSON.parse(push.init.body).messages[0].text);
-  return { store, notifications, pushes, texts, alert, lineTest, settingsPage, gamePage, setNow };
+  return { store, reads, notifications, pushes, texts, alert, lineTest, settingsPage, gamePage, setNow };
 }
 
 test('switch off: the system notification is created, nothing goes to LINE, no result is recorded', async () => {
@@ -92,6 +97,7 @@ test('switch off: the system notification is created, nothing goes to LINE, no r
   assert.equal(bg.notifications.length, 1);
   assert.equal(bg.pushes.length, 0);
   assert.equal('lineLastResult' in bg.store.session, false);
+  assert.ok(bg.reads.local.some(keys => keys === 'lineNotify'), 'proof that the LINE path really ran and looked at the settings');
 });
 
 test('switch on: one alert makes one push with the formatted text and records an alert result', async () => {
@@ -152,7 +158,7 @@ test('the limits survive the service worker being restarted, because they live i
   const second = loadBackground({ local: ON, session: first.store.session });
   second.setNow(T0 + MIN);
   second.alert('A');
-  await sleep(40);
+  assert.ok(await waitFor(() => second.store.session.lineThrottle?.skipped === 1), 'the alert was really processed and counted as skipped');
   assert.equal(second.pushes.length, 0, 'the new worker still remembers the push');
 });
 
@@ -200,4 +206,45 @@ test('the test button still answers when the credentials are missing', async () 
   assert.equal(reply.ok, false);
   assert.match(reply.reason, /token|userId/);
   assert.equal(bg.pushes.length, 0);
+});
+
+test('the record is already in session storage when the request goes out, so a worker killed mid-request still remembers it', async () => {
+  const bg = loadBackground({ local: ON });
+  bg.setNow(T0);
+  bg.alert('A');
+  assert.ok(await waitFor(() => bg.pushes.length === 1));
+  assert.deepEqual(Object.keys(bg.pushes[0].sessionAtRequest.lineThrottle.lastByReason), ['A']);
+});
+
+test('a failed push does not use up the window: once the problem is fixed the same alert goes through', async () => {
+  let healthy = false;
+  const fetchImpl = async () => (healthy
+    ? { ok: true, status: 200, text: async () => '{}' }
+    : { ok: false, status: 401, text: async () => '{"message":"invalid token"}' });
+  const bg = loadBackground({ local: ON, fetchImpl });
+  bg.setNow(T0);
+  bg.alert('A');
+  assert.ok(await waitFor(() => bg.store.session.lineLastResult?.ok === false));
+  assert.deepEqual(bg.store.session.lineThrottle.sent, [], 'rolled back');
+  healthy = true;
+  bg.setNow(T0 + MIN);
+  bg.alert('A');
+  assert.ok(await waitFor(() => bg.store.session.lineLastResult?.ok === true));
+  assert.equal(bg.pushes.length, 2);
+  assert.equal(bg.store.session.lineThrottle.skipped ?? 0, 0);
+});
+
+test('a request that hangs is cut off and the alerts queued behind it still go out', async () => {
+  let calls = 0;
+  const fetchImpl = (url, init) => {
+    calls += 1;
+    if (calls > 1) return Promise.resolve({ ok: true, status: 200, text: async () => '{}' });
+    return new Promise((resolve, reject) => init.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
+  };
+  const bg = loadBackground({ local: ON, fetchImpl, timerScale: 150 });
+  bg.setNow(T0);
+  bg.alert('first');
+  bg.alert('second');
+  assert.ok(await waitFor(() => bg.pushes.length === 2, 3000), 'the second alert was not stuck behind the hanging one');
+  assert.ok(await waitFor(() => bg.store.session.lineLastResult?.ok === true), 'and its result replaced the timed-out one');
 });

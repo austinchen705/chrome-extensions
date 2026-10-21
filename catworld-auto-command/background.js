@@ -55,9 +55,11 @@ function notifyLine(reason) {
   const run = async () => {
     const saved = (await chrome.storage.local.get(LINE_KEY))[LINE_KEY];
     const state = (await chrome.storage.session.get(LINE_THROTTLE_KEY))[LINE_THROTTLE_KEY];
-    const { result, state: next } = await CatworldLineNotify.notifyAlert({ fetchImpl: fetch, settings: saved, reason, now: Date.now, state });
-    // 有發送或被略過才需要寫回；開關關閉、憑證沒填時什麼都沒變，不寫
-    if (result || next.skipped > (state?.skipped ?? 0)) await chrome.storage.session.set({ [LINE_THROTTLE_KEY]: next });
+    // 紀錄由模組透過 persist 存：請求送出前先存（worker 在請求途中被回收也記得）、失敗再還原、略過時存計數
+    const { result } = await CatworldLineNotify.notifyAlert({
+      fetchImpl: fetch, settings: saved, reason, now: Date.now, state,
+      persist: next => chrome.storage.session.set({ [LINE_THROTTLE_KEY]: next }),
+    });
     if (result) await saveLineResult(result);
   };
   const task = lineQueue.then(run, run);
