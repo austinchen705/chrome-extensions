@@ -16,6 +16,11 @@
 - 觸發分成「戰鬥」「練功」兩組（`trigger-engine.js` 的 `GROUPS`），功能相同、完全獨立：各自的設定存在 `triggerGroupSettings.<id>`、各自一個引擎與計時器，送出佇列來源是 `trigger:<id>`。`START_TRIGGER` / `STOP_TRIGGER` / `REARM_RULE` 一定要帶 `group`（未知或沒帶回 `ok:false`）；`STATUS` 回 `stats`（讀數，共用）與 `triggerGroups.<id>`。popup 用 `<template id="triggerPaneTemplate">` 為每組產生一個分頁，template 內的 id 都帶 `-__G__`；新增一組只要加進 `GROUPS`。舊的 `triggerSettings` 由 `loadGroupSettings` 整份放進練功組。驗證碼、`stopEverything` 對所有組一起作用。
 - 關鍵字規則（`kind: 'keyword'`）的新文字由 `captchaObserver` 在驗證碼檢查之後交給 `engine.onText`，只取 `#content` 內新增的內容。防迴圈靠「只看新文字、冷卻中的直接丟掉、`>` 開頭的回聲行略過」三件事，改動時不能拿掉任何一個，對應測試要保留。
 
+## 驗證碼圖形偵測
+
+- 偵測規則在 `captcha-art.js`（`artText`、`looksLikeAsciiArt`、`looksLikeNoiseCaptcha`、`createWatcher`；content script 與測試共用，manifest 與 popup 的備援注入都要載入、且在 `content.js` 之前）。偵測規則都是看「連續好幾行」，而遊戲輸出常分成好幾批新增文字到達（一張圖可能被切成一行一批），所以 `content.js` 的 `captchaObserver` 不能只看單一批：一律經 `artWatcher.feed`（把最近 5 秒的新增文字接在一起、最多 120 行，偵測到就清空；`armDetection` 重新開始時也清）。
+- 測試：`tests/captcha-art.test.js`（jsdom，用 `tests/fixtures/captcha/` 的真實樣本：英數亂碼塊、B3 背景空白拼的數字圖、一般輸出；分批大小 1～4 行都要抓到、一般輸出逐行餵也不能誤判、隔太久的片段不能接在一起）。新增驗證碼樣式時先把真實輸出放進 fixtures 再改偵測。
+
 ## 定時分頁的隨機指令
 
 - 設定格式是 `settings.randomItems: [{ command, minSeconds, maxSeconds }]`，轉換與抽選在 `timer-settings.js`（content script 與 popup 共用，manifest、popup.html、popup 的備援注入都要載入，且要在 `content.js` 之前）。
