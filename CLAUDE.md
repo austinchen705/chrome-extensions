@@ -99,6 +99,15 @@
 - **token 與 userId 是機密**：只存 `chrome.storage.local.lineNotify`（不用 `storage.sync`、不進任何匯出）。`storage.local` 預設 content script 也讀得到，而且 `storage.onChanged` 會把新值送給每個監聽者，所以**任何 content script 都不得讀取、監聽或印出它**（`tests/line-notify.test.js` 的守門測試會擋）；結果、錯誤訊息、console 都不得出現 token 與 userId，`send` 會把它們從回應與網路錯誤文字中遮掉。設定頁載入完成前欄位停用，載入失敗維持停用，否則打字會蓋掉已存的憑證。
 - 測試分三個接縫：`tests/line-notify.test.js`（核心模組，假 `fetch`、假時鐘）、`tests/line-notify-ui.test.js`（設定頁 jsdom）、`tests/line-background.test.js`（在 vm 裡實際執行 `background.js`，假 `chrome` 與 `fetch`，檢查發了幾次請求、系統通知有沒有建、`storage.session` 存了什麼）。改 background 的警報處理要在最後一個檔案補行為測試，不要只比對原始碼文字。
 
+## 置頂浮窗
+
+- 面板的置頂浮窗（Document Picture-in-Picture）邏輯在 `pip-panel.js`（不碰 `chrome.*`，浮窗 API、宿主節點、儲存、提示都由 `content.js` 注入）。面板是被「**搬**」進浮窗（同一個節點、事件與 shadow DOM 跟著走），不是複製；放回原位靠留在宿主位置的提示條，提示條被頁面刪掉就放回主頁面根節點，**浮窗被關掉時面板一定要回來**（`pagehide` 與收回都走同一個 `restore`，可重複呼叫）。開到一半失敗要關掉半開的浮窗、放回面板、清掉殘留。
+- **不得搬遊戲自己的狀態視窗（`#monitor`）**：搬走之後遊戲與我們用 `getElementById` 讀數值的程式都找不到它。要顯示數值就另外顯示一份。
+- 面板在浮窗裡時宿主帶 `data-pip` 屬性，面板的樣式用 `:host([data-pip])` 隱藏拖曳與收合（收合過的面板在浮窗裡要展開）；`content.js` 裡所有用 `document` 算主頁面位置的程式（`replace`、`avoidMap`、拖曳開始）都要先確認 `host.ownerDocument === document`，否則會把浮窗座標存成面板位置。收回後要重新排位置。**新增面板內容時要想到它可能在另一個 document 裡**：別用主頁面的 `document` 找面板內的元素，別假設事件會傳到主頁面的 `window`。
+- 玩家的互動要同時聽遊戲視窗與浮窗：警報提示（標題閃爍、提示音）靠 `createInteractionHub`（`watch`、`addWindow`、`removeWindow`），浮窗開啟時 `addWindow`、關閉時 `removeWindow`；新增「靠互動停止」的功能要走同一個 hub，不要直接在 `window` 上掛監聽。
+- 浮窗大小：預設寬 360、高度以**展開後**的面板為準（量之前先掛上 `data-pip`）；玩家調整後關閉時記在 `chrome.storage.local.pipSize`（只記範圍內的數字，壞掉、零、負數、超大都當作沒記過）。開窗必須在使用者點擊之後馬上呼叫，所以大小在建立控制器時就先讀好（`ready`），不能在開窗前才等儲存。儲存壞了不能影響開窗與收回。位置交給瀏覽器。
+- 測試：`tests/pip-panel.test.js`（jsdom，假的 `documentPictureInPicture` 回傳第二個 jsdom 視窗，假的儲存）。**斷言不要拿 jsdom 視窗物件互相比較（`assert.equal(win, other)`）**：失敗時 node 會把整個視窗印出來比對，測試會卡住，改用 `assert.ok(a === b)`。真正的 Chrome 行為（要點擊才能開、置頂、焦點）只能手動驗證。
+
 ## 設定頁
 
 - 面板的 ⚙ 由 `background.js` 把 `popup.html?tab=<遊戲分頁 id>` 開成分頁並記在 `storage.session`，再按一次關閉；`popup.js` 看到 `?tab=` 就控制那個遊戲分頁（`getTab`）並加上 `body.page` 樣式。popup 與設定頁是同一份 HTML/JS，改一份兩邊都會變。

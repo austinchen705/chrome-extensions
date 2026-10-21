@@ -17,7 +17,7 @@ const root = path.join(__dirname, '..', 'catworld-auto-command');
 const source = fs.readFileSync(process.env.PIP_SOURCE_PATH || path.join(root, 'pip-panel.js'), 'utf8');
 
 // 主頁面（有面板宿主，前後各有一個鄰居，才看得出「放回原位」）加上假的 documentPictureInPicture
-function boot({ requestWindow } = {}) {
+function boot({ requestWindow, sizeStore, hostHeight } = {}) {
   const main = new JSDOM('<html><body><div id="before"></div><div id="host" style="position:fixed;top:12px;right:12px;"></div><div id="after"></div></body></html>', { runScripts: 'outside-only' });
   const mw = main.window;
   const host = mw.document.getElementById('host');
@@ -34,12 +34,14 @@ function boot({ requestWindow } = {}) {
   const pipApi = requestWindow === undefined
     ? { requestWindow: async options => { calls.push(options); return pw; } }
     : requestWindow === null ? undefined : { requestWindow };
+  // jsdom 不做排版：用假的高度模擬「收合時矮、展開（data-pip）時高」
+  if (hostHeight) host.getBoundingClientRect = () => ({ height: host.hasAttribute('data-pip') ? hostHeight.expanded : hostHeight.collapsed });
   mw.eval(source);
   const notes = [];
   const changes = [];
   const wins = [];
   const controller = pipApi || requestWindow === null
-    ? mw.CatworldPip.create({ host, pipApi, notify: text => notes.push(text), onChange: (open, win) => { changes.push(open); wins.push(win); } })
+    ? mw.CatworldPip.create({ host, pipApi, sizeStore, notify: text => notes.push(text), onChange: (open, win) => { changes.push(open); wins.push(win); } })
     : null;
   return { mw, pw, host, shadow, clicks, calls, notes, changes, wins, controller, doc: mw.document };
 }
@@ -364,4 +366,139 @@ test('wiring: the alert that stops on interaction listens through the hub, so th
   const handler = content.slice(content.indexOf('CatworldPip.create({'), content.indexOf("$('.pip').hidden"));
   assert.match(handler, /interactionHub\.addWindow\(/);
   assert.match(handler, /interactionHub\.removeWindow\(/);
+});
+
+// ---- 票 03：視窗大小 ----
+const memoryStore = initial => {
+  const store = { value: initial, saved: [], load: async () => store.value, save: async size => { store.saved.push(JSON.parse(JSON.stringify(size))); store.value = size; } };
+  return store;
+};
+const resize = (pw, width, height) => {
+  pw.innerWidth = width;
+  pw.innerHeight = height;
+  pw.dispatchEvent(new pw.Event('resize'));
+};
+
+ui('the first opening is 360 wide and as tall as the EXPANDED panel, even if the panel is collapsed in the page', async () => {
+  const { calls, controller } = boot({ hostHeight: { collapsed: 100, expanded: 500 } });
+  await controller.open();
+  assert.equal(calls[0].width, 360);
+  assert.equal(calls[0].height, 516, 'expanded height plus a little margin, not the 100px collapsed one');
+});
+
+ui('opening measures the panel as it will look in the window and does not leave the mark behind when it fails', async () => {
+  const { host, controller } = boot({ hostHeight: { collapsed: 100, expanded: 500 }, requestWindow: async () => { throw new Error('nope'); } });
+  await controller.open();
+  assert.equal(host.hasAttribute('data-pip'), false);
+});
+
+ui('a size the user chose is remembered when the window closes and used by the next opening', async () => {
+  const store = memoryStore(undefined);
+  const first = boot({ sizeStore: store });
+  await first.controller.ready;
+  await first.controller.open();
+  resize(first.pw, 420, 610);
+  first.pw.close();
+  await first.controller.ready;
+  assert.deepEqual(store.saved, [{ width: 420, height: 610 }]);
+  const second = boot({ sizeStore: store });
+  await second.controller.ready;
+  await second.controller.open();
+  assert.equal(second.calls[0].width, 420);
+  assert.equal(second.calls[0].height, 610);
+});
+
+ui('closing remembers the last size even when the window reports nothing at that point', async () => {
+  const store = memoryStore(undefined);
+  const { pw, controller } = boot({ sizeStore: store });
+  await controller.ready;
+  await controller.open();
+  resize(pw, 500, 700);
+  pw.innerWidth = 0;
+  pw.innerHeight = 0;
+  controller.close();
+  assert.deepEqual(store.saved, [{ width: 500, height: 700 }]);
+});
+
+ui('nothing is saved when the user never resized the window', async () => {
+  const store = memoryStore({ width: 380, height: 520 });
+  const { controller } = boot({ sizeStore: store });
+  await controller.ready;
+  await controller.open();
+  controller.close();
+  assert.deepEqual(store.saved, []);
+});
+
+ui('a remembered size that is broken, missing a field, zero, negative, not a number or absurdly big is ignored', async () => {
+  const bad = [null, undefined, 'abc', [], {}, { width: 0, height: 500 }, { width: 400, height: 0 }, { width: -5, height: 300 },
+    { width: 360 }, { height: 400 }, { width: '360', height: '500' }, { width: NaN, height: 400 }, { width: Infinity, height: 400 },
+    { width: 1e9, height: 400 }, { width: 400, height: 1e9 }, { width: 10, height: 400 }, { width: 400, height: 10 }];
+  for (const value of bad) {
+    const { calls, controller } = boot({ sizeStore: memoryStore(value), hostHeight: { collapsed: 100, expanded: 300 } });
+    await controller.ready;
+    assert.equal(await controller.open(), true, `opens anyway with ${JSON.stringify(value)}`);
+    assert.equal(calls[0].width, 360, `default width for ${JSON.stringify(value)}`);
+    assert.equal(calls[0].height, 316);
+  }
+});
+
+ui('a sensible remembered size is used as it is, even smaller than the default, and decimals are rounded', async () => {
+  const small = boot({ sizeStore: memoryStore({ width: 300, height: 250 }) });
+  await small.controller.ready;
+  await small.controller.open();
+  assert.deepEqual([small.calls[0].width, small.calls[0].height], [300, 250]);
+  const decimal = boot({ sizeStore: memoryStore({ width: 400.4, height: 500.6 }) });
+  await decimal.controller.ready;
+  await decimal.controller.open();
+  assert.deepEqual([decimal.calls[0].width, decimal.calls[0].height], [400, 501]);
+});
+
+ui('a size storage that fails to read still lets the window open at the default size', async () => {
+  const store = { load: async () => { throw new Error('storage down'); }, save: async () => {} };
+  const { calls, controller } = boot({ sizeStore: store });
+  await controller.ready;
+  assert.equal(await controller.open(), true);
+  assert.equal(calls[0].width, 360);
+});
+
+ui('a size storage that fails to write never stops the panel from coming back', async () => {
+  for (const save of [async () => { throw new Error('quota'); }, () => { throw new Error('sync throw'); }]) {
+    const { pw, host, doc, controller } = boot({ sizeStore: { load: async () => undefined, save } });
+    await controller.ready;
+    await controller.open();
+    resize(pw, 450, 600);
+    pw.close();
+    assert.equal(host.ownerDocument, doc);
+    assert.equal(controller.isOpen(), false);
+    await controller.ready;
+  }
+});
+
+ui('works without any size storage at all', async () => {
+  const { pw, host, doc, controller } = boot();
+  await controller.open();
+  resize(pw, 450, 600);
+  pw.close();
+  assert.equal(host.ownerDocument, doc);
+});
+
+ui('sizes that fall outside the allowed range are never saved', async () => {
+  const store = memoryStore(undefined);
+  const { pw, controller } = boot({ sizeStore: store });
+  await controller.ready;
+  await controller.open();
+  resize(pw, 0, 0);
+  resize(pw, 5000, 5000);
+  controller.close();
+  assert.deepEqual(store.saved, []);
+});
+
+test('wiring: the floating window size is remembered in local storage through the controller', () => {
+  const content = ext('content.js');
+  const create = content.slice(content.indexOf('CatworldPip.create({'), content.indexOf("$('.pip').hidden"));
+  assert.match(create, /sizeStore:/);
+  assert.match(create, /chrome\.storage\.local\.get\(PIP_SIZE_KEY\)/);
+  assert.match(create, /chrome\.storage\.local\.set\(\{ \[PIP_SIZE_KEY\]/);
+  assert.match(content, /const PIP_SIZE_KEY = 'pipSize'/);
+  assert.doesNotMatch(content, /chrome\.storage\.sync/);
 });

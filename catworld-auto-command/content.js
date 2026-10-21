@@ -542,6 +542,8 @@ window.addEventListener('keydown', event => {
 // 浮動狀態面板：放在 shadow DOM 並掛在 <html> 下，頁面層級的 MutationObserver 與 body.textContent 都看不到它，
 // 面板更新文字不會被誤當成遊戲輸出或驗證碼提示
 const PANEL_UI_KEY = 'panelUi';
+// 置頂浮窗上次調整後的大小：只存在這台瀏覽器的本機儲存
+const PIP_SIZE_KEY = 'pipSize';
 let panel = null;
 function initPanel() {
   const host = document.createElement('div');
@@ -740,6 +742,10 @@ function initPanel() {
   const pip = CatworldPip.create({
     host,
     pipApi: globalThis.documentPictureInPicture,
+    sizeStore: {
+      load: async () => (await chrome.storage.local.get(PIP_SIZE_KEY))[PIP_SIZE_KEY],
+      save: size => chrome.storage.local.set({ [PIP_SIZE_KEY]: size }),
+    },
     notify: text => { macroNote = { text, until: Date.now() + 8000 }; renderPanel(); },
     onChange: (open, win) => {
       $('.pip').textContent = open ? '收回' : '置頂';
