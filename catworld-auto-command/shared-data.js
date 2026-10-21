@@ -124,6 +124,9 @@ function readSheet(csvText, required) {
   return { rows, total, overflow: total - rows.length, overflowFrom };
 }
 
+// 兩個分頁共用的報告起點：rows 是有資料的列數（含超過上限沒讀的），其餘由各自的 build 填
+const newReport = sheet => ({ rows: sheet.total, overflow: sheet.overflow, overflowFrom: sheet.overflowFrom, used: 0, dropped: [], unmatched: [] });
+
 // 指令欄的共用規則：空白丟掉；整個詞「停用」是關掉；其餘過白名單。回 { entry, rank } 或 { reason }；
 // rank 是更新時間（讀不到當最舊），同一個鍵多列取 rank 最大的、一樣大取後面的
 function commandEntry(cell) {
@@ -152,7 +155,7 @@ function buildMobRoutes(csvText, mobs) {
     mobPlaces(mob).forEach(place => known.add(`${customKey(mob.name)}|${place}`));
   });
   const best = new Map();
-  const report = { rows: sheet.total, overflow: sheet.overflow, overflowFrom: sheet.overflowFrom, used: 0, dropped: [], unmatched: [] };
+  const report = newReport(sheet);
   sheet.rows.forEach(({ row, cell }) => {
     const name = cell('怪物名稱');
     if (!name) return report.dropped.push({ row, reason: '怪物名稱是空的' });
@@ -188,7 +191,7 @@ function buildRiddleSteps(csvText, riddles, pages) {
   const byName = new Map();
   (riddles ?? []).forEach(riddle => { if (!byName.has(customKey(riddle.name))) byName.set(customKey(riddle.name), riddle); });
   const best = new Map();
-  const report = { rows: sheet.total, overflow: sheet.overflow, overflowFrom: sheet.overflowFrom, used: 0, dropped: [], unmatched: [] };
+  const report = newReport(sheet);
   sheet.rows.forEach(({ row, cell }) => {
     const name = cell('謎名稱');
     const no = Number(cell('步驟'));
@@ -228,6 +231,26 @@ function reportLines(report, max = 30) {
   return shown;
 }
 
+// 設定頁每個分頁的標題與單位：生效的是「隻」怪物或「步」，對不到的是怪物或謎／步驟
+const SHEET_LABELS = {
+  mob: { title: '怪物路線', used: '隻', unmatched: '怪物' },
+  riddle: { title: '解謎指令', used: '步', unmatched: '謎或步驟' },
+};
+
+// 設定頁每個分頁的結果文字：尚未設定／尚未抓取／上次更新的筆數（超過上限沒讀的另外說明）／更新失敗的原因與目前還在用的資料。
+// timeText 把時間戳轉成文字（由呼叫端給，這裡不碰時區）
+function describeSheet(kind, url, entry, timeText) {
+  const { title, used, unmatched } = SHEET_LABELS[kind];
+  if (!url) return `${title}：尚未設定`;
+  if (!entry) return `${title}：尚未抓取（怪物查詢或解謎要開著；開著的話查一次，或按「立即更新」）`;
+  const report = entry.report;
+  const rows = report?.overflow > 0 ? `共 ${report.rows} 列（其中 ${report.overflow} 列超過上限沒有讀）` : `共 ${report?.rows} 列`;
+  const ok = entry.at && report
+    ? `上次更新 ${timeText(entry.at)}：${rows}，生效 ${report.used} ${used}，丟掉 ${report.dropped.length} 列，對不到${unmatched} ${report.unmatched.length} 筆`
+    : '沒有可用的資料';
+  return entry.error ? `${title}：更新失敗（${timeText(entry.error.at)}）：${entry.error.reason}\n目前使用：${ok}` : `${title}：${ok}`;
+}
+
 // background 用：把共用層疊在 ZAP_LOOKUP／ZAP_SUITABLE 的回覆上（個人層在面板那邊再蓋過去）。
 // 有共用路線的怪，路線換成共用的並帶 shared: { by, note } 給面板標示；共用寫「停用」的怪路線變 null、帶 sharedDisabled: { by, note }；其餘原樣。
 // 有填位置的列先比（怪的位置整串或其中一個地點相符），沒有才用沒填位置的列。不改動輸入
@@ -248,5 +271,5 @@ function overlayReply(reply, shared) {
   return { ...reply, items: reply.items.map(item => (item.candidates ? { ...item, candidates: item.candidates.map(apply) } : apply(item))) };
 }
 
-globalThis.CatworldSharedData = { MAX_SEGMENT, MAX_ROWS, ALLOWED_VERBS, reportLines, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, overlayReply };
+globalThis.CatworldSharedData = { MAX_SEGMENT, MAX_ROWS, ALLOWED_VERBS, SHEET_LABELS, describeSheet, reportLines, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, overlayReply };
 })();

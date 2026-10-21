@@ -437,3 +437,32 @@ test('reportLines puts dropped and unmatched rows in sheet order', () => {
   const mob = buildLoc('不存在(x),,run e,,小明,', '老虎(tiger),,drop x,,小明,', '不存在(y),,run e,,小明,');
   assert.deepEqual(S.reportLines(mob.report).map(line => line.slice(0, 5)), ['第 2 列', '第 3 列', '第 4 列']);
 });
+
+// ---- 設定頁摘要文字 ----
+const at = text => `<${text}>`;
+const okEntry = (extra = {}) => ({ url: 'u', at: 1, report: { rows: 3, used: 2, overflow: 0, dropped: [{ row: 2, reason: 'x' }], unmatched: [{ row: 3, name: 'n', reason: 'y' }] }, ...extra });
+
+test('the summary says not set / not fetched yet when there is nothing to show', () => {
+  assert.equal(S.describeSheet('mob', '', null, at), '怪物路線：尚未設定');
+  assert.match(S.describeSheet('riddle', 'u', null, at), /^解謎指令：尚未抓取/);
+});
+
+test('the summary counts rows, used entries, dropped and unmatched rows with the sheet\'s own unit', () => {
+  assert.equal(S.describeSheet('mob', 'u', okEntry({ at: 5 }), at), '怪物路線：上次更新 <5>：共 3 列，生效 2 隻，丟掉 1 列，對不到怪物 1 筆');
+  assert.match(S.describeSheet('riddle', 'u', okEntry(), at), /生效 2 步，丟掉 1 列，對不到謎或步驟 1 筆/);
+});
+
+test('rows beyond the limit are said to be unread, so "共 N 列" does not claim they were used', () => {
+  const entry = okEntry();
+  entry.report = { ...entry.report, rows: 2005, used: 2000, overflow: 5 };
+  assert.match(S.describeSheet('mob', 'u', entry, at), /共 2005 列（其中 5 列超過上限沒有讀）/);
+});
+
+test('a failed update shows why and what the layer is still using', () => {
+  const withOld = S.describeSheet('mob', 'u', okEntry({ at: 5, error: { at: 9, reason: 'HTTP 403' } }), at);
+  assert.match(withOld, /^怪物路線：更新失敗（<9>）：HTTP 403/);
+  assert.match(withOld, /目前使用：上次更新 <5>：共 3 列/);
+  assert.ok(withOld.includes('\n'), 'the reason and the data in use are on separate lines');
+  const noData = S.describeSheet('riddle', 'u', { url: 'u', at: null, report: null, error: { at: 9, reason: 'x' } }, at);
+  assert.match(noData, /目前使用：沒有可用的資料/);
+});

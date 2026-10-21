@@ -120,20 +120,13 @@ Object.values(FEATURE_BOXES).forEach(id => $(id).addEventListener('change', () =
   chrome.storage.local.set({ zapFeatures: Object.fromEntries(Object.entries(FEATURE_BOXES).map(([key, box]) => [key, $(box).checked])) });
 }));
 
-// 共用資料（Google 試算表）：兩個分頁的連結只存本機（sharedSources：{ mob, riddle }，不進匯出），抓取由 background 做，結果在 sharedCache
+// 共用資料（Google 試算表）：兩個分頁的連結只存本機（sharedSources：{ mob, riddle }，不進匯出），抓取由 background 做，結果在 sharedCache。
+// 結果文字與逐列清單的內容都由 shared-data.js 產生（有測試），這裡只負責放進畫面
 const SHARED_FIELDS = {
-  mob: { input: 'sharedMobUrl', result: 'sharedMobResult', detail: 'sharedMobDetail', title: '怪物路線', used: '隻', unmatched: '怪物' },
-  riddle: { input: 'sharedRiddleUrl', result: 'sharedRiddleResult', detail: 'sharedRiddleDetail', title: '解謎指令', used: '步', unmatched: '謎或步驟' },
+  mob: { input: 'sharedMobUrl', result: 'sharedMobResult', detail: 'sharedMobDetail' },
+  riddle: { input: 'sharedRiddleUrl', result: 'sharedRiddleResult', detail: 'sharedRiddleDetail' },
 };
 const timeText = at => new Date(at).toLocaleString('zh-TW', { hour12: false });
-function sharedSummary(field, url, entry) {
-  if (!url) return `${field.title}：尚未設定`;
-  if (!entry) return `${field.title}：尚未抓取（怪物查詢或解謎要開著；開著的話查一次，或按「立即更新」）`;
-  const ok = entry.at && entry.report
-    ? `上次更新 ${timeText(entry.at)}：共 ${entry.report.rows} 列，生效 ${entry.report.used} ${field.used}，丟掉 ${entry.report.dropped.length} 列，對不到${field.unmatched} ${entry.report.unmatched.length} 筆`
-    : '沒有可用的資料';
-  return entry.error ? `${field.title}：更新失敗（${timeText(entry.error.at)}）：${entry.error.reason}\n目前使用：${ok}` : `${field.title}：${ok}`;
-}
 async function showShared() {
   const data = await chrome.storage.local.get(['sharedSources', 'sharedCache', 'zapFeatures']);
   // 怪物查詢與解謎都關著時 background 不會抓，說明一下，不然看起來像壞掉
@@ -142,14 +135,18 @@ async function showShared() {
     const url = data.sharedSources?.[kind] ?? '';
     if (document.activeElement !== $(field.input)) $(field.input).value = url;
     const entry = data.sharedCache?.[kind]?.url === url ? data.sharedCache[kind] : null;
-    $(field.result).textContent = sharedSummary(field, url, entry);
+    $(field.result).textContent = CatworldSharedData.describeSheet(kind, url, entry, timeText);
     // 被丟掉與對不到的列逐列列出，填錯的人自己看得出要改表上哪一列
     const lines = url ? CatworldSharedData.reportLines(entry?.report) : [];
     $(field.detail).hidden = !lines.length;
     $(field.detail).textContent = lines.join('\n');
   });
 }
-const setAllShared = text => Object.values(SHARED_FIELDS).forEach(field => { $(field.result).textContent = `${field.title}：${text}`; });
+// 更新中或失敗時：每個分頁的結果行換成同一段文字，舊的逐列清單先收起來（不然會和「更新中」並存）
+const setAllShared = text => Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
+  $(field.result).textContent = `${CatworldSharedData.SHEET_LABELS[kind].title}：${text}`;
+  $(field.detail).hidden = true;
+});
 async function refreshShared() {
   setAllShared('更新中…');
   try {
@@ -166,7 +163,7 @@ Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
     if (text) {
       const checked = CatworldSharedData.checkUrl(text);
       if (!checked.ok) {
-        $(field.result).textContent = `${field.title}：${checked.error}`;
+        $(field.result).textContent = `${CatworldSharedData.SHEET_LABELS[kind].title}：${checked.error}`;
         return;
       }
     }
