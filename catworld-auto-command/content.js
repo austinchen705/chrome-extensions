@@ -21,6 +21,28 @@ const anyTriggerOn = () => groupList.some(group => group.on);
 const macroRuns = new Set();
 let macroNote = null;
 // 設定頁開在背景分頁時自己的每秒更新會被 Chrome 降頻，所以任何功能開始或停止（面板、置頂面板裡按的也算）就主動通知它
+let panelHost = null;
+// 擴充功能重新載入後留在頁面上的舊程式（chrome.runtime.id 失效）：停掉所有計時器與送出、拿掉面板與置頂視窗，
+// 不然它會繼續送指令、留著一個不同步的面板，設定頁備援注入的新程式也會和它重複送
+let retired = false;
+function retire() {
+  if (retired) return;
+  retired = true;
+  running = false;
+  clearTimers();
+  groupList.forEach(group => stopTriggers(group, ''));
+  cancelMacros();
+  queue.length = 0;
+  if (watchdogTimer) clearTimeout(watchdogTimer);
+  captchaObserver.disconnect();
+  stopRepeatBeep();
+  try {
+    globalThis.documentPictureInPicture?.window?.close();
+  } catch {
+    // 沒有置頂視窗
+  }
+  panelHost?.remove();
+}
 let lastStateKey = null;
 function notifyStateChanged() {
   try {
@@ -41,6 +63,7 @@ let persistentAlert = false;
 let watchdogTimer = null;
 let lastCommand = '';
 const { artText, createWatcher, describeBatch, isArtLike } = globalThis.CatworldCaptchaArt;
+const { HOST_ATTR, contextAlive, removeStalePanels } = globalThis.CatworldInstanceGuard;
 // 驗證碼圖形偵測的緩衝：新增文字分批到達時要接在一起判斷（見 captcha-art.js）
 const artWatcher = createWatcher();
 // 自動停止時提醒使用者：系統通知（由 background 建立）、提示音、分頁標題閃爍
@@ -128,14 +151,22 @@ function stopAndAlert(reason) {
   startRepeatBeep(persistentAlert);
   flashTitle('⚠ 需要驗證', persistentAlert);
   ringing = persistentAlert;
-  chrome.runtime.sendMessage({ type: 'ALERT', reason, confirmable: persistentAlert });
+  try {
+    chrome.runtime.sendMessage({ type: 'ALERT', reason, confirmable: persistentAlert });
+  } catch {
+    // 擴充功能剛重新載入，通知送不出去：停止絕對不能因此被跳過
+  }
   return stopEverything(reason);
 }
 // 只有某條觸發規則被停用：響一次、閃標題、跳通知，其他功能照常；原因文字不含「驗證」，不會被當成驗證碼停止
 function alertOnly(reason) {
   beep();
   flashTitle('⚠ 觸發已停用');
-  chrome.runtime.sendMessage({ type: 'ALERT', reason });
+  try {
+    chrome.runtime.sendMessage({ type: 'ALERT', reason });
+  } catch {
+    // 擴充功能剛重新載入，通知送不出去
+  }
 }
 // 指令送出後遊戲通常會回覆；超時沒新輸出視為需要驗證
 function armWatchdog() {
@@ -194,6 +225,10 @@ function logIdleCaptcha(allRecords) {
   console.info('[catworld] 看到疑似驗證碼，但定時、觸發、巨集都沒有在跑，所以沒有偵測', describeBatch(text));
 }
 const captchaObserver = new MutationObserver(allRecords => {
+  if (!contextAlive(chrome)) {
+    retire();
+    return;
+  }
   if (!active()) {
     logIdleCaptcha(allRecords);
     return;
@@ -240,6 +275,10 @@ let settings = {
 const randomItems = () => CatworldTimer.normalizeRandomItems(settings);
 
 function sendCommand(command) {
+  if (!contextAlive(chrome)) {
+    retire();
+    return { ok: false, error: '擴充功能已重新載入，請重新整理遊戲頁' };
+  }
   if (checkCaptcha()) return { ok: false, error: stopReason };
   if (/驗證/.test(stopReason)) return { ok: false, error: stopReason };
   const input = document.querySelector('#input');
@@ -547,7 +586,16 @@ let panel = null;
 let statsBlock = null;
 let statsRenderFailed = false;
 function initPanel() {
+  // 頁面上殘留的面板（舊程式留下的孤兒）先拿掉，不要疊出第二個；它如果把面板搬進了置頂視窗，那個視窗也關掉
+  removeStalePanels(document);
+  try {
+    globalThis.documentPictureInPicture?.window?.close();
+  } catch {
+    // 沒有置頂視窗
+  }
   const host = document.createElement('div');
+  host.setAttribute(HOST_ATTR, '');
+  panelHost = host;
   host.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;';
   const root = host.attachShadow({ mode: 'open' });
   root.innerHTML = `
@@ -843,6 +891,10 @@ function macroSummary() {
 
 function renderPanel() {
   if (!panel) return;
+  if (!contextAlive(chrome)) {
+    retire();
+    return;
+  }
   // 數值區塊：和觸發規則讀的是同一份（readAllStats 用的就是引擎的 readStat）；壞了不能影響面板其他部分
   try {
     if (statsBlock) {
