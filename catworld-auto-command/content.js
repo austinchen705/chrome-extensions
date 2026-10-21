@@ -417,6 +417,11 @@ function readStat(name) {
   const value = read(ids.cur);
   return Number.isFinite(value) ? { value, max: read(ids.max) } : null;
 }
+// 遊戲狀態視窗裡的數字（逗號、空白去掉）；讀不到是 NaN
+function readGameNumber(id) {
+  const text = (document.getElementById(id)?.textContent || '').replace(/[,\s]/g, '');
+  return text ? Number(text) : NaN;
+}
 function readAllStats() {
   return Object.fromEntries(Object.keys(CatworldTriggerEngine.STATS).map(name => [name, readStat(name)]));
 }
@@ -545,6 +550,8 @@ const PANEL_UI_KEY = 'panelUi';
 // 置頂浮窗上次調整後的大小：只存在這台瀏覽器的本機儲存
 const PIP_SIZE_KEY = 'pipSize';
 let panel = null;
+// 面板最上方的「數值」區塊（stats-block.js）
+let statsBlock = null;
 function initPanel() {
   const host = document.createElement('div');
   host.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;';
@@ -608,6 +615,12 @@ function initPanel() {
     macroLine: $('.macro-line'), macroText: $('.macro-text'), mstop: $('.mstop'),
     confirm: $('.confirm'),
   };
+  // 「數值」區塊放在面板最上方；壞了不能牽連後面開始／停止按鈕的綁定
+  try {
+    statsBlock = CatworldStatsBlock.attach(root);
+  } catch (error) {
+    console.error('[catworld] 數值區塊初始化失敗', error);
+  }
   // 「怪物」列：讀 #exp 列出適合打的怪、怪物出現時顯示資訊（資料由 background 提供）
   // 怪物列壞了不能牽連後面開始／停止按鈕的綁定
   let zapPanel = null;
@@ -833,6 +846,12 @@ function macroSummary() {
 
 function renderPanel() {
   if (!panel) return;
+  // 數值區塊：和觸發規則讀的是同一份（readAllStats 用的就是引擎的 readStat）；壞了不能影響面板其他部分
+  try {
+    if (statsBlock) statsBlock.render(readAllStats(), readGameNumber('exp'));
+  } catch (error) {
+    console.error('[catworld] 數值區塊更新失敗', error);
+  }
   const captchaStopped = !active() && /驗證/.test(stopReason);
   const summaries = groupList.map(group => triggerSummary(group));
   const anyAlert = summaries.some(summary => summary.alert);
