@@ -4,3 +4,4 @@ Thumbs.db
 *.log
 *.crx
 *.pem
+.scratch/
