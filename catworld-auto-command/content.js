@@ -294,6 +294,7 @@ function clearTimers() {
   queueTimer = null;
   randomTimer = null;
   dropQueue('timer');
+  cancelMacros('timer');
   // 上面清掉了送出佇列的計時器；佇列裡若還有觸發的指令，要重新排程
   pumpQueue();
 }
@@ -313,6 +314,13 @@ function scheduleNextRound() {
 function enqueue(command, source = 'timer', run = null) {
   queue.push({ command, source, run });
   pumpQueue();
+}
+
+// 定時、隨機、觸發的指令入口：單一指令照舊直接排進佇列；含 ; 或 @等待 的交給巨集執行器拆開依序送，
+// 並記下是誰啟動的（owner），停止那個功能時才能只取消它自己的巨集
+function queueCommand(command, owner) {
+  if (CatworldMacro.isSequence(command)) startMacro(command, owner);
+  else enqueue(command, owner);
 }
 
 function dropQueue(source) {
@@ -344,7 +352,7 @@ function runRound() {
   if (!running) return;
   nextRunAt = null;
   chrome.storage.local.set({ nextRunAt: null });
-  settings.commands.filter(cmd => cmd.trim()).forEach(cmd => enqueue(cmd));
+  settings.commands.filter(cmd => cmd.trim()).forEach(cmd => queueCommand(cmd, 'timer'));
   scheduleNextRound();
 }
 
@@ -361,7 +369,7 @@ function scheduleRandomCommand() {
 
 function runRandomCommand(command) {
   if (!running) return;
-  enqueue(command);
+  queueCommand(command, 'timer');
   scheduleRandomCommand();
 }
 
@@ -430,7 +438,7 @@ async function startTriggers(group, config) {
     now: () => Date.now(),
     readStat,
     isNormal: isStatusNormal,
-    send: commands => commands.forEach(command => enqueue(command, `trigger:${group.id}`)),
+    send: commands => commands.forEach(command => queueCommand(command, `trigger:${group.id}`)),
     onDisable: (index, label, reason) => alertOnly(`${group.name}觸發規則「${label}」已停用：${reason}`),
   });
   group.on = true;
@@ -452,6 +460,7 @@ function stopTriggers(group, note = '已停止') {
   clearInterval(group.timer);
   group.timer = null;
   dropQueue(`trigger:${group.id}`);
+  cancelMacros(`trigger:${group.id}`);
   group.note = note;
   renderPanel();
 }
@@ -466,7 +475,7 @@ function stopEverything(reason) {
 // 遊戲巨集的 @等待：按下有等待的巨集鍵時，在遊戲處理之前攔下來，自己照順序執行。
 // 指令走同一個送出佇列（遵守指令間隔、驗證碼偵測、看門狗），等待時不擋住其他功能，別的來源的指令可以插進來。
 // 一個巨集的「執行」要到最後一個指令真的送出才算結束（active() 才不會在最後一個指令還在排隊時就變成 false）
-function startMacro(text) {
+function startMacro(text, owner = 'user') {
   const parsed = CatworldMacro.parseSteps(text);
   if (parsed.error) {
     macroNote = { text: `巨集沒有執行：${parsed.error}`, until: Date.now() + 8000 };
@@ -475,7 +484,7 @@ function startMacro(text) {
   }
   armDetection();
   macroNote = null;
-  const run = { steps: parsed.steps, index: 0, pending: 0, timer: null, waitUntil: null, nextCommand: null };
+  const run = { owner, steps: parsed.steps, index: 0, pending: 0, timer: null, waitUntil: null, nextCommand: null };
   macroRuns.add(run);
   advanceMacro(run);
   renderPanel();
@@ -504,10 +513,14 @@ function finishMacroIfDone(run) {
   if (run.index >= run.steps.length && run.pending === 0 && !run.timer) macroRuns.delete(run);
 }
 
-function cancelMacros() {
-  macroRuns.forEach(run => clearTimeout(run.timer));
-  macroRuns.clear();
-  dropQueue('macro');
+// 不帶 owner 就全部取消（驗證碼、停止一切）；帶 owner 只取消那個功能啟動的（停止定時時不能順手取消使用者按的巨集）
+function cancelMacros(owner) {
+  const gone = [...macroRuns].filter(run => owner === undefined || run.owner === owner);
+  gone.forEach(run => { clearTimeout(run.timer); macroRuns.delete(run); });
+  for (let i = queue.length - 1; i >= 0; i--) {
+    if (queue[i].run && gone.includes(queue[i].run)) queue.splice(i, 1);
+  }
+  if (owner === undefined) dropQueue('macro');
 }
 
 // 捕獲階段（比遊戲掛在 body 上的處理早）：條件和遊戲一樣，只在焦點在指令輸入框或 body 時處理；

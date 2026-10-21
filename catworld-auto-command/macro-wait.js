@@ -33,6 +33,10 @@ const WAIT_PREFIX = /^@(?:wait|等待)/i;
 const WAIT_FORMAT = /^@(?:wait|等待)\s*(\d+(?:\.\d+)?)(?:\s*[-~～]\s*(\d+(?:\.\d+)?))?\s*(?:秒|s)?$/i;
 
 // 指令裡有沒有等待行（只看開頭是 @wait / @等待 的段落）
+// 定時、隨機、觸發的指令是「一個欄位一個指令」直接送進輸入框；含 ; 或 @等待 的要改走巨集執行器，
+// 才會被拆開依序送出（遊戲自己是在瀏覽器裡拆 ;，伺服器不認得）。單獨一個 <enter> 不用，它本來就是一個指令
+const isSequence = text => /;/.test(String(text ?? '')) || hasWait(text);
+
 const hasWait = text => String(text ?? '').split(/\s*;\s*/).some(piece => WAIT_PREFIX.test(piece));
 
 // 和遊戲一樣用 ; 切開。回傳 { steps }：steps 是 { command } 或 { wait: { min, max } }（秒），
@@ -54,5 +58,5 @@ function parseSteps(text) {
 
 const waitMs = (wait, random = Math.random) => (wait.min + random() * (wait.max - wait.min)) * 1000;
 
-globalThis.CatworldMacro = { MAX_WAIT_SECONDS, KEY_VALUES, keyValue, findMacroCommand, hasWait, parseSteps, waitMs };
+globalThis.CatworldMacro = { MAX_WAIT_SECONDS, KEY_VALUES, keyValue, findMacroCommand, hasWait, isSequence, parseSteps, waitMs };
 })();
