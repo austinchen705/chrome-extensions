@@ -469,11 +469,11 @@ test('a failed update shows why and what the layer is still using', () => {
 });
 
 test('with both features off the summary says nothing is fetched instead of showing the last result', () => {
-  const off = S.describeSheet('mob', 'u', okEntry(), at, false);
+  const off = S.describeSheet('mob', 'u', okEntry(), at, { mobs: false, riddles: false });
   assert.match(off, /^怪物路線：.*不會抓取/);
   assert.doesNotMatch(off, /上次更新/);
-  assert.equal(S.describeSheet('mob', '', null, at, false), '怪物路線：尚未設定', 'no link, nothing to say about fetching');
-  assert.match(S.describeSheet('mob', 'u', okEntry(), at, true), /上次更新/);
+  assert.equal(S.describeSheet('mob', '', null, at, { mobs: false, riddles: false }), '怪物路線：尚未設定', 'no link, nothing to say about fetching');
+  assert.match(S.describeSheet('mob', 'u', okEntry(), at, { mobs: true, riddles: true }), /上次更新/);
   assert.match(S.describeSheet('mob', 'u', okEntry(), at), /上次更新/, 'on by default');
 });
 
@@ -558,4 +558,18 @@ test('the default sheet links are valid published CSV links, one tab each, and t
   });
   assert.notEqual(new URL(mob).searchParams.get('gid'), new URL(riddle).searchParams.get('gid'));
   assert.ok(readmeSection.includes(mob) && readmeSection.includes(riddle), 'README lists the defaults');
+});
+
+// 只勾了其中一個功能時，另一個功能的那份表還是會抓（任何一個開著兩份都抓），但面板用不到它，要說明
+test('when only the other feature is on, a sheet says its own feature is off and the panel will not use it', () => {
+  const onlyRiddles = { mobs: false, riddles: true };
+  const mob = S.describeSheet('mob', 'u', okEntry({ at: 5 }), at, onlyRiddles);
+  assert.match(mob, /^怪物路線：上次更新 <5>/, 'the fetched result is still shown');
+  assert.match(mob, /「怪物查詢」沒勾.*不會用到/);
+  assert.doesNotMatch(S.describeSheet('riddle', 'u', okEntry(), at, onlyRiddles), /沒勾/, 'the riddle sheet has its feature on');
+  const onlyMobs = { mobs: true, riddles: false };
+  assert.match(S.describeSheet('riddle', 'u', okEntry(), at, onlyMobs), /「解謎清單」沒勾.*不會用到/);
+  assert.doesNotMatch(S.describeSheet('mob', 'u', okEntry(), at, onlyMobs), /沒勾/);
+  const beforeFetch = S.describeSheet('mob', 'u', null, at, onlyRiddles);
+  assert.ok(beforeFetch.includes('尚未抓取') && beforeFetch.includes('「怪物查詢」沒勾'), 'also before the first fetch');
 });

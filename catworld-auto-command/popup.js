@@ -130,13 +130,14 @@ const timeText = at => new Date(at).toLocaleString('zh-TW', { hour12: false });
 async function showShared() {
   const data = await chrome.storage.local.get(['sharedSources', 'sharedCache', 'zapFeatures']);
   // 怪物查詢與解謎都關著時 background 不會抓，說明一下，不然看起來像壞掉
-  const enabled = data.zapFeatures?.mobs === true || data.zapFeatures?.riddles === true;
+  const features = { mobs: data.zapFeatures?.mobs === true, riddles: data.zapFeatures?.riddles === true };
+  const enabled = features.mobs || features.riddles;
   $('sharedOff').hidden = enabled;
   Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
     const url = data.sharedSources?.[kind] ?? '';
     if (document.activeElement !== $(field.input)) $(field.input).value = url;
     const entry = data.sharedCache?.[kind]?.url === url ? data.sharedCache[kind] : null;
-    $(field.result).textContent = CatworldSharedData.describeSheet(kind, url, entry, timeText, enabled);
+    $(field.result).textContent = CatworldSharedData.describeSheet(kind, url, entry, timeText, features);
     // 被丟掉與對不到的列逐列列出，填錯的人自己看得出要改表上哪一列
     const lines = url && enabled ? CatworldSharedData.reportLines(entry?.report) : [];
     $(field.detail).hidden = !lines.length;

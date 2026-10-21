@@ -268,11 +268,17 @@ const lacksGid = url => {
     return false;
   }
 };
-function describeSheet(kind, url, entry, timeText, enabled = true) {
+// features 是 { mobs, riddles }（兩個功能開關）：都關著 background 不抓；只開一個時兩份表都會抓，但沒勾那個功能對應的表面板用不到，要說明
+const OWN_FEATURE = { mob: { key: 'mobs', name: '怪物查詢', what: '路線' }, riddle: { key: 'riddles', name: '解謎清單', what: '指令' } };
+function describeSheet(kind, url, entry, timeText, features = { mobs: true, riddles: true }) {
   if (!url) return `${SHEET_LABELS[kind].title}：尚未設定`;
-  const text = describeFetched(kind, url, entry, timeText, enabled);
+  const enabled = Boolean(features.mobs || features.riddles);
+  const notes = [];
+  const own = OWN_FEATURE[kind];
+  if (enabled && !features[own.key]) notes.push(`注意：「${own.name}」沒勾，面板不會用到這份${own.what}（另一個功能開著，所以還是會抓）`);
   // 沒有 gid 的連結讀到的是試算表的第一個分頁，貼到第二個分頁的欄位會讀錯；連結本身仍然收（單一分頁的表沒有問題）
-  return enabled && lacksGid(url) ? `${text}\n注意：這條連結沒有 gid，讀到的是試算表的第一個分頁（發布時要選那個分頁，連結才會有 gid）` : text;
+  if (enabled && lacksGid(url)) notes.push('注意：這條連結沒有 gid，讀到的是試算表的第一個分頁（發布時要選那個分頁，連結才會有 gid）');
+  return [describeFetched(kind, url, entry, timeText, enabled), ...notes].join('\n');
 }
 function describeFetched(kind, url, entry, timeText, enabled) {
   const { title, used, unmatched } = SHEET_LABELS[kind];
