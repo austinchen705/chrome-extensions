@@ -81,12 +81,20 @@ const joinCommands = list => list.join(';');
 
 // 「步驟已變動」是逐步判斷的：只有有補指令的那一步、而且它存檔當時的步驟數（ns[序號]，舊資料沒有就用整頁的 n）
 // 和現在不同才算。改一步不能讓同頁其他還沒重新確認過的補充指令跟著變成「沒問題」。
-function effectiveStep(page, index, edits, file) {
+// 優先順序：個人補的 > 共用（試算表，shared[頁面檔名][位置]）> 網站。共用的步驟數 n 有填而且和現在不同才算已變動，留空不警告；
+// 共用寫「停用」（disabled）的步驟沒有指令（來源 shared-off），網站的指令也不採用
+function effectiveStep(page, index, edits, file, shared) {
   const entry = edits?.[file];
   const edited = entry?.cmds?.[index];
   const hasEdit = typeof edited === 'string' && edited.trim() !== '';
   const stale = hasEdit && (entry.ns?.[index] ?? entry.n) !== page.steps.length;
   if (hasEdit) return { commands: edited.trim(), source: 'edited', stale };
+  const sharedEntry = shared?.[file]?.[index];
+  if (sharedEntry) {
+    const info = { by: sharedEntry.by, note: sharedEntry.note };
+    if (sharedEntry.disabled) return { commands: '', source: 'shared-off', stale: false, shared: info };
+    return { commands: sharedEntry.command, source: 'shared', stale: Number.isInteger(sharedEntry.n) && sharedEntry.n !== page.steps.length, shared: info };
+  }
   const site = page.steps[index - 1]?.commands || '';
   return { commands: site, source: site ? 'site' : 'none', stale: false };
 }

@@ -120,44 +120,54 @@ Object.values(FEATURE_BOXES).forEach(id => $(id).addEventListener('change', () =
   chrome.storage.local.set({ zapFeatures: Object.fromEntries(Object.entries(FEATURE_BOXES).map(([key, box]) => [key, $(box).checked])) });
 }));
 
-// 共用資料（Google 試算表）：連結只存本機（sharedSources，不進匯出），抓取由 background 做，結果在 sharedCache
+// 共用資料（Google 試算表）：兩個分頁的連結只存本機（sharedSources：{ mob, riddle }，不進匯出），抓取由 background 做，結果在 sharedCache
+const SHARED_FIELDS = {
+  mob: { input: 'sharedMobUrl', result: 'sharedMobResult', title: '怪物路線', used: '隻', unmatched: '怪物' },
+  riddle: { input: 'sharedRiddleUrl', result: 'sharedRiddleResult', title: '解謎指令', used: '步', unmatched: '謎或步驟' },
+};
 const timeText = at => new Date(at).toLocaleString('zh-TW', { hour12: false });
-function sharedSummary(url, entry) {
-  if (!url) return '尚未設定';
-  if (!entry) return '尚未抓取（怪物查詢或解謎要開著；開著的話查一次怪物，或按「立即更新」）';
+function sharedSummary(field, url, entry) {
+  if (!url) return `${field.title}：尚未設定`;
+  if (!entry) return `${field.title}：尚未抓取（怪物查詢或解謎要開著；開著的話查一次，或按「立即更新」）`;
   const ok = entry.at && entry.report
-    ? `上次更新 ${timeText(entry.at)}：共 ${entry.report.rows} 列，生效 ${entry.report.used} 隻，丟掉 ${entry.report.dropped.length} 列，對不到怪物 ${entry.report.unmatched.length} 隻`
+    ? `上次更新 ${timeText(entry.at)}：共 ${entry.report.rows} 列，生效 ${entry.report.used} ${field.used}，丟掉 ${entry.report.dropped.length} 列，對不到${field.unmatched} ${entry.report.unmatched.length} 筆`
     : '沒有可用的資料';
-  return entry.error ? `更新失敗（${timeText(entry.error.at)}）：${entry.error.reason}\n目前使用：${ok}` : ok;
+  return entry.error ? `${field.title}：更新失敗（${timeText(entry.error.at)}）：${entry.error.reason}
+目前使用：${ok}` : `${field.title}：${ok}`;
 }
 async function showShared() {
   const data = await chrome.storage.local.get(['sharedSources', 'sharedCache']);
-  const url = data.sharedSources?.mob ?? '';
-  if (document.activeElement !== $('sharedMobUrl')) $('sharedMobUrl').value = url;
-  $('sharedResult').textContent = sharedSummary(url, data.sharedCache?.mob?.url === url ? data.sharedCache.mob : null);
+  Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
+    const url = data.sharedSources?.[kind] ?? '';
+    if (document.activeElement !== $(field.input)) $(field.input).value = url;
+    $(field.result).textContent = sharedSummary(field, url, data.sharedCache?.[kind]?.url === url ? data.sharedCache[kind] : null);
+  });
 }
 async function refreshShared() {
-  $('sharedResult').textContent = '更新中…';
+  Object.values(SHARED_FIELDS).forEach(field => { $(field.result).textContent = `${field.title}：更新中…`; });
   try {
     const reply = await chrome.runtime.sendMessage({ type: 'SHARED_REFRESH' });
-    if (!reply?.ok) $('sharedResult').textContent = `更新失敗：${reply?.error || '沒有回應'}`;
+    if (!reply?.ok) Object.values(SHARED_FIELDS).forEach(field => { $(field.result).textContent = `${field.title}：更新失敗：${reply?.error || '沒有回應'}`; });
     else await showShared();
   } catch (error) {
-    $('sharedResult').textContent = `更新失敗：${error.message}`;
+    Object.values(SHARED_FIELDS).forEach(field => { $(field.result).textContent = `${field.title}：更新失敗：${error.message}`; });
   }
 }
-$('sharedMobUrl').addEventListener('change', async () => {
-  const text = $('sharedMobUrl').value.trim();
-  if (text) {
-    const checked = CatworldSharedData.checkUrl(text);
-    if (!checked.ok) {
-      $('sharedResult').textContent = checked.error;
-      return;
+Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
+  $(field.input).addEventListener('change', async () => {
+    const text = $(field.input).value.trim();
+    if (text) {
+      const checked = CatworldSharedData.checkUrl(text);
+      if (!checked.ok) {
+        $(field.result).textContent = `${field.title}：${checked.error}`;
+        return;
+      }
     }
-  }
-  await chrome.storage.local.set({ sharedSources: { mob: text } });
-  if (text) refreshShared();
-  else showShared();
+    const saved = (await chrome.storage.local.get('sharedSources')).sharedSources ?? {};
+    await chrome.storage.local.set({ sharedSources: { ...saved, [kind]: text } });
+    if (text) refreshShared();
+    else showShared();
+  });
 });
 $('sharedRefresh').addEventListener('click', refreshShared);
 chrome.storage.onChanged.addListener((changes, area) => {

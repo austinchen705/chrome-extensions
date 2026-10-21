@@ -6,32 +6,38 @@ const path = require('node:path');
 
 const extensionDir = path.join(__dirname, '..', 'catworld-auto-command');
 const SHEET = 'https://docs.google.com/spreadsheets/d/e/2PACX-abc/pub?gid=0&single=true&output=csv';
+const RIDDLE_SHEET = 'https://docs.google.com/spreadsheets/d/e/2PACX-abc/pub?gid=77&single=true&output=csv';
 const OTHER_SHEET = 'https://docs.google.com/spreadsheets/d/e/2PACX-other/pub?gid=0&single=true&output=csv';
 const HEADER = '怪物名稱,指令,備註,更新者,更新時間';
 const HOUR = 60 * 60 * 1000;
 
 const mobs = [{ name: '白猿(white ape)', id: 'white ape', exp: 250000, location: '古墓', note: '', source: 'zap' }];
+const riddles = [{ name: '獨孤九劍', page: 'qu1-1.htm', shared: [] }];
+const pages = { 'qu1-1.htm': { steps: [{ no: 1, text: 'a', commands: 'run site' }, { no: 2, text: 'b', commands: '' }] } };
+const RIDDLE_CSV = ['謎名稱,步驟,指令,備註,更新者,更新時間,步驟數', '獨孤九劍,2,run n;push stone,先買水,小明,2026-10-21 14:30,2', ''].join('\n');
 const store = {};
 const listeners = [];
 const csvCalls = [];
 const DEFAULT_CSV = `${HEADER}\n白猿(white ape),run e;push stone,先買貂皮衣,小明,2026-10-21 14:30\n`;
 let csvBody = DEFAULT_CSV;
 let csvFailure = null;
+let failOnly = null;
 let clock = Date.parse('2026-10-21T12:00:00Z');
 Date.now = () => clock;
 
 globalThis.importScripts = (...names) => names.forEach(name => require(path.join(extensionDir, name)));
 globalThis.fetch = async (url, options) => {
-  if (url === 'zap-data.json') return { ok: true, json: async () => ({ mobs, items: [], riddles: [], pages: {}, routes: [], routeAliases: {} }) };
+  if (url === 'zap-data.json') return { ok: true, json: async () => ({ mobs, items: [], riddles, pages, routes: [], routeAliases: {} }) };
   csvCalls.push({ url, signal: options?.signal });
-  if (csvFailure === 'hang') {
+  const failing = csvFailure && (!failOnly || failOnly === url);
+  if (failing && csvFailure === 'hang') {
     return new Promise((resolve, reject) => {
       options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
     });
   }
-  if (csvFailure === 'network') throw new Error('network down');
-  if (csvFailure === 'http') return { ok: false, status: 403, text: async () => 'denied' };
-  return { ok: true, status: 200, text: async () => csvBody };
+  if (failing && csvFailure === 'network') throw new Error('network down');
+  if (failing && csvFailure === 'http') return { ok: false, status: 403, text: async () => 'denied' };
+  return { ok: true, status: 200, text: async () => (url === RIDDLE_SHEET ? RIDDLE_CSV : csvBody) };
 };
 const noop = { addListener() {} };
 globalThis.chrome = {
@@ -64,6 +70,7 @@ const reset = (sources = { mob: SHEET }, features = { mobs: true }) => {
   Object.assign(store, { sharedSources: sources, zapFeatures: features });
   csvCalls.length = 0;
   csvFailure = null;
+  failOnly = null;
   csvBody = DEFAULT_CSV;
   clock = Date.parse('2026-10-21T12:00:00Z');
 };
@@ -229,4 +236,61 @@ test('a row with a location only reaches the mob at that place, and 停用 hides
   const reply = await lookup();
   assert.equal(routeOf(reply), null);
   assert.deepEqual(reply.items[0].candidates[0].sharedDisabled, { by: '小明', note: '錯的' });
+});
+
+const riddleShared = () => ask({ type: 'ZAP_RIDDLE_SHARED' });
+
+test('the riddle sheet is fetched on the first ZAP_RIDDLE_SHARED and answers the steps by page position', async () => {
+  reset({ riddle: RIDDLE_SHEET });
+  const reply = await riddleShared();
+  assert.equal(reply.ok, true);
+  assert.deepEqual(csvCalls.map(call => call.url), [RIDDLE_SHEET], 'only the riddle sheet is configured');
+  assert.deepEqual([reply.steps['qu1-1.htm'][2].command, reply.steps['qu1-1.htm'][2].by, reply.steps['qu1-1.htm'][2].n], ['run n;push stone', '小明', 2]);
+  assert.equal(store.sharedCache.riddle.url, RIDDLE_SHEET);
+  assert.deepEqual([store.sharedCache.riddle.report.rows, store.sharedCache.riddle.report.used], [1, 1]);
+  assert.equal(store.sharedCache.mob, undefined);
+});
+
+test('the two sheets are cached and refreshed independently', async () => {
+  reset({ mob: SHEET, riddle: RIDDLE_SHEET });
+  await lookup();
+  assert.equal(csvCalls.length, 2, 'one lookup brings both layers up to date');
+  clock += HOUR - 1000;
+  await riddleShared();
+  assert.equal(csvCalls.length, 2, 'both still fresh');
+  clock += 2000;
+  await riddleShared();
+  assert.equal(csvCalls.length, 4, 'both stale, both fetched');
+});
+
+test('one sheet failing does not take the other layer away', async () => {
+  reset({ mob: SHEET, riddle: RIDDLE_SHEET });
+  await lookup();
+  clock += HOUR + 1000;
+  csvFailure = 'network';
+  failOnly = RIDDLE_SHEET;
+  const route = routeOf(await lookup());
+  assert.equal(route.route.command, 'run e;push stone', 'the mob layer refreshed fine');
+  assert.match(store.sharedCache.riddle.error.reason, /network down/);
+  assert.equal((await riddleShared()).steps['qu1-1.htm'][2].command, 'run n;push stone', 'the riddle layer kept its old data');
+  assert.equal(store.sharedCache.mob.error, undefined);
+});
+
+test('"update now" fetches both sheets', async () => {
+  reset({ mob: SHEET, riddle: RIDDLE_SHEET });
+  await lookup();
+  const reply = await ask({ type: 'SHARED_REFRESH' }, settingsPage);
+  assert.equal(csvCalls.length, 4);
+  assert.deepEqual([reply.cache.mob.report.used, reply.cache.riddle.report.used], [1, 1]);
+});
+
+test('clearing the riddle link empties that layer; the riddle sheet is not fetched with the features off', async () => {
+  reset({ riddle: RIDDLE_SHEET });
+  await riddleShared();
+  store.sharedSources = { riddle: '' };
+  assert.deepEqual((await riddleShared()).steps, {});
+  assert.equal(store.sharedCache.riddle, undefined);
+  reset({ riddle: RIDDLE_SHEET }, { mobs: false, items: true, riddles: false });
+  await riddleShared();
+  assert.equal(csvCalls.length, 0);
 });

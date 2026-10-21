@@ -269,3 +269,108 @@ test('the newest row decides between 停用 and a route', () => {
   const earlier = buildLoc('老虎(tiger),桃花島,run before,,甲,2026-10-20 09:00', '老虎(tiger),桃花島,停用,,乙,2026-10-21 09:00');
   assert.deepEqual(commands(earlier.routes), [null, null]);
 });
+
+// ---- 解謎指令分頁 ----
+require(path.join(__dirname, '..', 'catworld-auto-command', 'zap-riddles.js'));
+const R = globalThis.CatworldZapRiddles;
+const RIDDLE_HEADER = '謎名稱,步驟,指令,備註,更新者,更新時間,步驟數';
+const step = (no, extra = {}) => ({ no, text: `第${no}步`, commands: '', ...extra });
+const RIDDLES = [
+  { name: '獨孤九劍', page: 'a.htm', shared: [] },
+  { name: '玉蕭劍法', page: 'b.htm', shared: ['彈指神通'] },
+  { name: '彈指神通', page: 'b.htm', shared: ['玉蕭劍法'] },
+];
+const PAGES = {
+  'a.htm': { steps: [step(1), step(2), step(3)] },
+  // 共用頁：兩個謎各自從 1 開始編號，位置 1～2 是玉蕭劍法、3～5 是彈指神通
+  'b.htm': { steps: [step(1, { heading: '玉蕭劍法：' }), step(2), step(1, { heading: '彈指神通：' }), step(2), step(3)] },
+};
+const buildRiddle = (...lines) => S.buildRiddleSteps([RIDDLE_HEADER, ...lines].join('\n'), RIDDLES, PAGES);
+
+test('a riddle row lands on the page position of that step and keeps who wrote it', () => {
+  const result = buildRiddle('獨孤九劍,2,run n;push stone,先買水,小明,2026-10-21 14:30,3');
+  assert.equal(result.ok, true);
+  const entry = result.steps['a.htm'][2];
+  assert.deepEqual({ command: entry.command, by: entry.by, note: entry.note, n: entry.n }, { command: 'run n;push stone', by: '小明', note: '先買水', n: 3 });
+  assert.ok(Number.isFinite(entry.at));
+  assert.deepEqual([result.report.rows, result.report.used, result.report.dropped.length], [1, 1, 0]);
+});
+
+test('on a page shared by several riddles the step number is the one printed inside that riddle\'s own section', () => {
+  const result = buildRiddle('玉蕭劍法,2,run jade,,甲,', '彈指神通,2,run finger,,乙,', '彈指神通,3,run finger3,,乙,');
+  assert.deepEqual(Object.fromEntries(Object.entries(result.steps['b.htm']).map(([position, entry]) => [position, entry.command])), { 2: 'run jade', 4: 'run finger', 5: 'run finger3' });
+});
+
+test('the step count is optional and stays out of the entry when blank or not a number', () => {
+  const result = buildRiddle('獨孤九劍,1,run a,,甲,,', '獨孤九劍,2,run b,,甲,,abc', '獨孤九劍,3,run c,,甲,,0');
+  ['1', '2', '3'].forEach(position => assert.equal(result.steps['a.htm'][position].n ?? null, null, position));
+});
+
+test('the step count and the other columns are optional columns', () => {
+  const result = S.buildRiddleSteps('謎名稱,步驟,指令\n獨孤九劍,1,run a\n', RIDDLES, PAGES);
+  assert.equal(result.ok, true);
+  assert.equal(result.steps['a.htm'][1].command, 'run a');
+});
+
+test('a riddle sheet missing a required column is an error', () => {
+  const result = S.buildRiddleSteps('謎名稱,指令\n獨孤九劍,run a\n', RIDDLES, PAGES);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /步驟/);
+});
+
+test('rows with a blank or non-numeric step, a blank name or a blank command are dropped with their row numbers', () => {
+  const result = buildRiddle('獨孤九劍,,run a,,甲,', '獨孤九劍,二,run a,,甲,', ',1,run a,,甲,', '獨孤九劍,1,,,甲,', '獨孤九劍,1,run ok,,甲,');
+  assert.deepEqual(result.report.dropped.map(item => item.row), [2, 3, 4, 5]);
+  assert.equal(result.report.used, 1);
+});
+
+test('a riddle or a step the data does not have is reported as unmatched and never reaches the layer', () => {
+  const result = buildRiddle('不存在的謎,1,run a,,甲,', '獨孤九劍,9,run a,,甲,', '獨孤九劍,1,run ok,,甲,');
+  assert.deepEqual(result.report.unmatched.map(item => [item.row, item.name, item.step]), [[2, '不存在的謎', 1], [3, '獨孤九劍', 9]]);
+  assert.deepEqual(Object.keys(result.steps), ['a.htm']);
+  assert.deepEqual(Object.keys(result.steps['a.htm']), ['1']);
+});
+
+test('riddle names match ignoring spaces and case; the newest row for one step wins', () => {
+  const result = buildRiddle('獨孤 九劍,1,run old,,甲,2026-10-20 09:00', '獨孤九劍,1,run new,,乙,2026-10-21 09:00');
+  assert.equal(result.steps['a.htm'][1].command, 'run new');
+  assert.equal(result.report.used, 1);
+});
+
+test('riddle commands go through the same whitelist, and 停用 hides the step\'s command', () => {
+  const result = buildRiddle('獨孤九劍,1,run n;drop gold,,甲,', '獨孤九劍,2,停用,指令是錯的,小明,2026-10-21 14:30');
+  assert.deepEqual(result.report.dropped.map(item => item.row), [2]);
+  assert.match(result.report.dropped[0].reason, /drop/);
+  const off = result.steps['a.htm'][2];
+  assert.deepEqual([off.command, off.disabled, off.by, off.note], ['', true, '小明', '指令是錯的']);
+});
+
+test('with the real riddle data a row is placed on the position whose printed number matches', () => {
+  const data = JSON.parse(require('node:fs').readFileSync(path.join(__dirname, '..', 'catworld-auto-command', 'zap-data.json'), 'utf8'));
+  const riddle = data.riddles.find(item => item.shared.length);
+  const page = data.pages[riddle.page];
+  const mine = R.sectionSteps(riddle, page);
+  const target = mine[mine.length - 1];
+  const no = page.steps[target - 1].no;
+  const result = S.buildRiddleSteps(`${RIDDLE_HEADER}\n${riddle.name},${no},run real,,甲,\n`, data.riddles, data.pages);
+  assert.equal(result.steps[riddle.page][target].command, 'run real');
+});
+
+test('the shared step is used in place of the site\'s command, but your own edit still wins', () => {
+  const page = { steps: [{ no: 1, text: 't', commands: 'run site' }, { no: 2, text: 't', commands: '' }] };
+  const shared = { 'x.htm': { 1: { command: 'run shared', by: '小明', note: '備註', n: 2 }, 2: { command: '', disabled: true, by: '小華', note: '' } } };
+  const noEdits = {};
+  assert.deepEqual(R.effectiveStep(page, 1, noEdits, 'x.htm', shared), { commands: 'run shared', source: 'shared', stale: false, shared: { by: '小明', note: '備註' } });
+  const mine = { 'x.htm': { n: 2, cmds: { 1: 'run mine' } } };
+  assert.equal(R.effectiveStep(page, 1, mine, 'x.htm', shared).commands, 'run mine');
+  assert.equal(R.effectiveStep(page, 1, mine, 'x.htm', shared).source, 'edited');
+  assert.equal(R.effectiveStep(page, 1, noEdits, 'x.htm', undefined).source, 'site', 'no shared layer: unchanged behaviour');
+  const off = R.effectiveStep(page, 2, noEdits, 'x.htm', shared);
+  assert.deepEqual([off.commands, off.source, off.shared.by], ['', 'shared-off', '小華']);
+});
+
+test('a shared step is flagged as changed only when its step count was filled in and differs from now', () => {
+  const page = { steps: [{ no: 1, text: 't', commands: '' }, { no: 2, text: 't', commands: '' }] };
+  const at = n => R.effectiveStep(page, 1, {}, 'x.htm', { 'x.htm': { 1: { command: 'run a', by: '', note: '', n } } }).stale;
+  assert.deepEqual([at(2), at(3), at(undefined), at(null)], [false, true, false, false]);
+});

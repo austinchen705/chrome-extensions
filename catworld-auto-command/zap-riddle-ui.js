@@ -145,10 +145,14 @@ function attach(root, { readStats, startSteps }) {
   // ---- 步驟檢視 ----
   function stepRow(riddle, page, index) {
     const step = page.steps[index - 1];
-    const effective = R.effectiveStep(page, index, edits, riddle.page);
-    const cmdText = effective.commands
-      ? `指令（${effective.source === 'edited' ? '已補' : '網站'}）：${effective.commands}`
-      : '（沒有指令）';
+    const effective = R.effectiveStep(page, index, edits, riddle.page, data.shared);
+    // 共用（試算表）的步驟標出更新者與備註；共用寫「停用」的步驟沒有指令
+    const sharedLabel = effective.shared ? `共用（${effective.shared.by || '未署名'}）${effective.shared.note ? `：${effective.shared.note}` : ''}` : '';
+    const cmdText = effective.source === 'shared-off'
+      ? `${sharedLabel}　已停用這一步的指令`
+      : effective.commands
+        ? `指令（${{ edited: '已補', shared: sharedLabel, site: '網站' }[effective.source]}）：${effective.commands}`
+        : '（沒有指令）';
     const editor = typable(el('textarea', { value: effective.commands }));
     const save = el('button', { className: 'rd-btn', textContent: '儲存' });
     const restore = el('button', { className: 'rd-btn', textContent: '還原' });
@@ -178,7 +182,7 @@ function attach(root, { readStats, startSteps }) {
       el('div', { textContent: `${step.no}. ${step.text}` }),
       el('div', { className: 'rd-cmd', textContent: cmdText }),
       R.startsAtInn(effective.commands) ? el('div', { className: 'rd-note', textContent: '這條路徑從醉仙樓客棧出發：先 recall 回去再送出' }) : '',
-      effective.stale && effective.source === 'edited' ? el('div', { className: 'rd-warn', textContent: '步驟已變動，請確認這個補充的指令還對' }) : '',
+      effective.stale ? el('div', { className: 'rd-warn', textContent: '步驟已變動，請確認這個補充的指令還對' }) : '',
       el('div', { className: 'rd-actions' }, editButton, sendButton), edit);
   }
 
@@ -267,6 +271,9 @@ function attach(root, { readStats, startSteps }) {
         say(`讀取已存的資料失敗：${error.message}`);
       }
     }
+    // 共用的步驟每次打開都重新要一次（背景一小時內不會重抓），不然要重新整理遊戲頁才看得到別人新補的
+    const sharedReply = await send({ type: 'ZAP_RIDDLE_SHARED' });
+    data.shared = sharedReply?.ok ? sharedReply.steps : {};
     if (box.hidden) return;
     renderList();
   }

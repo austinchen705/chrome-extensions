@@ -99,55 +99,60 @@ function parseTime(text) {
   return same ? date.getTime() : NaN;
 }
 
-// 以標題文字找欄位（順序不拘）；缺必要欄位回 error
-function columns(header, required, optional) {
-  const index = Object.fromEntries(header.map((name, i) => [String(name).trim(), i]));
+// 兩個分頁共用的讀法：解析 CSV、依標題文字找欄位（順序不拘，缺必要欄位就是格式錯誤）、略過空列；
+// 每一列給 { row（試算表上的列號，標題是第 1 列）, cell(欄名)（沒有這個欄位或空的回空字串）}
+function readSheet(csvText, required) {
+  const records = parseCsv(csvText);
+  if (!records.length) return { error: '內容是空的，不是 CSV' };
+  const index = Object.fromEntries(records[0].map((name, i) => [String(name).trim(), i]));
   const missing = required.filter(name => !(name in index));
   if (missing.length) return { error: `缺少欄位「${missing.join('、')}」，第一列要是標題列` };
-  return { index, optional };
+  const rows = [];
+  records.slice(1).forEach((record, i) => {
+    if (record.every(value => !String(value).trim())) return;
+    rows.push({ row: i + 2, cell: name => (name in index ? String(record[index[name]] ?? '').trim() : '') });
+  });
+  return { rows };
+}
+
+// 指令欄的共用規則：空白丟掉；整個詞「停用」是關掉；其餘過白名單。回 { entry, rank } 或 { reason }；
+// rank 是更新時間（讀不到當最舊），同一個鍵多列取 rank 最大的、一樣大取後面的
+function commandEntry(cell) {
+  const command = cell('指令');
+  if (!command) return { reason: '指令是空的' };
+  const disabled = command === DISABLE;
+  const check = disabled ? { ok: true } : checkCommand(command);
+  if (!check.ok) return { reason: check.reason };
+  const at = parseTime(cell('更新時間'));
+  const entry = { command: disabled ? '' : command, by: cell('更新者'), note: cell('備註'), at: Number.isFinite(at) ? at : null };
+  if (disabled) entry.disabled = true;
+  return { entry, rank: Number.isFinite(at) ? at : -Infinity };
 }
 
 // 怪物路線分頁：怪物名稱 | 位置（選填） | 指令 | 備註 | 更新者 | 更新時間。
 // 鍵是「名稱」或「名稱|位置」（位置有填才帶）：同名的怪常在不同地方，位置有填就只管那個地方的怪。指令寫「停用」代表這隻怪不要路線。
-// 回 { ok, routes: { 鍵: { command, by, note, at, disabled? } }, report: { rows, used, dropped: [{row, reason}], unmatched: [{row, name, location?}] } }；
-// row 是試算表上的列號（標題是第 1 列）。同一個鍵多列取更新時間最新的（讀不到時間當最舊、同時取後面的）；
-// 在怪物表找不到的名稱（或那個名稱沒有在那個位置）照樣保留（也許是資料還沒收錄），只列在 unmatched
+// 回 { ok, routes: { 鍵: { command, by, note, at, disabled? } }, report: { rows, used, dropped: [{row, reason}], unmatched: [{row, name, location?}] } }。
+// 同一個鍵多列取更新時間最新的；在怪物表找不到的名稱（或那個名稱沒有在那個位置）照樣保留（也許是資料還沒收錄），只列在 unmatched
 function buildMobRoutes(csvText, mobs) {
   const customKey = globalThis.CatworldZapMobs.customKey;
-  const records = parseCsv(csvText);
-  if (!records.length) return { ok: false, error: '內容是空的，不是 CSV' };
-  const found = columns(records[0], ['怪物名稱', '指令']);
-  if (found.error) return { ok: false, error: found.error };
-  const { index } = found;
-  const cell = (record, name) => (name in index ? String(record[index[name]] ?? '').trim() : '');
+  const sheet = readSheet(csvText, ['怪物名稱', '指令']);
+  if (sheet.error) return { ok: false, error: sheet.error };
   const known = new Set();
   (mobs ?? []).forEach(mob => {
     known.add(customKey(mob.name));
     mobPlaces(mob).forEach(place => known.add(`${customKey(mob.name)}|${place}`));
   });
   const best = new Map();
-  const report = { rows: 0, used: 0, dropped: [], unmatched: [] };
-  records.slice(1).forEach((record, i) => {
-    if (record.every(value => !String(value).trim())) return;
-    const row = i + 2;
-    report.rows += 1;
-    const name = cell(record, '怪物名稱');
-    const command = cell(record, '指令');
+  const report = { rows: sheet.rows.length, used: 0, dropped: [], unmatched: [] };
+  sheet.rows.forEach(({ row, cell }) => {
+    const name = cell('怪物名稱');
     if (!name) return report.dropped.push({ row, reason: '怪物名稱是空的' });
-    if (!command) return report.dropped.push({ row, reason: '指令是空的' });
-    const disabled = command === DISABLE;
-    const check = disabled ? { ok: true } : checkCommand(command);
-    if (!check.ok) return report.dropped.push({ row, reason: check.reason });
-    const at = parseTime(cell(record, '更新時間'));
-    const location = cell(record, '位置');
+    const made = commandEntry(cell);
+    if (!made.entry) return report.dropped.push({ row, reason: made.reason });
+    const location = cell('位置');
     const key = location ? `${customKey(name)}|${customKey(location)}` : customKey(name);
-    const rank = Number.isFinite(at) ? at : -Infinity;
     const old = best.get(key);
-    if (!old || rank >= old.rank) {
-      const entry = { command: disabled ? '' : command, by: cell(record, '更新者'), note: cell(record, '備註'), at: Number.isFinite(at) ? at : null };
-      if (disabled) entry.disabled = true;
-      best.set(key, { rank, row, name, location, entry });
-    }
+    if (!old || made.rank >= old.rank) best.set(key, { rank: made.rank, row, name, location, entry: made.entry });
   });
   const routes = {};
   best.forEach(({ row, name, location, entry }, key) => {
@@ -157,6 +162,44 @@ function buildMobRoutes(csvText, mobs) {
   report.used = best.size;
   report.unmatched.sort((a, b) => a.row - b.row);
   return { ok: true, routes, report };
+}
+
+// 解謎指令分頁：謎名稱 | 步驟 | 指令 | 備註 | 更新者 | 更新時間 | 步驟數（選填）。
+// 步驟是面板上顯示的序號（步驟檔裡印的 no；共用頁每個謎各自編號，所以只在那個謎自己的那一段裡找），換算成步驟在該頁的 1 起算位置當鍵。
+// 步驟數是存檔當時該頁的步驟數，有填而且和現在不同就標「步驟已變動」，留空就不警告。
+// 回 { ok, steps: { 頁面檔名: { 位置: { command, by, note, at, n?, disabled? } } }, report }；
+// 謎或步驟對不到的列沒有位置可放，只列在 report.unmatched（{row, name, step}），不進共用層
+function buildRiddleSteps(csvText, riddles, pages) {
+  const customKey = globalThis.CatworldZapMobs.customKey;
+  const sheet = readSheet(csvText, ['謎名稱', '步驟', '指令']);
+  if (sheet.error) return { ok: false, error: sheet.error };
+  const byName = new Map();
+  (riddles ?? []).forEach(riddle => { if (!byName.has(customKey(riddle.name))) byName.set(customKey(riddle.name), riddle); });
+  const best = new Map();
+  const report = { rows: sheet.rows.length, used: 0, dropped: [], unmatched: [] };
+  sheet.rows.forEach(({ row, cell }) => {
+    const name = cell('謎名稱');
+    const no = Number(cell('步驟'));
+    if (!name) return report.dropped.push({ row, reason: '謎名稱是空的' });
+    if (!Number.isInteger(no) || no < 1) return report.dropped.push({ row, reason: '步驟要填面板上顯示的序號（正整數）' });
+    const made = commandEntry(cell);
+    if (!made.entry) return report.dropped.push({ row, reason: made.reason });
+    const riddle = byName.get(customKey(name));
+    const page = riddle?.page && pages?.[riddle.page];
+    const position = page && globalThis.CatworldZapRiddles.sectionSteps(riddle, page).find(index => page.steps[index - 1].no === no);
+    if (!position) return report.unmatched.push({ row, name, step: no });
+    const n = Number(cell('步驟數'));
+    if (Number.isInteger(n) && n > 0) made.entry.n = n;
+    const key = `${riddle.page}|${position}`;
+    const old = best.get(key);
+    if (!old || made.rank >= old.rank) best.set(key, { rank: made.rank, file: riddle.page, position, entry: made.entry });
+  });
+  const steps = {};
+  best.forEach(({ file, position, entry }) => {
+    (steps[file] ??= {})[position] = entry;
+  });
+  report.used = best.size;
+  return { ok: true, steps, report };
 }
 
 // background 用：把共用層疊在 ZAP_LOOKUP／ZAP_SUITABLE 的回覆上（個人層在面板那邊再蓋過去）。
@@ -179,5 +222,5 @@ function overlayReply(reply, shared) {
   return { ...reply, items: reply.items.map(item => (item.candidates ? { ...item, candidates: item.candidates.map(apply) } : apply(item))) };
 }
 
-globalThis.CatworldSharedData = { MAX_SEGMENT, ALLOWED_VERBS, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, overlayReply };
+globalThis.CatworldSharedData = { MAX_SEGMENT, ALLOWED_VERBS, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, overlayReply };
 })();
