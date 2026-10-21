@@ -549,3 +549,13 @@ test('the header rows in README code blocks keep their tabs and put every column
   const entry = riddle.steps['a.htm'][2];
   assert.deepEqual([entry.command, entry.note, entry.by, entry.n], ['run e', '備註X', '小明', 3]);
 });
+
+test('the default sheet links are valid published CSV links, one tab each, and the README shows the same ones', () => {
+  const { mob, riddle } = S.DEFAULT_SOURCES;
+  [mob, riddle].forEach(url => {
+    assert.equal(S.checkUrl(url).ok, true, url);
+    assert.ok(new URL(url).searchParams.get('gid'), 'a link with gid reads a specific tab');
+  });
+  assert.notEqual(new URL(mob).searchParams.get('gid'), new URL(riddle).searchParams.get('gid'));
+  assert.ok(readmeSection.includes(mob) && readmeSection.includes(riddle), 'README lists the defaults');
+});

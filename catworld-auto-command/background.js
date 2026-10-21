@@ -204,6 +204,12 @@ function refreshSharedOnce(force) {
 // 儲存或網路出任何問題都不能弄壞內建資料的查詢：回空的共用層
 const sharedLayer = kind => refreshSharedOnce(false).then(cache => cache[kind]?.[SHARED_SHEETS[kind].layer] ?? {}, () => ({}));
 
+// 安裝或更新時，共用表連結「從來沒有設定過」（儲存裡沒有這個欄位）才帶入預設的；清空過（存了空字串）或自己填過的一律不動
+chrome.runtime.onInstalled?.addListener(async () => {
+  const { sharedSources } = await chrome.storage.local.get(SHARED_SOURCES_KEY);
+  if (sharedSources === undefined) await chrome.storage.local.set({ [SHARED_SOURCES_KEY]: { ...CatworldSharedData.DEFAULT_SOURCES } });
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // 設定頁的「立即更新」：只接受擴充功能自己的頁面（和 LINE_TEST 一樣看 sender.id 與 sender.url）
   if (message?.type === 'SHARED_REFRESH' && sender.id === chrome.runtime.id && sender.url?.startsWith(chrome.runtime.getURL(''))) {

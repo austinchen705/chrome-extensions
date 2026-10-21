@@ -17,6 +17,7 @@ const pages = { 'qu1-1.htm': { steps: [{ no: 1, text: 'a', commands: 'run site' 
 const RIDDLE_CSV = ['謎名稱,步驟,指令,備註,更新者,更新時間,步驟數', '獨孤九劍,2,run n;push stone,先買水,小明,2026-10-21 14:30,2', ''].join('\n');
 const store = {};
 const listeners = [];
+const installedListeners = [];
 const csvCalls = [];
 const DEFAULT_CSV = `${HEADER}\n白猿(white ape),run e;push stone,先買貂皮衣,小明,2026-10-21 14:30\n`;
 let csvBody = DEFAULT_CSV;
@@ -41,7 +42,7 @@ globalThis.fetch = async (url, options) => {
 };
 const noop = { addListener() {} };
 globalThis.chrome = {
-  runtime: { id: 'me', onMessage: { addListener: fn => listeners.push(fn) }, getURL: file => `chrome-extension://me/${file === 'zap-data.json' ? file : file}` },
+  runtime: { id: 'me', onMessage: { addListener: fn => listeners.push(fn) }, onInstalled: { addListener: fn => installedListeners.push(fn) }, getURL: file => `chrome-extension://me/${file === 'zap-data.json' ? file : file}` },
   tabs: { onRemoved: noop },
   notifications: { onButtonClicked: noop, onClicked: noop },
   storage: {
@@ -292,5 +293,28 @@ test('clearing the riddle link empties that layer; the riddle sheet is not fetch
   assert.equal(store.sharedCache.riddle, undefined);
   reset({ riddle: RIDDLE_SHEET }, { mobs: false, items: true, riddles: false });
   await riddleShared();
+  assert.equal(csvCalls.length, 0);
+});
+
+test('on install or update the default shared links are filled in only when nothing was ever set', async () => {
+  const { DEFAULT_SOURCES } = globalThis.CatworldSharedData;
+  assert.ok(installedListeners.length >= 1, 'background listens to onInstalled');
+  const run = async () => { for (const listener of installedListeners) await listener({ reason: 'install' }); };
+  reset();
+  delete store.sharedSources;
+  await run();
+  assert.deepEqual(store.sharedSources, DEFAULT_SOURCES);
+  reset({ mob: '', riddle: '' });
+  await run();
+  assert.deepEqual(store.sharedSources, { mob: '', riddle: '' }, 'cleared on purpose stays cleared');
+  reset({ mob: SHEET });
+  await run();
+  assert.deepEqual(store.sharedSources, { mob: SHEET }, 'existing settings are never touched');
+});
+
+test('the defaults alone do not fetch anything while both features are off', async () => {
+  reset(undefined, { mobs: false, items: true, riddles: false });
+  store.sharedSources = { ...globalThis.CatworldSharedData.DEFAULT_SOURCES };
+  await lookup();
   assert.equal(csvCalls.length, 0);
 });

@@ -168,7 +168,7 @@ https://docs.google.com/spreadsheets/d/e/2PACX-1vQXSjhzXVd_Qy2B773sXN8tPVA1x_mTQ
 https://docs.google.com/spreadsheets/d/e/2PACX-1vQXSjhzXVd_Qy2B773sXN8tPVA1x_mTQ26xFHfkzB5F-5tWwRrvxJv9DxeHaLNrlS8uOwsNToJtRK57/pub?gid=65492013&single=true&output=csv
 ```
 
-> 貼了這兩條，你的面板就會採用這份表上的路線與解謎指令（只收走路與互動類，其餘整列丟掉，下面有說明）。這份表由作者與受邀的朋友編輯，內容是否適合你自己判斷；不想用就把設定頁的欄位清空。
+> **這兩條是預設值**：第一次安裝（或更新後設定頁從來沒填過）時，擴充功能會自動帶入，你不用貼。有了連結之後，只要「怪物查詢」或「解謎清單」其中一個開關開著（兩個預設都是關的），面板就會採用這份表上的路線與解謎指令（只收走路與互動類，其餘整列丟掉，下面有說明）。這份表由作者與受邀的朋友編輯，內容是否適合你自己判斷；**不想用就把設定頁的兩個欄位清空**（清空之後不會再自動帶入，想換成自己的表就貼自己的連結）。
 
 ### 怎麼填
 
