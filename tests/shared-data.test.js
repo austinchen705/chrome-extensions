@@ -537,9 +537,11 @@ test('README lists exactly the verbs the module allows', () => {
 // 標題列放在程式碼區塊裡，Tab 才不會被 Markdown 渲染成空白、也不會併成一段
 test('the header rows in README code blocks keep their tabs and put every column where the parsers expect it', () => {
   const blocks = [...readmeSection.matchAll(/```\n([^\n]*)\n```/g)].map(match => match[1]);
-  assert.equal(blocks.length, 2, 'one block for each sheet, mob first');
-  blocks.forEach(block => assert.ok(block.includes('\t'), 'tabs are kept'));
-  const [mobHeader, riddleHeader] = blocks.map(block => block.replace(/\t/g, ','));
+  // 依內容找標題列（節裡還有別的程式碼區塊，例如連結）；要求欄名後面緊接 Tab，Tab 被改成空白就找不到
+  const mobBlock = blocks.find(block => block.startsWith('怪物名稱\t'));
+  const riddleBlock = blocks.find(block => block.startsWith('謎名稱\t'));
+  assert.ok(mobBlock && riddleBlock, 'one tab-separated header block for each sheet');
+  const [mobHeader, riddleHeader] = [mobBlock, riddleBlock].map(block => block.replace(/\t/g, ','));
   const mob = S.buildMobRoutes(`${mobHeader}\n老虎(tiger),桃花島,run e,備註X,小明,2026-10-21 14:30\n`, WILD);
   assert.deepEqual(Object.values(mob.routes).map(entry => [entry.command, entry.note, entry.by]), [['run e', '備註X', '小明']]);
   assert.ok(mob.routes[`${Z.customKey('老虎(tiger)')}|${Z.customKey('桃花島')}`], 'the location column is the second one');

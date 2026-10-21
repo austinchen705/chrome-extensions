@@ -152,6 +152,24 @@ popup 一點別處就會關掉。想讓設定一直開著，按遊戲頁面板�
 
 > 發布連結是公開的：知道網址的人都讀得到，表上不要放任何不想公開的東西。想停止共用，在「發布到網路」按「停止發布」。
 
+### 現在在用的共用表連結
+
+作者這一群朋友正在用的兩條連結（貼到設定頁「共用資料」區對應的欄位即可，不必自己建表；想自己維護就照上面「第一次設定」建自己的）：
+
+怪物路線：
+
+```
+https://docs.google.com/spreadsheets/d/e/2PACX-1vQXSjhzXVd_Qy2B773sXN8tPVA1x_mTQ26xFHfkzB5F-5tWwRrvxJv9DxeHaLNrlS8uOwsNToJtRK57/pub?gid=49592298&single=true&output=csv
+```
+
+解謎指令：
+
+```
+https://docs.google.com/spreadsheets/d/e/2PACX-1vQXSjhzXVd_Qy2B773sXN8tPVA1x_mTQ26xFHfkzB5F-5tWwRrvxJv9DxeHaLNrlS8uOwsNToJtRK57/pub?gid=65492013&single=true&output=csv
+```
+
+> 貼了這兩條，你的面板就會採用這份表上的路線與解謎指令（只收走路與互動類，其餘整列丟掉，下面有說明）。這份表由作者與受邀的朋友編輯，內容是否適合你自己判斷；不想用就把設定頁的欄位清空。
+
 ### 怎麼填
 
 | 欄位 | 怪物路線 | 解謎指令 |
