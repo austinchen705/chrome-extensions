@@ -31,13 +31,24 @@ chrome.tabs.onRemoved.addListener(async removedId => {
 const LINE_KEY = 'lineNotify';
 const LINE_RESULT_KEY = 'lineLastResult';
 
+const saveLineResult = result => chrome.storage.session.set({ [LINE_RESULT_KEY]: result }).catch(() => {});
+
+// 設定頁的「發送測試訊息」：不看總開關，結果標成「測試」
 async function sendLine(text) {
   const saved = (await chrome.storage.local.get(LINE_KEY))[LINE_KEY] ?? {};
-  const result = await CatworldLineNotify.send({
-    fetchImpl: fetch, token: saved.token, userId: saved.userId, text, now: Date.now,
-  });
-  await chrome.storage.session.set({ [LINE_RESULT_KEY]: result }).catch(() => {});
+  const result = {
+    ...await CatworldLineNotify.send({ fetchImpl: fetch, token: saved.token, userId: saved.userId, text, now: Date.now }),
+    source: 'test',
+  };
+  await saveLineResult(result);
   return result;
+}
+
+// 警報推播：總開關沒開、憑證沒填就什麼都不做（不碰網路）；結果標成「警報」。呼叫端要自己 .catch，失敗不能影響系統通知
+async function notifyLine(reason) {
+  const saved = (await chrome.storage.local.get(LINE_KEY))[LINE_KEY];
+  const result = await CatworldLineNotify.notifyAlert({ fetchImpl: fetch, settings: saved, reason, now: Date.now });
+  if (result) await saveLineResult(result);
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -64,6 +75,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // 警報響鈴中（提示音只有按「確認」才停）：通知上也放一顆確認，不用回到遊戲分頁
     ...(message.confirmable ? { buttons: [{ title: '確認（停止提示音）' }] } : {})
   });
+  // 手機通知（LINE）：所有警報都走這個出口，系統通知先建，LINE 失敗不能影響它
+  notifyLine(message.reason).catch(() => {});
 });
 
 chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => {

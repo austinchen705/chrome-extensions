@@ -126,3 +126,81 @@ test('wiring: the background always answers LINE_TEST and only trusts the extens
 test('wiring: a failure in the LINE block cannot stop the rest of the popup from wiring up', () => {
   assert.match(ext('popup.js'), /try \{\s*CatworldLineNotifyUI\.attach\(document\);\s*\} catch/);
 });
+
+// ---- 通知判斷：警報要不要推到手機、訊息長什麼樣 ----
+const at = (h, m, s) => new Date(2026, 9, 21, h, m, s).getTime();
+const ON = { enabled: true, token: TOKEN, userId: USER_ID };
+
+test('an alert becomes 【CatWorld】<reason>（time） only when the switch is on and both credentials are filled', () => {
+  const decision = L.decide({ settings: ON, reason: '偵測到請輸入上方的數字，已停止', now: at(4, 5, 6) });
+  assert.deepEqual(decision, { send: true, text: '【CatWorld】偵測到請輸入上方的數字，已停止（04:05:06）' });
+});
+
+test('nothing is sent when the switch is off or a credential is missing', () => {
+  const base = { reason: 'x', now: at(1, 2, 3) };
+  assert.deepEqual(L.decide({ ...base, settings: { ...ON, enabled: false } }), { send: false });
+  assert.deepEqual(L.decide({ ...base, settings: { ...ON, token: '' } }), { send: false });
+  assert.deepEqual(L.decide({ ...base, settings: { ...ON, userId: '   ' } }), { send: false });
+  assert.deepEqual(L.decide({ ...base, settings: undefined }), { send: false });
+  assert.deepEqual(L.decide({ ...base, settings: {} }), { send: false });
+});
+
+test('a very long reason is shortened so the push stays small', () => {
+  const { text } = L.decide({ settings: ON, reason: '長'.repeat(1000), now: at(0, 0, 0) });
+  assert.ok(text.length < 400, `got ${text.length}`);
+  assert.match(text, /^【CatWorld】長+…（00:00:00）$/);
+});
+
+test('notifyAlert sends nothing and touches no network when the feature is off', async () => {
+  const { fetchImpl, calls } = fakeFetch(200, '{}');
+  const result = await L.notifyAlert({ fetchImpl, settings: { ...ON, enabled: false }, reason: 'x', now: () => at(1, 2, 3) });
+  assert.equal(result, null);
+  assert.equal(calls.length, 0);
+});
+
+test('notifyAlert pushes the formatted alert and labels the result as coming from an alert', async () => {
+  const { fetchImpl, calls } = fakeFetch(200, '{}');
+  const result = await L.notifyAlert({ fetchImpl, settings: ON, reason: '觸發規則「氣」已停用', now: () => at(4, 5, 6) });
+  assert.equal(JSON.parse(calls[0].init.body).messages[0].text, '【CatWorld】觸發規則「氣」已停用（04:05:06）');
+  assert.equal(result.source, 'alert');
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 200);
+});
+
+test('notifyAlert never throws: a failed push comes back as a failed alert result without secrets', async () => {
+  const fetchImpl = async () => { throw new TypeError(`offline ${TOKEN}`); };
+  const result = await L.notifyAlert({ fetchImpl, settings: ON, reason: 'x', now: () => at(4, 5, 6) });
+  assert.equal(result.ok, false);
+  assert.equal(result.source, 'alert');
+  assert.equal(JSON.stringify(result).includes(TOKEN), false);
+});
+
+test('wiring: the popup has the master switch', () => {
+  assert.match(ext('popup.html'), /id="lineEnabled"[^>]*type="checkbox"|type="checkbox"[^>]*id="lineEnabled"/);
+});
+
+test('wiring: every ALERT also goes to LINE after the system notification, and a LINE failure cannot affect it', () => {
+  const background = ext('background.js');
+  const start = background.indexOf("if (message.type !== 'ALERT') return;");
+  assert.ok(start > 0, 'ALERT handler found');
+  const block = background.slice(start, background.indexOf('chrome.notifications.onButtonClicked', start));
+  const notification = block.indexOf('chrome.notifications.create');
+  const line = block.indexOf('notifyLine(');
+  assert.ok(notification >= 0 && line > notification, 'the system notification is created first, LINE second');
+  assert.match(background, /CatworldLineNotify\.notifyAlert/);
+  assert.match(background, /LINE_RESULT_KEY/);
+  assert.match(block, /notifyLine\([^)]*\)\.catch\(/, 'a rejected push must never reach the ALERT handler');
+});
+
+test('wiring: results written by the test button are labelled as tests', () => {
+  assert.match(ext('background.js'), /source: 'test'/);
+});
+
+test('guard: an alert is sent to the background exactly once, so the phone gets one push even while the ring repeats', () => {
+  const content = ext('content.js');
+  const sends = content.match(/type: 'ALERT'/g) ?? [];
+  assert.equal(sends.length, 2, 'only stopAndAlert and alertOnly send ALERT');
+  // 重複響鈴（startRepeatBeep）只負責響，不得再送 ALERT
+  const beep = content.slice(content.indexOf('function startRepeatBeep'), content.indexOf('function startRepeatBeep') + 800);
+  assert.doesNotMatch(beep, /ALERT/);
+});

@@ -29,6 +29,7 @@ const USER_ID = 'U0123456789abcdef0123456789abcdef';
 const HTML = `<html><body>
   <input id="lineToken" type="password">
   <input id="lineUserId" type="password">
+  <input id="lineEnabled" type="checkbox">
   <button id="lineTest">發送測試訊息</button>
   <div id="lineResult"></div>
 </body></html>`;
@@ -65,7 +66,7 @@ ui('saved credentials come back into the masked fields, and typing saves them to
   assert.equal($('lineUserId').type, 'password');
   type('lineToken', '  newtoken ');
   assert.ok(await waitFor(() => writes.local.length > 0));
-  assert.equal(JSON.stringify(writes.local.at(-1)), JSON.stringify({ lineNotify: { token: 'newtoken', userId: USER_ID } }));
+  assert.equal(JSON.stringify(writes.local.at(-1)), JSON.stringify({ lineNotify: { token: 'newtoken', userId: USER_ID, enabled: false } }));
   assert.equal(writes.sync.length, 0, 'never written to sync storage');
 });
 
@@ -163,4 +164,55 @@ ui('the test button is disabled while a send is in flight, so rapid clicks canno
   finish();
   assert.ok(await waitFor(() => /成功/.test($('lineResult').textContent)));
   assert.equal($('lineTest').disabled, false);
+});
+
+ui('the switch is off by default, and cannot be turned on until both the token and the userId are filled', async () => {
+  const { $, writes } = boot({ local: { lineNotify: { token: TOKEN, userId: '' } } });
+  assert.ok(await waitFor(() => $('lineToken').value === TOKEN));
+  assert.equal($('lineEnabled').checked, false, 'off by default');
+  $('lineEnabled').click();
+  assert.equal($('lineEnabled').checked, false, 'it refuses to turn on');
+  assert.match($('lineResult').textContent, /token 與 userId/);
+  assert.equal(writes.local.length, 0, 'nothing saved');
+});
+
+ui('turning the switch on saves it next to the credentials, and typing afterwards does not switch it off', async () => {
+  const { $, type, writes } = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID } } });
+  assert.ok(await waitFor(() => $('lineToken').value === TOKEN));
+  $('lineEnabled').click();
+  assert.ok(await waitFor(() => writes.local.length === 1));
+  assert.equal(JSON.stringify(writes.local[0]), JSON.stringify({ lineNotify: { token: TOKEN, userId: USER_ID, enabled: true } }));
+  type('lineToken', `${TOKEN}2`);
+  assert.ok(await waitFor(() => writes.local.length === 2));
+  assert.equal(JSON.stringify(writes.local[1]), JSON.stringify({ lineNotify: { token: `${TOKEN}2`, userId: USER_ID, enabled: true } }));
+});
+
+ui('a saved enabled switch comes back checked, and turning it off keeps the credentials', async () => {
+  const { $, writes } = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID, enabled: true } } });
+  assert.ok(await waitFor(() => $('lineEnabled').checked === true));
+  $('lineEnabled').click();
+  assert.ok(await waitFor(() => writes.local.length === 1));
+  assert.equal(JSON.stringify(writes.local[0]), JSON.stringify({ lineNotify: { token: TOKEN, userId: USER_ID, enabled: false } }));
+});
+
+ui('the switch is locked until the saved settings have loaded', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const { $ } = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID, enabled: true } }, gate });
+  assert.equal($('lineEnabled').disabled, true);
+  release();
+  assert.ok(await waitFor(() => $('lineEnabled').disabled === false));
+  assert.equal($('lineEnabled').checked, true);
+});
+
+ui('the result says whether it came from the test button or from an alert', async () => {
+  const { $, listeners } = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID } } });
+  assert.ok(await waitFor(() => $('lineToken').value === TOKEN));
+  listeners.forEach(listener => listener({ lineLastResult: { newValue: { at: clock(4, 5, 6), ok: true, status: 200, reason: '', source: 'alert' } } }, 'session'));
+  assert.ok(await waitFor(() => /04:05:06/.test($('lineResult').textContent)));
+  assert.match($('lineResult').textContent, /警報/);
+  listeners.forEach(listener => listener({ lineLastResult: { newValue: { at: clock(4, 6, 6), ok: true, status: 200, reason: '', source: 'test' } } }, 'session'));
+  assert.ok(await waitFor(() => /04:06:06/.test($('lineResult').textContent)));
+  assert.match($('lineResult').textContent, /測試/);
+  assert.doesNotMatch($('lineResult').textContent, /警報/);
 });

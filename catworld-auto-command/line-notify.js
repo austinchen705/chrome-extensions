@@ -42,5 +42,26 @@ async function send({ fetchImpl, token, userId, text, now }) {
   }
 }
 
-globalThis.CatworldLineNotify = { ENDPOINT, send };
+const ALERT_MAX = 300;
+const pad = value => String(value).padStart(2, '0');
+
+// 警報推播的判斷：總開關開著、token 與 userId 都有填才發；訊息是「【CatWorld】原因（時:分:秒）」，
+// 不帶角色名與帳號資訊（手機鎖定畫面旁人也看得到）；原因過長就截短
+function decide({ settings, reason, now }) {
+  if (!settings?.enabled || !String(settings.token ?? '').trim() || !String(settings.userId ?? '').trim()) return { send: false };
+  const time = new Date(now);
+  const clipped = String(reason ?? '');
+  const shown = clipped.length > ALERT_MAX ? `${clipped.slice(0, ALERT_MAX)}…` : clipped;
+  return { send: true, text: `【CatWorld】${shown}（${pad(time.getHours())}:${pad(time.getMinutes())}:${pad(time.getSeconds())}）` };
+}
+
+// 一則警報：不該發就回 null（完全不碰網路）；send 本身不會丟錯，結果標上來源「alert」給設定頁分辨
+async function notifyAlert({ fetchImpl, settings, reason, now }) {
+  const decision = decide({ settings, reason, now: now() });
+  if (!decision.send) return null;
+  const result = await send({ fetchImpl, token: settings.token, userId: settings.userId, text: decision.text, now });
+  return { ...result, source: 'alert' };
+}
+
+globalThis.CatworldLineNotify = { ENDPOINT, send, decide, notifyAlert };
 })();

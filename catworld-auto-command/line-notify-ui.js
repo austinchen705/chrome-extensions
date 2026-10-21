@@ -11,7 +11,9 @@ const pad = value => String(value).padStart(2, '0');
 // 最近一次發送結果的顯示：時間、HTTP 狀態、簡短原因；status 0 表示根本沒發出去（沒填憑證或網路錯誤）
 function formatResult(result) {
   const at = new Date(result.at);
-  const time = `${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
+  const clock = `${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
+  // 結果是測試按鈕還是警報推播寫的，要分得出來，免得剛按完測試卻看到警報的結果
+  const time = result.source === 'alert' ? `${clock}（警報）` : result.source === 'test' ? `${clock}（測試）` : clock;
   if (result.ok) return `${time}　HTTP ${result.status}　成功`;
   const reason = result.reason ? `：${result.reason}` : '';
   return result.status ? `${time}　HTTP ${result.status}　失敗${reason}` : `${time}　沒有發出${reason}`;
@@ -20,21 +22,21 @@ function formatResult(result) {
 function attach(doc) {
   const token = doc.getElementById('lineToken');
   const userId = doc.getElementById('lineUserId');
+  const enabledBox = doc.getElementById('lineEnabled');
   const testButton = doc.getElementById('lineTest');
   const resultBox = doc.getElementById('lineResult');
-  const credentials = () => ({ token: token.value.trim(), userId: userId.value.trim() });
+  const credentials = () => ({ token: token.value.trim(), userId: userId.value.trim(), enabled: enabledBox.checked });
 
   // 儲存的憑證載入完成之前欄位先停用：否則一打字就會把「還沒載入的空欄位」存回去，蓋掉已存的值；載入失敗也要放行
   let loaded = false;
-  token.disabled = true;
-  userId.disabled = true;
+  [token, userId, enabledBox].forEach(field => { field.disabled = true; });
   chrome.storage.local.get(KEY).then(data => {
     token.value = data[KEY]?.token ?? '';
     userId.value = data[KEY]?.userId ?? '';
+    enabledBox.checked = data[KEY]?.enabled === true;
   }).catch(() => {}).finally(() => {
     loaded = true;
-    token.disabled = false;
-    userId.disabled = false;
+    [token, userId, enabledBox].forEach(field => { field.disabled = false; });
   });
 
   // 最近一次結果由 background 寫在 storage.session（關掉瀏覽器就沒了）；打開頁面時讀一次，之後跟著變更
@@ -47,6 +49,17 @@ function attach(doc) {
   const save = async () => { if (loaded) await chrome.storage.local.set({ [KEY]: credentials() }); };
   token.addEventListener('input', save);
   userId.addEventListener('input', save);
+
+  // 總開關預設關閉；token 或 userId 沒填就開不起來（關掉不受限）
+  enabledBox.addEventListener('change', () => {
+    const { token: t, userId: u } = credentials();
+    if (enabledBox.checked && (!t || !u)) {
+      enabledBox.checked = false;
+      resultBox.textContent = '請先填 token 與 userId，才能開啟手機通知';
+      return;
+    }
+    save();
+  });
 
   testButton.addEventListener('click', async () => {
     const { token: t, userId: u } = credentials();
