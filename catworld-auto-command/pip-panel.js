@@ -19,33 +19,33 @@ const BACK_STYLE = 'cursor:pointer;border:0;border-radius:6px;padding:3px 12px;b
 function create({ host, pipApi, notify = () => {}, onChange = () => {} }) {
   const supported = typeof pipApi?.requestWindow === 'function';
   let pipWindow = null;
-  let marker = null;
+  let strip = null;
   let home = null;
   let savedStyle = '';
   let opening = false;
 
   // 提示條：說明面板在浮窗裡，並提供收回；同時兼作「原位置」的標記，放回時靠它找位置
   function makeStrip(doc) {
-    const strip = doc.createElement('div');
-    strip.id = 'catworld-panel-placeholder';
-    strip.style.cssText = `${host.style.cssText};${STRIP_STYLE}`;
+    const bar = doc.createElement('div');
+    bar.id = 'catworld-panel-placeholder';
+    bar.style.cssText = `${host.style.cssText};${STRIP_STYLE}`;
     const text = doc.createElement('span');
     text.textContent = '面板在置頂視窗';
     const back = doc.createElement('button');
     back.textContent = '收回';
     back.style.cssText = BACK_STYLE;
     back.addEventListener('click', () => restore());
-    strip.append(text, back);
-    return strip;
+    bar.append(text, back);
+    return bar;
   }
 
   // 放回原位：用開窗前放在宿主位置的提示條找回位置；提示條被頁面刪掉了就放回主頁面的根節點，
   // 面板絕對不能留在已經關掉的浮窗裡
   function putBack() {
-    if (marker?.parentNode) marker.parentNode.insertBefore(host, marker);
+    if (strip?.parentNode) strip.parentNode.insertBefore(host, strip);
     else if (home && host.ownerDocument !== home) home.documentElement.append(host);
-    marker?.remove();
-    marker = null;
+    strip?.remove();
+    strip = null;
   }
 
   // 可以重複呼叫（浮窗關閉事件與主動關閉都會走到這裡）
@@ -73,8 +73,8 @@ function create({ host, pipApi, notify = () => {}, onChange = () => {} }) {
       const height = Math.max(MIN_HEIGHT, Math.ceil(host.getBoundingClientRect().height) + 16);
       win = await pipApi.requestWindow({ width: DEFAULT_WIDTH, height });
       home = host.ownerDocument;
-      marker = makeStrip(host.ownerDocument);
-      host.parentNode.insertBefore(marker, host);
+      strip = makeStrip(host.ownerDocument);
+      host.parentNode.insertBefore(strip, host);
       savedStyle = host.style.cssText;
       styled = true;
       win.document.body.style.cssText = BODY_STYLE;

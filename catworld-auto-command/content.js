@@ -137,6 +137,7 @@ function flashTitle(text, untilConfirm = false) {
     on = !on;
     document.title = on ? text : original;
   }, 800);
+  let stopWatching = null;
   const clear = () => {
     clearInterval(titleTimer);
     titleTimer = null;
@@ -149,7 +150,6 @@ function flashTitle(text, untilConfirm = false) {
   };
   const onVisible = () => { if (!document.hidden) clear(); };
   stopFlash = clear;
-  let stopWatching = null;
   if (!untilConfirm) {
     stopWatching = interactionHub.watch(['focus', 'pointerdown', 'keydown'], clear);
     document.addEventListener('visibilitychange', onVisible);

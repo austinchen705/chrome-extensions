@@ -179,7 +179,7 @@ test('wiring: while the panel lives in the floating window, the main page layout
 
 test('wiring: after the panel comes back the main page lays it out again, so a window resized meanwhile cannot leave it off-screen', () => {
   const content = ext('content.js');
-  const handler = content.slice(content.indexOf('onChange: (open'), content.indexOf('onChange: (open') + 900);
+  const handler = content.slice(content.indexOf('CatworldPip.create({'), content.indexOf("$('.pip').hidden"));
   assert.match(handler, /replace\(\)/);
   assert.match(handler, /avoidMap\(\)/);
 });
@@ -361,7 +361,7 @@ test('wiring: the alert that stops on interaction listens through the hub, so th
   const flash = content.slice(content.indexOf('function flashTitle'), content.indexOf('// 驗證碼警報響鈴中'));
   assert.match(flash, /interactionHub\.watch\(\[/);
   assert.doesNotMatch(flash, /window\.addEventListener\(name, clear\)/, 'no direct listener on the page window any more');
-  const handler = content.slice(content.indexOf('onChange: (open'), content.indexOf('onChange: (open') + 500);
+  const handler = content.slice(content.indexOf('CatworldPip.create({'), content.indexOf("$('.pip').hidden"));
   assert.match(handler, /interactionHub\.addWindow\(/);
   assert.match(handler, /interactionHub\.removeWindow\(/);
 });
