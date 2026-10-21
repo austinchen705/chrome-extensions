@@ -37,10 +37,11 @@ function boot({ requestWindow } = {}) {
   mw.eval(source);
   const notes = [];
   const changes = [];
+  const wins = [];
   const controller = pipApi || requestWindow === null
-    ? mw.CatworldPip.create({ host, pipApi, notify: text => notes.push(text), onChange: open => changes.push(open) })
+    ? mw.CatworldPip.create({ host, pipApi, notify: text => notes.push(text), onChange: (open, win) => { changes.push(open); wins.push(win); } })
     : null;
-  return { mw, pw, host, shadow, clicks, calls, notes, changes, controller, doc: mw.document };
+  return { mw, pw, host, shadow, clicks, calls, notes, changes, wins, controller, doc: mw.document };
 }
 
 const order = doc => [...doc.body.children].map(node => node.id);
@@ -178,7 +179,7 @@ test('wiring: while the panel lives in the floating window, the main page layout
 
 test('wiring: after the panel comes back the main page lays it out again, so a window resized meanwhile cannot leave it off-screen', () => {
   const content = ext('content.js');
-  const handler = content.slice(content.indexOf('onChange: open =>'), content.indexOf('onChange: open =>') + 400);
+  const handler = content.slice(content.indexOf('onChange: (open'), content.indexOf('onChange: (open') + 900);
   assert.match(handler, /replace\(\)/);
   assert.match(handler, /avoidMap\(\)/);
 });
@@ -186,11 +187,8 @@ test('wiring: after the panel comes back the main page lays it out again, so a w
 ui('if the page removed our marker while the window was open, closing still brings the panel back to the main page', async () => {
   const { host, pw, doc, controller } = boot();
   await controller.open();
-  // 遊戲或別的程式把標記刪掉了
-  const walker = doc.createTreeWalker(doc.body, 128);
-  let comment = walker.nextNode();
-  while (comment && !comment.data.includes('catworld-panel')) comment = walker.nextNode();
-  comment.remove();
+  // 遊戲或別的程式把提示條（原位置的標記）刪掉了
+  doc.getElementById('catworld-panel-placeholder').remove();
   pw.close();
   assert.equal(host.ownerDocument, doc, 'not stranded in the dead floating window');
   assert.ok(doc.documentElement.contains(host));
@@ -213,4 +211,157 @@ ui('the floating window scrolls when the panel grows taller than the window', as
   const { pw, controller } = boot();
   await controller.open();
   assert.match(pw.document.body.style.cssText, /overflow:\s*auto/);
+});
+
+// ---- 票 02：提示條 ----
+const placeholderOf = doc => doc.getElementById('catworld-panel-placeholder');
+
+ui('while the panel is in the floating window a strip stays at its old spot, saying so, with a way back', async () => {
+  const { doc, host, controller } = boot();
+  await controller.open();
+  const strip = placeholderOf(doc);
+  assert.ok(strip, 'a strip is left in the page');
+  assert.deepEqual(order(doc), ['before', 'catworld-panel-placeholder', 'after'], 'exactly where the panel was');
+  assert.match(strip.textContent, /面板在置頂視窗/);
+  assert.ok([...strip.querySelectorAll('button')].some(button => button.textContent === '收回'));
+  assert.match(strip.style.cssText, /top:\s*12px/, 'it sits where the panel sat, so it is easy to find');
+  assert.equal(doc.body.contains(host), false);
+});
+
+ui('pressing back on the strip closes the floating window and brings the panel home, strip gone', async () => {
+  const { doc, host, pw, controller, changes } = boot();
+  await controller.open();
+  let windowClosed = 0;
+  pw.addEventListener('pagehide', () => { windowClosed += 1; });
+  [...placeholderOf(doc).querySelectorAll('button')].find(button => button.textContent === '收回').click();
+  assert.equal(host.ownerDocument, doc);
+  assert.deepEqual(order(doc), ['before', 'host', 'after']);
+  assert.equal(placeholderOf(doc), null);
+  assert.equal(windowClosed, 1, 'the floating window was closed too');
+  assert.deepEqual(changes, [true, false]);
+});
+
+ui('closing the floating window directly also removes the strip', async () => {
+  const { doc, pw, controller } = boot();
+  await controller.open();
+  pw.close();
+  assert.equal(placeholderOf(doc), null);
+  assert.deepEqual(order(doc), ['before', 'host', 'after']);
+});
+
+ui('the strip is gone after a failed opening too, and never exists when the API is missing', async () => {
+  const failing = boot({ requestWindow: async () => { throw new Error('nope'); } });
+  await failing.controller.open();
+  assert.equal(placeholderOf(failing.doc), null);
+  const missing = boot({ requestWindow: null });
+  await missing.controller.open();
+  assert.equal(placeholderOf(missing.doc), null);
+});
+
+ui('the panel host carries a data-pip attribute exactly while it lives in the floating window', async () => {
+  const { host, pw, controller } = boot();
+  assert.equal(host.hasAttribute('data-pip'), false);
+  await controller.open();
+  assert.equal(host.hasAttribute('data-pip'), true, 'the panel styles use it to hide dragging and collapsing');
+  pw.close();
+  assert.equal(host.hasAttribute('data-pip'), false);
+  await controller.open();
+  controller.close();
+  assert.equal(host.hasAttribute('data-pip'), false);
+});
+
+ui('a failed opening never leaves the attribute behind', async () => {
+  const bad = { addEventListener() {}, close() {}, document: { get body() { throw new Error('cannot adopt'); } } };
+  const { host, controller } = boot({ requestWindow: async () => bad });
+  await controller.open();
+  assert.equal(host.hasAttribute('data-pip'), false);
+});
+
+ui('the change callback hands over the floating window when it opens, so the page can listen to it', async () => {
+  const { pw, wins, controller } = boot();
+  await controller.open();
+  // 用布林比對：斷言失敗時 node 會把整個 jsdom 視窗印出來比對，會卡很久
+  assert.ok(wins[0] === pw);
+  controller.close();
+  assert.ok(wins[1] === undefined);
+});
+
+// ---- 票 02：浮窗裡的互動也算互動（警報提示靠它停止）----
+ui('the interaction hub reports events from the page window, and from the floating window once it is added', () => {
+  const { mw, pw } = boot();
+  const hub = mw.CatworldPip.createInteractionHub(mw);
+  const seen = [];
+  hub.watch(['pointerdown', 'keydown'], event => seen.push(`${event.type}`));
+  mw.dispatchEvent(new mw.Event('pointerdown'));
+  pw.dispatchEvent(new pw.Event('keydown'));
+  assert.deepEqual(seen, ['pointerdown'], 'the floating window is not listened to until it is added');
+  hub.addWindow(pw);
+  pw.dispatchEvent(new pw.Event('keydown'));
+  pw.dispatchEvent(new pw.Event('focus'));
+  assert.deepEqual(seen, ['pointerdown', 'keydown'], 'only the watched event types');
+});
+
+ui('stopping a watch silences both windows, and a window added later does not revive it', () => {
+  const { mw, pw } = boot();
+  const hub = mw.CatworldPip.createInteractionHub(mw);
+  hub.addWindow(pw);
+  const seen = [];
+  const stop = hub.watch(['pointerdown'], () => seen.push('x'));
+  stop();
+  stop();
+  mw.dispatchEvent(new mw.Event('pointerdown'));
+  pw.dispatchEvent(new pw.Event('pointerdown'));
+  const other = new JSDOM('').window;
+  hub.addWindow(other);
+  other.dispatchEvent(new other.Event('pointerdown'));
+  assert.deepEqual(seen, []);
+});
+
+ui('a window added while a watch is running gets listened to, a removed one stops being listened to, and none fires twice', () => {
+  const { mw, pw } = boot();
+  const hub = mw.CatworldPip.createInteractionHub(mw);
+  const seen = [];
+  hub.watch(['pointerdown'], () => seen.push('hit'));
+  hub.addWindow(pw);
+  hub.addWindow(pw);
+  pw.dispatchEvent(new pw.Event('pointerdown'));
+  assert.deepEqual(seen, ['hit'], 'adding twice does not double the listener');
+  hub.removeWindow(pw);
+  pw.dispatchEvent(new pw.Event('pointerdown'));
+  assert.deepEqual(seen, ['hit']);
+  mw.dispatchEvent(new mw.Event('pointerdown'));
+  assert.deepEqual(seen, ['hit', 'hit'], 'the page window keeps working');
+  hub.removeWindow(mw);
+  mw.dispatchEvent(new mw.Event('pointerdown'));
+  assert.deepEqual(seen, ['hit', 'hit', 'hit'], 'the page window can never be removed');
+});
+
+ui('two independent watches do not interfere with each other', () => {
+  const { mw } = boot();
+  const hub = mw.CatworldPip.createInteractionHub(mw);
+  const a = [];
+  const b = [];
+  const stopA = hub.watch(['focus'], () => a.push(1));
+  hub.watch(['focus'], () => b.push(1));
+  stopA();
+  mw.dispatchEvent(new mw.Event('focus'));
+  assert.deepEqual([a.length, b.length], [0, 1]);
+});
+
+test('wiring: the panel styles hide dragging and collapsing while it lives in the floating window', () => {
+  const content = ext('content.js');
+  assert.match(content, /:host\(\[data-pip\]\)\s+\.toggle\s*\{\s*display:\s*none/);
+  assert.match(content, /:host\(\[data-pip\]\)\s+\.collapsed\s+\.body\s*\{\s*display:\s*block/, 'a panel that was collapsed must not be stuck collapsed with no toggle');
+  assert.match(content, /:host\(\[data-pip\]\)\s+\.head\s*\{\s*cursor:\s*default/);
+});
+
+test('wiring: the alert that stops on interaction listens through the hub, so the floating window counts too', () => {
+  const content = ext('content.js');
+  assert.match(content, /createInteractionHub\(window\)/);
+  const flash = content.slice(content.indexOf('function flashTitle'), content.indexOf('// 驗證碼警報響鈴中'));
+  assert.match(flash, /interactionHub\.watch\(\[/);
+  assert.doesNotMatch(flash, /window\.addEventListener\(name, clear\)/, 'no direct listener on the page window any more');
+  const handler = content.slice(content.indexOf('onChange: (open'), content.indexOf('onChange: (open') + 500);
+  assert.match(handler, /interactionHub\.addWindow\(/);
+  assert.match(handler, /interactionHub\.removeWindow\(/);
 });

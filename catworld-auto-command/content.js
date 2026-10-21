@@ -124,6 +124,8 @@ function stopRepeatBeep() {
 }
 // untilConfirm：驗證碼警報的閃爍要一直閃到按「確認」；一般的提醒（例如規則被停用）使用者回到頁面互動就停
 let stopFlash = null;
+// 玩家的互動來源：遊戲視窗，加上面板所在的置頂浮窗（面板在浮窗裡時，玩家的操作只發生在那裡）
+const interactionHub = CatworldPip.createInteractionHub(window);
 function flashTitle(text, untilConfirm = false) {
   if (titleTimer) {
     if (!untilConfirm) return;
@@ -142,13 +144,14 @@ function flashTitle(text, untilConfirm = false) {
     // 原本的行為：使用者回到頁面互動，提示音也跟著停；「一直響到確認」開著（ringing）時不停
     if (!ringing) stopRepeatBeep();
     document.title = original;
-    ['focus', 'pointerdown', 'keydown'].forEach(name => window.removeEventListener(name, clear));
+    stopWatching?.();
     document.removeEventListener('visibilitychange', onVisible);
   };
   const onVisible = () => { if (!document.hidden) clear(); };
   stopFlash = clear;
+  let stopWatching = null;
   if (!untilConfirm) {
-    ['focus', 'pointerdown', 'keydown'].forEach(name => window.addEventListener(name, clear));
+    stopWatching = interactionHub.watch(['focus', 'pointerdown', 'keydown'], clear);
     document.addEventListener('visibilitychange', onVisible);
   }
 }
@@ -575,6 +578,10 @@ function initPanel() {
       .mini button[disabled] { opacity: .35; cursor: default; }
       .line[hidden] { display: none; }
       .collapsed .body { display: none; }
+      /* 面板在置頂浮窗裡（宿主帶 data-pip）：拖曳與收合沒有意義（視窗可以自己縮放），而且收合過的面板在浮窗裡不能卡在收合 */
+      :host([data-pip]) .toggle { display: none; }
+      :host([data-pip]) .head { cursor: default; }
+      :host([data-pip]) .collapsed .body { display: block; }
     </style>
     <div class="panel">
       <div class="head"><span class="dot"></span><span class="label"></span><button class="confirm" hidden title="停止提示音與標題閃爍">確認</button><button class="pip" title="用永遠置頂的小視窗顯示面板">置頂</button><button class="gear" title="開啟／關閉設定頁">⚙</button><button class="toggle" title="收合／展開">–</button></div>
@@ -729,12 +736,16 @@ function initPanel() {
   window.addEventListener('resize', () => { replace(); panel.avoidMap(); });
   // 置頂浮窗：把整個面板搬進永遠置頂的小視窗（Document Picture-in-Picture），關掉就搬回來。
   // 沒有這個 API（舊瀏覽器、或擴充功能環境不給）就隱藏按鈕；開不了的原因顯示在巨集列的提示區
+  let pipWindow = null;
   const pip = CatworldPip.create({
     host,
     pipApi: globalThis.documentPictureInPicture,
     notify: text => { macroNote = { text, until: Date.now() + 8000 }; renderPanel(); },
-    onChange: open => {
+    onChange: (open, win) => {
       $('.pip').textContent = open ? '收回' : '置頂';
+      // 浮窗裡的互動也算玩家有互動（警報提示靠它停止）；關掉時把它拿掉
+      if (open) { pipWindow = win; interactionHub.addWindow(win); }
+      else if (pipWindow) { interactionHub.removeWindow(pipWindow); pipWindow = null; }
       // 搬回來之後重新排：面板在浮窗期間主視窗可能被縮小過，不重排會跑到畫面外或蓋住遊戲視窗
       if (!open) { replace(); panel.avoidMap(); }
     },
