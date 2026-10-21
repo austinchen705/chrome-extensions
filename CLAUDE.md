@@ -103,6 +103,7 @@
 
 - 怪物路線有三層：個人（`chrome.storage.local.mobRoutes`）> 共用（Google 試算表發布的 CSV）> 內建。共用層的解析、白名單、連結檢查在 `shared-data.js`（不碰 DOM、不碰 `chrome.*`；background 與設定頁載入，**content script 不載入它**）。鍵一律用 `CatworldZapMobs.customKey`，和個人層同一個函式，否則個人層蓋不掉共用層。
 - 抓取與快取只在 `background.js`（`refreshShared`）：連結在 `chrome.storage.local.sharedSources`（只存本機、不進匯出），快取在 `sharedCache`（含最近一次失敗的原因）；一小時內不重抓、失敗後 5 分鐘內不重試、連結改了丟掉舊快取、怪物查詢與解謎都關著不抓、請求 15 秒逾時；「立即更新」（`SHARED_REFRESH`）只接受擴充功能自己的頁面。查詢回覆（`ZAP_LOOKUP`／`ZAP_SUITABLE`）在 background 用 `overlayReply` 疊上共用路線並帶 `shared: { by, note }`，面板只負責顯示，個人層在面板端再蓋過去。
+- 怪物路線分頁欄位是 `怪物名稱 | 位置（選填） | 指令 | 備註 | 更新者 | 更新時間`，主鍵是「名稱」或「名稱|位置」（同名的怪常在不同地方，名稱不是唯一的；位置整串或其中一個地點相符就算，有填位置的列先比、沒有才用沒填位置的列）；同名且同位置的怪（約 5 組）分不開，這是資料本身的限制。指令欄寫 `停用`（要整個詞）代表這隻怪不要路線：查詢回覆的路線變 null、帶 `sharedDisabled: { by, note }`，面板顯示「共用（更新者）已停用路線」，個人層仍能蓋過；共用表只能新增、修改、刪列，刪列只會退回內建，要隱藏內建路線就要用 `停用`。
 - 共用來的指令只收白名單動詞（走路與互動類，清單在 `shared-data.js` 的 `ALLOWED_VERBS`）；個人層與內建層不受限。任何儲存或網路問題都不能弄壞內建資料的查詢（`sharedRoutes` 失敗回空的共用層）。
 - 測試：`tests/shared-data.test.js`（CSV → 共用層與報告）、`tests/shared-background.test.js`（在記憶體裡執行 `background.js`，假 `chrome.storage.local` 與 `fetch`，檢查請求次數、快取、回覆）、`tests/zap-route-ui.test.js`（面板標示）。
 

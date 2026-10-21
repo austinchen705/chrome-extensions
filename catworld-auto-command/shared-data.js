@@ -6,6 +6,7 @@
 if (globalThis.CatworldSharedData) return;
 
 const MAX_SEGMENT = 500;
+const DISABLE = '停用';
 const PUBLISH_HINT = '要用「檔案 → 共用 → 發布到網路」選那個分頁、格式選 CSV，再貼上產生的連結';
 
 // 第一個詞在這份清單裡的指令段才收；走路的方向（n、2e、nu…）與 @等待 另外判斷
@@ -80,6 +81,12 @@ function parseCsv(text) {
   return rows;
 }
 
+// 怪的位置（整串，或「、」「,」「/」分開的每個地點）正規化後的鍵，給「位置」欄比對
+const mobPlaces = mob => {
+  const key = globalThis.CatworldZapMobs.customKey;
+  return [...new Set([key(mob.location ?? ''), ...String(mob.location ?? '').split(/[、,，/]/).map(key)])].filter(Boolean);
+};
+
 // 更新時間：2026-10-21 14:30（秒可有可無、斜線也行、只有日期也行）。解析不了回 NaN
 function parseTime(text) {
   const match = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(String(text ?? '').trim());
@@ -100,10 +107,11 @@ function columns(header, required, optional) {
   return { index, optional };
 }
 
-// 怪物路線分頁：怪物名稱 | 指令 | 備註 | 更新者 | 更新時間。
-// 回 { ok, routes: { 鍵: { command, by, note, at } }, report: { rows, used, dropped: [{row, reason}], unmatched: [{row, name}] } }；
-// row 是試算表上的列號（標題是第 1 列）。同一隻怪多列取更新時間最新的（讀不到時間當最舊、同時取後面的）；
-// 在怪物表找不到的名稱照樣保留（也許是資料還沒收錄），只列在 unmatched
+// 怪物路線分頁：怪物名稱 | 位置（選填） | 指令 | 備註 | 更新者 | 更新時間。
+// 鍵是「名稱」或「名稱|位置」（位置有填才帶）：同名的怪常在不同地方，位置有填就只管那個地方的怪。指令寫「停用」代表這隻怪不要路線。
+// 回 { ok, routes: { 鍵: { command, by, note, at, disabled? } }, report: { rows, used, dropped: [{row, reason}], unmatched: [{row, name, location?}] } }；
+// row 是試算表上的列號（標題是第 1 列）。同一個鍵多列取更新時間最新的（讀不到時間當最舊、同時取後面的）；
+// 在怪物表找不到的名稱（或那個名稱沒有在那個位置）照樣保留（也許是資料還沒收錄），只列在 unmatched
 function buildMobRoutes(csvText, mobs) {
   const customKey = globalThis.CatworldZapMobs.customKey;
   const records = parseCsv(csvText);
@@ -112,7 +120,11 @@ function buildMobRoutes(csvText, mobs) {
   if (found.error) return { ok: false, error: found.error };
   const { index } = found;
   const cell = (record, name) => (name in index ? String(record[index[name]] ?? '').trim() : '');
-  const known = new Set((mobs ?? []).map(mob => customKey(mob.name)));
+  const known = new Set();
+  (mobs ?? []).forEach(mob => {
+    known.add(customKey(mob.name));
+    mobPlaces(mob).forEach(place => known.add(`${customKey(mob.name)}|${place}`));
+  });
   const best = new Map();
   const report = { rows: 0, used: 0, dropped: [], unmatched: [] };
   records.slice(1).forEach((record, i) => {
@@ -123,20 +135,24 @@ function buildMobRoutes(csvText, mobs) {
     const command = cell(record, '指令');
     if (!name) return report.dropped.push({ row, reason: '怪物名稱是空的' });
     if (!command) return report.dropped.push({ row, reason: '指令是空的' });
-    const check = checkCommand(command);
+    const disabled = command === DISABLE;
+    const check = disabled ? { ok: true } : checkCommand(command);
     if (!check.ok) return report.dropped.push({ row, reason: check.reason });
     const at = parseTime(cell(record, '更新時間'));
-    const key = customKey(name);
+    const location = cell(record, '位置');
+    const key = location ? `${customKey(name)}|${customKey(location)}` : customKey(name);
     const rank = Number.isFinite(at) ? at : -Infinity;
     const old = best.get(key);
     if (!old || rank >= old.rank) {
-      best.set(key, { rank, row, name, entry: { command, by: cell(record, '更新者'), note: cell(record, '備註'), at: Number.isFinite(at) ? at : null } });
+      const entry = { command: disabled ? '' : command, by: cell(record, '更新者'), note: cell(record, '備註'), at: Number.isFinite(at) ? at : null };
+      if (disabled) entry.disabled = true;
+      best.set(key, { rank, row, name, location, entry });
     }
   });
   const routes = {};
-  best.forEach(({ row, name, entry }, key) => {
+  best.forEach(({ row, name, location, entry }, key) => {
     routes[key] = entry;
-    if (!known.has(key)) report.unmatched.push({ row, name });
+    if (!known.has(key)) report.unmatched.push(location ? { row, name, location } : { row, name });
   });
   report.used = best.size;
   report.unmatched.sort((a, b) => a.row - b.row);
@@ -144,13 +160,20 @@ function buildMobRoutes(csvText, mobs) {
 }
 
 // background 用：把共用層疊在 ZAP_LOOKUP／ZAP_SUITABLE 的回覆上（個人層在面板那邊再蓋過去）。
-// 有共用路線的怪，路線換成共用的並帶 shared: { by, note } 給面板標示；其餘原樣。不改動輸入
+// 有共用路線的怪，路線換成共用的並帶 shared: { by, note } 給面板標示；共用寫「停用」的怪路線變 null、帶 sharedDisabled: { by, note }；其餘原樣。
+// 有填位置的列先比（怪的位置整串或其中一個地點相符），沒有才用沒填位置的列。不改動輸入
 function overlayReply(reply, shared) {
   if (!reply?.ok || !shared || !Object.keys(shared).length) return reply;
   const customKey = globalThis.CatworldZapMobs.customKey;
+  const find = mob => {
+    const nameKey = customKey(mob.name);
+    const hit = mobPlaces(mob).find(place => shared[`${nameKey}|${place}`]);
+    return hit ? shared[`${nameKey}|${hit}`] : shared[nameKey];
+  };
   const apply = item => {
-    const entry = item?.mob && shared[customKey(item.mob.name)];
+    const entry = item?.mob && find(item.mob);
     if (!entry) return item;
+    if (entry.disabled) return { ...item, route: null, sharedDisabled: { by: entry.by, note: entry.note } };
     return { ...item, route: { route: { name: item.mob.name, path: '', command: entry.command }, exact: true, shared: { by: entry.by, note: entry.note } } };
   };
   return { ...reply, items: reply.items.map(item => (item.candidates ? { ...item, candidates: item.candidates.map(apply) } : apply(item))) };

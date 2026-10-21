@@ -216,3 +216,17 @@ test('a sheet that never answers is given up on after the timeout and the reason
   }
   assert.match(store.sharedCache.mob.error.reason, /逾時/);
 });
+
+test('a row with a location only reaches the mob at that place, and 停用 hides the route through a real lookup', async () => {
+  reset();
+  csvBody = '怪物名稱,位置,指令,備註,更新者,更新時間\n白猿(white ape),長安,run elsewhere,,小明,2026-10-21 14:30\n';
+  assert.equal(routeOf(await lookup()), null, 'the row is for another place');
+  reset();
+  csvBody = '怪物名稱,位置,指令,備註,更新者,更新時間\n白猿(white ape),古墓,run here,,小明,2026-10-21 14:30\n';
+  assert.equal(routeOf(await lookup()).route.command, 'run here');
+  reset();
+  csvBody = '怪物名稱,位置,指令,備註,更新者,更新時間\n白猿(white ape),古墓,停用,錯的,小明,2026-10-21 14:30\n';
+  const reply = await lookup();
+  assert.equal(routeOf(reply), null);
+  assert.deepEqual(reply.items[0].candidates[0].sharedDisabled, { by: '小明', note: '錯的' });
+});

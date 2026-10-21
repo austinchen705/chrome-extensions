@@ -194,3 +194,78 @@ test('an update time outside the calendar is unreadable instead of rolling over 
   });
   ['2026-10-21 23:59:59', '2026-02-28', '2026/1/5 0:00'].forEach(text => assert.ok(Number.isFinite(S.parseTime(text)), text));
 });
+
+// ---- 位置欄（選填）與「停用」----
+const HEADER_LOC = '怪物名稱,位置,指令,備註,更新者,更新時間';
+const WILD = [
+  { name: '老虎(tiger)', id: 'tiger', exp: 100, location: '桃花島' },
+  { name: '老虎(tiger)', id: 'tiger', exp: 100, location: '長安城' },
+  { name: '野狗(dog)', id: 'dog', exp: 5, location: '蒙古、襄陽' },
+];
+const buildLoc = (...lines) => S.buildMobRoutes([HEADER_LOC, ...lines].join('\n'), WILD);
+// 查詢回覆：每個地點的老虎各一個候選，回傳每個候選套完共用層後的指令（沒有路線回 null）
+const commands = shared => {
+  const reply = { ok: true, items: [{ name: '老虎(tiger)', count: 2, candidates: WILD.slice(0, 2).map(mob => ({ mob, route: null })) }] };
+  return S.overlayReply(reply, shared).items[0].candidates.map(item => item.route?.route?.command ?? null);
+};
+
+test('the location column is optional: with it a row only reaches the mobs at that place', () => {
+  const { routes } = buildLoc('老虎(tiger),桃花島,run e,,小明,2026-10-21 14:30');
+  assert.deepEqual(commands(routes), ['run e', null]);
+});
+
+test('without a location a row reaches every mob of that name, and a located row wins at its own place', () => {
+  const { routes } = buildLoc('老虎(tiger),,run all,,小明,2026-10-21 14:30', '老虎(tiger),長安城,run city,,小華,2026-10-20 09:00');
+  assert.deepEqual(commands(routes), ['run all', 'run city'], 'the located row wins even though it is older');
+});
+
+test('locations match ignoring spaces, and one place of a multi-place mob is enough', () => {
+  const { routes } = buildLoc('老虎(tiger), 桃 花 島 ,run e,,小明,', '野狗(dog),襄陽,run w,,小明,');
+  assert.deepEqual(commands(routes), ['run e', null]);
+  const dog = S.overlayReply({ ok: true, items: [{ mob: WILD[2], route: null }] }, routes);
+  assert.equal(dog.items[0].route.route.command, 'run w');
+});
+
+test('the same mob and place twice still takes the newest row; different places do not clash', () => {
+  const { routes, report } = buildLoc(
+    '老虎(tiger),桃花島,run old,,甲,2026-10-20 09:00', '老虎(tiger),桃花島,run new,,乙,2026-10-21 09:00', '老虎(tiger),長安城,run city,,丙,2026-10-19 09:00');
+  assert.deepEqual(commands(routes), ['run new', 'run city']);
+  assert.equal(report.used, 2);
+});
+
+test('a location that no mob of that name has is reported as unmatched but kept', () => {
+  const result = buildLoc('老虎(tiger),火星,run e,,小明,', '不存在(x),,run e,,小明,');
+  assert.deepEqual(result.report.unmatched.map(item => [item.row, item.name, item.location ?? '']), [[2, '老虎(tiger)', '火星'], [3, '不存在(x)', '']]);
+  assert.equal(result.report.used, 2);
+});
+
+test('a sheet without the location column still works (the column is optional)', () => {
+  const result = S.buildMobRoutes('怪物名稱,指令\n老虎(tiger),run e\n', WILD);
+  assert.equal(result.ok, true);
+  assert.deepEqual(commands(result.routes), ['run e', 'run e']);
+});
+
+test('the command 停用 turns the route off for that mob instead of being checked as a command', () => {
+  const result = buildLoc('老虎(tiger),桃花島,停用,路線是錯的,小明,2026-10-21 14:30');
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.report.dropped, []);
+  const reply = { ok: true, items: [{ mob: WILD[0], route: { route: { name: '桃花島', path: 'x' }, exact: false } }, { mob: WILD[1], route: { route: { name: '長安', path: 'y' }, exact: true } }] };
+  const out = S.overlayReply(reply, result.routes);
+  assert.equal(out.items[0].route, null, 'the built-in route is hidden');
+  assert.deepEqual(out.items[0].sharedDisabled, { by: '小明', note: '路線是錯的' });
+  assert.equal(out.items[1].route.route.name, '長安', 'the other place is untouched');
+  assert.equal(out.items[1].sharedDisabled, undefined);
+});
+
+test('停用 is an exact word: with anything else around it the row goes through the command check', () => {
+  const result = buildLoc('老虎(tiger),,停用;run e,,小明,');
+  assert.deepEqual(Object.keys(result.routes), []);
+  assert.match(result.report.dropped[0].reason, /停用/);
+});
+
+test('the newest row decides between 停用 and a route', () => {
+  const later = buildLoc('老虎(tiger),桃花島,停用,,甲,2026-10-20 09:00', '老虎(tiger),桃花島,run again,,乙,2026-10-21 09:00');
+  assert.deepEqual(commands(later.routes), ['run again', null]);
+  const earlier = buildLoc('老虎(tiger),桃花島,run before,,甲,2026-10-20 09:00', '老虎(tiger),桃花島,停用,,乙,2026-10-21 09:00');
+  assert.deepEqual(commands(earlier.routes), [null, null]);
+});

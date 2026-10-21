@@ -92,7 +92,10 @@ function routeBlock(base, onWalk, editor) {
     const edit = editor && el('button', { className: 'zap-edit', textContent: current.route ? '編輯' : '補路線' });
     block.replaceChildren();
     if (current.route) block.append(routeNode(current.route, onWalk, edit));
-    else if (edit) block.append(el('div', { className: 'zap-route' }, el('span', { className: 'meta', textContent: '沒有路線' }), ' ', edit));
+    else if (base.sharedDisabled) {
+      const { by, note } = base.sharedDisabled;
+      block.append(el('div', { className: 'zap-route' }, el('span', { className: 'meta', textContent: `共用（${by || '未署名'}）已停用路線${note ? `：${note}` : ''}` }), edit ? [' ', edit] : []));
+    } else if (edit) block.append(el('div', { className: 'zap-route' }, el('span', { className: 'meta', textContent: '沒有路線' }), ' ', edit));
     edit?.addEventListener('click', event => {
       // 不讓 click 傳到遊戲的 window.onclick：它會把游標搶回遊戲輸入框，輸入框就打不了字
       event.stopPropagation();

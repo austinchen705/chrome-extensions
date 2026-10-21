@@ -91,6 +91,27 @@ ui('a personal route beats a shared one in the list', async () => {
   assert.deepEqual(dom.started, ['run mine']);
 });
 
+ui('a route the shared sheet turned off shows who did it and has no walk button', async () => {
+  const off = { ...mobWith(null), sharedDisabled: { by: '小明', note: '路線是錯的' } };
+  const list = boot({ items: [off] });
+  assert.ok(await waitFor(() => list.shadow.querySelector('.zap-route')));
+  assert.match(list.shadow.querySelector('.zap-route').textContent, /共用（小明）已停用路線：路線是錯的/);
+  assert.equal(list.shadow.querySelector('.zap-walk'), null);
+  assert.ok(list.shadow.querySelector('.zap-routebox .zap-edit'), 'the list still lets you add your own route');
+});
+
+ui('your own route still beats a shared 停用 in the list', async () => {
+  const off = { ...mobWith(null), sharedDisabled: { by: '小明', note: '' } };
+  const dom = boot({ items: [off] });
+  assert.ok(await waitFor(() => dom.shadow.querySelector('.zap-routebox .zap-edit')));
+  dom.shadow.querySelector('.zap-routebox .zap-edit').click();
+  dom.shadow.querySelector('.zap-routeedit textarea').value = 'run mine';
+  [...dom.shadow.querySelectorAll('.zap-routeedit .zap-edit')].find(button => button.textContent === '儲存').click();
+  assert.ok(await waitFor(() => dom.shadow.querySelector('.zap-walk')));
+  dom.shadow.querySelector('.zap-walk').click();
+  assert.deepEqual(dom.started, ['run mine']);
+});
+
 ui('the button says so when the queue refused the commands', async () => {
   const { shadow } = boot({ startResult: false, items: [mobWith({ name: '華山', path: 't' })] });
   assert.ok(await waitFor(() => shadow.querySelector('.zap-walk')));
