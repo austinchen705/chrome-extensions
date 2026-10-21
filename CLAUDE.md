@@ -92,6 +92,13 @@
 - 專案其他規則仍然優先：改了 extension 的任何檔案都要升 `manifest.json` 版本並在 `CHANGELOG.md` 加一筆；commit 之後要不要 push 一律先問使用者。
 - 這些 skill 只能由使用者用 `/名稱` 觸發；使用者要先跑過一次 `/setup-matt-pocock-skills`，沒有 `docs/agents/` 時 `/to-spec`、`/to-tickets`、`/code-review` 會要求先設定。
 
+## 手機通知（LINE）
+
+- 所有警報都走同一個出口：content script 送 `ALERT`，background 建系統通知，**同時**呼叫 `notifyLine`（先啟動它，再建系統通知，這樣系統通知同步丟錯也不會連帶丟掉手機通知；LINE 失敗也不能影響系統通知）。新增警報只要照舊送 `ALERT`，不要另開推播出口。
+- 判斷邏輯在 `line-notify.js`（不碰 DOM、不碰 `chrome.*`，`fetch` 與時間由呼叫端注入）：總開關開著且 token 與 userId 都有填才算要發；再依去重（同原因 N 分鐘內只推一次）與滾動一小時的上限決定發或略過，被略過的累計在 `skipped`；開關關閉不算略過。去重紀錄放 `chrome.storage.session` 的 `lineThrottle`，最近一次結果放 `lineLastResult`（帶 `source`：test 或 alert）；兩則警報要排隊依序讀寫紀錄，否則會同時讀到舊紀錄。「發送測試訊息」只在設定頁，不受開關、去重、上限影響也不計數，只接受擴充功能自己的頁面（設定頁是開成分頁的，所以看 `sender.id` 與 `sender.url`，不能看 `sender.tab`）。
+- **token 與 userId 是機密**：只存 `chrome.storage.local.lineNotify`（不用 `storage.sync`、不進任何匯出）。`storage.local` 預設 content script 也讀得到，而且 `storage.onChanged` 會把新值送給每個監聽者，所以**任何 content script 都不得讀取、監聽或印出它**（`tests/line-notify.test.js` 的守門測試會擋）；結果、錯誤訊息、console 都不得出現 token 與 userId，`send` 會把它們從回應與網路錯誤文字中遮掉。設定頁載入完成前欄位停用，載入失敗維持停用，否則打字會蓋掉已存的憑證。
+- 測試分三個接縫：`tests/line-notify.test.js`（核心模組，假 `fetch`、假時鐘）、`tests/line-notify-ui.test.js`（設定頁 jsdom）、`tests/line-background.test.js`（在 vm 裡實際執行 `background.js`，假 `chrome` 與 `fetch`，檢查發了幾次請求、系統通知有沒有建、`storage.session` 存了什麼）。改 background 的警報處理要在最後一個檔案補行為測試，不要只比對原始碼文字。
+
 ## 設定頁
 
 - 面板的 ⚙ 由 `background.js` 把 `popup.html?tab=<遊戲分頁 id>` 開成分頁並記在 `storage.session`，再按一次關閉；`popup.js` 看到 `?tab=` 就控制那個遊戲分頁（`getTab`）並加上 `body.page` 樣式。popup 與設定頁是同一份 HTML/JS，改一份兩邊都會變。

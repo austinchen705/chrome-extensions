@@ -6,6 +6,8 @@ if (globalThis.CatworldLineNotifyUI) return;
 
 const KEY = 'lineNotify';
 const RESULT_KEY = 'lineLastResult';
+const THROTTLE_KEY = 'lineThrottle';
+const DEFAULT_LIMIT = 10;
 const pad = value => String(value).padStart(2, '0');
 
 // 最近一次發送結果的顯示：時間、HTTP 狀態、簡短原因；status 0 表示根本沒發出去（沒填憑證或網路錯誤）
@@ -23,19 +25,30 @@ function attach(doc) {
   const token = doc.getElementById('lineToken');
   const userId = doc.getElementById('lineUserId');
   const enabledBox = doc.getElementById('lineEnabled');
+  const dedupe = doc.getElementById('lineDedupe');
+  const hourly = doc.getElementById('lineHourly');
+  const skippedBox = doc.getElementById('lineSkipped');
   const testButton = doc.getElementById('lineTest');
   const resultBox = doc.getElementById('lineResult');
-  const credentials = () => ({ token: token.value.trim(), userId: userId.value.trim(), enabled: enabledBox.checked });
+  // 空白或不是正數就存成 null：背景程式會改用預設值（10 分鐘、每小時 10 則）
+  const limit = field => { const number = Number(field.value); return field.value.trim() !== '' && Number.isFinite(number) && number > 0 ? number : null; };
+  const credentials = () => ({
+    token: token.value.trim(), userId: userId.value.trim(), enabled: enabledBox.checked,
+    dedupeMinutes: limit(dedupe), hourlyLimit: limit(hourly),
+  });
+  const lockable = [token, userId, enabledBox, dedupe, hourly];
 
   // 儲存的憑證載入完成之前欄位先停用：否則一打字就會把「還沒載入的空欄位」存回去，蓋掉已存的值；載入失敗也要放行
   let loaded = false;
-  [token, userId, enabledBox].forEach(field => { field.disabled = true; });
+  lockable.forEach(field => { field.disabled = true; });
   chrome.storage.local.get(KEY).then(data => {
     token.value = data[KEY]?.token ?? '';
     userId.value = data[KEY]?.userId ?? '';
     enabledBox.checked = data[KEY]?.enabled === true;
+    dedupe.value = data[KEY]?.dedupeMinutes ?? DEFAULT_LIMIT;
+    hourly.value = data[KEY]?.hourlyLimit ?? DEFAULT_LIMIT;
     loaded = true;
-    [token, userId, enabledBox].forEach(field => { field.disabled = false; });
+    lockable.forEach(field => { field.disabled = false; });
   }).catch(() => {
     // 讀不到已存的設定時欄位維持停用：這時打字會把「空的」存回去，蓋掉已存的憑證與開關
     resultBox.textContent = '讀取設定失敗，請重新整理設定頁再試';
@@ -44,8 +57,13 @@ function attach(doc) {
   // 最近一次結果由 background 寫在 storage.session（關掉瀏覽器就沒了）；打開頁面時讀一次，之後跟著變更
   const show = result => { if (result) resultBox.textContent = formatResult(result); };
   chrome.storage.session.get(RESULT_KEY).then(data => show(data[RESULT_KEY]));
+  // 被去重或每小時上限略過的警報則數（由 background 累計在 storage.session）
+  const showSkipped = state => { skippedBox.textContent = `已略過 ${state?.skipped ?? 0} 則（同原因重複或超過每小時上限，只是沒推到手機）`; };
+  chrome.storage.session.get(THROTTLE_KEY).then(data => showSkipped(data[THROTTLE_KEY])).catch(() => showSkipped(null));
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'session' && changes[RESULT_KEY]) show(changes[RESULT_KEY].newValue);
+    if (area !== 'session') return;
+    if (changes[RESULT_KEY]) show(changes[RESULT_KEY].newValue);
+    if (changes[THROTTLE_KEY]) showSkipped(changes[THROTTLE_KEY].newValue);
   });
 
   const save = async () => { if (loaded) await chrome.storage.local.set({ [KEY]: credentials() }); };
@@ -60,6 +78,8 @@ function attach(doc) {
   };
   token.addEventListener('input', onCredentialInput);
   userId.addEventListener('input', onCredentialInput);
+  dedupe.addEventListener('input', save);
+  hourly.addEventListener('input', save);
 
   // 總開關預設關閉；token 或 userId 沒填就開不起來（關掉不受限）
   enabledBox.addEventListener('change', () => {

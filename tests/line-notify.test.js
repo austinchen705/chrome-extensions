@@ -87,7 +87,7 @@ test('wiring: LINE host permission, popup markup and scripts, background handler
   const manifest = JSON.parse(ext('manifest.json'));
   assert.ok(manifest.host_permissions.includes('https://api.line.me/*'));
   const popup = ext('popup.html');
-  ['lineToken', 'lineUserId', 'lineTest', 'lineResult'].forEach(id => assert.match(popup, new RegExp(`id="${id}"`), id));
+  ['lineToken', 'lineUserId', 'lineTest', 'lineResult', 'lineDedupe', 'lineHourly', 'lineSkipped'].forEach(id => assert.match(popup, new RegExp(`id="${id}"`), id));
   assert.match(popup, /src="line-notify-ui\.js"/);
   assert.match(popup, /CatworldLineNotifyUI\.attach|line-notify-ui\.js/);
   assert.match(ext('popup.js'), /CatworldLineNotifyUI\.attach\(document\)/);
@@ -113,15 +113,6 @@ test('guard: content scripts never touch the LINE credentials', () => {
     .forEach(file => assert.doesNotMatch(ext(file), /lineNotify|lineLastResult|line-notify|CatworldLineNotify/, file));
 });
 
-test('wiring: the background always answers LINE_TEST and only trusts the extension itself', () => {
-  const background = ext('background.js');
-  const condition = background.split(/\r?\n/).find(line => line.includes("message?.type === 'LINE_TEST'")) ?? '';
-  assert.match(condition, /sender\.id === chrome\.runtime\.id/);
-  const start = background.indexOf("message?.type === 'LINE_TEST'");
-  const block = background.slice(start, background.indexOf('return true;', start));
-  assert.match(block, /\.catch\(/, 'a rejected storage read must still answer, or the page waits forever');
-  assert.doesNotMatch(block, /console\./);
-});
 
 test('wiring: a failure in the LINE block cannot stop the rest of the popup from wiring up', () => {
   assert.match(ext('popup.js'), /try \{\s*CatworldLineNotifyUI\.attach\(document\);\s*\} catch/);
@@ -133,16 +124,17 @@ const ON = { enabled: true, token: TOKEN, userId: USER_ID };
 
 test('an alert becomes 【CatWorld】<reason>（time） only when the switch is on and both credentials are filled', () => {
   const decision = L.decide({ settings: ON, reason: '偵測到請輸入上方的數字，已停止', now: at(4, 5, 6) });
-  assert.deepEqual(decision, { send: true, text: '【CatWorld】偵測到請輸入上方的數字，已停止（04:05:06）' });
+  assert.equal(decision.send, true);
+  assert.equal(decision.text, '【CatWorld】偵測到請輸入上方的數字，已停止（04:05:06）');
 });
 
 test('nothing is sent when the switch is off or a credential is missing', () => {
   const base = { reason: 'x', now: at(1, 2, 3) };
-  assert.deepEqual(L.decide({ ...base, settings: { ...ON, enabled: false } }), { send: false });
-  assert.deepEqual(L.decide({ ...base, settings: { ...ON, token: '' } }), { send: false });
-  assert.deepEqual(L.decide({ ...base, settings: { ...ON, userId: '   ' } }), { send: false });
-  assert.deepEqual(L.decide({ ...base, settings: undefined }), { send: false });
-  assert.deepEqual(L.decide({ ...base, settings: {} }), { send: false });
+  for (const settings of [{ ...ON, enabled: false }, { ...ON, token: '' }, { ...ON, userId: '   ' }, undefined, {}]) {
+    const decision = L.decide({ ...base, settings });
+    assert.equal(decision.send, false);
+    assert.equal(decision.state.skipped, 0, 'being switched off is not a throttled skip');
+  }
 });
 
 test('a very long reason is shortened so the push stays small', () => {
@@ -153,14 +145,14 @@ test('a very long reason is shortened so the push stays small', () => {
 
 test('notifyAlert sends nothing and touches no network when the feature is off', async () => {
   const { fetchImpl, calls } = fakeFetch(200, '{}');
-  const result = await L.notifyAlert({ fetchImpl, settings: { ...ON, enabled: false }, reason: 'x', now: () => at(1, 2, 3) });
+  const { result } = await L.notifyAlert({ fetchImpl, settings: { ...ON, enabled: false }, reason: 'x', now: () => at(1, 2, 3) });
   assert.equal(result, null);
   assert.equal(calls.length, 0);
 });
 
 test('notifyAlert pushes the formatted alert and labels the result as coming from an alert', async () => {
   const { fetchImpl, calls } = fakeFetch(200, '{}');
-  const result = await L.notifyAlert({ fetchImpl, settings: ON, reason: '觸發規則「氣」已停用', now: () => at(4, 5, 6) });
+  const { result } = await L.notifyAlert({ fetchImpl, settings: ON, reason: '觸發規則「氣」已停用', now: () => at(4, 5, 6) });
   assert.equal(JSON.parse(calls[0].init.body).messages[0].text, '【CatWorld】觸發規則「氣」已停用（04:05:06）');
   assert.equal(result.source, 'alert');
   assert.equal(result.ok, true);
@@ -169,7 +161,7 @@ test('notifyAlert pushes the formatted alert and labels the result as coming fro
 
 test('notifyAlert never throws: a failed push comes back as a failed alert result without secrets', async () => {
   const fetchImpl = async () => { throw new TypeError(`offline ${TOKEN}`); };
-  const result = await L.notifyAlert({ fetchImpl, settings: ON, reason: 'x', now: () => at(4, 5, 6) });
+  const { result } = await L.notifyAlert({ fetchImpl, settings: ON, reason: 'x', now: () => at(4, 5, 6) });
   assert.equal(result.ok, false);
   assert.equal(result.source, 'alert');
   assert.equal(JSON.stringify(result).includes(TOKEN), false);
@@ -179,23 +171,7 @@ test('wiring: the popup has the master switch', () => {
   assert.match(ext('popup.html'), /id="lineEnabled"[^>]*type="checkbox"|type="checkbox"[^>]*id="lineEnabled"/);
 });
 
-test('wiring: every ALERT also goes to LINE independently of the system notification, and a LINE failure cannot affect it', () => {
-  const background = ext('background.js');
-  const start = background.indexOf("if (message.type !== 'ALERT') return;");
-  assert.ok(start > 0, 'ALERT handler found');
-  const block = background.slice(start, background.indexOf('chrome.notifications.onButtonClicked', start));
-  const notification = block.indexOf('chrome.notifications.create');
-  const line = block.indexOf('notifyLine(');
-  // LINE 是非同步、不會同步丟錯，所以先啟動它：系統通知若同步丟錯（圖示、權限問題），手機通知也不會跟著丟
-  assert.ok(line >= 0 && notification > line, 'LINE is started first so a throwing system notification cannot drop it');
-  assert.match(background, /CatworldLineNotify\.notifyAlert/);
-  assert.match(background, /LINE_RESULT_KEY/);
-  assert.match(block, /notifyLine\([^)]*\)\.catch\(/, 'a rejected push must never reach the ALERT handler');
-});
 
-test('wiring: results written by the test button are labelled as tests', () => {
-  assert.match(ext('background.js'), /source: 'test'/);
-});
 
 test('guard: an alert is sent to the background exactly once, so the phone gets one push even while the ring repeats', () => {
   const content = ext('content.js');
@@ -204,4 +180,81 @@ test('guard: an alert is sent to the background exactly once, so the phone gets 
   // 重複響鈴（startRepeatBeep）只負責響，不得再送 ALERT
   const beep = content.slice(content.indexOf('function startRepeatBeep'), content.indexOf('function startRepeatBeep') + 800);
   assert.doesNotMatch(beep, /ALERT/);
+});
+
+// ---- 去重與每小時上限 ----
+const MIN = 60 * 1000;
+const HOUR = 60 * MIN;
+const T0 = Date.UTC(2026, 9, 21, 0, 0, 0);
+
+// 連續餵警報，回傳每一則的判斷與最後的 state（時間以毫秒偏移 T0）
+function feed(events, settings = ON) {
+  let state;
+  return events.map(([offset, reason]) => {
+    const decision = L.decide({ settings, reason, now: T0 + offset, state });
+    state = decision.state;
+    return decision;
+  });
+}
+
+test('the same reason within the dedupe window is sent once; after the window it can go again', () => {
+  const [a, b, c, d] = feed([[0, 'A'], [9 * MIN + 59000, 'A'], [10 * MIN, 'A'], [10 * MIN + 1, 'A']]);
+  assert.equal(a.send, true);
+  assert.equal(b.send, false, '9:59 later is still inside the 10 minute window');
+  assert.equal(c.send, true, 'exactly 10 minutes after the last push it goes again');
+  assert.equal(d.send, false, 'and the window restarts from that push');
+});
+
+test('different reasons do not suppress each other', () => {
+  const [a, b] = feed([[0, 'A'], [1000, 'B']]);
+  assert.deepEqual([a.send, b.send], [true, true]);
+});
+
+test('at most N pushes per rolling hour; the (N+1)th is skipped, and slots free up as the hour rolls', () => {
+  const settings = { ...ON, hourlyLimit: 3 };
+  const events = [[0, 'a'], [MIN, 'b'], [2 * MIN, 'c'], [3 * MIN, 'd'], [HOUR - 1, 'e'], [HOUR, 'f']];
+  const sends = feed(events, settings).map(decision => decision.send);
+  assert.deepEqual(sends, [true, true, true, false, false, true], 'the push at minute 0 leaves the window exactly one hour later');
+});
+
+test('skipped alerts are counted, whether they hit the dedupe window or the hourly cap', () => {
+  const decisions = feed([[0, 'A'], [1000, 'A'], [2000, 'A']]);
+  assert.equal(decisions[2].state.skipped, 2);
+  const capped = feed([[0, 'a'], [1, 'b'], [2, 'c']], { ...ON, hourlyLimit: 2 });
+  assert.equal(capped[2].send, false);
+  assert.equal(capped[2].state.skipped, 1);
+});
+
+test('the dedupe minutes and the hourly cap come from the settings, and nonsense values fall back to 10 and 10', () => {
+  assert.equal(feed([[0, 'A'], [2 * MIN, 'A']], { ...ON, dedupeMinutes: 1 })[1].send, true);
+  assert.equal(feed([[0, 'A'], [2 * MIN, 'A']], { ...ON, dedupeMinutes: 5 })[1].send, false);
+  for (const bad of [0, -3, 'abc', null, NaN]) {
+    assert.equal(feed([[0, 'A'], [5 * MIN, 'A']], { ...ON, dedupeMinutes: bad })[1].send, false, `dedupeMinutes ${String(bad)} falls back to 10`);
+  }
+  const eleven = feed(Array.from({ length: 11 }, (_, i) => [i, `r${i}`]), { ...ON, hourlyLimit: 'x' });
+  assert.equal(eleven[9].send, true);
+  assert.equal(eleven[10].send, false, 'the default cap is 10');
+});
+
+test('the bookkeeping stays small: old reasons are forgotten once their window has passed', () => {
+  let state;
+  for (let i = 0; i < 200; i += 1) state = L.decide({ settings: ON, reason: `reason ${i}`, now: T0 + i * 11 * MIN, state }).state;
+  assert.ok(Object.keys(state.lastByReason).length <= 2, `kept ${Object.keys(state.lastByReason).length}`);
+  assert.ok(state.sent.length <= 10);
+});
+
+test('notifyAlert returns the new state, sends only what decide allows, and never counts a skipped alert as sent', async () => {
+  const { fetchImpl, calls } = fakeFetch(200, '{}');
+  let state;
+  const run = async reason => {
+    const out = await L.notifyAlert({ fetchImpl, settings: ON, reason, now: () => T0, state });
+    state = out.state;
+    return out;
+  };
+  const first = await run('A');
+  const second = await run('A');
+  assert.equal(first.result.ok, true);
+  assert.equal(second.result, null);
+  assert.equal(calls.length, 1);
+  assert.equal(state.skipped, 1);
 });

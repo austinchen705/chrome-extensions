@@ -30,6 +30,9 @@ const HTML = `<html><body>
   <input id="lineToken" type="password">
   <input id="lineUserId" type="password">
   <input id="lineEnabled" type="checkbox">
+  <input id="lineDedupe" type="number">
+  <input id="lineHourly" type="number">
+  <div id="lineSkipped"></div>
   <button id="lineTest">發送測試訊息</button>
   <div id="lineResult"></div>
 </body></html>`;
@@ -66,7 +69,7 @@ ui('saved credentials come back into the masked fields, and typing saves them to
   assert.equal($('lineUserId').type, 'password');
   type('lineToken', '  newtoken ');
   assert.ok(await waitFor(() => writes.local.length > 0));
-  assert.equal(JSON.stringify(writes.local.at(-1)), JSON.stringify({ lineNotify: { token: 'newtoken', userId: USER_ID, enabled: false } }));
+  assert.equal(JSON.stringify(writes.local.at(-1)), JSON.stringify({ lineNotify: { token: 'newtoken', userId: USER_ID, enabled: false, dedupeMinutes: 10, hourlyLimit: 10 } }));
   assert.equal(writes.sync.length, 0, 'never written to sync storage');
 });
 
@@ -187,10 +190,10 @@ ui('turning the switch on saves it next to the credentials, and typing afterward
   assert.ok(await waitFor(() => $('lineToken').value === TOKEN));
   $('lineEnabled').click();
   assert.ok(await waitFor(() => writes.local.length === 1));
-  assert.equal(JSON.stringify(writes.local[0]), JSON.stringify({ lineNotify: { token: TOKEN, userId: USER_ID, enabled: true } }));
+  assert.equal(JSON.stringify(writes.local[0]), JSON.stringify({ lineNotify: { token: TOKEN, userId: USER_ID, enabled: true, dedupeMinutes: 10, hourlyLimit: 10 } }));
   type('lineToken', `${TOKEN}2`);
   assert.ok(await waitFor(() => writes.local.length === 2));
-  assert.equal(JSON.stringify(writes.local[1]), JSON.stringify({ lineNotify: { token: `${TOKEN}2`, userId: USER_ID, enabled: true } }));
+  assert.equal(JSON.stringify(writes.local[1]), JSON.stringify({ lineNotify: { token: `${TOKEN}2`, userId: USER_ID, enabled: true, dedupeMinutes: 10, hourlyLimit: 10 } }));
 });
 
 ui('a saved enabled switch comes back checked, and turning it off keeps the credentials', async () => {
@@ -198,7 +201,7 @@ ui('a saved enabled switch comes back checked, and turning it off keeps the cred
   assert.ok(await waitFor(() => $('lineEnabled').checked === true));
   $('lineEnabled').click();
   assert.ok(await waitFor(() => writes.local.length === 1));
-  assert.equal(JSON.stringify(writes.local[0]), JSON.stringify({ lineNotify: { token: TOKEN, userId: USER_ID, enabled: false } }));
+  assert.equal(JSON.stringify(writes.local[0]), JSON.stringify({ lineNotify: { token: TOKEN, userId: USER_ID, enabled: false, dedupeMinutes: 10, hourlyLimit: 10 } }));
 });
 
 ui('the switch is locked until the saved settings have loaded', async () => {
@@ -230,5 +233,60 @@ ui('emptying a credential while the switch is on turns the switch off visibly, i
   assert.equal($('lineEnabled').checked, false);
   assert.match($('lineResult').textContent, /已自動關閉/);
   assert.ok(await waitFor(() => writes.local.length > 0));
-  assert.equal(JSON.stringify(writes.local.at(-1)), JSON.stringify({ lineNotify: { token: '', userId: USER_ID, enabled: false } }));
+  assert.equal(JSON.stringify(writes.local.at(-1)), JSON.stringify({ lineNotify: { token: '', userId: USER_ID, enabled: false, dedupeMinutes: 10, hourlyLimit: 10 } }));
+});
+
+ui('the dedupe minutes and the hourly cap show 10 and 10 by default, and saved values come back', async () => {
+  const fresh = boot({ local: {} });
+  assert.ok(await waitFor(() => fresh.$('lineToken').disabled === false));
+  assert.equal(fresh.$('lineDedupe').value, '10');
+  assert.equal(fresh.$('lineHourly').value, '10');
+  const saved = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID, dedupeMinutes: 3, hourlyLimit: 7 } } });
+  assert.ok(await waitFor(() => saved.$('lineDedupe').value === '3'));
+  assert.equal(saved.$('lineHourly').value, '7');
+});
+
+ui('editing the limits saves numbers next to the credentials and the switch', async () => {
+  const { $, type, writes } = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID, enabled: true } } });
+  assert.ok(await waitFor(() => $('lineEnabled').checked === true));
+  type('lineDedupe', '5');
+  assert.ok(await waitFor(() => writes.local.length === 1));
+  assert.equal(JSON.stringify(writes.local[0]), JSON.stringify({ lineNotify: { token: TOKEN, userId: USER_ID, enabled: true, dedupeMinutes: 5, hourlyLimit: 10 } }));
+  type('lineHourly', '3');
+  assert.ok(await waitFor(() => writes.local.length === 2));
+  assert.equal(JSON.stringify(writes.local[1]), JSON.stringify({ lineNotify: { token: TOKEN, userId: USER_ID, enabled: true, dedupeMinutes: 5, hourlyLimit: 3 } }));
+});
+
+ui('a blank or nonsense limit is saved as empty so the background falls back to the default', async () => {
+  const { $, type, writes } = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID } } });
+  assert.ok(await waitFor(() => $('lineToken').value === TOKEN));
+  type('lineDedupe', '');
+  assert.ok(await waitFor(() => writes.local.length === 1));
+  assert.equal(writes.local[0].lineNotify.dedupeMinutes, null);
+  type('lineHourly', '-4');
+  assert.ok(await waitFor(() => writes.local.length === 2));
+  assert.equal(writes.local[1].lineNotify.hourlyLimit, null);
+});
+
+ui('the number of skipped alerts is shown when the page opens and follows later changes', async () => {
+  const { $, listeners } = boot({ session: { lineThrottle: { skipped: 4 } } });
+  assert.ok(await waitFor(() => /已略過 4 則/.test($('lineSkipped').textContent)));
+  listeners.forEach(listener => listener({ lineThrottle: { newValue: { skipped: 5 } } }, 'session'));
+  assert.ok(await waitFor(() => /已略過 5 則/.test($('lineSkipped').textContent)));
+});
+
+ui('with nothing recorded the page says 0 skipped', async () => {
+  const { $ } = boot({});
+  assert.ok(await waitFor(() => /已略過 0 則/.test($('lineSkipped').textContent)));
+});
+
+ui('the limit fields are locked until the saved settings have loaded', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const { $ } = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID, dedupeMinutes: 3 } }, gate });
+  assert.equal($('lineDedupe').disabled, true);
+  assert.equal($('lineHourly').disabled, true);
+  release();
+  assert.ok(await waitFor(() => $('lineDedupe').disabled === false));
+  assert.equal($('lineDedupe').value, '3');
 });

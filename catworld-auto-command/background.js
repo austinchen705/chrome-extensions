@@ -44,11 +44,25 @@ async function sendLine(text) {
   return result;
 }
 
-// 警報推播：總開關沒開、憑證沒填就什麼都不做（不碰網路）；結果標成「警報」。呼叫端要自己 .catch，失敗不能影響系統通知
-async function notifyLine(reason) {
-  const saved = (await chrome.storage.local.get(LINE_KEY))[LINE_KEY];
-  const result = await CatworldLineNotify.notifyAlert({ fetchImpl: fetch, settings: saved, reason, now: Date.now });
-  if (result) await saveLineResult(result);
+// 警報推播：總開關沒開、憑證沒填就什麼都不做（不碰網路）；結果標成「警報」。
+// 去重與每小時上限的紀錄放 storage.session（service worker 被暫停再喚醒仍有效，關掉瀏覽器歸零）。
+// 讀紀錄、判斷、寫回要一則一則排隊做，否則兩則警報同時到時會各自讀到舊紀錄、都以為自己是第一則。
+// 呼叫端要自己 .catch，失敗不能影響系統通知
+const LINE_THROTTLE_KEY = 'lineThrottle';
+let lineQueue = Promise.resolve();
+
+function notifyLine(reason) {
+  const run = async () => {
+    const saved = (await chrome.storage.local.get(LINE_KEY))[LINE_KEY];
+    const state = (await chrome.storage.session.get(LINE_THROTTLE_KEY))[LINE_THROTTLE_KEY];
+    const { result, state: next } = await CatworldLineNotify.notifyAlert({ fetchImpl: fetch, settings: saved, reason, now: Date.now, state });
+    // 有發送或被略過才需要寫回；開關關閉、憑證沒填時什麼都沒變，不寫
+    if (result || next.skipped > (state?.skipped ?? 0)) await chrome.storage.session.set({ [LINE_THROTTLE_KEY]: next });
+    if (result) await saveLineResult(result);
+  };
+  const task = lineQueue.then(run, run);
+  lineQueue = task.catch(() => {});
+  return task;
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
