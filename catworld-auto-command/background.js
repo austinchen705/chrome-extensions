@@ -1,5 +1,5 @@
 // content script 不能直接彈系統通知、也不能開分頁，由這裡代為處理
-importScripts('zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'line-notify.js');
+importScripts('zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'shared-data.js', 'line-notify.js');
 // 面板上的 ⚙：按一下在新分頁開啟設定頁（popup.html 當成分頁開，?tab= 帶遊戲分頁的 id），再按一次關閉並切回遊戲分頁。
 // 「遊戲分頁 → 設定分頁」的對應放在 storage.session，service worker 被收掉再醒來也還在
 const settingsKey = gameTabId => `settingsTab:${gameTabId}`;
@@ -122,11 +122,82 @@ function loadZapData() {
   return zapDataPromise;
 }
 
+// 共用資料：設定頁貼的 Google 試算表連結（sharedSources）抓下來的共用層放在 sharedCache（存本機）。
+// 一小時內不重抓；抓失敗就保留舊的並記下原因，幾分鐘內不再試（不然離線時每次查詢都要等逾時）；連結改了就丟掉舊快取。
+// 查詢回覆在這裡套上共用路線，面板（content script）完全不碰共用層，只顯示回覆裡的 shared 標記
+const SHARED_SOURCES_KEY = 'sharedSources';
+const SHARED_CACHE_KEY = 'sharedCache';
+const SHARED_FRESH_MS = 60 * 60 * 1000;
+const SHARED_RETRY_MS = 5 * 60 * 1000;
+const SHARED_TIMEOUT_MS = 15000;
+let sharedInflight = null;
+
+async function fetchSharedCsv(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SHARED_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function refreshShared(force) {
+  const stored = await chrome.storage.local.get([SHARED_SOURCES_KEY, SHARED_CACHE_KEY, 'zapFeatures']);
+  const cache = { ...stored[SHARED_CACHE_KEY] };
+  const features = stored.zapFeatures ?? {};
+  if (features.mobs !== true && features.riddles !== true) return cache;
+  const url = String(stored[SHARED_SOURCES_KEY]?.mob ?? '').trim();
+  if (!url) {
+    if (cache.mob) {
+      delete cache.mob;
+      await chrome.storage.local.set({ [SHARED_CACHE_KEY]: cache });
+    }
+    return cache;
+  }
+  const entry = cache.mob?.url === url ? cache.mob : null;
+  const now = Date.now();
+  const fresh = entry?.at && now - entry.at < SHARED_FRESH_MS;
+  const backingOff = entry?.error && now - entry.error.at < SHARED_RETRY_MS;
+  if (!force && (fresh || backingOff)) return cache;
+  const fail = reason => ({ url, at: null, routes: {}, report: null, ...entry, error: { at: now, reason } });
+  const checked = CatworldSharedData.checkUrl(url);
+  if (!checked.ok) {
+    cache.mob = fail(checked.error);
+  } else {
+    try {
+      const built = CatworldSharedData.buildMobRoutes(await fetchSharedCsv(url), (await loadZapData()).mobs ?? []);
+      cache.mob = built.ok ? { url, at: now, routes: built.routes, report: built.report } : fail(built.error);
+    } catch (error) {
+      cache.mob = fail(error.name === 'AbortError' ? `逾時（${SHARED_TIMEOUT_MS / 1000} 秒）` : error.message);
+    }
+  }
+  await chrome.storage.local.set({ [SHARED_CACHE_KEY]: cache });
+  return cache;
+}
+
+// 同時有多個請求時共用同一次抓取
+function refreshSharedOnce(force) {
+  sharedInflight ??= refreshShared(force).finally(() => { sharedInflight = null; });
+  return sharedInflight;
+}
+
+// 儲存或網路出任何問題都不能弄壞內建資料的查詢：回空的共用層
+const sharedRoutes = () => refreshSharedOnce(false).then(cache => cache.mob?.routes ?? {}, () => ({}));
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // 設定頁的「立即更新」：只接受擴充功能自己的頁面（和 LINE_TEST 一樣看 sender.id 與 sender.url）
+  if (message?.type === 'SHARED_REFRESH' && sender.id === chrome.runtime.id && sender.url?.startsWith(chrome.runtime.getURL(''))) {
+    refreshSharedOnce(true).then(cache => sendResponse({ ok: true, cache }), error => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
   if (!String(message?.type).startsWith('ZAP_')) return;
-  loadZapData()
-    .then(data => sendResponse(
-      CatworldZapMobs.handleMessage(data.mobs ?? [], message, data.routes ?? [], data.routeAliases ?? {})
+  const withShared = message.type === 'ZAP_LOOKUP' || message.type === 'ZAP_SUITABLE';
+  Promise.all([loadZapData(), withShared ? sharedRoutes() : {}])
+    .then(([data, shared]) => sendResponse(
+      CatworldSharedData.overlayReply(CatworldZapMobs.handleMessage(data.mobs ?? [], message, data.routes ?? [], data.routeAliases ?? {}), shared)
         ?? CatworldZapItems.handleMessage(data.items ?? [], message)
         ?? CatworldZapRiddles.handleMessage(data, message)
         ?? { ok: false, error: '未知的查詢' }))

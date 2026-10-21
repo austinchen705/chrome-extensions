@@ -65,6 +65,32 @@ ui('a partial match is labelled, a mob without a route has no button', async () 
   assert.equal(none.shadow.querySelector('.zap-walk'), null);
 });
 
+ui('a shared route is labelled with who wrote it and the note, and the button sends its command', async () => {
+  const shared = { route: { name: '華山弟子(a)', path: '', command: 'run n;push stone' }, exact: true, shared: { by: '小明', note: '要先買貂皮衣' } };
+  const { shadow, started } = boot({ items: [{ ...mobWith(null), route: shared }] });
+  assert.ok(await waitFor(() => shadow.querySelector('.zap-walk')));
+  assert.match(shadow.querySelector('.zap-route').textContent, /共用（小明）：要先買貂皮衣/);
+  shadow.querySelector('.zap-walk').click();
+  assert.deepEqual(started, ['run n;push stone']);
+  const noNote = boot({ items: [{ ...mobWith(null), route: { ...shared, shared: { by: '小華', note: '' } } }] });
+  assert.ok(await waitFor(() => noNote.shadow.querySelector('.zap-route')));
+  assert.match(noNote.shadow.querySelector('.zap-route').textContent, /共用（小華）　/);
+  assert.doesNotMatch(noNote.shadow.querySelector('.zap-route').textContent, /：/);
+});
+
+ui('a personal route beats a shared one in the list', async () => {
+  const shared = { route: { name: '華山弟子(a)', path: '', command: 'run shared' }, exact: true, shared: { by: '小明', note: '' } };
+  const dom = boot({ items: [{ ...mobWith(null), route: shared }] });
+  assert.ok(await waitFor(() => dom.shadow.querySelector('.zap-walk')));
+  dom.shadow.querySelector('.zap-routebox .zap-edit').click();
+  dom.shadow.querySelector('.zap-routeedit textarea').value = 'run mine';
+  [...dom.shadow.querySelectorAll('.zap-routeedit .zap-edit')].find(button => button.textContent === '儲存').click();
+  assert.ok(await waitFor(() => /已自訂/.test(dom.shadow.querySelector('.zap-route')?.textContent ?? '')));
+  assert.doesNotMatch(dom.shadow.querySelector('.zap-route').textContent, /共用/);
+  dom.shadow.querySelector('.zap-walk').click();
+  assert.deepEqual(dom.started, ['run mine']);
+});
+
 ui('the button says so when the queue refused the commands', async () => {
   const { shadow } = boot({ startResult: false, items: [mobWith({ name: '華山', path: 't' })] });
   assert.ok(await waitFor(() => shadow.querySelector('.zap-walk')));

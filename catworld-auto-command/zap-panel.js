@@ -112,7 +112,7 @@ function routeBlock(base, onWalk, editor) {
 }
 
 // 路徑表的路線：從醉仙樓出發（先 recall）；地名只是約略對應時要標出來，不當成確定
-function routeNode({ route, exact, custom }, onWalk, extra) {
+function routeNode({ route, exact, custom, shared }, onWalk, extra) {
   const button = el('button', { className: 'zap-walk', textContent: '走過去' });
   button.addEventListener('click', () => {
     button.disabled = true;
@@ -120,7 +120,7 @@ function routeNode({ route, exact, custom }, onWalk, extra) {
     button.textContent = sent === false ? '送不出去' : '已送出';
     setTimeout(() => { button.disabled = false; button.textContent = '走過去'; }, 1500);
   });
-  const prefix = custom ? '已自訂　' : exact ? '' : `約略對應「${route.name}」　`;
+  const prefix = custom ? '已自訂　' : shared ? `共用（${shared.by || '未署名'}）${shared.note ? `：${shared.note}` : ''}　` : exact ? '' : `約略對應「${route.name}」　`;
   return el('div', { className: 'zap-route' },
     el('span', { className: 'meta', textContent: `${prefix}路線 ${route.command ?? route.path}（從醉仙樓出發，先 recall）` }),
     ' ', button, extra ? [' ', extra] : []);

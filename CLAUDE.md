@@ -99,6 +99,13 @@
 - **token 與 userId 是機密**：只存 `chrome.storage.local.lineNotify`（不用 `storage.sync`、不進任何匯出）。`storage.local` 預設 content script 也讀得到，而且 `storage.onChanged` 會把新值送給每個監聽者，所以**任何 content script 都不得讀取、監聽或印出它**（`tests/line-notify.test.js` 的守門測試會擋）；結果、錯誤訊息、console 都不得出現 token 與 userId，`send` 會把它們從回應與網路錯誤文字中遮掉。設定頁載入完成前欄位停用，載入失敗維持停用，否則打字會蓋掉已存的憑證。
 - 測試分三個接縫：`tests/line-notify.test.js`（核心模組，假 `fetch`、假時鐘）、`tests/line-notify-ui.test.js`（設定頁 jsdom）、`tests/line-background.test.js`（在 vm 裡實際執行 `background.js`，假 `chrome` 與 `fetch`，檢查發了幾次請求、系統通知有沒有建、`storage.session` 存了什麼）。改 background 的警報處理要在最後一個檔案補行為測試，不要只比對原始碼文字。
 
+## 共用資料
+
+- 怪物路線有三層：個人（`chrome.storage.local.mobRoutes`）> 共用（Google 試算表發布的 CSV）> 內建。共用層的解析、白名單、連結檢查在 `shared-data.js`（不碰 DOM、不碰 `chrome.*`；background 與設定頁載入，**content script 不載入它**）。鍵一律用 `CatworldZapMobs.customKey`，和個人層同一個函式，否則個人層蓋不掉共用層。
+- 抓取與快取只在 `background.js`（`refreshShared`）：連結在 `chrome.storage.local.sharedSources`（只存本機、不進匯出），快取在 `sharedCache`（含最近一次失敗的原因）；一小時內不重抓、失敗後 5 分鐘內不重試、連結改了丟掉舊快取、怪物查詢與解謎都關著不抓、請求 15 秒逾時；「立即更新」（`SHARED_REFRESH`）只接受擴充功能自己的頁面。查詢回覆（`ZAP_LOOKUP`／`ZAP_SUITABLE`）在 background 用 `overlayReply` 疊上共用路線並帶 `shared: { by, note }`，面板只負責顯示，個人層在面板端再蓋過去。
+- 共用來的指令只收白名單動詞（走路與互動類，清單在 `shared-data.js` 的 `ALLOWED_VERBS`）；個人層與內建層不受限。任何儲存或網路問題都不能弄壞內建資料的查詢（`sharedRoutes` 失敗回空的共用層）。
+- 測試：`tests/shared-data.test.js`（CSV → 共用層與報告）、`tests/shared-background.test.js`（在記憶體裡執行 `background.js`，假 `chrome.storage.local` 與 `fetch`，檢查請求次數、快取、回覆）、`tests/zap-route-ui.test.js`（面板標示）。
+
 ## 數值區塊
 
 - 面板最上方的「數值」區塊由兩個模組組成：`stats-view.js`（不碰 DOM，`rows(readings, exp)` 決定每列顯示什麼）與 `stats-block.js`（畫面，`attach(root)` 回傳 `render(readings, exp)`）。兩個都要加進 manifest 的 content script 與 popup 備援注入清單，`stats-view.js` 在 `stats-block.js` 之前、都在 `content.js` 之前；`content.js` 建立區塊要包 try/catch，壞了不能牽連後面按鈕的綁定。

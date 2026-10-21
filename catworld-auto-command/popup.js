@@ -120,6 +120,51 @@ Object.values(FEATURE_BOXES).forEach(id => $(id).addEventListener('change', () =
   chrome.storage.local.set({ zapFeatures: Object.fromEntries(Object.entries(FEATURE_BOXES).map(([key, box]) => [key, $(box).checked])) });
 }));
 
+// 共用資料（Google 試算表）：連結只存本機（sharedSources，不進匯出），抓取由 background 做，結果在 sharedCache
+const timeText = at => new Date(at).toLocaleString('zh-TW', { hour12: false });
+function sharedSummary(url, entry) {
+  if (!url) return '尚未設定';
+  if (!entry) return '尚未抓取（怪物查詢或解謎要開著；開著的話查一次怪物，或按「立即更新」）';
+  const ok = entry.at && entry.report
+    ? `上次更新 ${timeText(entry.at)}：共 ${entry.report.rows} 列，生效 ${entry.report.used} 隻，丟掉 ${entry.report.dropped.length} 列，對不到怪物 ${entry.report.unmatched.length} 隻`
+    : '沒有可用的資料';
+  return entry.error ? `更新失敗（${timeText(entry.error.at)}）：${entry.error.reason}\n目前使用：${ok}` : ok;
+}
+async function showShared() {
+  const data = await chrome.storage.local.get(['sharedSources', 'sharedCache']);
+  const url = data.sharedSources?.mob ?? '';
+  if (document.activeElement !== $('sharedMobUrl')) $('sharedMobUrl').value = url;
+  $('sharedResult').textContent = sharedSummary(url, data.sharedCache?.mob?.url === url ? data.sharedCache.mob : null);
+}
+async function refreshShared() {
+  $('sharedResult').textContent = '更新中…';
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: 'SHARED_REFRESH' });
+    if (!reply?.ok) $('sharedResult').textContent = `更新失敗：${reply?.error || '沒有回應'}`;
+    else await showShared();
+  } catch (error) {
+    $('sharedResult').textContent = `更新失敗：${error.message}`;
+  }
+}
+$('sharedMobUrl').addEventListener('change', async () => {
+  const text = $('sharedMobUrl').value.trim();
+  if (text) {
+    const checked = CatworldSharedData.checkUrl(text);
+    if (!checked.ok) {
+      $('sharedResult').textContent = checked.error;
+      return;
+    }
+  }
+  await chrome.storage.local.set({ sharedSources: { mob: text } });
+  if (text) refreshShared();
+  else showShared();
+});
+$('sharedRefresh').addEventListener('click', refreshShared);
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && (changes.sharedSources || changes.sharedCache)) showShared();
+});
+showShared();
+
 // 主要武器類型：存起來，遊戲頁的面板監聽 storage 變化，馬上生效。不合法的值當成未設定
 const weaponValue = value => (CatworldZapItems.WEAPON_TYPES.includes(value) ? value : '');
 $('mainWeapon').replaceChildren(...['', ...CatworldZapItems.WEAPON_TYPES].map(type => element('option', { value: type, textContent: type || '未設定' })));
