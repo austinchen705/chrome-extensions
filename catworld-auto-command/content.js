@@ -552,6 +552,7 @@ const PIP_SIZE_KEY = 'pipSize';
 let panel = null;
 // 面板最上方的「數值」區塊（stats-block.js）
 let statsBlock = null;
+let statsRenderFailed = false;
 function initPanel() {
   const host = document.createElement('div');
   host.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;';
@@ -630,10 +631,7 @@ function initPanel() {
     console.error('[catworld] 怪物列初始化失敗', error);
   }
   // 「解謎」列：狀態讀不到要給 NaN（不是 0），否則會被當成「經驗／內力不夠」；「送出」走巨集（算 active()、驗證碼時取消）
-  const readNumber = id => {
-    const text = (document.getElementById(id)?.textContent || '').replace(/[,\s]/g, '');
-    return text ? Number(text) : NaN;
-  };
+  const readNumber = readGameNumber;
   let riddleUI = null;
   try {
     riddleUI = CatworldZapRiddleUI.attach(root, {
@@ -850,7 +848,9 @@ function renderPanel() {
   try {
     if (statsBlock) statsBlock.render(readAllStats(), readGameNumber('exp'));
   } catch (error) {
-    console.error('[catworld] 數值區塊更新失敗', error);
+    // 每秒都會跑：出錯只印第一次，不要洗版
+    if (!statsRenderFailed) console.error('[catworld] 數值區塊更新失敗', error);
+    statsRenderFailed = true;
   }
   const captchaStopped = !active() && /驗證/.test(stopReason);
   const summaries = groupList.map(group => triggerSummary(group));

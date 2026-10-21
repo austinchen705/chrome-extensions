@@ -24,8 +24,7 @@ const el = (name, props = {}, ...children) => {
 
 function attach(root) {
   const V = globalThis.CatworldStatsView;
-  const labels = V.rows({}, NaN).map(row => row.label);
-  const rowNodes = new Map(labels.map(label => [label, {
+  const rowNodes = new Map(V.LABELS.map(label => [label, {
     row: el('div', { className: 'stat-row' }),
     value: el('span', { className: 'stat-value', textContent: '—' }),
   }]));

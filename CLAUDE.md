@@ -103,7 +103,7 @@
 
 - 面板最上方的「數值」區塊由兩個模組組成：`stats-view.js`（不碰 DOM，`rows(readings, exp)` 決定每列顯示什麼）與 `stats-block.js`（畫面，`attach(root)` 回傳 `render(readings, exp)`）。兩個都要加進 manifest 的 content script 與 popup 備援注入清單，`stats-view.js` 在 `stats-block.js` 之前、都在 `content.js` 之前；`content.js` 建立區塊要包 try/catch，壞了不能牽連後面按鈕的綁定。
 - 每秒由 `renderPanel` 餵 `readAllStats()` 與 `readGameNumber('exp')`。**數值必須和觸發規則讀同一份**：`readAllStats` 是用引擎的 `readStat` 組出來的，不要另寫一套讀法，否則面板上看到的數字會和觸發判斷用的不一致。順序跟 `trigger-engine.js` 的 `STATS` 一致，經驗排第一。
-- 顯示規則：`目前值/上限（百分比）`，百分比照實顯示可超過 100%（內力、靈力、法力目前值看過是上限的兩倍，原因與公式遊戲說明站沒寫，只顯示不解讀）；讀不到顯示 `—`，上限為 0、負數或讀不到時不顯示百分比；經驗只有目前值。第一版沒有顏色警示或門檻。
+- 顯示規則：`目前值/上限（百分比）`，百分比照實顯示可超過 100%（內力、靈力、法力的目前值可以超過上限，原因與公式遊戲說明站沒寫，只顯示不解讀），但目前值小於上限時最多顯示 99%（四捨五入會讓 1451/1452 變 100%，誤導成滿了）；讀不到顯示 `—`，上限為 0、負數或讀不到時不顯示百分比；經驗只有目前值。第一版沒有顏色警示或門檻。
 - 收合狀態記在 `chrome.storage.local.statsCollapsed`，預設展開；讀到的狀態只在玩家還沒動過時才套用（晚到的讀取不能蓋掉玩家剛點的），讀不到維持展開，存不進去不影響收合。面板可能被搬進置頂浮窗（另一個 document），事件綁在節點上、樣式在 shadow root 裡，搬過去仍然有效。**不要搬或改遊戲的狀態視窗（`#monitor`）**，這裡只是另外顯示一份。
 - 測試：`tests/stats-view.test.js`（格式化）、`tests/stats-block.test.js`（jsdom 畫面與串接檢查）。
 

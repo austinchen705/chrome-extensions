@@ -58,3 +58,16 @@ test('a current value of zero is shown as 0 with its percentage', () => {
   assert.equal(rows.食物.text, '0/900（0%）');
   assert.equal(rows.食物.percent, 0);
 });
+
+test('a value that is not full yet never reads as 100%, so 1451/1452 is not mistaken for a full bar', () => {
+  const rows = byLabel(V.rows({ ...SAMPLE, 精: { value: 1451, max: 1452 }, 氣: { value: 36519, max: 36520 }, 神: { value: 714, max: 714 }, 食物: { value: 995, max: 1000 } }, 1));
+  assert.equal(rows.精.text, '1451/1452（99%）');
+  assert.equal(rows.精.percent, 99);
+  assert.equal(rows.氣.percent, 99);
+  assert.equal(rows.食物.percent, 99, '99.5% rounds to 100 but it is not full');
+  assert.equal(rows.神.percent, 100, 'exactly full is 100');
+});
+
+test('the row labels are exported in display order so the screen does not rebuild them from fake readings', () => {
+  assert.deepEqual(V.LABELS, ORDER);
+});
