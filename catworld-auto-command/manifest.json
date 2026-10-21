@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CatWorld Auto Command",
-  "version": "1.31.0",
+  "version": "1.32.0",
   "description": "Configurable commands with immediate stop on verification prompts.",
   "permissions": [
     "storage",
@@ -37,6 +37,7 @@
         "zap-panel.js",
         "zap-riddle-ui.js",
         "zap-equipment-ui.js",
+        "pip-panel.js",
         "content.js"
       ],
       "css": [

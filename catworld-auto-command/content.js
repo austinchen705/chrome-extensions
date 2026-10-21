@@ -555,12 +555,14 @@ function initPanel() {
       .dot.on { background: #3ecf6e; }
       .dot.alert { background: #ff5c4d; }
       .label { flex: 1; font-weight: 600; white-space: nowrap; }
-      .toggle, .gear { all: unset; cursor: pointer; padding: 0 6px; color: #aaa; font-size: 20px; line-height: 1; }
+      .toggle, .gear, .pip { all: unset; cursor: pointer; padding: 0 6px; color: #aaa; font-size: 20px; line-height: 1; }
+      .pip { font-size: 14px; }
+      .pip[hidden] { display: none; }
       .confirm { all: unset; cursor: pointer; padding: 2px 12px; border-radius: 6px; background: #d9382c; color: #fff; font-size: 14px; font-weight: 700; }
       .confirm:hover { background: #ef4a3d; }
       .confirm[hidden] { display: none; }
       .gear { font-size: 18px; }
-      .gear:hover, .toggle:hover { color: #fff; }
+      .gear:hover, .toggle:hover, .pip:hover { color: #fff; }
       .body { padding: 0 12px 12px; }
       .line { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; }
       .line .t { font-weight: 600; min-width: 40px; padding-top: 3px; }
@@ -575,7 +577,7 @@ function initPanel() {
       .collapsed .body { display: none; }
     </style>
     <div class="panel">
-      <div class="head"><span class="dot"></span><span class="label"></span><button class="confirm" hidden title="停止提示音與標題閃爍">確認</button><button class="gear" title="開啟／關閉設定頁">⚙</button><button class="toggle" title="收合／展開">–</button></div>
+      <div class="head"><span class="dot"></span><span class="label"></span><button class="confirm" hidden title="停止提示音與標題閃爍">確認</button><button class="pip" title="用永遠置頂的小視窗顯示面板">置頂</button><button class="gear" title="開啟／關閉設定頁">⚙</button><button class="toggle" title="收合／展開">–</button></div>
       <div class="body">
         <div class="line"><span class="t">定時</span><span class="s timer-text"></span>
           <span class="mini"><button class="start">開始</button><button class="stop">停止</button></span></div>
@@ -684,6 +686,8 @@ function initPanel() {
     host.style.right = 'auto';
   };
   const replace = () => {
+    // 面板在置頂浮窗裡時，主頁面的視窗大小與位置計算都不能碰它
+    if (host.ownerDocument !== document) return;
     if (ui.left !== null && ui.top !== null) place(ui.left, ui.top);
   };
   panel.replace = replace;
@@ -691,6 +695,7 @@ function initPanel() {
   // 使用者沒有自己拖過面板時，只避開「現在看得見、而且在畫面內」的視窗：先試預設位置，
   // 重疊就排到它們下方，放不下再排到左邊，都放不下才留在原位
   panel.avoidMap = () => {
+    if (host.ownerDocument !== document) return;
     if (ui.left !== null && ui.top !== null) return;
     const viewW = document.documentElement.clientWidth || window.innerWidth;
     const viewH = document.documentElement.clientHeight || window.innerHeight;
@@ -722,6 +727,17 @@ function initPanel() {
     host.style.right = `${right}px`;
   };
   window.addEventListener('resize', () => { replace(); panel.avoidMap(); });
+  // 置頂浮窗：把整個面板搬進永遠置頂的小視窗（Document Picture-in-Picture），關掉就搬回來。
+  // 沒有這個 API（舊瀏覽器、或擴充功能環境不給）就隱藏按鈕；開不了的原因顯示在巨集列的提示區
+  const pip = CatworldPip.create({
+    host,
+    pipApi: globalThis.documentPictureInPicture,
+    notify: text => { macroNote = { text, until: Date.now() + 8000 }; renderPanel(); },
+    onChange: open => { $('.pip').textContent = open ? '收回' : '置頂'; },
+  });
+  $('.pip').hidden = !pip.supported;
+  if (!pip.supported) console.info('[catworld] 這個環境沒有 documentPictureInPicture，已隱藏「置頂」按鈕');
+  $('.pip').addEventListener('click', () => { pip.toggle(); });
   $('.toggle').addEventListener('click', () => {
     ui.collapsed = !ui.collapsed;
     panel.box.classList.toggle('collapsed', ui.collapsed);
@@ -730,7 +746,7 @@ function initPanel() {
     saveUi(ui);
   });
   $('.head').addEventListener('pointerdown', e => {
-    if (e.target.closest('.toggle, .gear, .confirm')) return;
+    if (e.target.closest('.toggle, .gear, .confirm, .pip')) return;
     const rect = host.getBoundingClientRect();
     const offsetX = e.clientX - rect.left;
     const offsetY = e.clientY - rect.top;
