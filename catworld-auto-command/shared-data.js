@@ -239,9 +239,11 @@ const SHEET_LABELS = {
 
 // 設定頁每個分頁的結果文字：尚未設定／尚未抓取／上次更新的筆數（超過上限沒讀的另外說明）／更新失敗的原因與目前還在用的資料。
 // timeText 把時間戳轉成文字（由呼叫端給，這裡不碰時區）
-function describeSheet(kind, url, entry, timeText) {
+function describeSheet(kind, url, entry, timeText, enabled = true) {
   const { title, used, unmatched } = SHEET_LABELS[kind];
   if (!url) return `${title}：尚未設定`;
+  // 怪物查詢與解謎都關著時 background 不抓，上次的結果已經沒有意義，不能繼續顯示得像現在還在用
+  if (!enabled) return `${title}：怪物查詢與解謎都關著，不會抓取`;
   if (!entry) return `${title}：尚未抓取（怪物查詢或解謎要開著；開著的話查一次，或按「立即更新」）`;
   const report = entry.report;
   const rows = report?.overflow > 0 ? `共 ${report.rows} 列（其中 ${report.overflow} 列超過上限沒有讀）` : `共 ${report?.rows} 列`;
@@ -249,6 +251,11 @@ function describeSheet(kind, url, entry, timeText) {
     ? `上次更新 ${timeText(entry.at)}：${rows}，生效 ${report.used} ${used}，丟掉 ${report.dropped.length} 列，對不到${unmatched} ${report.unmatched.length} 筆`
     : '沒有可用的資料';
   return entry.error ? `${title}：更新失敗（${timeText(entry.error.at)}）：${entry.error.reason}\n目前使用：${ok}` : `${title}：${ok}`;
+}
+
+// 貼的連結格式不對時：沒有存進去，原本存的連結（如果有）照常使用，要說清楚
+function describeRejectedUrl(kind, error, hasStored) {
+  return `${SHEET_LABELS[kind].title}：${error}（沒有儲存${hasStored ? '，目前仍使用原本的連結' : ''}）`;
 }
 
 // background 用：把共用層疊在 ZAP_LOOKUP／ZAP_SUITABLE 的回覆上（個人層在面板那邊再蓋過去）。
@@ -271,5 +278,5 @@ function overlayReply(reply, shared) {
   return { ...reply, items: reply.items.map(item => (item.candidates ? { ...item, candidates: item.candidates.map(apply) } : apply(item))) };
 }
 
-globalThis.CatworldSharedData = { MAX_SEGMENT, MAX_ROWS, ALLOWED_VERBS, SHEET_LABELS, describeSheet, reportLines, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, overlayReply };
+globalThis.CatworldSharedData = { MAX_SEGMENT, MAX_ROWS, ALLOWED_VERBS, SHEET_LABELS, describeSheet, describeRejectedUrl, reportLines, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, overlayReply };
 })();

@@ -130,14 +130,15 @@ const timeText = at => new Date(at).toLocaleString('zh-TW', { hour12: false });
 async function showShared() {
   const data = await chrome.storage.local.get(['sharedSources', 'sharedCache', 'zapFeatures']);
   // 怪物查詢與解謎都關著時 background 不會抓，說明一下，不然看起來像壞掉
-  $('sharedOff').hidden = data.zapFeatures?.mobs === true || data.zapFeatures?.riddles === true;
+  const enabled = data.zapFeatures?.mobs === true || data.zapFeatures?.riddles === true;
+  $('sharedOff').hidden = enabled;
   Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
     const url = data.sharedSources?.[kind] ?? '';
     if (document.activeElement !== $(field.input)) $(field.input).value = url;
     const entry = data.sharedCache?.[kind]?.url === url ? data.sharedCache[kind] : null;
-    $(field.result).textContent = CatworldSharedData.describeSheet(kind, url, entry, timeText);
+    $(field.result).textContent = CatworldSharedData.describeSheet(kind, url, entry, timeText, enabled);
     // 被丟掉與對不到的列逐列列出，填錯的人自己看得出要改表上哪一列
-    const lines = url ? CatworldSharedData.reportLines(entry?.report) : [];
+    const lines = url && enabled ? CatworldSharedData.reportLines(entry?.report) : [];
     $(field.detail).hidden = !lines.length;
     $(field.detail).textContent = lines.join('\n');
   });
@@ -163,7 +164,10 @@ Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
     if (text) {
       const checked = CatworldSharedData.checkUrl(text);
       if (!checked.ok) {
-        $(field.result).textContent = `${CatworldSharedData.SHEET_LABELS[kind].title}：${checked.error}`;
+        // 只收起這個分頁的舊清單，原本存的連結與結果不動
+        const saved = (await chrome.storage.local.get('sharedSources')).sharedSources ?? {};
+        $(field.result).textContent = CatworldSharedData.describeRejectedUrl(kind, checked.error, Boolean(saved[kind]));
+        $(field.detail).hidden = true;
         return;
       }
     }

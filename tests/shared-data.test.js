@@ -466,3 +466,22 @@ test('a failed update shows why and what the layer is still using', () => {
   const noData = S.describeSheet('riddle', 'u', { url: 'u', at: null, report: null, error: { at: 9, reason: 'x' } }, at);
   assert.match(noData, /目前使用：沒有可用的資料/);
 });
+
+test('with both features off the summary says nothing is fetched instead of showing the last result', () => {
+  const off = S.describeSheet('mob', 'u', okEntry(), at, false);
+  assert.match(off, /^怪物路線：.*不會抓取/);
+  assert.doesNotMatch(off, /上次更新/);
+  assert.equal(S.describeSheet('mob', '', null, at, false), '怪物路線：尚未設定', 'no link, nothing to say about fetching');
+  assert.match(S.describeSheet('mob', 'u', okEntry(), at, true), /上次更新/);
+  assert.match(S.describeSheet('mob', 'u', okEntry(), at), /上次更新/, 'on by default');
+});
+
+test('a rejected link says it was not saved and which link is still in use', () => {
+  const withOld = S.describeRejectedUrl('riddle', '不是連結', true);
+  assert.match(withOld, /^解謎指令：不是連結/);
+  assert.match(withOld, /沒有儲存/);
+  assert.match(withOld, /原本的連結/);
+  const first = S.describeRejectedUrl('mob', '不是連結', false);
+  assert.match(first, /沒有儲存/);
+  assert.doesNotMatch(first, /原本的連結/);
+});
