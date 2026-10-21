@@ -232,6 +232,22 @@ test('every alias in the alias file points to a real route', () => {
   Object.entries(data.routeAliases).forEach(([place, target]) => assert.ok(data.routes.some(route => route.name === target), `${place} → ${target}`));
 });
 
+// 怪物表用的細地名（妖靈窟、玉靈洞…）說明站的總路徑沒有，靠別名借用所在大區的路線，一律是約略對應
+test('the real data routes the fine-grained mob locations through their area aliases', () => {
+  const data = require('../catworld-auto-command/zap-data.json');
+  const expected = {
+    妖靈窟: '武當派', 玉靈洞: '茅山', 鳳尾竹林深處: '茅山', 追魂莊: '大理', 無量山: '大理', 萬劫谷: '大理',
+    快活林: '三絕宮', 往黑木崖渡口: '黑木崖', 有間客棧: '雪山派', 港口大海: '神龍島',
+    金礦坑: '金礦山', 金礦坑南方小鎮: '金礦山', 金礦坑南方廢墟密道: '金礦山',
+    '蘇州、金礦坑南方小鎮': '蘇州城', // 多個地點時前面的「蘇州」先約略對到蘇州城，不走別名
+  };
+  for (const [location, target] of Object.entries(expected)) {
+    const hit = Z.routeFor(location, data.routes, data.routeAliases);
+    assert.ok(hit, location);
+    assert.deepEqual([hit.route.name, hit.exact], [target, false], location);
+  }
+});
+
 test('a route with its own command is sent as written, without the inn prefix', () => {
   const custom = { name: '古墓下水道', path: '', command: 'run e 5n 2o t s;worship tomb;jump well;' };
   const hit = Z.routeFor('古墓下水道', [...routes, custom]);
