@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CatWorld Auto Command",
-  "version": "1.27.0",
+  "version": "1.28.0",
   "description": "Configurable commands with immediate stop on verification prompts.",
   "permissions": [
     "storage",
@@ -13,7 +13,8 @@
     "service_worker": "background.js"
   },
   "host_permissions": [
-    "https://catworld.muds.tw/*"
+    "https://catworld.muds.tw/*",
+    "https://api.line.me/*"
   ],
   "action": {
     "default_popup": "popup.html",

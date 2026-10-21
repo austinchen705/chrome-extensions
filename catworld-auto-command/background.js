@@ -1,5 +1,5 @@
 // content script 不能直接彈系統通知、也不能開分頁，由這裡代為處理
-importScripts('zap-mobs.js', 'zap-items.js', 'zap-riddles.js');
+importScripts('zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'line-notify.js');
 // 面板上的 ⚙：按一下在新分頁開啟設定頁（popup.html 當成分頁開，?tab= 帶遊戲分頁的 id），再按一次關閉並切回遊戲分頁。
 // 「遊戲分頁 → 設定分頁」的對應放在 storage.session，service worker 被收掉再醒來也還在
 const settingsKey = gameTabId => `settingsTab:${gameTabId}`;
@@ -27,7 +27,26 @@ chrome.tabs.onRemoved.addListener(async removedId => {
   if (stale.length) await chrome.storage.session.remove(stale);
 });
 
-chrome.runtime.onMessage.addListener((message, sender) => {
+// 手機通知（LINE）：憑證只在這裡從 storage.local 讀，不經過訊息；結果放 storage.session 給設定頁顯示，結果裡不含憑證
+const LINE_KEY = 'lineNotify';
+const LINE_RESULT_KEY = 'lineLastResult';
+
+async function sendLine(text) {
+  const saved = (await chrome.storage.local.get(LINE_KEY))[LINE_KEY] ?? {};
+  const result = await CatworldLineNotify.send({
+    fetchImpl: fetch, token: saved.token, userId: saved.userId, text, now: Date.now,
+  });
+  await chrome.storage.session.set({ [LINE_RESULT_KEY]: result }).catch(() => {});
+  return result;
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // 設定頁的測試訊息：設定頁是開成分頁的（sender.tab 有值），所以看訊息是不是來自擴充功能自己的頁面（content script 的 sender.url 是遊戲網址）；
+  // 要在下面「沒有 sender.tab 就略過」的檢查之前處理
+  if (message?.type === 'LINE_TEST' && sender.url?.startsWith(chrome.runtime.getURL(''))) {
+    sendLine('【CatWorld】這是一則測試訊息').then(sendResponse);
+    return true;
+  }
   if (!sender.tab) return;
   if (message.type === 'TOGGLE_SETTINGS') {
     toggleSettings(sender.tab);

@@ -166,6 +166,16 @@ px</textarea>
     <select id="mainWeapon"></select>
     <p class="hint tight">用來判斷鑑定後的鑄模與材料是否適合你；未設定時只依等級建議（LV1～2 賣掉、LV3 以上留著）。</p>
   </div>
+  <div class="alertbox">
+    <b>手機通知（LINE）</b>
+    <label for="lineToken">Channel access token</label>
+    <input id="lineToken" type="password" autocomplete="off">
+    <label for="lineUserId">User ID</label>
+    <input id="lineUserId" type="password" autocomplete="off">
+    <button id="lineTest">發送測試訊息</button>
+    <div id="lineResult" class="hint tight">尚未發送</div>
+    <p class="hint tight">只存在這台瀏覽器的本機，不會同步或匯出。請用自己的 LINE 官方帳號（Messaging API）的 token 與你的 userId。</p>
+  </div>
   <button id="test">測試送出 ps</button>
   <button id="beep">測試提示音</button>
   <button id="skills">悟招清單（新分頁開啟）</button>
@@ -174,6 +184,7 @@ px</textarea>
   <script src="timer-settings.js"></script>
   <script src="zap-mobs.js"></script>
   <script src="zap-items.js"></script>
+  <script src="line-notify-ui.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

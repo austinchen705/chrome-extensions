@@ -107,6 +107,9 @@ $('persistentAlert').addEventListener('change', () => {
   chrome.storage.local.set({ persistentAlert: $('persistentAlert').checked });
 });
 
+// 手機通知（LINE）：憑證只存本機，發送由 background 做（見 line-notify-ui.js）
+CatworldLineNotifyUI.attach(document);
+
 // 三組輔助功能的開關（預設關閉）：存成一個物件，遊戲頁的面板監聽 storage 變化，馬上生效
 const FEATURE_BOXES = { mobs: 'featureMobs', items: 'featureItems', riddles: 'featureRiddles' };
 Object.values(FEATURE_BOXES).forEach(id => $(id).addEventListener('change', () => {
