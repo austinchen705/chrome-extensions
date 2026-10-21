@@ -422,12 +422,19 @@ function readGameNumber(id) {
   const text = (document.getElementById(id)?.textContent || '').replace(/[,\s]/g, '');
   return text ? Number(text) : NaN;
 }
+// 遊戲狀態視窗裡包住每一項「目前值／上限」的元素：遊戲的 vitals.js 依滿度替它們換顏色
+const STAT_COLOR_IDS = { 精: 'gin_w1', 氣: 'kee_w1', 神: 'sen_w1', 靈力: 'atman_w', 內力: 'force_w', 法力: 'mana_w', 食物: 'food_w', 飲水: 'water_w' };
 // 遊戲狀態視窗（#monitor）與經驗（#exp）實際生效的顏色：數值區塊用它，隨遊戲設定的色彩主題與半透明一起變；
 // 找不到元素就給空的，由 themeFrom 回到預設值，不能因此讓更新出錯
 function readMonitorTheme() {
   const monitor = document.getElementById('monitor');
   const exp = document.getElementById('exp');
-  return CatworldStatsBlock.themeFrom(monitor && getComputedStyle(monitor), exp && getComputedStyle(exp));
+  // 每一項數字在遊戲裡此刻的顏色（遊戲依滿度換色）：讀對應那個包住「目前值／上限」的元素
+  const statStyles = Object.fromEntries(Object.entries(STAT_COLOR_IDS).map(([name, id]) => {
+    const element = document.getElementById(id);
+    return [name, element && getComputedStyle(element)];
+  }));
+  return CatworldStatsBlock.themeFrom(monitor && getComputedStyle(monitor), exp && getComputedStyle(exp), statStyles);
 }
 function readAllStats() {
   return Object.fromEntries(Object.keys(CatworldTriggerEngine.STATS).map(name => [name, readStat(name)]));

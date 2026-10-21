@@ -171,6 +171,9 @@ test('wiring: the block is only visible while the panel lives in the floating wi
 });
 
 // ---- 配色：和遊戲的狀態視窗（#monitor）一樣 ----
+const ALL_STATS = ['精', '氣', '神', '靈力', '內力', '法力', '食物', '飲水'];
+// 沒有逐項樣式時，每一項數字都用一般文字色
+const withValues = theme => ({ ...theme, values: Object.fromEntries(ALL_STATS.map(name => [name, theme.text])) });
 const DEFAULT_THEME = { background: '#222222', border: '#BBBBBB', text: 'rgb(229, 229, 229)', exp: 'rgb(255, 0, 255)' };
 
 ui('the theme is read from the colours the game really uses for its status window, so another colour scheme is followed', () => {
@@ -179,7 +182,7 @@ ui('the theme is read from the colours the game really uses for its status windo
     { color: 'rgb(170, 170, 170)', backgroundColor: 'rgb(34, 34, 34)', borderTopColor: 'rgb(187, 187, 187)' },
     { color: 'rgb(255, 85, 255)' },
   );
-  assert.equal(JSON.stringify(theme), JSON.stringify({ background: 'rgb(34, 34, 34)', border: 'rgb(187, 187, 187)', text: 'rgb(170, 170, 170)', exp: 'rgb(255, 85, 255)' }));
+  assert.equal(JSON.stringify(theme), JSON.stringify(withValues({ background: 'rgb(34, 34, 34)', border: 'rgb(187, 187, 187)', text: 'rgb(170, 170, 170)', exp: 'rgb(255, 85, 255)' })));
 });
 
 ui('translucent mode keeps its transparency, because that is what the game window looks like then', () => {
@@ -192,7 +195,7 @@ ui('anything missing, empty or fully transparent falls back to the default colou
   const { w } = boot();
   for (const [monitor, exp] of [[undefined, undefined], [{}, {}], [null, null],
     [{ color: '', backgroundColor: 'transparent', borderTopColor: 'rgba(0, 0, 0, 0)' }, { color: '' }]]) {
-    assert.equal(JSON.stringify(w.CatworldStatsBlock.themeFrom(monitor, exp)), JSON.stringify(DEFAULT_THEME));
+    assert.equal(JSON.stringify(w.CatworldStatsBlock.themeFrom(monitor, exp)), JSON.stringify(withValues(DEFAULT_THEME)));
   }
   const partial = w.CatworldStatsBlock.themeFrom({ color: 'rgb(1, 2, 3)' }, undefined);
   assert.equal(partial.text, 'rgb(1, 2, 3)');
@@ -235,4 +238,60 @@ test('wiring: the colours are read from the live game window every second, so a 
   assert.match(reader, /getElementById\('exp'\)/);
   assert.match(reader, /monitor && getComputedStyle\(monitor\)/, 'a missing element gives defaults instead of throwing');
   assert.match(reader, /CatworldStatsBlock\.themeFrom\(/);
+});
+
+// ---- 每一項數字的顏色：遊戲依滿度動態換色（>100 亮青、≥90 亮綠、≥60 亮黃、≥30 暗黃、≥10 亮紅、其餘暗紅），我們直接讀它實際的顏色 ----
+const ALL = ['精', '氣', '神', '靈力', '內力', '法力', '食物', '飲水'];
+const GREEN = 'rgb(0, 255, 0)';
+const styles = color => Object.fromEntries(ALL.map(name => [name, { color }]));
+
+ui('each stat takes the colour the game shows that stat in right now, falling back to the plain text colour', () => {
+  const { w } = boot();
+  const theme = w.CatworldStatsBlock.themeFrom(
+    { color: 'rgb(229, 229, 229)' }, { color: 'rgb(255, 0, 255)' },
+    { 精: { color: GREEN }, 氣: { color: 'rgb(255, 0, 0)' }, 內力: { color: 'red; x: y' }, 神: undefined },
+  );
+  assert.equal(theme.values.精, GREEN);
+  assert.equal(theme.values.氣, 'rgb(255, 0, 0)');
+  assert.equal(theme.values.內力, 'rgb(229, 229, 229)', 'a value that is not a plain colour falls back to the text colour');
+  assert.equal(theme.values.神, 'rgb(229, 229, 229)', 'an unreadable stat falls back too');
+  assert.equal(theme.values.飲水, 'rgb(229, 229, 229)');
+  assert.deepEqual(Object.keys(theme.values), ALL);
+});
+
+ui('without any per-stat styles every stat simply uses the text colour', () => {
+  const { w } = boot();
+  const theme = w.CatworldStatsBlock.themeFrom({ color: 'rgb(1, 2, 3)' }, {});
+  assert.ok(ALL.every(name => theme.values[name] === 'rgb(1, 2, 3)'));
+});
+
+ui('the block colours each stat value separately, follows the game as it changes colour, and leaves the labels alone', () => {
+  const { w, block, rows } = boot();
+  block.render(SAMPLE, 1);
+  const colorOf = label => rows().find(row => row.querySelector('.stat-label').textContent === label).querySelector('.stat-value').style.color;
+  const labelColor = label => rows().find(row => row.querySelector('.stat-label').textContent === label).querySelector('.stat-label').style.color;
+  const base = w.CatworldStatsBlock.themeFrom({ color: 'rgb(229, 229, 229)' }, { color: 'rgb(255, 0, 255)' }, { ...styles(GREEN), 氣: { color: 'rgb(205, 0, 0)' } });
+  block.setTheme(base);
+  assert.equal(colorOf('精'), 'rgb(0, 255, 0)');
+  assert.equal(colorOf('氣'), 'rgb(205, 0, 0)', 'low 氣 is shown in the game\'s red');
+  assert.equal(labelColor('精'), '', 'labels keep the plain text colour');
+  block.setTheme(w.CatworldStatsBlock.themeFrom({ color: 'rgb(229, 229, 229)' }, { color: 'rgb(255, 0, 255)' }, { ...styles(GREEN), 氣: { color: 'rgb(0, 255, 0)' } }));
+  assert.equal(colorOf('氣'), 'rgb(0, 255, 0)', 'when the game turns it green, so do we');
+});
+
+ui('with no theme the stat values carry no inline colour and use the plain text colour from the stylesheet', () => {
+  const { block, rows } = boot();
+  block.setTheme(undefined);
+  assert.ok(rows().every(row => row.querySelector('.stat-value').style.color === ''));
+});
+
+test('wiring: the colour of every stat is read from the matching wrapper in the game status window', () => {
+  const content = ext('content.js');
+  const ids = content.match(/const STAT_COLOR_IDS = \{([^}]*)\}/)?.[1] ?? '';
+  for (const [name, id] of Object.entries({ 精: 'gin_w1', 氣: 'kee_w1', 神: 'sen_w1', 靈力: 'atman_w', 內力: 'force_w', 法力: 'mana_w', 食物: 'food_w', 飲水: 'water_w' })) {
+    assert.match(ids, new RegExp(`${name}:\\s*'${id}'`), `${name} → ${id}`);
+  }
+  const reader = content.slice(content.indexOf('function readMonitorTheme'), content.indexOf('function readAllStats'));
+  assert.match(reader, /STAT_COLOR_IDS/);
+  assert.match(reader, /themeFrom\(monitor && getComputedStyle\(monitor\), exp && getComputedStyle\(exp\),/);
 });

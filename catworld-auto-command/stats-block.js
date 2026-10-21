@@ -17,13 +17,21 @@ const pick = (value, fallback) => {
   return COLOR.test(color) && !FULLY_TRANSPARENT.test(color) ? color : fallback;
 };
 
-// monitorStyle、expStyle：遊戲 #monitor 與 #exp 的 getComputedStyle 結果（或同樣欄位的物件，讀不到可以是空）
-function themeFrom(monitorStyle, expStyle) {
+// 遊戲的狀態視窗會依「這一項滿到幾成」替每一項的數字換顏色（超過 100% 亮青、90% 以上亮綠、60% 以上亮黃、
+// 30% 以上暗黃、10% 以上亮紅、其餘暗紅），顏色隨使用者選的色彩主題而不同。我們不重做那套門檻，
+// 直接讀遊戲裡那一項數字此刻實際的顏色，永遠和遊戲一致。
+const STAT_LABELS = ['精', '氣', '神', '靈力', '內力', '法力', '食物', '飲水'];
+
+// monitorStyle、expStyle：遊戲 #monitor 與 #exp 的 getComputedStyle 結果（或同樣欄位的物件，讀不到可以是空）；
+// statStyles：{ 精: 該項數字元素的樣式, … }，讀不到的項目用一般文字色
+function themeFrom(monitorStyle, expStyle, statStyles) {
+  const text = pick(monitorStyle?.color, DEFAULT_THEME.text);
   return {
     background: pick(monitorStyle?.backgroundColor, DEFAULT_THEME.background),
     border: pick(monitorStyle?.borderTopColor, DEFAULT_THEME.border),
-    text: pick(monitorStyle?.color, DEFAULT_THEME.text),
+    text,
     exp: pick(expStyle?.color, DEFAULT_THEME.exp),
+    values: Object.fromEntries(STAT_LABELS.map(label => [label, pick(statStyles?.[label]?.color, text)])),
   };
 }
 
@@ -99,10 +107,16 @@ function attach(root) {
       border: pick(theme?.border, DEFAULT_THEME.border),
       text: pick(theme?.text, DEFAULT_THEME.text),
       exp: pick(theme?.exp, DEFAULT_THEME.exp),
+      // 每一項數字的顏色；沒給的項目不加行內顏色，沿用樣式表的一般文字色
+      values: Object.fromEntries(STAT_LABELS.map(label => [label, pick(theme?.values?.[label], '')])),
     };
     const key = JSON.stringify(next);
     if (key === appliedTheme) return;
     appliedTheme = key;
+    STAT_LABELS.forEach(label => {
+      const node = rowNodes.get(label);
+      if (node) node.value.style.color = next.values[label];
+    });
     section.style.setProperty('--stats-bg', next.background);
     section.style.setProperty('--stats-border', next.border);
     section.style.setProperty('--stats-fg', next.text);
