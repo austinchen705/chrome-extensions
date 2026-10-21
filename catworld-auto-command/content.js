@@ -733,7 +733,11 @@ function initPanel() {
     host,
     pipApi: globalThis.documentPictureInPicture,
     notify: text => { macroNote = { text, until: Date.now() + 8000 }; renderPanel(); },
-    onChange: open => { $('.pip').textContent = open ? '收回' : '置頂'; },
+    onChange: open => {
+      $('.pip').textContent = open ? '收回' : '置頂';
+      // 搬回來之後重新排：面板在浮窗期間主視窗可能被縮小過，不重排會跑到畫面外或蓋住遊戲視窗
+      if (!open) { replace(); panel.avoidMap(); }
+    },
   });
   $('.pip').hidden = !pip.supported;
   if (!pip.supported) console.info('[catworld] 這個環境沒有 documentPictureInPicture，已隱藏「置頂」按鈕');
@@ -747,6 +751,8 @@ function initPanel() {
   });
   $('.head').addEventListener('pointerdown', e => {
     if (e.target.closest('.toggle, .gear, .confirm, .pip')) return;
+    // 面板在置頂浮窗裡時不能拖：座標是浮窗的，會被存成面板位置、之後主頁面的位置就壞了
+    if (host.ownerDocument !== document) return;
     const rect = host.getBoundingClientRect();
     const offsetX = e.clientX - rect.left;
     const offsetY = e.clientY - rect.top;

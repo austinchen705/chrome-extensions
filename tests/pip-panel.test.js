@@ -144,6 +144,7 @@ ui('if moving the panel into the window fails, the window is closed and the pane
   assert.equal(host.ownerDocument, doc);
   assert.deepEqual(order(doc), ['before', 'host', 'after']);
   assert.equal(closed, 1, 'the half-opened window does not stay around');
+  assert.equal(doc.body.innerHTML.includes('catworld-panel'), false, 'and no marker is left in the page');
   assert.match(notes[0], /cannot adopt/);
   assert.equal(probe.controller.isOpen(), false);
 });
@@ -172,5 +173,44 @@ test('wiring: the panel header has the pin button, wired to the controller, and 
 test('wiring: while the panel lives in the floating window, the main page layout code leaves it alone', () => {
   const content = ext('content.js');
   const guards = content.match(/host\.ownerDocument !== document/g) ?? [];
-  assert.ok(guards.length >= 2, `placement (replace) and avoidMap both need the guard, found ${guards.length}`);
+  assert.ok(guards.length >= 3, `replace, avoidMap and the drag start all need the guard, found ${guards.length}`);
+});
+
+test('wiring: after the panel comes back the main page lays it out again, so a window resized meanwhile cannot leave it off-screen', () => {
+  const content = ext('content.js');
+  const handler = content.slice(content.indexOf('onChange: open =>'), content.indexOf('onChange: open =>') + 400);
+  assert.match(handler, /replace\(\)/);
+  assert.match(handler, /avoidMap\(\)/);
+});
+
+ui('if the page removed our marker while the window was open, closing still brings the panel back to the main page', async () => {
+  const { host, pw, doc, controller } = boot();
+  await controller.open();
+  // 遊戲或別的程式把標記刪掉了
+  const walker = doc.createTreeWalker(doc.body, 128);
+  let comment = walker.nextNode();
+  while (comment && !comment.data.includes('catworld-panel')) comment = walker.nextNode();
+  comment.remove();
+  pw.close();
+  assert.equal(host.ownerDocument, doc, 'not stranded in the dead floating window');
+  assert.ok(doc.documentElement.contains(host));
+  assert.equal(controller.isOpen(), false);
+});
+
+ui('if the panel is not attached to the page when opening, the window is closed again and the reason is shown', async () => {
+  const { host, pw, notes, controller } = boot();
+  let closes = 0;
+  const realClose = pw.close;
+  pw.close = () => { closes += 1; realClose(); };
+  host.remove();
+  assert.equal(await controller.open(), false);
+  assert.equal(closes, 1, 'no window is left floating around');
+  assert.match(notes[0], /無法開啟置頂視窗/);
+  assert.equal(controller.isOpen(), false);
+});
+
+ui('the floating window scrolls when the panel grows taller than the window', async () => {
+  const { pw, controller } = boot();
+  await controller.open();
+  assert.match(pw.document.body.style.cssText, /overflow:\s*auto/);
 });
