@@ -140,6 +140,8 @@ ui('folding still works after the whole panel has been moved into another docume
 
 // ---- 串接檢查：漏掉就整個功能無聲失效的接線（不依賴 jsdom）----
 const ext = file => fs.readFileSync(path.join(root, file), 'utf8');
+// 破壞檢查時可以換掉被測的 stats-block.js（靜態檢查也要看得到）
+const blockSource = () => fs.readFileSync(process.env.STATS_BLOCK_SOURCE || path.join(root, 'stats-block.js'), 'utf8');
 
 test('wiring: both modules are loaded in the manifest and in the popup fallback, the formatter first, all before content.js', () => {
   const manifest = JSON.parse(ext('manifest.json'));
@@ -159,4 +161,78 @@ test('wiring: the panel creates the block safely and feeds it every second from 
   // 觸發規則的讀數來源與 readAllStats 是同一個 readStat
   assert.match(content, /function readAllStats\(\) \{\s*return Object\.fromEntries\(Object\.keys\(CatworldTriggerEngine\.STATS\)\.map\(name => \[name, readStat\(name\)\]\)\);/);
   assert.match(content, /createEngine\(config, \{[\s\S]*?readStat,/);
+});
+
+test('wiring: the block is only visible while the panel lives in the floating window; the game page already has its own status window', () => {
+  const style = blockSource();
+  assert.match(style, /:host\(:not\(\[data-pip\]\)\)\s+\.stats\s*\{\s*display:\s*none/);
+  // 隱藏只用樣式：收合狀態與每秒更新照舊，按「置頂」的當下數字就是最新的
+  assert.match(ext('content.js'), /statsBlock\.render\(readAllStats\(\), readGameNumber\('exp'\)\)/);
+});
+
+// ---- 配色：和遊戲的狀態視窗（#monitor）一樣 ----
+const DEFAULT_THEME = { background: '#222222', border: '#BBBBBB', text: 'rgb(229, 229, 229)', exp: 'rgb(255, 0, 255)' };
+
+ui('the theme is read from the colours the game really uses for its status window, so another colour scheme is followed', () => {
+  const { w } = boot();
+  const theme = w.CatworldStatsBlock.themeFrom(
+    { color: 'rgb(170, 170, 170)', backgroundColor: 'rgb(34, 34, 34)', borderTopColor: 'rgb(187, 187, 187)' },
+    { color: 'rgb(255, 85, 255)' },
+  );
+  assert.equal(JSON.stringify(theme), JSON.stringify({ background: 'rgb(34, 34, 34)', border: 'rgb(187, 187, 187)', text: 'rgb(170, 170, 170)', exp: 'rgb(255, 85, 255)' }));
+});
+
+ui('translucent mode keeps its transparency, because that is what the game window looks like then', () => {
+  const { w } = boot();
+  const theme = w.CatworldStatsBlock.themeFrom({ color: 'rgb(229, 229, 229)', backgroundColor: 'rgba(68, 68, 68, 0.5)', borderTopColor: 'rgb(187, 187, 187)' }, { color: 'rgb(255, 0, 255)' });
+  assert.equal(theme.background, 'rgba(68, 68, 68, 0.5)');
+});
+
+ui('anything missing, empty or fully transparent falls back to the default colours, field by field', () => {
+  const { w } = boot();
+  for (const [monitor, exp] of [[undefined, undefined], [{}, {}], [null, null],
+    [{ color: '', backgroundColor: 'transparent', borderTopColor: 'rgba(0, 0, 0, 0)' }, { color: '' }]]) {
+    assert.equal(JSON.stringify(w.CatworldStatsBlock.themeFrom(monitor, exp)), JSON.stringify(DEFAULT_THEME));
+  }
+  const partial = w.CatworldStatsBlock.themeFrom({ color: 'rgb(1, 2, 3)' }, undefined);
+  assert.equal(partial.text, 'rgb(1, 2, 3)');
+  assert.equal(partial.background, DEFAULT_THEME.background, 'only the missing parts fall back');
+});
+
+ui('a colour that is not a plain colour value is never put into the style', () => {
+  const { w } = boot();
+  const theme = w.CatworldStatsBlock.themeFrom({ color: 'red; background: url(x)', backgroundColor: 'rgb(34, 34, 34)', borderTopColor: '#bbb' }, { color: 'var(--x)' });
+  assert.equal(theme.text, DEFAULT_THEME.text);
+  assert.equal(theme.exp, DEFAULT_THEME.exp);
+  assert.equal(theme.border, '#bbb', 'a hex colour is fine');
+});
+
+ui('setTheme puts the colours on the block, and an unchanged theme is not applied twice', () => {
+  const { block, shadow } = boot();
+  const section = shadow.querySelector('.stats');
+  block.setTheme({ background: 'rgb(34, 34, 34)', border: 'rgb(187, 187, 187)', text: 'rgb(170, 170, 170)', exp: 'rgb(255, 85, 255)' });
+  assert.equal(section.style.getPropertyValue('--stats-bg'), 'rgb(34, 34, 34)');
+  assert.equal(section.style.getPropertyValue('--stats-border'), 'rgb(187, 187, 187)');
+  assert.equal(section.style.getPropertyValue('--stats-fg'), 'rgb(170, 170, 170)');
+  assert.equal(section.style.getPropertyValue('--stats-exp'), 'rgb(255, 85, 255)');
+  block.setTheme(undefined);
+  assert.equal(section.style.getPropertyValue('--stats-bg'), '#222222', 'no theme means the defaults');
+});
+
+test('wiring: the block looks like the game status window: dark box, dashed light border, the game text colour, and the experience in its own colour', () => {
+  const style = blockSource();
+  assert.match(style, /background:\s*var\(--stats-bg,\s*#222222\)/);
+  assert.match(style, /border:\s*1px dashed var\(--stats-border,\s*#BBBBBB\)/);
+  assert.match(style, /color:\s*var\(--stats-fg,/);
+  assert.match(style, /var\(--stats-exp,/);
+});
+
+test('wiring: the colours are read from the live game window every second, so a theme change shows up, and a missing element cannot break rendering', () => {
+  const content = ext('content.js');
+  assert.match(content, /statsBlock\.setTheme\(readMonitorTheme\(\)\)/);
+  const reader = content.slice(content.indexOf('function readMonitorTheme'), content.indexOf('function readAllStats'));
+  assert.match(reader, /getElementById\('monitor'\)/);
+  assert.match(reader, /getElementById\('exp'\)/);
+  assert.match(reader, /monitor && getComputedStyle\(monitor\)/, 'a missing element gives defaults instead of throwing');
+  assert.match(reader, /CatworldStatsBlock\.themeFrom\(/);
 });

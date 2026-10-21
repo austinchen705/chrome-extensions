@@ -422,6 +422,13 @@ function readGameNumber(id) {
   const text = (document.getElementById(id)?.textContent || '').replace(/[,\s]/g, '');
   return text ? Number(text) : NaN;
 }
+// 遊戲狀態視窗（#monitor）與經驗（#exp）實際生效的顏色：數值區塊用它，隨遊戲設定的色彩主題與半透明一起變；
+// 找不到元素就給空的，由 themeFrom 回到預設值，不能因此讓更新出錯
+function readMonitorTheme() {
+  const monitor = document.getElementById('monitor');
+  const exp = document.getElementById('exp');
+  return CatworldStatsBlock.themeFrom(monitor && getComputedStyle(monitor), exp && getComputedStyle(exp));
+}
 function readAllStats() {
   return Object.fromEntries(Object.keys(CatworldTriggerEngine.STATS).map(name => [name, readStat(name)]));
 }
@@ -846,7 +853,10 @@ function renderPanel() {
   if (!panel) return;
   // 數值區塊：和觸發規則讀的是同一份（readAllStats 用的就是引擎的 readStat）；壞了不能影響面板其他部分
   try {
-    if (statsBlock) statsBlock.render(readAllStats(), readGameNumber('exp'));
+    if (statsBlock) {
+      statsBlock.setTheme(readMonitorTheme());
+      statsBlock.render(readAllStats(), readGameNumber('exp'));
+    }
   } catch (error) {
     // 每秒都會跑：出錯只印第一次，不要洗版
     if (!statsRenderFailed) console.error('[catworld] 數值區塊更新失敗', error);
