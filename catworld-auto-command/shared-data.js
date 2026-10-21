@@ -11,9 +11,13 @@ const DISABLE = '停用';
 const PUBLISH_HINT = '要用「檔案 → 共用 → 發布到網路」選那個分頁、格式選 CSV，再貼上產生的連結';
 
 // 第一個詞在這份清單裡的指令段才收；走路的方向（n、2e、nu…）與 @等待 另外判斷
+// 清單是從解謎步驟、內建路線與玩家整理的路線表實際用到的動詞統計出來的：只收走路與互動類。
+// 不收會丟東西、賣東西、離線、打怪、施招、換裝備、拜師或改狀態的（drop sell quit kill k do perform exert wield unwield wear apprentice enable…）；
+// README「共用資料」一節的「允許的動詞」要和這份一樣（測試會對照）
 const ALLOWED_VERBS = new Set([
   'run', 'push', 'touch', 'enter', 'climb', 'worship', 'open', 'squeeze', 'dis', 'jump', 'walk', 'knife',
   'pay', 'out', 'ask', 'give', 'buy', 'study', 'move', 'see', 'diving',
+  'ride', 'say', 'search', 'unlock', 'nod', 'knock', 'insert', 'wash', 'fly', 'tan', 'recall', 'get', 'put', 'up', 'down',
 ]);
 const DIRECTION = /^\d*(?:ne|nw|se|sw|nu|nd|eu|ed|su|sd|wu|wd|n|s|e|w|u|d)$/;
 const WAIT = /^@(?:等待|wait)$/i;

@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs');
 
 require(path.join(__dirname, '..', 'catworld-auto-command', 'zap-mobs.js'));
 require(path.join(__dirname, '..', 'catworld-auto-command', 'shared-data.js'));
@@ -484,4 +485,40 @@ test('a rejected link says it was not saved and which link is still in use', () 
   const first = S.describeRejectedUrl('mob', '不是連結', false);
   assert.match(first, /沒有儲存/);
   assert.doesNotMatch(first, /原本的連結/);
+});
+
+// ---- 白名單定稿與 README ----
+test('the interaction verbs found in the riddle steps and the sheets are allowed', () => {
+  ['ride 2', 'say 芝麻開門', 'search 金色粉末', 'unlock door', 'nod chian', 'knock pallow', 'insert stick', 'wash face', 'fly tree', 'tan qin', 'recall', 'get stone', 'put key into box', 'up', 'down'].forEach(command => {
+    assert.deepEqual(S.checkCommand(command), { ok: true }, command);
+  });
+});
+
+test('verbs that fight, change equipment, change your master or sell stay refused', () => {
+  ['k yuen', 'kill wian', 'do kill *', 'wield sword', 'unwield 1', 'wear suit', 'apprentice master', 'enable move none', 'respirate 10', 'meditate 10', 'mp founder', 'view @staff', 'drop x', 'sell x', 'quit', 'perform x', 'exert heal', 'rum s'].forEach(command => {
+    assert.equal(S.checkCommand(command).ok, false, command);
+  });
+});
+
+const README = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8').replace(/\r\n/g, '\n');
+const readmeSection = README.slice(README.indexOf('## 共用資料（Google 試算表）'), README.indexOf('## 裝備比較'));
+
+test('README lists exactly the verbs the module allows', () => {
+  assert.ok(readmeSection.length > 200, 'README has the shared data section');
+  const line = readmeSection.split('\n').find(text => text.includes('允許的動詞：'));
+  assert.ok(line, 'the allowed verbs line exists');
+  const listed = [...line.matchAll(/`([a-z]+)`/g)].map(match => match[1]).sort();
+  assert.deepEqual(listed, [...S.ALLOWED_VERBS].sort());
+});
+
+test('the header rows README tells people to paste are accepted by the parsers', () => {
+  const header = label => {
+    const line = readmeSection.split('\n').find(text => text.startsWith(label));
+    assert.ok(line, `README has the ${label} header row`);
+    return line.slice(label.length).trim().replace(/\t/g, ',');
+  };
+  const mobHeader = header('怪物路線標題列：');
+  const riddleHeader = header('解謎指令標題列：');
+  assert.equal(S.buildMobRoutes(`${mobHeader}\n老虎(tiger),,run e,,小明,\n`, WILD).report.used, 1);
+  assert.equal(S.buildRiddleSteps(`${riddleHeader}\n獨孤九劍,1,run e,,小明,,\n`, RIDDLES, PAGES).report.used, 1);
 });
