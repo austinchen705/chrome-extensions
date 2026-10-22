@@ -161,3 +161,38 @@ test('countFilled counts the rows that hold a macro', () => {
   assert.equal(M.countFilled(game()), 0);
   assert.equal(M.countFilled(M.readMacros(null).macros), 0);
 });
+
+// ---- 匯入前的備份：存遊戲巨集的原始文字與備註，還原時原樣寫回 ----
+test('a backup keeps the game text exactly as it was, even when it is damaged, plus the notes and the time', () => {
+  const raw = JSON.stringify(SAMPLE);
+  const backup = M.makeBackup(raw, { 1: '開門', 2: '  ' }, 1234);
+  assert.deepEqual(backup, { raw, notes: { 1: '開門' }, at: 1234 });
+  assert.equal(M.makeBackup('not json', {}, 1).raw, 'not json', 'a damaged text is kept as it is so that restoring puts the same thing back');
+});
+
+test('a backup of nothing stored (null or empty) is 90 empty slots, so restoring leaves the game with no macros', () => {
+  [null, undefined, ''].forEach(raw => {
+    const backup = M.makeBackup(raw, null, 5);
+    assert.deepEqual(JSON.parse(backup.raw), game());
+    assert.deepEqual(backup.notes, {});
+  });
+});
+
+test('a stored backup is read back as it was made, and a broken one is refused with a reason', () => {
+  const made = M.makeBackup(JSON.stringify(SAMPLE), { 3: '備註' }, 99);
+  const result = M.parseBackup(JSON.parse(JSON.stringify(made)));
+  assert.deepEqual([result.ok, result.raw, result.notes, result.at], [true, made.raw, { 3: '備註' }, 99]);
+  [null, [], 'text', 7, {}, { raw: '' }, { raw: 5 }, { raw: ['112'] }, { notes: {} }].forEach(value => {
+    const refused = M.parseBackup(value);
+    assert.equal(refused.ok, false, JSON.stringify(value));
+    assert.match(refused.error, /備份/);
+  });
+});
+
+test('a backup without notes or without a time still reads; bad notes are dropped and a bad time becomes unknown', () => {
+  const result = M.parseBackup({ raw: JSON.stringify(SAMPLE) });
+  assert.deepEqual([result.ok, result.notes, result.at], [true, {}, null]);
+  const cleaned = M.parseBackup({ raw: JSON.stringify(SAMPLE), notes: { 1: 'ok', 0: 'x', 2: 5 }, at: 'later' });
+  assert.deepEqual([cleaned.notes, cleaned.at], [{ 1: 'ok' }, null]);
+  assert.equal(M.parseBackup({ raw: JSON.stringify(SAMPLE), notes: 'x' }).notes.constructor, Object, 'notes that are not an object become empty');
+});

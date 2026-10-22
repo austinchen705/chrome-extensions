@@ -30,7 +30,7 @@ const game = (filled = {}) => Array.from({ length: 90 }, (_, index) => filled[in
 const MACROS = game({ 0: ['112', 'look'], 4: ['1281', 'run n;@等待 1;ne'] });
 
 // 一個遊戲頁：localStorage.MACROS 是遊戲存的巨集，clipboard 是假的（記下寫進去的文字，可以設定成失敗）
-async function boot({ macros = JSON.stringify(MACROS), notes = { 1: '開門', 5: '跑路' }, clipboard = 'ok', extraHtml = '' } = {}) {
+async function boot({ macros = JSON.stringify(MACROS), notes = { 1: '開門', 5: '跑路' }, clipboard = 'ok', extraHtml = '', backup } = {}) {
   const dom = new JSDOM(`<html><body><div id="content"></div><form id="f"><input id="input"></form>${extraHtml}</body></html>`, {
     url: 'https://catworld.muds.tw/web',
     runScripts: 'outside-only',
@@ -53,6 +53,7 @@ async function boot({ macros = JSON.stringify(MACROS), notes = { 1: '開門', 5:
   });
   if (macros !== null) w.localStorage.setItem('MACROS', macros);
   const store = notes ? { macroNotes: notes } : {};
+  if (backup !== undefined) store.macroBackup = backup;
   const changeListeners = [];
   w.AudioContext = class {
     constructor() { this.state = 'suspended'; }
@@ -163,7 +164,7 @@ ui('typing in the manual copy box never reaches the game', async () => {
 });
 
 const FRAGMENT = '<div id="r"><button class="mexport"></button><button class="mimport"></button>'
-  + '<div class="macro-import" hidden><textarea class="macro-import-text"></textarea><button class="macro-import-check"></button><button class="macro-import-cancel"></button></div>'
+  + '<div class="macro-import" hidden><textarea class="macro-import-text"></textarea><button class="macro-import-check"></button><button class="macro-import-cancel"></button><button class="macro-restore"></button></div>'
   + '<div class="macro-confirm" hidden><div class="macro-confirm-msg"></div><button class="macro-confirm-ok"></button><button class="macro-confirm-cancel"></button></div>'
   + '<div class="macro-io" hidden><div class="macro-io-msg"></div><textarea class="macro-io-text" hidden></textarea></div></div>';
 // 另一個 document 裡的面板片段（置頂浮窗就是這樣）：回傳該 document 的剪貼簿記錄與常用節點
@@ -178,7 +179,7 @@ function elsewhere(page, deps, clipboard = 'ok') {
   const $ = selector => other.window.document.querySelector(selector);
   return { there, $ };
 }
-const depsOf = (extra = {}) => ({ readRaw: () => JSON.stringify(MACROS), readNotes: async () => ({}), ...extra });
+const depsOf = (extra = {}) => ({ readRaw: () => JSON.stringify(MACROS), readNotes: async () => ({}), readBackup: async () => undefined, writeBackup: async () => {}, ...extra });
 
 ui('the copy goes through the clipboard of the document the button lives in (the panel can be in a floating window)', async () => {
   const page = await boot();
@@ -532,6 +533,194 @@ ui('when the current game macros cannot be read the confirmation still comes, co
     $('.macro-import-check').click();
     assert.equal($('.macro-confirm').hidden, false);
     assert.match($('.macro-confirm-msg').textContent, /將取代 0 列/);
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 匯入前的備份與還原上一份 ----
+const OLD_NOTES = { 1: '開門', 5: '跑路' };
+async function importIt(page, text = IMPORT_TEXT) {
+  page.$('.mimport').click();
+  await paste(page, text);
+  page.$('.macro-confirm-ok').click();
+  assert.ok(await waitFor(() => /已匯入/.test(page.$('.macro-io-msg').textContent)));
+}
+
+ui('there is nothing to restore before the first import: the restore button is off', async () => {
+  const page = await boot();
+  try {
+    await sleep(30);
+    assert.ok(page.$('.macro-restore'), 'there is a restore button');
+    assert.equal(page.$('.macro-restore').disabled, true);
+  } finally {
+    page.close();
+  }
+});
+
+ui('an import first keeps what the game had (the exact text) and the notes, and then the restore button is on', async () => {
+  const page = await boot({ extraHtml: MACRO_ROWS });
+  try {
+    const before = page.w.localStorage.getItem('MACROS');
+    const before0 = Date.now();
+    await importIt(page);
+    const backup = plain(page.store.macroBackup);
+    assert.equal(backup.raw, before, 'the exact text of the game');
+    assert.deepEqual(backup.notes, OLD_NOTES);
+    assert.ok(backup.at >= before0 && backup.at <= Date.now());
+    assert.ok(await waitFor(() => page.$('.macro-restore').disabled === false));
+  } finally {
+    page.close();
+  }
+});
+
+ui('only one backup is kept: the next import replaces it with what the game had just before that import', async () => {
+  const page = await boot({ extraHtml: MACRO_ROWS });
+  try {
+    await importIt(page);
+    const afterFirst = page.w.localStorage.getItem('MACROS');
+    const second = JSON.stringify({ version: 1, macros: game({ 7: ['115', 'second'] }), notes: {} });
+    await importIt(page, second);
+    assert.ok(await waitFor(() => page.w.localStorage.getItem('MACROS') !== afterFirst), 'the first success message is still showing, so wait for the second write');
+    assert.equal(page.store.macroBackup.raw, afterFirst);
+    assert.deepEqual(plain(page.store.macroBackup.notes), { 2: '新備註', 3: '另一條' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('the backup is never part of the export', async () => {
+  const page = await boot();
+  try {
+    await importIt(page);
+    page.$('.mexport').click();
+    assert.ok(await waitFor(() => page.copied.length === 1));
+    assert.equal(page.copied[0].includes('macroBackup'), false);
+    assert.deepEqual(Object.keys(JSON.parse(page.copied[0])), ['version', 'macros', 'notes']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('if the backup cannot be written the import does not happen and nothing is touched', async () => {
+  const page = await boot();
+  try {
+    const written = [];
+    const { $ } = elsewhere(page, depsOf({
+      writeBackup: async () => { throw new Error('quota'); },
+      writeMacros: text => { written.push(text); },
+      writeNotes: async notes => { written.push(notes); },
+    }));
+    $('.mimport').click();
+    $('.macro-import-text').value = IMPORT_TEXT;
+    $('.macro-import-check').click();
+    $('.macro-confirm-ok').click();
+    await sleep(20);
+    assert.deepEqual(written, [], 'neither the macros nor the notes were written');
+    assert.match($('.macro-io-msg').textContent, /匯入失敗.*備份/);
+    assert.ok($('.macro-io-msg').classList.contains('alert'));
+  } finally {
+    page.close();
+  }
+});
+
+ui('restoring asks first, then puts the backed up macros and notes back, keeps the backup and says to refresh', async () => {
+  const page = await boot({ extraHtml: MACRO_ROWS });
+  try {
+    const original = page.w.localStorage.getItem('MACROS');
+    await importIt(page);
+    assert.notEqual(page.w.localStorage.getItem('MACROS'), original);
+    assert.ok(await waitFor(() => page.$('.macro-restore').disabled === false));
+    page.$('.mimport').click();
+    page.$('.macro-restore').click();
+    assert.ok(await waitFor(() => page.$('.macro-confirm').hidden === false));
+    const message = page.$('.macro-confirm-msg').textContent;
+    assert.match(message, /備份/);
+    assert.match(message, /取代目前 2 列/, 'the import left 2 macros');
+    assert.match(message, /重新整理遊戲頁/);
+    assert.notEqual(page.w.localStorage.getItem('MACROS'), original, 'nothing is written before the confirmation');
+    page.$('.macro-confirm-ok').click();
+    assert.ok(await waitFor(() => /已還原/.test(page.$('.macro-io-msg').textContent)));
+    assert.equal(page.w.localStorage.getItem('MACROS'), original, 'the exact text came back');
+    assert.deepEqual(plain(page.store.macroNotes), OLD_NOTES);
+    assert.match(page.$('.macro-io-msg').textContent, /重新整理遊戲頁/);
+    assert.equal(page.store.macroBackup.raw, original, 'the backup is still there');
+    assert.equal(page.$('.macro-restore').disabled, false);
+    const inputs = [...page.w.document.querySelectorAll('#macro_list input.note')];
+    assert.deepEqual(inputs.map(input => input.value), ['開門', '', ''], 'the note boxes followed the restore');
+  } finally {
+    page.close();
+  }
+});
+
+ui('cancelling a restore writes nothing, and the same backup can be restored again later', async () => {
+  const page = await boot();
+  try {
+    const original = page.w.localStorage.getItem('MACROS');
+    await importIt(page);
+    const imported = page.w.localStorage.getItem('MACROS');
+    page.$('.mimport').click();
+    page.$('.macro-restore').click();
+    assert.ok(await waitFor(() => page.$('.macro-confirm').hidden === false));
+    page.$('.macro-confirm-cancel').click();
+    assert.equal(page.w.localStorage.getItem('MACROS'), imported);
+    page.$('.macro-restore').click();
+    assert.ok(await waitFor(() => page.$('.macro-confirm').hidden === false));
+    page.$('.macro-confirm-ok').click();
+    assert.ok(await waitFor(() => page.w.localStorage.getItem('MACROS') === original));
+  } finally {
+    page.close();
+  }
+});
+
+ui('a backup that is broken is refused with the reason and the current macros stay as they are', async () => {
+  const page = await boot({ backup: { raw: 5 } });
+  try {
+    const before = page.w.localStorage.getItem('MACROS');
+    assert.ok(await waitFor(() => page.$('.macro-restore').disabled === false), 'something is stored, so the button asks about it');
+    page.$('.mimport').click();
+    page.$('.macro-restore').click();
+    assert.ok(await waitFor(() => /還原失敗/.test(page.$('.macro-io-msg').textContent)));
+    assert.match(page.$('.macro-io-msg').textContent, /備份/);
+    assert.ok(page.$('.macro-io-msg').classList.contains('alert'));
+    assert.equal(page.$('.macro-confirm').hidden, true);
+    assert.equal(page.w.localStorage.getItem('MACROS'), before);
+  } finally {
+    page.close();
+  }
+});
+
+ui('when the backup cannot be read at all the restore says so and changes nothing', async () => {
+  const page = await boot();
+  try {
+    const { $ } = elsewhere(page, depsOf({ readBackup: async () => { throw new Error('storage gone'); } }));
+    await sleep(20);
+    $('.macro-restore').disabled = false;
+    $('.macro-restore').click();
+    await sleep(20);
+    assert.match($('.macro-io-msg').textContent, /還原失敗.*沒有改動任何資料.*讀不到備份.*storage gone/);
+    assert.equal($('.macro-confirm').hidden, true);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a restore writes through the same path as an import, also in a panel of another document', async () => {
+  const page = await boot();
+  try {
+    const written = [];
+    const backup = { raw: JSON.stringify(MACROS), notes: { 4: '備份備註' }, at: 5 };
+    const { $ } = elsewhere(page, depsOf({
+      readBackup: async () => backup,
+      writeMacros: text => { written.push(text); },
+      writeNotes: async notes => { written.push(notes); },
+    }));
+    assert.ok(await waitFor(() => $('.macro-restore').disabled === false));
+    $('.macro-restore').click();
+    assert.ok(await waitFor(() => $('.macro-confirm').hidden === false));
+    $('.macro-confirm-ok').click();
+    await sleep(20);
+    assert.deepEqual(plain(written), [backup.raw, { 4: '備份備註' }]);
   } finally {
     page.close();
   }

@@ -654,7 +654,7 @@ function initPanel() {
           <span class="mini"><button class="tstart">開始</button><button class="tstop">停止</button></span></div>`).join('\n        ')}
         <div class="line macro-line"><span class="t">巨集</span><span class="s macro-text"></span>
           <span class="mini"><button class="mexport" title="把遊戲的巨集和備註複製成一段文字">匯出</button><button class="mimport" title="貼上匯出的文字，整份取代遊戲的巨集和備註">匯入</button><button class="mstop">停止</button></span></div>
-        <div class="line macro-import" hidden><span class="t"></span><span class="s"><textarea class="macro-import-text" placeholder="貼上匯出的巨集文字"></textarea><span class="mini"><button class="macro-import-check">檢查</button><button class="macro-import-cancel">取消</button></span></span></div>
+        <div class="line macro-import" hidden><span class="t"></span><span class="s"><textarea class="macro-import-text" placeholder="貼上匯出的巨集文字"></textarea><span class="mini"><button class="macro-import-check">檢查</button><button class="macro-import-cancel">取消</button><button class="macro-restore" title="把匯入前自動留的備份寫回去" disabled>還原上一份</button></span></span></div>
         <div class="line macro-confirm" hidden><span class="t"></span><span class="s"><div class="macro-confirm-msg"></div><span class="mini"><button class="macro-confirm-ok">確認取代</button><button class="macro-confirm-cancel">取消</button></span></span></div>
         <div class="line macro-io" hidden><span class="t"></span><span class="s"><div class="macro-io-msg"></div><textarea class="macro-io-text" readonly hidden></textarea></span></div>
       </div>
@@ -716,6 +716,9 @@ function initPanel() {
       writeMacros: text => window.localStorage.setItem('MACROS', text),
       // 匯入寫備註時的寫入者不是備註模組自己的代號，備註模組才會把它當成別處的改動、直接更新畫面上的備註框
       writeNotes: notes => chrome.storage.local.set({ macroNotes: notes, macroNotesWriter: 'macro-io' }),
+      // 匯入前自動留的一份備份（只留一層，只存在本機，不進匯出）
+      readBackup: async () => (await chrome.storage.local.get('macroBackup')).macroBackup,
+      writeBackup: backup => chrome.storage.local.set({ macroBackup: backup }),
       relayout: () => panel.replace(),
     });
   } catch (error) {

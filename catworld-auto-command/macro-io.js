@@ -116,5 +116,18 @@ function parseImport(text) {
   return { ok: true, macros: macros.macros, notes: notes.notes };
 }
 
-globalThis.CatworldMacroIO = { COUNT, VERSION, readMacros, exportText, countFilled, parseImport };
+// 匯入前留的備份：遊戲存的巨集「原始文字」（壞掉也原樣留，還原才是原樣寫回）、備註、時間。
+// 遊戲還沒存過（null 或空字串）就留 90 個空格，還原後遊戲就是沒有巨集
+function makeBackup(raw, notes, at) {
+  return { raw: typeof raw === 'string' && raw !== '' ? raw : JSON.stringify(emptyMacros()), notes: normalizeNotes(notes), at };
+}
+
+// 讀回存起來的備份：巨集文字不見或不是文字就拒絕並說明；備註不合格式的部分丟掉、時間不是數字當作不知道
+function parseBackup(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return fail('備份的內容不是預期的格式');
+  if (typeof value.raw !== 'string' || value.raw === '') return fail('備份裡的巨集內容不見了或壞了');
+  return { ok: true, raw: value.raw, notes: normalizeNotes(value.notes), at: Number.isFinite(value.at) ? value.at : null };
+}
+
+globalThis.CatworldMacroIO = { COUNT, VERSION, readMacros, exportText, countFilled, parseImport, makeBackup, parseBackup };
 })();
