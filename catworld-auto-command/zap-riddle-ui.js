@@ -34,6 +34,8 @@ const STYLE = `
   .rd-edit textarea, .rd-io textarea { all: unset; box-sizing: border-box; width: 100%; min-height: 54px; padding: 4px 6px; border-radius: 6px; background: #3a3a3e; color: #eee; font: 13px ui-monospace, Consolas, monospace; white-space: pre-wrap; user-select: text; }
   .rd-actions { display: flex; gap: 6px; padding-top: 3px; }
   .rd-note { color: #ffb347; font-size: 13px; padding-top: 4px; }
+  .rd-note.rd-bad { color: #ff8a7a; font-weight: 600; }
+  .rd-note.rd-ok { color: #bbb; }
 `;
 
 const el = (name, props = {}, ...children) => {
@@ -93,12 +95,17 @@ function attach(root, { readStats, startSteps }) {
       return { ok: false, error: error.message };
     }
   };
-  const say = text => { note.textContent = text; };
+  // 驗證、錯誤、警告的訊息標出來：error 紅、warn 琥珀（rd-note 原本的顏色）、一般訊息灰；換新訊息時舊的上色一起清掉
+  const say = (text, level = 'info') => {
+    note.textContent = text;
+    note.classList.toggle('rd-bad', level === 'error');
+    note.classList.toggle('rd-ok', level === 'info');
+  };
   const persist = async () => {
     try {
       await chrome.storage.local.set({ [EDITS_KEY]: edits, [DONE_KEY]: done });
     } catch (error) {
-      say(`儲存失敗：${error.message}`);
+      say(`儲存失敗：${error.message}`, 'error');
     }
   };
 
@@ -176,7 +183,7 @@ function attach(root, { readStats, startSteps }) {
       sendButton.disabled = true;
       setTimeout(() => { sendButton.disabled = false; }, 1500);
       // startSteps 回 false 代表巨集沒有執行（例如 @等待 格式錯誤），不能說已送出
-      if (startSteps(text) === false) say('沒有送出：指令格式不對，請看面板「巨集」列的提示');
+      if (startSteps(text) === false) say('沒有送出：指令格式不對，請看面板「巨集」列的提示', 'error');
       else say(`已送出第 ${step.no} 步：${text}`);
     });
     return el('div', { className: 'rd-step' },
@@ -228,14 +235,14 @@ function attach(root, { readStats, startSteps }) {
     } catch {
       io.hidden = false;
       ioText.value = text;
-      say('無法寫入剪貼簿，請從下面的文字框自己複製');
+      say('無法寫入剪貼簿，請從下面的文字框自己複製', 'warn');
     }
   });
   importButton.addEventListener('click', () => { io.hidden = !io.hidden; });
   ioApply.addEventListener('click', () => {
     const result = R.parseImport(ioText.value);
     if (!result.ok) {
-      say(`匯入失敗，沒有改動任何資料：${result.error}`);
+      say(`匯入失敗，沒有改動任何資料：${result.error}`, 'error');
       return;
     }
     edits = result.riddleCommands;
@@ -280,7 +287,7 @@ function attach(root, { readStats, startSteps }) {
         edits = saved[EDITS_KEY] ?? {};
         done = saved[DONE_KEY] ?? {};
       } catch (error) {
-        say(`讀取已存的資料失敗：${error.message}`);
+        say(`讀取已存的資料失敗：${error.message}`, 'error');
       }
     }
     loadShared();

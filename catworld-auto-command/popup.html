@@ -20,6 +20,11 @@
     #test, #beep, #skills { margin-top:8px; width:100%; background:#f4f4f4; }
     .status { margin-bottom:4px; font-size:13px; padding:8px; border-radius:7px; background:#f6f6f6; }
     .hint { font-size:11px; color:#777; margin-top:8px; line-height:1.4; }
+    /* 驗證、錯誤、警告的訊息：error 紅、warn 琥珀（和規則狀態 .pill 同一組顏色），info 不上色 */
+    .msg-error, .msg-warn { margin-top:4px; padding:5px 8px; border-radius:6px; border-left:3px solid; line-height:1.4; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .msg-error { background:#fde2df; color:#b42318; border-left-color:#b42318; font-weight:600; }
+    .msg-warn { background:#fdecc8; color:#8a5a00; border-left-color:#e0a100; }
+    .status.msg-error, .status.msg-warn { margin-top:0; }
     .hint.tight { margin-top:4px; }
 
     .ritem { display:grid; grid-template-columns:minmax(0, 1fr) 62px 62px 22px; gap:6px; align-items:center; margin-top:6px; }
@@ -169,7 +174,7 @@ px</textarea>
   </div>
   <div class="alertbox">
     <b>共用資料（Google 試算表）</b>
-    <div id="sharedOff" class="hint tight" hidden>怪物查詢與解謎都關著，不會抓取共用資料（上面是上次抓到的結果）。</div>
+    <div id="sharedOff" class="hint tight msg-warn" hidden>怪物查詢與解謎都關著，不會抓取共用資料（上面是上次抓到的結果）。</div>
     <label for="sharedMobUrl">怪物路線分頁的 CSV 連結</label>
     <input id="sharedMobUrl" type="text" autocomplete="off" placeholder="https://docs.google.com/spreadsheets/…output=csv">
     <div id="sharedMobResult" class="hint tight">尚未設定</div>

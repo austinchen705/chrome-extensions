@@ -51,7 +51,21 @@ function readSettings() {
   };
 }
 
-function setStatus(text) { $('status').textContent = `狀態：${text}`; }
+// 驗證、錯誤、警告的訊息一律用同一組顏色：error 紅、warn 琥珀、info 不上色（樣式是 popup.html 的 .msg-error／.msg-warn）
+function markLevel(node, level) {
+  node.classList.toggle('msg-error', level === 'error');
+  node.classList.toggle('msg-warn', level === 'warn');
+}
+// 一行一行的 { level, text } 放進容器，每行各自上色
+function showParts(container, parts) {
+  container.replaceChildren(...parts.map(({ level, text }) => element('div', { className: `msg-${level}`, textContent: text })));
+}
+// 停止原因：空的或單純「已停止」不上色；驗證碼造成的停止是錯誤；其他原因（觸發被停用等）是警告
+const stopLevel = reason => (!reason || reason === '已停止' ? 'info' : /驗證/.test(reason) ? 'error' : 'warn');
+function setStatus(text, level = 'info') {
+  $('status').textContent = `狀態：${text}`;
+  markLevel($('status'), level);
+}
 
 async function send(message) {
   const tab = await getTab();
@@ -87,19 +101,19 @@ $('start').addEventListener('click', async () => {
     await send({ type: 'START', settings });
     const randomText = settings.randomItems.length ? `；隨機：${settings.randomItems.map(item => item.command).join(' / ')}` : '';
     setStatus(`執行中：${settings.commands.join(' → ')}${randomText}`);
-  } catch (e) { setStatus(e.message); }
+  } catch (e) { setStatus(e.message, 'error'); }
 });
 
 $('stop').addEventListener('click', async () => {
   try { await send({ type: 'STOP' }); setStatus('已停止'); }
-  catch (e) { setStatus(e.message); }
+  catch (e) { setStatus(e.message, 'error'); }
 });
 
 $('test').addEventListener('click', async () => {
   try {
     const result = await send({ type: 'TEST', command: 'ps' });
-    setStatus(result?.ok ? '測試 ps 已送出' : (result?.error || '測試失敗'));
-  } catch (e) { setStatus(e.message); }
+    setStatus(result?.ok ? '測試 ps 已送出' : (result?.error || '測試失敗'), result?.ok ? 'info' : 'error');
+  } catch (e) { setStatus(e.message, 'error'); }
 });
 
 // 「一直響到確認」開關：存起來，遊戲頁的 content script 監聽 storage 變化，馬上生效
@@ -137,26 +151,26 @@ async function showShared() {
     const url = data.sharedSources?.[kind] ?? '';
     if (document.activeElement !== $(field.input)) $(field.input).value = url;
     const entry = data.sharedCache?.[kind]?.url === url ? data.sharedCache[kind] : null;
-    $(field.result).textContent = CatworldSharedData.describeSheet(kind, url, entry, timeText, features);
+    showParts($(field.result), CatworldSharedData.describeSheetParts(kind, url, entry, timeText, features));
     // 被丟掉與對不到的列逐列列出，填錯的人自己看得出要改表上哪一列
-    const lines = url && enabled ? CatworldSharedData.reportLines(entry?.report) : [];
+    const lines = url && enabled ? CatworldSharedData.reportEntries(entry?.report) : [];
     $(field.detail).hidden = !lines.length;
-    $(field.detail).textContent = lines.join('\n');
+    showParts($(field.detail), lines);
   });
 }
 // 更新中或失敗時：每個分頁的結果行換成同一段文字，舊的逐列清單先收起來（不然會和「更新中」並存）
-const setAllShared = text => Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
-  $(field.result).textContent = `${CatworldSharedData.SHEET_LABELS[kind].title}：${text}`;
+const setAllShared = (text, level = 'info') => Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
+  showParts($(field.result), [{ level, text: `${CatworldSharedData.SHEET_LABELS[kind].title}：${text}` }]);
   $(field.detail).hidden = true;
 });
 async function refreshShared() {
   setAllShared('更新中…');
   try {
     const reply = await chrome.runtime.sendMessage({ type: 'SHARED_REFRESH' });
-    if (!reply?.ok) setAllShared(`更新失敗：${reply?.error || '沒有回應'}`);
+    if (!reply?.ok) setAllShared(`更新失敗：${reply?.error || '沒有回應'}`, 'error');
     else await showShared();
   } catch (error) {
-    setAllShared(`更新失敗：${error.message}`);
+    setAllShared(`更新失敗：${error.message}`, 'error');
   }
 }
 Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
@@ -167,7 +181,7 @@ Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
       if (!checked.ok) {
         // 只收起這個分頁的舊清單，原本存的連結與結果不動
         const saved = (await chrome.storage.local.get('sharedSources')).sharedSources ?? {};
-        $(field.result).textContent = CatworldSharedData.describeRejectedUrl(kind, checked.error, Boolean(saved[kind]));
+        showParts($(field.result), [{ level: 'error', text: CatworldSharedData.describeRejectedUrl(kind, checked.error, Boolean(saved[kind])) }]);
         $(field.detail).hidden = true;
         return;
       }
@@ -202,7 +216,7 @@ function showZapThresholds() {
   const valid = CatworldZapMobs.normalizeThresholds(raw);
   if (valid.greenMax !== raw.greenMax || valid.yellowMax !== raw.yellowMax) {
     showZapThresholds();
-    setStatus('門檻需 1 < 綠上限 < 黃上限');
+    setStatus('門檻需 1 < 綠上限 < 黃上限', 'error');
     return;
   }
   zapThresholds = valid;
@@ -212,8 +226,8 @@ function showZapThresholds() {
 $('beep').addEventListener('click', async () => {
   try {
     const result = await send({ type: 'TEST_BEEP' });
-    setStatus(result?.played ? '提示音已播放' : '瀏覽器擋住聲音：請先在遊戲分頁點一下或輸入任何內容，再試一次');
-  } catch (e) { setStatus(e.message); }
+    setStatus(result?.played ? '提示音已播放' : '瀏覽器擋住聲音：請先在遊戲分頁點一下或輸入任何內容，再試一次', result?.played ? 'info' : 'warn');
+  } catch (e) { setStatus(e.message, 'error'); }
 });
 
 // popup 失焦就會關閉，清單改在獨立分頁開啟；已開著就直接切過去，不重複開
@@ -271,6 +285,7 @@ function createTriggerPane(group) {
   const holdStatus = text => {
     hold = { until: Date.now() + 4000 };
     $g('trigStatus').textContent = text;
+    markLevel($g('trigStatus'), 'error');
   };
 
   // 每張規則卡片共用：刪除、重新啟用（按卡片在清單中的順序對應引擎裡的規則）
@@ -450,6 +465,7 @@ function createTriggerPane(group) {
     $g('trigStatus').textContent = state?.on
       ? `${group.name}觸發執行中（${state.rules.filter(rule => rule.phase !== 'off').length} 條規則）`
       : (state?.note || `${group.name}觸發未啟動`);
+    markLevel($g('trigStatus'), state?.on ? 'info' : stopLevel(state?.note));
   }
 
   return { group, root, render, refresh, readSettings };
@@ -477,7 +493,7 @@ let lastTimerRunning = null;
 async function refreshLive() {
   let status = null;
   try { status = await send({ type: 'STATUS' }); } catch { /* 連不上遊戲頁：讀數顯示 — */ }
-  if (status && lastTimerRunning !== null && Boolean(status.running) !== lastTimerRunning) setStatus(status.running ? '執行中' : (status.stopReason || '已停止'));
+  if (status && lastTimerRunning !== null && Boolean(status.running) !== lastTimerRunning) setStatus(status.running ? '執行中' : (status.stopReason || '已停止'), status.running ? 'info' : stopLevel(status.stopReason));
   if (status) lastTimerRunning = Boolean(status.running);
   renderCountdown(status);
   Object.values(panes).forEach(pane => pane.refresh(status));
@@ -511,14 +527,14 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   showTab(panes[lastTab] ? lastTab : 'timer');
   try {
     const status = await send({ type: 'STATUS' });
-    setStatus(status?.running ? '執行中' : (status?.stopReason || '已停止'));
-  } catch { setStatus('請切到 CatWorld Web 分頁'); }
+    setStatus(status?.running ? '執行中' : (status?.stopReason || '已停止'), status?.running ? 'info' : stopLevel(status?.stopReason));
+  } catch { setStatus('請切到 CatWorld Web 分頁', 'warn'); }
   refreshLive();
   setInterval(refreshLive, 1000);
 })();
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  if (changes.stopReason?.newValue) setStatus(changes.stopReason.newValue);
+  if (changes.stopReason?.newValue) setStatus(changes.stopReason.newValue, stopLevel(changes.stopReason.newValue));
   else if (changes.running) setStatus(changes.running.newValue ? '執行中' : '已停止');
 });

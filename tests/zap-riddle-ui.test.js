@@ -26,7 +26,7 @@ const waitFor = async (condition, ms = 3000) => {
 const riddles = [{ id: 'a/獨孤九劍', category: 'a', name: '獨孤九劍', condition: '無', difficulty: '易', reward: '技能', hint: '', page: 'qu1.htm', shared: [] }];
 const pages = { 'qu1.htm': { preamble: '', text: '', steps: [{ no: 1, text: '第一步', commands: 'run site' }, { no: 2, text: '第二步', commands: '' }, { no: 3, text: '第三步', commands: 'run site3' }] } };
 
-function boot({ shared, personal = {}, calls = [], started = [], sharedGate = null, changeListeners = [], sharedNow = () => shared }) {
+function boot({ shared, personal = {}, calls = [], started = [], sharedGate = null, changeListeners = [], sharedNow = () => shared, startResult = true }) {
   const dom = new JSDOM('<html><body></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   w.chrome = {
@@ -48,7 +48,7 @@ function boot({ shared, personal = {}, calls = [], started = [], sharedGate = nu
   const shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = '<div class="panel"><div class="head"></div><div class="body"></div></div>';
   w.document.documentElement.append(host);
-  const api = w.CatworldZapRiddleUI.attach(shadow, { readStats: () => ({ exp: 1000000, force: 1000 }), startSteps: text => { started.push(text); return true; } });
+  const api = w.CatworldZapRiddleUI.attach(shadow, { readStats: () => ({ exp: 1000000, force: 1000 }), startSteps: text => { started.push(text); return startResult; } });
   api.setEnabled(true);
   shadow.querySelector('.rd-open').click();
   return { shadow, started, calls, changeListeners };
@@ -166,4 +166,35 @@ ui('other storage changes do not ask for the shared steps again', async () => {
   dom.changeListeners.forEach(listener => listener({ sharedCache: {} }, 'sync'));
   await sleep(50);
   assert.equal(dom.calls.filter(type => type === 'ZAP_RIDDLE_SHARED').length, before);
+});
+
+// 驗證、錯誤、警告的訊息：錯誤紅（rd-bad）、警告維持琥珀（rd-note）、一般訊息灰（rd-ok）
+const levelOfNote = node => (node.classList.contains('rd-bad') ? 'error' : node.classList.contains('rd-ok') ? 'info' : 'warn');
+const message = shadow => shadow.querySelector('.rd-box > .rd-note');
+
+ui('a failed import is an error line and a successful one is plain', async () => {
+  const dom = boot({ shared: {} });
+  assert.ok(await waitFor(() => dom.shadow.querySelector('.rd-row')));
+  const apply = () => [...dom.shadow.querySelectorAll('.rd-btn')].find(button => button.textContent === '確認匯入').click();
+  dom.shadow.querySelector('.rd-io textarea').value = 'not json';
+  apply();
+  assert.match(message(dom.shadow).textContent, /匯入失敗/);
+  assert.equal(levelOfNote(message(dom.shadow)), 'error');
+  dom.shadow.querySelector('.rd-io textarea').value = '{"riddleCommands":{},"riddleDone":{}}';
+  apply();
+  assert.match(message(dom.shadow).textContent, /已匯入/);
+  assert.equal(levelOfNote(message(dom.shadow)), 'info');
+});
+
+ui('a step that could not be sent is an error line, and a sent one is plain', async () => {
+  const refused = boot({ shared: {}, startResult: false });
+  const steps = await openRiddle(refused.shadow);
+  [...steps[0].querySelectorAll('.rd-btn')].find(button => button.textContent === '送出').click();
+  assert.match(message(refused.shadow).textContent, /沒有送出/);
+  assert.equal(levelOfNote(message(refused.shadow)), 'error');
+  const sent = boot({ shared: {} });
+  const okSteps = await openRiddle(sent.shadow);
+  [...okSteps[0].querySelectorAll('.rd-btn')].find(button => button.textContent === '送出').click();
+  assert.match(message(sent.shadow).textContent, /已送出第/);
+  assert.equal(levelOfNote(message(sent.shadow)), 'info');
 });

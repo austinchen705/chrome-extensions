@@ -322,3 +322,63 @@ ui('limits are whole numbers within the allowed range: what is saved and what th
   type('lineDedupe', '0.4');
   assert.ok(await waitFor(() => lastSaved().dedupeMinutes === 1), 'never rounds down to zero');
 });
+
+// 驗證、錯誤、警告的訊息用 msg-error（紅）與 msg-warn（琥珀）標出來，成功與一般訊息不上色
+const levelOf = node => (node.classList.contains('msg-error') ? 'error' : node.classList.contains('msg-warn') ? 'warn' : 'info');
+
+ui('a failed send is an error line and a successful one is plain', async () => {
+  const failed = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID } }, reply: { at: clock(4, 5, 6), ok: false, status: 401, reason: 'Authentication failed' } });
+  assert.ok(await waitFor(() => failed.$('lineToken').value === TOKEN));
+  failed.$('lineTest').click();
+  assert.ok(await waitFor(() => /失敗/.test(failed.$('lineResult').textContent)));
+  assert.equal(levelOf(failed.$('lineResult')), 'error');
+  const good = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID } } });
+  assert.ok(await waitFor(() => good.$('lineToken').value === TOKEN));
+  good.$('lineTest').click();
+  assert.ok(await waitFor(() => /成功/.test(good.$('lineResult').textContent)));
+  assert.equal(levelOf(good.$('lineResult')), 'info');
+});
+
+ui('validation messages are errors: missing credentials, unreachable background, failed settings load', async () => {
+  const missing = boot({ local: { lineNotify: { token: '', userId: USER_ID } } });
+  await sleep(30);
+  missing.$('lineTest').click();
+  assert.ok(await waitFor(() => /token 與 userId/.test(missing.$('lineResult').textContent)));
+  assert.equal(levelOf(missing.$('lineResult')), 'error');
+  const noReply = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID } }, sendError: 'Receiving end does not exist' });
+  assert.ok(await waitFor(() => noReply.$('lineToken').value === TOKEN));
+  noReply.$('lineTest').click();
+  assert.ok(await waitFor(() => /沒有回應/.test(noReply.$('lineResult').textContent)));
+  assert.equal(levelOf(noReply.$('lineResult')), 'error');
+  const gate = Promise.reject(new Error('storage down'));
+  gate.catch(() => {});
+  const broken = boot({ gate });
+  assert.ok(await waitFor(() => /讀取設定失敗/.test(broken.$('lineResult').textContent)));
+  assert.equal(levelOf(broken.$('lineResult')), 'error');
+  const noCreds = boot({ local: {} });
+  assert.ok(await waitFor(() => noCreds.$('lineToken').disabled === false));
+  noCreds.$('lineEnabled').checked = true;
+  noCreds.$('lineEnabled').dispatchEvent(new noCreds.w.Event('change', { bubbles: true }));
+  assert.equal(levelOf(noCreds.$('lineResult')), 'error', 'cannot turn the switch on without credentials');
+});
+
+ui('the switch being turned off automatically is a warning, and a new message clears the old highlight', async () => {
+  const { $, type } = boot({ local: { lineNotify: { token: TOKEN, userId: USER_ID, enabled: true } } });
+  assert.ok(await waitFor(() => $('lineEnabled').checked === true));
+  type('lineToken', '');
+  assert.match($('lineResult').textContent, /已自動關閉/);
+  assert.equal(levelOf($('lineResult')), 'warn');
+  type('lineToken', TOKEN);
+  $('lineTest').click();
+  assert.ok(await waitFor(() => /成功/.test($('lineResult').textContent)));
+  assert.equal(levelOf($('lineResult')), 'info', 'the warning highlight does not stick to a success message');
+});
+
+ui('skipped alerts are a warning only when some were skipped', async () => {
+  const some = boot({ session: { lineThrottle: { skipped: 4 } } });
+  assert.ok(await waitFor(() => /已略過 4 則/.test(some.$('lineSkipped').textContent)));
+  assert.equal(levelOf(some.$('lineSkipped')), 'warn');
+  const none = boot({});
+  assert.ok(await waitFor(() => /已略過 0 則/.test(none.$('lineSkipped').textContent)));
+  assert.equal(levelOf(none.$('lineSkipped')), 'info');
+});

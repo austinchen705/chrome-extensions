@@ -143,6 +143,12 @@
 - 浮窗大小：沒有記住的大小時預設寬 360、高度以**展開後**的面板為準（量的當下暫時掛上 `data-pip`、量完立刻拿掉，等瀏覽器建立視窗期間主頁面的面板不能先變成浮窗的樣子）；玩家調整過、收回或關閉浮窗時記在 `chrome.storage.local.pipSize`（只記範圍內的數字，壞掉、零、負數、超大都當作沒記過；用的時候再夾在螢幕可用範圍內；拖回開窗時的大小不記；這次存過就不讓晚到的讀取蓋掉）。重新整理或關閉遊戲分頁時瀏覽器直接關浮窗，這一次的大小可能沒存到，這是已知限制。**Chrome 開置頂視窗時會把請求的大小等比縮小（約螢幕面積四分之一），拖拉卻可以更大，開窗後也不能用 `resizeTo` 放大（實測）**，所以判斷「玩家有沒有調整」的基準是視窗開起來之後的**實際大小**（量不到才退回請求的大小），不能用請求的大小，否則瀏覽器自己縮的會被當成玩家調整、蓋掉玩家記的大小。開窗必須在使用者點擊之後馬上呼叫，所以大小在建立控制器時就先讀好（`ready`），不能在開窗前才等儲存。儲存壞了不能影響開窗與收回。位置交給瀏覽器。
 - 測試：`tests/pip-panel.test.js`（jsdom，假的 `documentPictureInPicture` 回傳第二個 jsdom 視窗，假的儲存）。**斷言不要拿 jsdom 視窗物件互相比較（`assert.equal(win, other)`）**：失敗時 node 會把整個視窗印出來比對，測試會卡住，改用 `assert.ok(a === b)`。真正的 Chrome 行為（要點擊才能開、置頂、焦點）只能手動驗證。
 
+## 驗證、錯誤、警告訊息的顯示
+
+- 所有驗證、錯誤、警告的訊息都要用同一組顏色標出來：**error 紅、warn 琥珀、info 不上色**（成功與一般訊息不上色）。設定頁用 `popup.html` 的 `.msg-error`／`.msg-warn`（顏色沿用規則狀態 `.pill` 那組：紅 `#fde2df／#b42318`、琥珀 `#fdecc8／#8a5a00`）；遊戲頁面板（shadow DOM）用 `#ff8a7a`（`alert`、`zap-bad`、`rd-bad`）與 `#ffb347`（`warn`、`zap-caution`、`rd-note`）。
+- 新增會顯示給使用者的訊息時要想「這是驗證／錯誤／警告嗎」，是的話帶等級：設定頁的狀態列用 `setStatus(text, level)`／`markLevel`，一行一行的訊息用 `showParts`；LINE 區用 `say(text, level)`；怪物面板的狀態列用 `say`、浮層與裝備的訊息列用 `zap-bad`／`zap-caution`；解謎用 `say(text, level)`。**換新訊息時舊的上色要一起清掉**（用 `classList.toggle`，不要只加不減）。
+- 共用資料的訊息等級由 `shared-data.js` 決定（有測試）：`describeSheetParts`、`reportEntries` 回傳 `{ level, text }`（更新失敗與被丟掉的列是 error；有被丟掉或對不到的列、超過上限、沒勾、沒有 gid、不會抓取是 warn）；`describeSheet`、`reportLines` 是它們的純文字版。
+
 ## 設定頁
 
 - 面板的 ⚙ 由 `background.js` 把 `popup.html?tab=<遊戲分頁 id>` 開成分頁並記在 `storage.session`，再按一次關閉；`popup.js` 看到 `?tab=` 就控制那個遊戲分頁（`getTab`）並加上 `body.page` 樣式。popup 與設定頁是同一份 HTML/JS，改一份兩邊都會變。設定頁開在背景分頁時，自己的 `setInterval(refreshLive, 1000)` 會被 Chrome 降頻，所以遊戲頁的 `renderPanel` 在「定時開關、任一組觸發開關、巨集有沒有在跑」變了時會送 `STATE_CHANGED`（只送給擴充功能的頁面），設定頁收到（且來自它控制的那個遊戲分頁）就立刻 `refreshLive()`；定時那一頁的狀態文字平常只在按自己的按鈕時改，`refreshLive` 在開始／停止翻轉時才跟著改（不蓋掉錯誤訊息）。

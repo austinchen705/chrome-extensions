@@ -28,12 +28,12 @@ const mobWith = (route, exact = true) => ({
   q: 1.2, grade: 'green', idOnly: false, route: route && { route, exact },
 });
 
-function boot({ startResult = true, items, calls = [], changeListeners = [] }) {
+function boot({ startResult = true, items, calls = [], changeListeners = [], reply = null }) {
   const dom = new JSDOM('<html><body><div id="exp">414748</div></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   w.chrome = {
     storage: { local: { get: async () => ({}), set: async () => {} }, onChanged: { addListener: fn => changeListeners.push(fn) } },
-    runtime: { sendMessage: async message => { calls.push(message.type); return { ok: true, items, total: items.length }; } },
+    runtime: { sendMessage: async message => { calls.push(message.type); return reply ?? { ok: true, items, total: items.length }; } },
   };
   ['zap-mobs.js', 'zap-items.js', 'zap-equipment.js', 'zap-panel.js'].forEach(file => w.eval(fs.readFileSync(path.join(root, file), 'utf8')));
   const host = w.document.createElement('div');
@@ -230,4 +230,58 @@ ui('importing validates first and replaces the custom routes', async () => {
   shadow.querySelector('.zap-io .zap-edit').click();
   assert.ok(await waitFor(() => saved.length === 1));
   assert.equal(JSON.stringify(saved[0]), JSON.stringify({ mobRoutes: { '華山弟子(a)': 'look' } }));
+});
+
+// 驗證、錯誤、警告的訊息：錯誤紅（alert／zap-bad）、警告琥珀（warn／zap-caution），一般訊息不上色
+ui('a failed query is an error in the status line, and the normal status is plain', async () => {
+  const bad = boot({ items: [], reply: { ok: false, error: '查詢壞了' } });
+  assert.ok(await waitFor(() => /查詢壞了/.test(bad.shadow.querySelector('.zap-status').textContent)));
+  assert.ok(bad.shadow.querySelector('.zap-status').classList.contains('alert'));
+  const fine = boot({ items: [mobWith({ name: '華山', path: 't' })] });
+  assert.ok(await waitFor(() => /經驗/.test(fine.shadow.querySelector('.zap-status').textContent)));
+  assert.equal(fine.shadow.querySelector('.zap-status').classList.contains('alert'), false);
+  assert.equal(fine.shadow.querySelector('.zap-status').classList.contains('warn'), false);
+});
+
+ui('a route that is only an approximate match, or that the shared sheet turned off, is a caution; an exact one is plain', async () => {
+  const partial = boot({ items: [mobWith({ name: '天魔塔', path: 't 9n' }, false)] });
+  assert.ok(await waitFor(() => partial.shadow.querySelector('.zap-route .meta')));
+  assert.ok(partial.shadow.querySelector('.zap-route .meta').classList.contains('zap-caution'));
+  const exact = boot({ items: [mobWith({ name: '華山', path: 't' })] });
+  assert.ok(await waitFor(() => exact.shadow.querySelector('.zap-route .meta')));
+  assert.equal(exact.shadow.querySelector('.zap-route .meta').classList.contains('zap-caution'), false);
+  const off = boot({ items: [{ ...mobWith(null), sharedDisabled: { by: '小明', note: '' } }] });
+  assert.ok(await waitFor(() => off.shadow.querySelector('.zap-route .meta')));
+  assert.ok(off.shadow.querySelector('.zap-route .meta').classList.contains('zap-caution'));
+});
+
+ui('the walk button that could not send is marked as an error', async () => {
+  const { shadow } = boot({ startResult: false, items: [mobWith({ name: '華山', path: 't' })] });
+  assert.ok(await waitFor(() => shadow.querySelector('.zap-walk')));
+  shadow.querySelector('.zap-walk').click();
+  assert.equal(shadow.querySelector('.zap-walk').textContent, '送不出去');
+  assert.ok(shadow.querySelector('.zap-walk').classList.contains('zap-bad'));
+});
+
+ui('a failed import is an error in the status line, and the next plain status clears the highlight', async () => {
+  const { shadow } = boot({ items: [mobWith({ name: '華山', path: 't' })] });
+  assert.ok(await waitFor(() => shadow.querySelector('.zap-io')));
+  shadow.querySelector('.zap-io textarea').value = 'not json';
+  [...shadow.querySelectorAll('.zap-io .zap-edit')].find(button => button.textContent === '確認匯入').click();
+  assert.ok(await waitFor(() => /匯入失敗/.test(shadow.querySelector('.zap-status').textContent)));
+  assert.ok(shadow.querySelector('.zap-status').classList.contains('alert'));
+  shadow.querySelector('.zap-io textarea').value = '{"華山弟子(a)":"look"}';
+  [...shadow.querySelectorAll('.zap-io .zap-edit')].find(button => button.textContent === '確認匯入').click();
+  // 匯入成功後面板會立刻重查，狀態列很快又換成「經驗 …」；重點是紅色的錯誤標示不能留著
+  assert.ok(await waitFor(() => !shadow.querySelector('.zap-status').classList.contains('alert')));
+});
+
+ui('a failed lookup in the floating hint is shown as an error line', async () => {
+  const calls = [];
+  const dom = boot({ items: [], calls, reply: { ok: false, error: '背景沒回應' } });
+  dom.w.document.body.insertAdjacentHTML('beforeend', '<div id="content"><span id="message"></span></div>');
+  dom.w.document.querySelector('#message').append(dom.w.document.createTextNode('※華山弟子(a) [fight][kill]'));
+  assert.ok(await waitFor(() => /查詢失敗/.test(dom.shadow.textContent)));
+  const note = [...dom.shadow.querySelectorAll('.zap-more')].find(node => /查詢失敗/.test(node.textContent));
+  assert.ok(note.classList.contains('zap-bad'));
 });

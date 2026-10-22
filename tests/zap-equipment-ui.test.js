@@ -71,6 +71,7 @@ function boot({ startResult = true, stored = {}, title = '小貓的世界 WEB' }
     button,
     click: () => button().dispatchEvent(new w.Event('click', { bubbles: true })),
     status: () => shadow.querySelector('.eq-status').textContent,
+    shadowNotes: () => zap.sections.equipment.querySelectorAll('.zap-more'),
     overlay: () => zap.sections.equipment.textContent.replace(/\s+/g, ' ').trim(),
     rows: () => [...zap.sections.equipment.querySelectorAll('.zap-block')].map(node => node.textContent.replace(/\s+/g, ' ').trim()),
   };
@@ -218,4 +219,30 @@ ui('the old flat storage format is ignored instead of crashing', async () => {
   const page = boot({ stored: { wornEquipment: { '披風類防具': [{ name: '舊的', primary: 99, attrs: [], needExp: 0, readAt: 1 }] } } });
   await sleep(30);
   assert.match(page.status(), /尚未讀取/);
+});
+
+// 驗證、錯誤、警告的訊息：錯誤紅（zap-bad）、警告琥珀（zap-caution）
+ui('a refused or throwing send is an error line in the overlay', async () => {
+  // 丟例外時會先出「送出失敗」再出「沒有送出」，兩條都要是紅的（各自檢查，不能互相遮住）
+  for (const [startResult, expected] of [[false, [/沒有送出/]], ['throw', [/送出失敗/, /沒有送出/]]]) {
+    const page = boot({ startResult });
+    await sleep(20);
+    page.click();
+    await sleep(10);
+    const notes = [...page.shadowNotes()];
+    for (const pattern of expected) {
+      const note = notes.find(node => pattern.test(node.textContent));
+      assert.ok(note && note.classList.contains('zap-bad'), `startResult ${startResult}: ${pattern}`);
+    }
+  }
+});
+
+ui('no inventory output is a caution line, not an error', async () => {
+  const page = boot();
+  await sleep(20);
+  page.click();
+  assert.ok(await waitFor(() => /沒有讀到背包/.test(page.overlay())));
+  const note = [...page.shadowNotes()].find(node => /沒有讀到背包/.test(node.textContent));
+  assert.ok(note.classList.contains('zap-caution'));
+  assert.equal(note.classList.contains('zap-bad'), false);
 });

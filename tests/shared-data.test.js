@@ -573,3 +573,49 @@ test('when only the other feature is on, a sheet says its own feature is off and
   const beforeFetch = S.describeSheet('mob', 'u', null, at, onlyRiddles);
   assert.ok(beforeFetch.includes('尚未抓取') && beforeFetch.includes('「怪物查詢」沒勾'), 'also before the first fetch');
 });
+
+// ---- 訊息等級（error 紅、warn 琥珀、info 不上色）----
+const levels = parts => parts.map(part => part.level);
+const BOTH = { mobs: true, riddles: true };
+
+test('each line of a sheet summary carries a level: failures are errors, cautions are warnings, plain results are info', () => {
+  assert.deepEqual(S.describeSheetParts('mob', '', null, at, BOTH), [{ level: 'info', text: '怪物路線：尚未設定' }]);
+  assert.deepEqual(levels(S.describeSheetParts('riddle', 'u', null, at, BOTH)), ['info'], 'not fetched yet is neutral');
+  const clean = okEntry();
+  clean.report = { rows: 2, used: 2, overflow: 0, dropped: [], unmatched: [] };
+  assert.deepEqual(levels(S.describeSheetParts('mob', 'u', clean, at, BOTH)), ['info'], 'everything went through');
+  assert.deepEqual(levels(S.describeSheetParts('mob', 'u', okEntry(), at, BOTH)), ['warn'], 'some rows were dropped or unmatched');
+  const over = okEntry();
+  over.report = { ...clean.report, rows: 2005, overflow: 5 };
+  assert.deepEqual(levels(S.describeSheetParts('mob', 'u', over, at, BOTH)), ['warn']);
+  assert.deepEqual(levels(S.describeSheetParts('mob', 'u', okEntry(), at, { mobs: false, riddles: false })), ['warn'], 'nothing is fetched while both features are off');
+});
+
+test('a failed update is an error line followed by a plain line about the data still in use', () => {
+  const parts = S.describeSheetParts('mob', 'u', okEntry({ at: 5, error: { at: 9, reason: 'HTTP 403' } }), at, BOTH);
+  assert.deepEqual(levels(parts), ['error', 'info']);
+  assert.match(parts[0].text, /^怪物路線：更新失敗（<9>）：HTTP 403$/);
+  assert.match(parts[1].text, /^目前使用：上次更新 <5>/);
+});
+
+test('the extra notes are warnings, and the plain text of the parts is what describeSheet returns', () => {
+  const noGid = 'https://docs.google.com/spreadsheets/d/e/2PACX-x/pub?output=csv';
+  const parts = S.describeSheetParts('mob', noGid, okEntry({ url: noGid }), at, { mobs: false, riddles: true });
+  assert.deepEqual(levels(parts), ['warn', 'warn', 'warn'], 'summary, the feature note and the gid note');
+  assert.equal(S.describeSheet('mob', noGid, okEntry({ url: noGid }), at, { mobs: false, riddles: true }), parts.map(part => part.text).join('\n'));
+});
+
+test('report entries are errors for dropped rows, warnings for unmatched rows and the row limit, and info for the cut-off note', () => {
+  const lines = Array.from({ length: 40 }, (_, i) => `x${i}(x),drop y,,小明,`);
+  const mob = S.buildMobRoutes(['怪物名稱,指令,備註,更新者,更新時間', ...lines].join('\n'), []);
+  const entries = S.reportEntries(mob.report, 30);
+  assert.equal(entries.length, 31);
+  assert.ok(entries.slice(0, 30).every(entry => entry.level === 'error'));
+  assert.deepEqual(entries[30], { level: 'info', text: '…還有 10 筆沒有顯示' });
+  const mixed = buildLoc('不存在(x),,run e,,小明,', '老虎(tiger),,drop x,,小明,');
+  assert.deepEqual(levels(S.reportEntries(mixed.report)), ['warn', 'error']);
+  const big = S.buildMobRoutes(['怪物名稱,指令,備註,更新者,更新時間', ...Array.from({ length: S.MAX_ROWS + 2 }, (_, i) => `m${i}(m),run e,,,`)].join('\n'), []);
+  assert.equal(S.reportEntries(big.report, 5).at(-1).level, 'warn', 'the row-limit note stays last and visible');
+  assert.deepEqual(S.reportEntries(null), []);
+  assert.deepEqual(S.reportLines(mixed.report), S.reportEntries(mixed.report).map(entry => entry.text), 'reportLines is the plain text of the entries');
+});

@@ -626,6 +626,7 @@ function initPanel() {
       .line .t { font-weight: 600; min-width: 40px; padding-top: 3px; }
       .line .s { flex: 1; min-width: 0; color: #bbb; font-size: 15px; overflow-wrap: anywhere; white-space: pre-line; padding-top: 4px; }
       .line .s.alert { color: #ff8a7a; }
+      .line .s.warn { color: #ffb347; }
       .mini { display: flex; gap: 6px; flex: none; }
       .mini button { all: unset; text-align: center; padding: 3px 12px; border-radius: 6px;
         background: #3a3a3e; cursor: pointer; font-size: 14px; font-weight: 600; }

@@ -239,19 +239,21 @@ function buildRiddleSteps(csvText, riddles, pages) {
   return { ok: true, steps, report };
 }
 
-// 設定頁用：報告變成一行一行的文字（被丟掉的、對不到的、超過上限沒讀的），最多 max 行，其餘寫「還有 N 筆」
-function reportLines(report, max = 30) {
+// 設定頁用：報告變成一行一行的訊息（被丟掉的、對不到的、超過上限沒讀的），最多 max 行，其餘寫「還有 N 筆」。
+// 每一行帶等級讓畫面上色：被丟掉的是 error、對不到與超過上限是 warn、「還有 N 筆」是 info
+function reportEntries(report, max = 30) {
   if (!report) return [];
   const label = item => `${item.name}${item.location ? `（${item.location}）` : ''}${item.step === undefined ? '' : ` 第 ${item.step} 步`}`;
   const lines = [
-    ...(report.dropped ?? []).map(item => ({ row: item.row, text: `第 ${item.row} 列：丟掉（${item.reason}）` })),
-    ...(report.unmatched ?? []).map(item => ({ row: item.row, text: `第 ${item.row} 列：${label(item)}　${item.reason}` })),
-  ].sort((a, b) => a.row - b.row).map(line => line.text);
-  const shown = lines.length > max ? [...lines.slice(0, max), `…還有 ${lines.length - max} 筆沒有顯示`] : lines;
+    ...(report.dropped ?? []).map(item => ({ row: item.row, level: 'error', text: `第 ${item.row} 列：丟掉（${item.reason}）` })),
+    ...(report.unmatched ?? []).map(item => ({ row: item.row, level: 'warn', text: `第 ${item.row} 列：${label(item)}　${item.reason}` })),
+  ].sort((a, b) => a.row - b.row).map(({ level, text }) => ({ level, text }));
+  const shown = lines.length > max ? [...lines.slice(0, max), { level: 'info', text: `…還有 ${lines.length - max} 筆沒有顯示` }] : lines;
   // 超過上限沒讀的提示一定要看得到，不能被長清單截掉
-  if (report.overflow > 0) shown.push(`第 ${report.overflowFrom} 列以後共 ${report.overflow} 列超過上限（${MAX_ROWS} 列）沒有讀`);
+  if (report.overflow > 0) shown.push({ level: 'warn', text: `第 ${report.overflowFrom} 列以後共 ${report.overflow} 列超過上限（${MAX_ROWS} 列）沒有讀` });
   return shown;
 }
+const reportLines = (report, max) => reportEntries(report, max).map(entry => entry.text);
 
 // 設定頁每個分頁的標題與單位：生效的是「隻」怪物或「步」，對不到的是怪物或謎／步驟
 const SHEET_LABELS = {
@@ -268,30 +270,36 @@ const lacksGid = url => {
     return false;
   }
 };
-// features 是 { mobs, riddles }（兩個功能開關）：都關著 background 不抓；只開一個時兩份表都會抓，但沒勾那個功能對應的表面板用不到，要說明
+// features 是 { mobs, riddles }（兩個功能開關）：都關著 background 不抓；只開一個時兩份表都會抓，但沒勾那個功能對應的表面板用不到，要說明。
+// 回傳一行一行的 { level, text }：error（更新失敗）、warn（有被丟掉或對不到的列、超過上限、沒勾、沒有 gid、不會抓取）、info（其他）
 const OWN_FEATURE = { mob: { key: 'mobs', name: '怪物查詢', what: '路線' }, riddle: { key: 'riddles', name: '解謎清單', what: '指令' } };
-function describeSheet(kind, url, entry, timeText, features = { mobs: true, riddles: true }) {
-  if (!url) return `${SHEET_LABELS[kind].title}：尚未設定`;
+function describeSheetParts(kind, url, entry, timeText, features = { mobs: true, riddles: true }) {
+  if (!url) return [{ level: 'info', text: `${SHEET_LABELS[kind].title}：尚未設定` }];
   const enabled = Boolean(features.mobs || features.riddles);
   const notes = [];
   const own = OWN_FEATURE[kind];
   if (enabled && !features[own.key]) notes.push(`注意：「${own.name}」沒勾，面板不會用到這份${own.what}（另一個功能開著，所以還是會抓）`);
   // 沒有 gid 的連結讀到的是試算表的第一個分頁，貼到第二個分頁的欄位會讀錯；連結本身仍然收（單一分頁的表沒有問題）
   if (enabled && lacksGid(url)) notes.push('注意：這條連結沒有 gid，讀到的是試算表的第一個分頁（發布時要選那個分頁，連結才會有 gid）');
-  return [describeFetched(kind, url, entry, timeText, enabled), ...notes].join('\n');
+  return [...describeFetched(kind, entry, timeText, enabled), ...notes.map(text => ({ level: 'warn', text }))];
 }
-function describeFetched(kind, url, entry, timeText, enabled) {
+function describeFetched(kind, entry, timeText, enabled) {
   const { title, used, unmatched } = SHEET_LABELS[kind];
   // 怪物查詢與解謎都關著時 background 不抓，上次的結果已經沒有意義，不能繼續顯示得像現在還在用
-  if (!enabled) return `${title}：怪物查詢與解謎都關著，不會抓取`;
-  if (!entry) return `${title}：尚未抓取（怪物查詢或解謎要開著；開著的話查一次，或按「立即更新」）`;
+  if (!enabled) return [{ level: 'warn', text: `${title}：怪物查詢與解謎都關著，不會抓取` }];
+  if (!entry) return [{ level: 'info', text: `${title}：尚未抓取（怪物查詢或解謎要開著；開著的話查一次，或按「立即更新」）` }];
   const report = entry.report;
   const rows = report?.overflow > 0 ? `共 ${report.rows} 列（其中 ${report.overflow} 列超過上限沒有讀）` : `共 ${report?.rows} 列`;
-  const ok = entry.at && report
+  const usable = Boolean(entry.at && report);
+  const ok = usable
     ? `上次更新 ${timeText(entry.at)}：${rows}，生效 ${report.used} ${used}，丟掉 ${report.dropped.length} 列，對不到${unmatched} ${report.unmatched.length} 筆`
     : '沒有可用的資料';
-  return entry.error ? `${title}：更新失敗（${timeText(entry.error.at)}）：${entry.error.reason}\n目前使用：${ok}` : `${title}：${ok}`;
+  // 有被丟掉或對不到的列、超過上限、或根本沒有可用的資料，都是需要使用者留意的
+  const level = !usable || report.dropped.length || report.unmatched.length || report.overflow > 0 ? 'warn' : 'info';
+  if (entry.error) return [{ level: 'error', text: `${title}：更新失敗（${timeText(entry.error.at)}）：${entry.error.reason}` }, { level: 'info', text: `目前使用：${ok}` }];
+  return [{ level, text: `${title}：${ok}` }];
 }
+const describeSheet = (...args) => describeSheetParts(...args).map(part => part.text).join('\n');
 
 // 貼的連結格式不對時：沒有存進去，原本存的連結（如果有）照常使用，要說清楚
 function describeRejectedUrl(kind, error, hasStored) {
@@ -318,5 +326,5 @@ function overlayReply(reply, shared) {
   return { ...reply, items: reply.items.map(item => (item.candidates ? { ...item, candidates: item.candidates.map(apply) } : apply(item))) };
 }
 
-globalThis.CatworldSharedData = { DEFAULT_SOURCES, MAX_SEGMENT, MAX_ROWS, ALLOWED_VERBS, SHEET_LABELS, describeSheet, describeRejectedUrl, reportLines, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, overlayReply };
+globalThis.CatworldSharedData = { DEFAULT_SOURCES, MAX_SEGMENT, MAX_ROWS, ALLOWED_VERBS, SHEET_LABELS, describeSheet, describeSheetParts, describeRejectedUrl, reportEntries, reportLines, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, overlayReply };
 })();

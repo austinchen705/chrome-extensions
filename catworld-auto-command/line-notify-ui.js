@@ -57,14 +57,25 @@ function attach(doc) {
     lockable.forEach(field => { field.disabled = false; });
   }).catch(() => {
     // 讀不到已存的設定時欄位維持停用：這時打字會把「空的」存回去，蓋掉已存的憑證與開關
-    resultBox.textContent = '讀取設定失敗，請重新整理設定頁再試';
+    say('讀取設定失敗，請重新整理設定頁再試', 'error');
   });
 
+  // 驗證、錯誤、警告用 msg-error（紅）與 msg-warn（琥珀）標出來，一般訊息不上色（樣式在 popup.html）；換新訊息時舊的上色要一起清掉
+  const say = (text, level = 'info') => {
+    resultBox.textContent = text;
+    resultBox.classList.toggle('msg-error', level === 'error');
+    resultBox.classList.toggle('msg-warn', level === 'warn');
+  };
   // 最近一次結果由 background 寫在 storage.session（關掉瀏覽器就沒了）；打開頁面時讀一次，之後跟著變更
-  const show = result => { if (result) resultBox.textContent = formatResult(result); };
+  const show = result => { if (result) say(formatResult(result), result.ok ? 'info' : 'error'); };
   chrome.storage.session.get(RESULT_KEY).then(data => show(data[RESULT_KEY]));
   // 被去重或每小時上限略過的警報則數（由 background 累計在 storage.session）
-  const showSkipped = state => { skippedBox.textContent = `已略過 ${state?.skipped ?? 0} 則（同原因重複或超過每小時上限，只是沒推到手機）`; };
+  const showSkipped = state => {
+    const skipped = state?.skipped ?? 0;
+    skippedBox.textContent = `已略過 ${skipped} 則（同原因重複或超過每小時上限，只是沒推到手機）`;
+    // 有被略過的警報是需要留意的（手機沒收到），沒有就不上色
+    skippedBox.classList.toggle('msg-warn', skipped > 0);
+  };
   chrome.storage.session.get(THROTTLE_KEY).then(data => showSkipped(data[THROTTLE_KEY])).catch(() => showSkipped(null));
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'session') return;
@@ -78,7 +89,7 @@ function attach(doc) {
     const { token: t, userId: u } = credentials();
     if (loaded && enabledBox.checked && (!t || !u)) {
       enabledBox.checked = false;
-      resultBox.textContent = '憑證已清空，手機通知已自動關閉';
+      say('憑證已清空，手機通知已自動關閉', 'warn');
     }
     save();
   };
@@ -95,7 +106,7 @@ function attach(doc) {
     const { token: t, userId: u } = credentials();
     if (enabledBox.checked && (!t || !u)) {
       enabledBox.checked = false;
-      resultBox.textContent = '請先填 token 與 userId，才能開啟手機通知';
+      say('請先填 token 與 userId，才能開啟手機通知', 'error');
       return;
     }
     save();
@@ -104,19 +115,20 @@ function attach(doc) {
   testButton.addEventListener('click', async () => {
     const { token: t, userId: u } = credentials();
     if (!t || !u) {
-      resultBox.textContent = '請先填 token 與 userId';
+      say('請先填 token 與 userId', 'error');
       return;
     }
     // 發送中先停用按鈕：連點會連續花掉 LINE 的推播額度
     testButton.disabled = true;
-    resultBox.textContent = '發送中…';
+    say('發送中…');
     try {
       await save();
       const result = await chrome.runtime.sendMessage({ type: 'LINE_TEST' });
-      resultBox.textContent = result ? formatResult(result) : '沒有回應';
+      if (result) say(formatResult(result), result.ok ? 'info' : 'error');
+      else say('沒有回應', 'error');
     } catch (error) {
       // background 沒啟動或沒回應（例如擴充功能剛重新載入）；訊息裡只有錯誤文字，不含憑證
-      resultBox.textContent = `沒有回應：${error?.message ?? error}`;
+      say(`沒有回應：${error?.message ?? error}`, 'error');
     } finally {
       testButton.disabled = false;
     }

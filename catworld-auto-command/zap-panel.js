@@ -42,6 +42,8 @@ const STYLE = `
   .zap-walk, .zap-edit, .zap-io button { font-size: 12px; cursor: pointer; }
   .zap-routeedit textarea, .zap-io textarea { all: unset; box-sizing: border-box; display: block; width: 100%; min-height: 54px; margin: 4px 0; padding: 4px 6px; border-radius: 6px; background: #3a3a3e; color: #eee; font: 13px ui-monospace, Consolas, monospace; white-space: pre-wrap; user-select: text; }
   .zap-io { padding-bottom: 6px; font-size: 13px; color: #bbb; }
+  .zap-bad { color: #ff8a7a; }
+  .zap-caution { color: #ffb347; }
   .zap-close { all: unset; position: absolute; top: 4px; right: 8px; cursor: pointer; color: #888; font-size: 13px; line-height: 1; padding: 2px 4px; }
   .zap-close:hover { color: #fff; }
 `;
@@ -94,7 +96,7 @@ function routeBlock(base, onWalk, editor) {
     if (current.route) block.append(routeNode(current.route, onWalk, edit));
     else if (base.sharedDisabled) {
       const { by, note } = base.sharedDisabled;
-      block.append(el('div', { className: 'zap-route' }, el('span', { className: 'meta', textContent: `共用（${by || '未署名'}）已停用路線${note ? `：${note}` : ''}` }), edit ? [' ', edit] : []));
+      block.append(el('div', { className: 'zap-route' }, el('span', { className: 'meta zap-caution', textContent: `共用（${by || '未署名'}）已停用路線${note ? `：${note}` : ''}` }), edit ? [' ', edit] : []));
     } else if (edit) block.append(el('div', { className: 'zap-route' }, el('span', { className: 'meta', textContent: '沒有路線' }), ' ', edit));
     edit?.addEventListener('click', event => {
       // 不讓 click 傳到遊戲的 window.onclick：它會把游標搶回遊戲輸入框，輸入框就打不了字
@@ -121,11 +123,12 @@ function routeNode({ route, exact, custom, shared }, onWalk, extra) {
     button.disabled = true;
     const sent = onWalk(Z.routeCommand(route));
     button.textContent = sent === false ? '送不出去' : '已送出';
-    setTimeout(() => { button.disabled = false; button.textContent = '走過去'; }, 1500);
+    button.classList.toggle('zap-bad', sent === false);
+    setTimeout(() => { button.disabled = false; button.textContent = '走過去'; button.classList.remove('zap-bad'); }, 1500);
   });
   const prefix = custom ? '已自訂　' : shared ? `共用（${shared.by || '未署名'}）${shared.note ? `：${shared.note}` : ''}　` : exact ? '' : `約略對應「${route.name}」　`;
   return el('div', { className: 'zap-route' },
-    el('span', { className: 'meta', textContent: `${prefix}路線 ${route.command ?? route.path}（從醉仙樓出發，先 recall）` }),
+    el('span', { className: `meta${!custom && !shared && !exact ? ' zap-caution' : ''}`, textContent: `${prefix}路線 ${route.command ?? route.path}（從醉仙樓出發，先 recall）` }),
     ' ', button, extra ? [' ', extra] : []);
 }
 
@@ -155,6 +158,12 @@ function attach(root, { readExp, startSteps }) {
   root.querySelector('.panel').append(hint);
 
   const status = row.querySelector('.zap-status');
+  // 驗證、錯誤、警告的訊息標出來：error 紅、warn 琥珀，一般訊息不上色；換新訊息時舊的上色一起清掉
+  const say = (text, level = 'info') => {
+    status.textContent = text;
+    status.classList.toggle('alert', level === 'error');
+    status.classList.toggle('warn', level === 'warn');
+  };
   const send = async message => {
     try {
       return await chrome.runtime.sendMessage(message);
@@ -174,7 +183,7 @@ function attach(root, { readExp, startSteps }) {
       try {
         await chrome.storage.local.set({ [ROUTES_KEY]: customRoutes });
       } catch (error) {
-        status.textContent = `儲存路線失敗：${error.message}`;
+        say(`儲存路線失敗：${error.message}`, 'error');
       }
     },
   };
@@ -208,17 +217,17 @@ function attach(root, { readExp, startSteps }) {
     const mine = ++queryId;
     if (!(exp > 0)) {
       list.replaceChildren();
-      status.textContent = '讀不到經驗';
+      say('讀不到經驗', 'warn');
       return;
     }
-    status.textContent = `經驗 ${exp}`;
+    say(`經驗 ${exp}`);
     const reply = await send({
       type: 'ZAP_SUITABLE', exp, thresholds, grades: yellow.checked ? ['green', 'yellow'] : ['green'], query: search.value,
     });
     if (mine !== queryId) return;
     list.replaceChildren();
     if (!reply?.ok) {
-      status.textContent = reply?.error || '查詢失敗';
+      say(reply?.error || '查詢失敗', 'error');
       return;
     }
     reply.items.forEach(item => list.append(candidateNode(item, true, startSteps, editor)));
@@ -232,11 +241,11 @@ function attach(root, { readExp, startSteps }) {
     const text = JSON.stringify(customRoutes, null, 1);
     try {
       await navigator.clipboard.writeText(text);
-      status.textContent = `已複製 ${Object.keys(customRoutes).length} 筆路線`;
+      say(`已複製 ${Object.keys(customRoutes).length} 筆路線`);
     } catch {
       io.hidden = false;
       ioText.value = text;
-      status.textContent = '無法寫入剪貼簿，請從下面的文字框複製';
+      say('無法寫入剪貼簿，請從下面的文字框複製', 'warn');
     }
   });
   importRoutes.addEventListener('click', event => { event.stopPropagation(); io.hidden = !io.hidden; });
@@ -244,18 +253,18 @@ function attach(root, { readExp, startSteps }) {
     event.stopPropagation();
     const parsed = Z.parseCustomRoutes(ioText.value);
     if (!parsed.ok) {
-      status.textContent = `匯入失敗：${parsed.error}`;
+      say(`匯入失敗：${parsed.error}`, 'error');
       return;
     }
     customRoutes = parsed.routes;
     try {
       await chrome.storage.local.set({ [ROUTES_KEY]: customRoutes });
-      status.textContent = `已匯入 ${Object.keys(customRoutes).length} 筆路線`;
+      say(`已匯入 ${Object.keys(customRoutes).length} 筆路線`);
       io.hidden = true;
       ioText.value = '';
       refresh();
     } catch (error) {
-      status.textContent = `匯入失敗：${error.message}`;
+      say(`匯入失敗：${error.message}`, 'error');
     }
   });
 
@@ -264,7 +273,7 @@ function attach(root, { readExp, startSteps }) {
   yellow.addEventListener('change', runQuery);
   row.querySelector('.zap-open').addEventListener('click', () => {
     box.hidden = !box.hidden;
-    if (box.hidden) status.textContent = '';
+    if (box.hidden) say('');
     else runQuery();
   });
 
@@ -332,14 +341,14 @@ function attach(root, { readExp, startSteps }) {
   function addItemNote(text, pending = true) {
     const section = sections.items;
     if (!section.firstChild) section.append(el('div', { className: 'title', textContent: '鑑定結果' }));
-    const note = el('div', { className: `zap-more${pending ? ' zap-pending' : ''}`, textContent: text });
+    const note = el('div', { className: `zap-more${pending ? ' zap-pending' : ' zap-bad'}`, textContent: text });
     section.append(note);
     touchHint('items');
     return note;
   }
   function showFailure(section, title, reason) {
     section.replaceChildren(el('div', { className: 'title', textContent: title }),
-      el('div', { className: 'zap-more', textContent: `查詢失敗：${reason || '沒有回應'}${FAIL_HINT}` }));
+      el('div', { className: 'zap-more zap-bad', textContent: `查詢失敗：${reason || '沒有回應'}${FAIL_HINT}` }));
     touchHint('mobs');
   }
 
@@ -410,7 +419,7 @@ function attach(root, { readExp, startSteps }) {
     row.hidden = !enabled.mobs;
     if (!enabled.mobs) {
       box.hidden = true;
-      status.textContent = '';
+      say('');
       clearSection('mobs');
     }
     if (!enabled.items) { clearSection('items'); clearSection('equipment'); }

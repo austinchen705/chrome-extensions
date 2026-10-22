@@ -55,16 +55,17 @@ function attach(root, { overlay, readExp, startSteps }) {
 
   // ---- 儲存 ----
   const validWeapon = value => (WEAPON_TYPES.includes(value) ? value : '');
-  const note = text => {
+  // 這裡的訊息都是壞消息：error（儲存、送出、讀取失敗、指令格式不對）紅，warn（沒讀到、只讀到一部分）琥珀
+  const note = (text, level = 'warn') => {
     if (!section.firstChild) section.append(el('div', { className: 'title', textContent: '鑑定裝備' }));
-    section.append(el('div', { className: 'zap-more', textContent: text }));
+    section.append(el('div', { className: `zap-more ${level === 'error' ? 'zap-bad' : 'zap-caution'}`, textContent: text }));
     touchHint();
   };
   const persist = async () => {
     try {
       await chrome.storage.local.set({ [WORN_KEY]: stores });
     } catch (error) {
-      note(`儲存基準失敗：${error.message}`);
+      note(`儲存基準失敗：${error.message}`, 'error');
     }
   };
   // startSteps 丟例外或回 false 都當作沒送出，不能讓狀態卡在等待
@@ -72,7 +73,7 @@ function attach(root, { overlay, readExp, startSteps }) {
     try {
       return startSteps(text) !== false;
     } catch (error) {
-      note(`送出失敗：${error.message}`);
+      note(`送出失敗：${error.message}`, 'error');
       return false;
     }
   };
@@ -80,7 +81,7 @@ function attach(root, { overlay, readExp, startSteps }) {
     stores = normalizeStores(data[WORN_KEY]);
     mainWeapon = validWeapon(data[WEAPON_KEY]);
     updateStatus();
-  }).catch(error => note(`讀取已存的基準失敗：${error.message}`));
+  }).catch(error => note(`讀取已存的基準失敗：${error.message}`, 'error'));
   chrome.storage.onChanged?.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes[WORN_KEY]) stores = normalizeStores(changes[WORN_KEY].newValue);
@@ -144,7 +145,7 @@ function attach(root, { overlay, readExp, startSteps }) {
     phase = 'reading';
     if (!send(list.map(item => `view #${item.id}`).join(';'))) {
       phase = 'idle';
-      note('沒有送出：指令格式不對，請看面板「巨集」列的提示');
+      note('沒有送出：指令格式不對，請看面板「巨集」列的提示', 'error');
     } else {
       armReadTimer();
     }
@@ -156,7 +157,7 @@ function attach(root, { overlay, readExp, startSteps }) {
     phase = 'waitingInventory';
     if (!send('i')) {
       phase = 'idle';
-      note('沒有送出：指令格式不對，請看面板「巨集」列的提示');
+      note('沒有送出：指令格式不對，請看面板「巨集」列的提示', 'error');
     } else {
       timers.wait = setTimeout(() => {
         if (phase !== 'waitingInventory') return;
