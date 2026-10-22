@@ -204,7 +204,8 @@ function refreshSharedOnce(force) {
 // 儲存或網路出任何問題都不能弄壞內建資料的查詢：回空的共用層
 const sharedLayer = kind => refreshSharedOnce(false).then(cache => cache[kind]?.[SHARED_SHEETS[kind].layers[0]] ?? {}, () => ({}));
 // 怪物查詢要的共用資料：路線與共用表新增的怪（舊快取沒有 mobs 欄位時當作沒有）
-const sharedMobData = () => refreshSharedOnce(false).then(cache => ({ routes: cache.mob?.routes ?? {}, mobs: cache.mob?.mobs ?? {} }), () => ({ routes: {}, mobs: {} }));
+const NO_SHARED_MOBS = Object.freeze({ routes: {}, mobs: {} });
+const sharedMobData = () => refreshSharedOnce(false).then(cache => ({ routes: cache.mob?.routes ?? {}, mobs: cache.mob?.mobs ?? {} }), () => NO_SHARED_MOBS);
 
 // 安裝或更新時，共用表連結「從來沒有設定過」（儲存裡沒有這個欄位）才帶入預設的；清空過（存了空字串）或自己填過的一律不動
 chrome.runtime.onInstalled?.addListener(async () => {
@@ -224,7 +225,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   const withShared = message.type === 'ZAP_LOOKUP' || message.type === 'ZAP_SUITABLE';
-  Promise.all([loadZapData(), withShared ? sharedMobData() : { routes: {}, mobs: {} }])
+  Promise.all([loadZapData(), withShared ? sharedMobData() : NO_SHARED_MOBS])
     .then(([data, shared]) => sendResponse(
       // 先把共用表新增的怪併進怪物表再算（清單、分級、出現提示都用併好的），最後疊上共用路線
       CatworldSharedData.overlayReply(CatworldZapMobs.handleMessage(CatworldSharedData.applySharedMobs(data.mobs ?? [], shared.mobs), message, data.routes ?? [], data.routeAliases ?? {}), shared.routes)

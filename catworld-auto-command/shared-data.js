@@ -110,6 +110,23 @@ const mobPlaces = mob => {
   return [...new Set([key(mob.location ?? ''), ...String(mob.location ?? '').split(/[、,，/]/).map(key)])].filter(Boolean);
 };
 
+// 共用表與內建怪物對照用的鍵：名稱，或「名稱|位置」（位置有填才帶）
+const mobKey = (name, location) => {
+  const key = globalThis.CatworldZapMobs.customKey;
+  return location ? `${key(name)}|${key(location)}` : key(name);
+};
+
+// 內建怪物資料裡所有認得的鍵：每隻怪的名稱，加上名稱配它的整串位置與每個地點
+const knownMobKeys = mobs => {
+  const key = globalThis.CatworldZapMobs.customKey;
+  const known = new Set();
+  (mobs ?? []).forEach(mob => {
+    known.add(key(mob.name));
+    mobPlaces(mob).forEach(place => known.add(`${key(mob.name)}|${place}`));
+  });
+  return known;
+};
+
 // 更新時間：2026-10-21 14:30（秒可有可無、斜線也行、只有日期也行）。解析不了回 NaN
 function parseTime(text) {
   const match = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(String(text ?? '').trim());
@@ -200,11 +217,7 @@ function buildMobRoutes(csvText, mobs) {
   if (sheet.error) return { ok: false, error: sheet.error };
   // 一列要嘛有指令、要嘛是有強度的新怪：標題列兩個欄位都沒有的表，沒有任何一列能用
   if (!sheet.has('指令') && !sheet.has('強度')) return { ok: false, error: '缺少欄位「指令」，第一列要是標題列' };
-  const known = new Set();
-  (mobs ?? []).forEach(mob => {
-    known.add(customKey(mob.name));
-    mobPlaces(mob).forEach(place => known.add(`${customKey(mob.name)}|${place}`));
-  });
+  const known = knownMobKeys(mobs);
   const best = new Map();
   const bestMob = new Map();
   const report = newReport(sheet);
@@ -212,7 +225,7 @@ function buildMobRoutes(csvText, mobs) {
     const name = cell('怪物名稱');
     if (!name) return report.dropped.push({ row, reason: '怪物名稱是空的' });
     const location = cell('位置');
-    const key = location ? `${customKey(name)}|${customKey(location)}` : customKey(name);
+    const key = mobKey(name, location);
     // 先把整列驗證完才寫進結果：被丟掉的列不能留下一半
     const creates = cell('強度') !== '' && !known.has(key);
     let exp = null;
@@ -257,14 +270,9 @@ function applySharedMobs(mobs, shared) {
   const list = mobs ?? [];
   const entries = Object.values(shared ?? {});
   if (!entries.length) return list;
-  const customKey = globalThis.CatworldZapMobs.customKey;
-  const known = new Set();
-  list.forEach(mob => {
-    known.add(customKey(mob.name));
-    mobPlaces(mob).forEach(place => known.add(`${customKey(mob.name)}|${place}`));
-  });
+  const known = knownMobKeys(list);
   const added = entries
-    .filter(mob => !known.has(mob.location ? `${customKey(mob.name)}|${customKey(mob.location)}` : customKey(mob.name)))
+    .filter(mob => !known.has(mobKey(mob.name, mob.location)))
     .map(mob => ({ name: mob.name, id: mob.id, exp: mob.exp, location: mob.location, note: mob.note, source: 'shared', by: mob.by }));
   return added.length ? [...list, ...added] : list;
 }
