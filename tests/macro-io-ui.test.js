@@ -146,29 +146,111 @@ ui('typing in the manual copy box never reaches the game', async () => {
     page.$('.mexport').click();
     assert.ok(await waitFor(() => page.$('.macro-io-text').hidden === false));
     let leaked = 0;
-    ['keydown', 'keyup', 'keypress', 'mousedown'].forEach(type => page.w.document.addEventListener(type, () => { leaked++; }));
+    ['keydown', 'keyup', 'keypress', 'mousedown', 'click'].forEach(type => page.w.document.addEventListener(type, () => { leaked++; }));
     const box = page.$('.macro-io-text');
     box.dispatchEvent(new page.w.KeyboardEvent('keydown', { key: 'a', bubbles: true, composed: true }));
     box.dispatchEvent(new page.w.MouseEvent('mousedown', { bubbles: true, composed: true }));
+    box.dispatchEvent(new page.w.MouseEvent('click', { bubbles: true, composed: true }));
     assert.equal(leaked, 0);
   } finally {
     page.close();
   }
 });
 
+// 另一個 document 裡的面板片段（置頂浮窗就是這樣）：回傳該 document 的剪貼簿記錄與常用節點
+function elsewhere(page, deps, clipboard = 'ok') {
+  const other = new JSDOM('<div id="r"><button class="mexport"></button><div class="macro-io" hidden><div class="macro-io-msg"></div><textarea class="macro-io-text" hidden></textarea></div></div>', { url: 'https://catworld.muds.tw/web' });
+  const there = [];
+  Object.defineProperty(other.window.navigator, 'clipboard', {
+    value: { writeText: async text => { if (clipboard === 'fail') throw new Error('denied'); there.push(text); } },
+    configurable: true,
+  });
+  page.w.CatworldMacroIOUI.attach(other.window.document.getElementById('r'), deps);
+  const $ = selector => other.window.document.querySelector(selector);
+  return { there, $ };
+}
+const depsOf = (extra = {}) => ({ readRaw: () => JSON.stringify(MACROS), readNotes: async () => ({}), ...extra });
+
 ui('the copy goes through the clipboard of the document the button lives in (the panel can be in a floating window)', async () => {
   const page = await boot();
   try {
-    const other = new JSDOM('<div id="r"><button class="mexport"></button><div class="macro-io" hidden><div class="macro-io-msg"></div><textarea class="macro-io-text" hidden></textarea></div></div>', { url: 'https://catworld.muds.tw/web' });
-    const there = [];
-    Object.defineProperty(other.window.navigator, 'clipboard', { value: { writeText: async text => { there.push(text); } }, configurable: true });
-    page.w.CatworldMacroIOUI.attach(other.window.document.getElementById('r'), {
-      readRaw: () => JSON.stringify(MACROS),
-      readNotes: async () => ({}),
-    });
-    other.window.document.querySelector('.mexport').click();
+    const { there, $ } = elsewhere(page, depsOf());
+    $('.mexport').click();
     assert.ok(await waitFor(() => there.length === 1));
     assert.equal(page.copied.length, 0, 'not the main window clipboard');
+  } finally {
+    page.close();
+  }
+});
+
+ui('the panel is laid out again whenever the message or the manual copy box appears or goes away', async () => {
+  const page = await boot();
+  try {
+    let calls = 0;
+    let hide = null;
+    page.w.setTimeout = fn => { hide = fn; return 1; };
+    const { there, $ } = elsewhere(page, depsOf({ relayout: () => { calls++; } }));
+    $('.mexport').click();
+    assert.ok(await waitFor(() => there.length === 1));
+    assert.ok(calls >= 1, 'laid out when the message showed up');
+    assert.equal($('.macro-io').hidden, false);
+    const before = calls;
+    hide();
+    assert.equal($('.macro-io').hidden, true, 'the message goes away by itself');
+    assert.ok(calls > before, 'laid out again when it went away');
+  } finally {
+    page.close();
+  }
+});
+
+ui('the manual copy box has no timer: it stays until the next export', async () => {
+  const page = await boot();
+  try {
+    const timers = [];
+    page.w.setTimeout = fn => { timers.push(fn); return timers.length; };
+    const { $ } = elsewhere(page, depsOf(), 'fail');
+    $('.mexport').click();
+    assert.ok(await waitFor(() => $('.macro-io-text').hidden === false));
+    assert.equal(timers.length, 0, 'no timer hides the box people still have to copy from');
+  } finally {
+    page.close();
+  }
+});
+
+ui('notes that cannot be read only leave the notes out of the export, the macros still come out', async () => {
+  const page = await boot();
+  try {
+    const { there, $ } = elsewhere(page, depsOf({ readNotes: async () => { throw new Error('storage gone'); } }));
+    $('.mexport').click();
+    assert.ok(await waitFor(() => there.length === 1));
+    const parsed = JSON.parse(there[0]);
+    assert.deepEqual([parsed.macros, parsed.notes], [MACROS, {}]);
+  } finally {
+    page.close();
+  }
+});
+
+ui('when the game storage cannot be read at all the export is still made, as empty slots with a warning', async () => {
+  const page = await boot();
+  try {
+    const { there, $ } = elsewhere(page, depsOf({ readRaw: () => { throw new Error('SecurityError'); } }));
+    $('.mexport').click();
+    assert.ok(await waitFor(() => there.length === 1));
+    assert.deepEqual(JSON.parse(there[0]).macros, game());
+    assert.match($('.macro-io-msg').textContent, /讀不懂/);
+    assert.ok($('.macro-io-msg').classList.contains('warn'));
+  } finally {
+    page.close();
+  }
+});
+
+ui('an empty string in the game storage is treated like nothing stored, without a damaged warning', async () => {
+  const page = await boot({ macros: '' });
+  try {
+    page.$('.mexport').click();
+    assert.ok(await waitFor(() => page.copied.length === 1));
+    assert.match(page.$('.macro-io-msg').textContent, /還沒有存過巨集/);
+    assert.equal(page.$('.macro-io-msg').classList.contains('warn'), false);
   } finally {
     page.close();
   }

@@ -1,4 +1,4 @@
-// 面板「巨集」列的匯出（之後的匯入與還原也放這裡）：按「匯出」把遊戲的巨集加備註複製成一段 JSON 文字。
+// 面板「巨集」列的匯出：按「匯出」把遊戲的巨集加備註複製成一段 JSON 文字。
 // 遊戲存巨集的 localStorage 與備註的 storage 都由 content.js 注入（deps.readRaw、deps.readNotes），這裡只管畫面與流程。
 // 面板可能被搬進置頂浮窗（另一個 document）：剪貼簿一律用按鈕所在 document 的視窗，不假設事件會傳到主頁面。
 (() => {
@@ -63,7 +63,6 @@ function attach(root, deps) {
     }
   });
 
-  return { show };
 }
 
 globalThis.CatworldMacroIOUI = { attach };

@@ -22,8 +22,8 @@ test('a stored list of 90 slots is read as it is', () => {
   assert.deepEqual(M.readMacros(SAMPLE).macros, SAMPLE, 'an array works too');
 });
 
-test('nothing stored yet is 90 empty slots, reported as missing rather than damaged', () => {
-  [null, undefined].forEach(raw => {
+test('nothing stored yet (or an empty string, which the game also reads as nothing) is 90 empty slots, reported as missing rather than damaged', () => {
+  [null, undefined, ''].forEach(raw => {
     const result = M.readMacros(raw);
     assert.equal(result.status, 'missing');
     assert.deepEqual(result.macros, game());
@@ -31,7 +31,7 @@ test('nothing stored yet is 90 empty slots, reported as missing rather than dama
 });
 
 test('unreadable data is 90 empty slots and reported as damaged', () => {
-  ['not json', '{"a":1}', '42', '"x"', ''].forEach(raw => {
+  ['not json', '{"a":1}', '42', '"x"'].forEach(raw => {
     const result = M.readMacros(raw);
     assert.equal(result.status, 'damaged', JSON.stringify(raw));
     assert.deepEqual(result.macros, game());

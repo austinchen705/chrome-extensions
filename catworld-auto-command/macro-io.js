@@ -11,10 +11,10 @@ const emptyMacros = () => Array.from({ length: COUNT }, () => 0);
 const isSlot = cell => Array.isArray(cell) && cell.length === 2 && typeof cell[0] === 'string' && typeof cell[1] === 'string';
 
 // 讀遊戲存的巨集（localStorage 的原始文字，或已經解析好的陣列），一律回 90 格。
-// status：ok（讀得懂）、missing（遊戲還沒存過）、damaged（資料壞了：不是 JSON、不是陣列、超過 90 格、某一格形狀不對；
+// status：ok（讀得懂）、missing（遊戲還沒存過；空字串遊戲也當作沒有）、damaged（資料壞了：不是 JSON、不是陣列、超過 90 格、某一格形狀不對；
 // 壞的那格當成空、其餘照留，不會因為資料壞掉就丟例外）
 function readMacros(raw) {
-  if (raw === null || raw === undefined) return { macros: emptyMacros(), status: 'missing' };
+  if (raw === null || raw === undefined || raw === '') return { macros: emptyMacros(), status: 'missing' };
   let data = raw;
   if (typeof data === 'string') {
     try {
@@ -50,5 +50,5 @@ function exportText(macros, notes) {
   return JSON.stringify({ version: VERSION, macros: readMacros(macros).macros, notes: normalizeNotes(notes) });
 }
 
-globalThis.CatworldMacroIO = { COUNT, VERSION, readMacros, normalizeNotes, exportText };
+globalThis.CatworldMacroIO = { COUNT, VERSION, readMacros, exportText };
 })();
