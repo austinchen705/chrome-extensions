@@ -29,7 +29,7 @@ const NGROK = 'https://1234-203-0-113-9.ngrok-free.app/*';
 const OTHER = 'https://other.example.com/*';
 
 // allow：授權詢問的結果（true 允許、false 拒絕）；granted：一開始已經授權的網站；tab：?tab= 指到的那個分頁
-async function boot({ stored, granted = [], allow = true, tab = null, gone = false } = {}) {
+async function boot({ stored, granted = [], allow = true, tab = null, gone = false, requestThrows = false, removeThrows = false } = {}) {
   const store = stored === undefined ? {} : { extraGameUrls: stored };
   const permissions = new Set(granted);
   const calls = { request: [], remove: [], sent: [], queries: [] };
@@ -59,11 +59,13 @@ async function boot({ stored, granted = [], allow = true, tab = null, gone = fal
           contains: async ({ origins }) => origins.every(origin => permissions.has(origin)),
           request: async ({ origins }) => {
             calls.request.push([...origins]); // 頁面裡的陣列和測試不同 realm，換成測試自己的陣列才能比對
+            if (requestThrows) throw new Error('Invalid value for origin pattern');
             if (allow) origins.forEach(origin => permissions.add(origin));
             return allow;
           },
           remove: async ({ origins }) => {
             calls.remove.push([...origins]);
+            if (removeThrows) throw new Error('permission could not be removed');
             origins.forEach(origin => permissions.delete(origin));
             return true;
           },
@@ -245,6 +247,57 @@ ui('when the game tab the settings page was opened for is closed, it looks for a
     assert.ok(await waitFor(() => page.calls.queries.length > 0), 'it searched for a game tab');
     assert.deepEqual(page.calls.queries[0], ['https://catworld.muds.tw/web*', NGROK]);
     assert.ok(await waitFor(() => page.calls.sent.includes('STATUS')), 'and talked to the one it found');
+  } finally {
+    page.close();
+  }
+});
+
+ui('when Chrome throws on the permission question the page says so in red and stores nothing, instead of doing nothing', async () => {
+  const page = await boot({ requestThrows: true });
+  try {
+    await page.add(NGROK_URL);
+    assert.equal(page.message().error, true);
+    assert.match(page.message().text, /Invalid value for origin pattern/);
+    assert.equal(page.store.extraGameUrls, undefined);
+    assert.equal(page.rows().length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('the same for the allow button of a site that lost its permission', async () => {
+  const page = await boot({ stored: [NGROK], granted: [], requestThrows: true });
+  try {
+    assert.ok(await waitFor(() => page.rows().length === 1));
+    page.rows()[0].querySelector('.extra-grant').click();
+    assert.ok(await waitFor(() => page.message().error));
+    assert.match(page.message().text, /Invalid value for origin pattern/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('when the permission cannot be given back the site stays in the list and the page says why', async () => {
+  const page = await boot({ stored: [NGROK], granted: [NGROK], removeThrows: true });
+  try {
+    assert.ok(await waitFor(() => page.rows().length === 1));
+    page.rows()[0].querySelector('.extra-remove').click();
+    assert.ok(await waitFor(() => page.message().error));
+    assert.match(page.message().text, /permission could not be removed/);
+    assert.deepEqual(page.store.extraGameUrls, [NGROK], 'not removed from the list while the permission is still there');
+    assert.equal(page.rows().length, 1);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a host name Chrome would refuse is turned down before Chrome is asked', async () => {
+  const page = await boot();
+  try {
+    await page.add('https://a..b/');
+    assert.equal(page.message().error, true);
+    assert.match(page.message().text, /主機名稱/);
+    assert.equal(page.calls.request.length, 0);
   } finally {
     page.close();
   }

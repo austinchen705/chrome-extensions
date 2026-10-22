@@ -84,3 +84,22 @@ test('the patterns to look for game tabs are the built-in game plus the extra on
   assert.deepEqual(G.tabPatterns(['<all_urls>', NGROK_PATTERN, 7]), ['https://catworld.muds.tw/web*', NGROK_PATTERN]);
   assert.deepEqual(G.tabPatterns(undefined), ['https://catworld.muds.tw/web*']);
 });
+
+test('a host name Chrome would refuse is refused here first, with a reason, so Chrome is never asked about it', () => {
+  ['https://a..b/', 'https://-x/', 'https://x-/', 'https://.a.com/', 'https://a.com./', 'https://catworld.muds.tw./web', 'https://a_.com/', 'https://' + 'a'.repeat(64) + '.com/', 'https://' + 'a.'.repeat(130) + 'com/']
+    .forEach(text => {
+      const result = G.parse(text);
+      assert.equal(result.ok, false, text);
+      assert.match(result.error, /主機名稱/, text);
+    });
+});
+
+test('ordinary host names are accepted: dashes inside a label, digits, punycode, a single label, an address', () => {
+  ['https://my-site.example.com', 'https://1234-203-0-113-9.ngrok-free.app', 'https://xn--fiq228c.com', 'http://localhost', 'http://192.168.1.5', 'https://a.b.c.d.example.co.uk', 'https://my_host.local']
+    .forEach(text => assert.equal(G.parse(text).ok, true, text));
+});
+
+test('a stored pattern is only believed when its host name is well formed too', () => {
+  ['https://a..b/*', 'https://-x/*', 'https://a.com./*', 'https://.a.com/*'].forEach(pattern => assert.equal(G.isExtraPattern(pattern), false, pattern));
+  assert.equal(G.isExtraPattern('https://my-site.example.com/*'), true);
+});

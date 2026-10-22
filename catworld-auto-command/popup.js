@@ -203,6 +203,7 @@ showShared();
 // 清單在 chrome.storage.local.extraGameUrls（match pattern 的陣列）。新增要先問 Chrome 授權那個網站（按了「允許」才存），
 // 移除時連授權一起還給 Chrome；實際註冊或移除 content script 是 background 的事（依清單與授權同步）。
 // 授權詢問要在使用者按下去的當下問，所以先在記憶體裡的清單擋掉重複與超過上限，再問授權。
+// 畫面上目前的清單。新增時授權詢問前只能做同步的檢查（詢問要在按下去的手勢裡），所以用它先擋重複與超過上限
 let extraSites = [];
 const showExtraMessage = (level, text) => showParts($('extraMessage'), [{ level, text }]);
 const siteName = pattern => pattern.replace(/\/\*$/, '');
@@ -226,21 +227,25 @@ async function showExtraSites() {
   $('extraList').replaceChildren(...await Promise.all(extraSites.map(extraRow)));
 }
 
-async function grantExtraSite(pattern) {
+// Chrome 對不收的網址或權限會丟例外：顯示在畫面上，不能讓使用者按了沒反應
+const guarded = action => action().catch(error => showExtraMessage('error', `操作失敗：${error?.message || error}`));
+
+const grantExtraSite = pattern => guarded(async () => {
   const allowed = await chrome.permissions.request({ origins: [pattern] });
   if (allowed) showExtraMessage('info', `已授權 ${siteName(pattern)}，到那個網站的分頁重新整理後面板就會出現`);
   else showExtraMessage('warn', '沒有授權，這個網站還是不會生效');
   await showExtraSites();
-}
+});
 
-async function removeExtraSite(pattern) {
+// 先把存取權還給 Chrome，成功了才從清單拿掉（還不掉就留在清單裡，才看得到、才能再試）
+const removeExtraSite = pattern => guarded(async () => {
   await chrome.permissions.remove({ origins: [pattern] });
   await chrome.storage.local.set({ extraGameUrls: CatworldGameUrls.remove(await readExtraSites(), pattern) });
   showExtraMessage('info', `已移除 ${siteName(pattern)}，並把存取權還給 Chrome。已經開著的分頁重新整理後面板會消失`);
   await showExtraSites();
-}
+});
 
-$('extraAdd').addEventListener('click', async () => {
+$('extraAdd').addEventListener('click', () => guarded(async () => {
   const parsed = CatworldGameUrls.parse($('extraUrl').value);
   if (!parsed.ok) return showExtraMessage('error', parsed.error);
   const next = CatworldGameUrls.add(extraSites, parsed.pattern);
@@ -253,7 +258,7 @@ $('extraAdd').addEventListener('click', async () => {
   $('extraUrl').value = '';
   showExtraMessage('info', `已新增 ${siteName(parsed.pattern)}。到那個網站的分頁重新整理後面板就會出現`);
   await showExtraSites();
-});
+}));
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.extraGameUrls) showExtraSites();
 });

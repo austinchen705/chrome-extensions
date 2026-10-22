@@ -8,12 +8,16 @@ if (globalThis.CatworldGameUrls) return;
 const BUILT_IN_HOST = 'catworld.muds.tw';
 const BUILT_IN_PATTERN = `https://${BUILT_IN_HOST}/web*`;
 const MAX_EXTRA = 5;
-// 這個功能自己產生的樣子才相信：http 或 https、一個沒有萬用字元的主機、整個網站。讀回來的值不合格式就不用，
+// 主機名稱：由「.」分開的幾段，每段 1～63 個字、字母或數字開頭結尾、中間可以有 - 與 _，全長不超過 253；
+// 空的一段（a..b、尾端的點）、開頭或結尾是 - 的、帶萬用字元的都不收
+const LABEL = /^[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$/;
+const hostOk = host => host.length <= 253 && host.split('.').every(label => label.length <= 63 && LABEL.test(label));
+// 這個功能自己產生的樣子才相信：http 或 https、一個合格的主機、整個網站。讀回來的值不合格式就不用，
 // 免得儲存裡被放進 <all_urls> 之類的值就讓程式在每個網頁上執行
-const EXTRA_PATTERN = /^https?:\/\/[a-z0-9._-]+\/\*$/;
+const PATTERN_SHAPE = /^https?:\/\/([^/]+)\/\*$/;
 
 const fail = error => ({ ok: false, error });
-const isExtraPattern = value => typeof value === 'string' && EXTRA_PATTERN.test(value);
+const isExtraPattern = value => typeof value === 'string' && hostOk(PATTERN_SHAPE.exec(value)?.[1] ?? '');
 
 // 使用者貼的網址 → 整個主機的 match pattern
 function parse(text) {
@@ -29,6 +33,7 @@ function parse(text) {
   if (url.username || url.password) return fail('網址裡不能帶帳號或密碼');
   if (url.hostname.includes('*')) return fail('不能用 * 萬用字元，請寫完整的網址');
   if (url.hostname.startsWith('[')) return fail('不支援 IPv6 位址');
+  if (!hostOk(url.hostname)) return fail('主機名稱的格式不對（每一段要由字母或數字開頭結尾，不能有空的一段或尾端的點）');
   if (url.protocol === 'https:' && url.hostname === BUILT_IN_HOST) return fail('這個網站已經內建，不用另外加');
   return { ok: true, pattern: `${url.protocol}//${url.hostname}/*` };
 }
