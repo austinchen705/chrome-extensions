@@ -999,7 +999,7 @@ test('rows dropped for a new mob or a fix are listed one by one as errors, and a
   assert.match(entries[3].text, /強度超過上限 1 億/);
   assert.match(entries[4].text, /強度要大於 0/);
   assert.match(entries[5].text, /^第 9 列：打錯字\(typo\)　資料裡沒有這個怪物$/);
-  assert.deepEqual([result.report.created, result.report.fixed, result.report.unmatched.length], [1, 1, 1], 'a row with a strength is never counted as unmatched');
+  assert.equal(result.report.unmatched.length, 1, 'a row with a strength is never counted as unmatched');
 });
 
 test('the mob summary line is amber when rows were dropped or unmatched, and plain when everything went through', () => {

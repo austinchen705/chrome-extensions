@@ -235,7 +235,7 @@ const collapseToName = (rows, keep) => {
 // 沒填強度、不在內建資料的列維持原樣（只列在 unmatched，打錯字的名稱不會變成新怪）。
 // 回 { ok, routes: { 鍵: { command, by, note, at, disabled? } }, mobs: { 鍵: { name, id, exp, location, note, by, at } },
 //      fixes: { 鍵: { exp, by, at } },
-//      report: { rows, used, created, dropped: [{row, reason}], unmatched: [{row, name, location?, reason}] } }。
+//      report: { rows, used, created, fixed, dropped: [{row, reason}], unmatched: [{row, name, location?, reason}] } }（created 是新增的怪、fixed 是修正強度的怪，都以鍵計）。
 // 同一個鍵多列取更新時間最新的；被丟掉的列什麼都不留下（路線和新怪都不會有）
 function buildMobRoutes(csvText, mobs) {
   const sheet = readSheet(csvText, ['怪物名稱']);
@@ -426,7 +426,9 @@ function describeFetched(kind, entry, timeText, enabled) {
   const rows = report?.overflow > 0 ? `共 ${report.rows} 列（其中 ${report.overflow} 列超過上限沒有讀）` : `共 ${report?.rows} 列`;
   const usable = Boolean(entry.at && report);
   // 怪物路線分頁才有的新增與修正強度（有才寫；舊快取沒有這兩個數字就當作沒有）
-  const added = kind !== 'mob' ? [] : [report?.created > 0 ? `新增 ${report.created} ${used}` : '', report?.fixed > 0 ? `修正強度 ${report.fixed} ${used}` : ''].filter(Boolean);
+  const added = [];
+  if (kind === 'mob' && report?.created > 0) added.push(`新增 ${report.created} ${used}`);
+  if (kind === 'mob' && report?.fixed > 0) added.push(`修正強度 ${report.fixed} ${used}`);
   const ok = usable
     ? `上次更新 ${timeText(entry.at)}：${rows}，生效 ${report.used} ${used}，${added.length ? `${added.join('、')}，` : ''}丟掉 ${report.dropped.length} 列，對不到${unmatched} ${report.unmatched.length} 筆`
     : '沒有可用的資料';
