@@ -53,6 +53,7 @@ async function boot({ macros = JSON.stringify(MACROS), notes = { 1: '開門', 5:
   });
   if (macros !== null) w.localStorage.setItem('MACROS', macros);
   const store = notes ? { macroNotes: notes } : {};
+  const changeListeners = [];
   w.AudioContext = class {
     constructor() { this.state = 'suspended'; }
     resume() { return Promise.resolve(); }
@@ -63,16 +64,20 @@ async function boot({ macros = JSON.stringify(MACROS), notes = { 1: '開門', 5:
     storage: {
       local: {
         get: async keys => Object.fromEntries([].concat(keys ?? []).filter(key => key in store).map(key => [key, store[key]])),
-        set: async values => { Object.assign(store, values); },
+        set: async values => {
+          const changes = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, { newValue: value }]));
+          Object.assign(store, values);
+          changeListeners.forEach(listener => listener(changes, 'local'));
+        },
       },
-      onChanged: { addListener() {} },
+      onChanged: { addListener: fn => changeListeners.push(fn) },
     },
   };
   SCRIPTS.forEach(file => w.eval(fs.readFileSync(path.join(root, file), 'utf8')));
   await sleep(80);
   const host = [...w.document.documentElement.children].find(element => element.shadowRoot?.querySelector('.label'));
   const $ = selector => host.shadowRoot.querySelector(selector);
-  return { w, $, copied, close: () => timers.forEach(id => { w.clearTimeout(id); w.clearInterval(id); }) };
+  return { w, $, copied, store, close: () => timers.forEach(id => { w.clearTimeout(id); w.clearInterval(id); }) };
 }
 
 ui('the macro row is always on the panel, with an empty status and nothing to stop while no macro runs', async () => {
@@ -157,9 +162,13 @@ ui('typing in the manual copy box never reaches the game', async () => {
   }
 });
 
+const FRAGMENT = '<div id="r"><button class="mexport"></button><button class="mimport"></button>'
+  + '<div class="macro-import" hidden><textarea class="macro-import-text"></textarea><button class="macro-import-check"></button><button class="macro-import-cancel"></button></div>'
+  + '<div class="macro-confirm" hidden><div class="macro-confirm-msg"></div><button class="macro-confirm-ok"></button><button class="macro-confirm-cancel"></button></div>'
+  + '<div class="macro-io" hidden><div class="macro-io-msg"></div><textarea class="macro-io-text" hidden></textarea></div></div>';
 // 另一個 document 裡的面板片段（置頂浮窗就是這樣）：回傳該 document 的剪貼簿記錄與常用節點
 function elsewhere(page, deps, clipboard = 'ok') {
-  const other = new JSDOM('<div id="r"><button class="mexport"></button><div class="macro-io" hidden><div class="macro-io-msg"></div><textarea class="macro-io-text" hidden></textarea></div></div>', { url: 'https://catworld.muds.tw/web' });
+  const other = new JSDOM(FRAGMENT, { url: 'https://catworld.muds.tw/web' });
   const there = [];
   Object.defineProperty(other.window.navigator, 'clipboard', {
     value: { writeText: async text => { if (clipboard === 'fail') throw new Error('denied'); there.push(text); } },
@@ -262,6 +271,220 @@ ui('the status text of the macro row shows a running macro and is empty again wh
     page.w.document.body.dispatchEvent(new page.w.KeyboardEvent('keydown', { which: 112, keyCode: 112, bubbles: true }));
     assert.ok(await waitFor(() => page.$('.macro-text').textContent !== ''), 'the running macro shows in the row');
     assert.ok(await waitFor(() => page.$('.macro-text').textContent === '' && page.$('.mstop').disabled, 6000), 'the text goes away when the macro is done');
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 匯入 ----
+const plain = value => JSON.parse(JSON.stringify(value));
+const NEW_MACROS = game({ 0: ['113', 'north'], 2: ['114', 'run e;@等待 2;look'] });
+const IMPORT_TEXT = JSON.stringify({ version: 1, macros: NEW_MACROS, notes: { 2: '新備註', 3: '另一條' } });
+const MACRO_ROWS = '<div id="macro_list">' + [1, 2, 3].map(n => `<div><span class="num">${n}</span><input class="key" name=""><input class="command" value=""></div>`).join('') + '</div>';
+
+// 貼上文字、按「檢查」，回傳面板上看得到的東西
+async function paste(page, value) {
+  const area = page.$('.macro-import-text');
+  area.value = value;
+  area.dispatchEvent(new page.w.Event('input', { bubbles: true }));
+  page.$('.macro-import-check').click();
+  await sleep(10);
+}
+
+ui('the import box opens and closes with the import button, and the paste box is not tied to the game', async () => {
+  const page = await boot();
+  try {
+    assert.ok(page.$('.mimport'), 'there is an import button');
+    assert.equal(page.$('.macro-import').hidden, true);
+    page.$('.mimport').click();
+    assert.equal(page.$('.macro-import').hidden, false);
+    page.$('.mimport').click();
+    assert.equal(page.$('.macro-import').hidden, true);
+    page.$('.mimport').click();
+    let leaked = 0;
+    ['keydown', 'keyup', 'keypress', 'mousedown', 'click'].forEach(type => page.w.document.addEventListener(type, () => { leaked++; }));
+    const area = page.$('.macro-import-text');
+    area.dispatchEvent(new page.w.KeyboardEvent('keydown', { key: 'a', bubbles: true, composed: true }));
+    area.dispatchEvent(new page.w.MouseEvent('click', { bubbles: true, composed: true }));
+    assert.equal(leaked, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a good text asks for confirmation first: how many rows get replaced and the warnings, and nothing is written yet', async () => {
+  const page = await boot({ extraHtml: MACRO_ROWS });
+  try {
+    const before = page.w.localStorage.getItem('MACROS');
+    const notesBefore = JSON.stringify(page.store.macroNotes);
+    page.$('.mimport').click();
+    await paste(page, IMPORT_TEXT);
+    assert.equal(page.$('.macro-confirm').hidden, false);
+    const message = page.$('.macro-confirm-msg').textContent;
+    assert.match(message, /將取代 2 列/, 'the game has two macros now');
+    assert.match(message, /重新整理遊戲頁/);
+    assert.match(message, /403/);
+    assert.match(message, /蓋掉/);
+    assert.match(message, /每個分頁/);
+    assert.equal(page.w.localStorage.getItem('MACROS'), before, 'the game macros are untouched');
+    assert.equal(JSON.stringify(page.store.macroNotes), notesBefore, 'the notes are untouched');
+  } finally {
+    page.close();
+  }
+});
+
+ui('confirming replaces the whole list and the notes, updates the notes on screen right away, and says to refresh the game', async () => {
+  const page = await boot({ extraHtml: MACRO_ROWS });
+  try {
+    page.$('.mimport').click();
+    await paste(page, IMPORT_TEXT);
+    page.$('.macro-confirm-ok').click();
+    assert.ok(await waitFor(() => /已匯入/.test(page.$('.macro-io-msg').textContent)));
+    assert.deepEqual(JSON.parse(page.w.localStorage.getItem('MACROS')), NEW_MACROS);
+    assert.deepEqual(plain(page.store.macroNotes), { 2: '新備註', 3: '另一條' }, 'the old notes are gone, not merged');
+    assert.match(page.$('.macro-io-msg').textContent, /重新整理遊戲頁/);
+    const inputs = [...page.w.document.querySelectorAll('#macro_list input.note')];
+    assert.deepEqual(inputs.map(input => input.value), ['', '新備註', '另一條'], 'the note boxes of the macro window followed');
+    assert.equal(page.$('.macro-confirm').hidden, true);
+    assert.equal(page.$('.macro-import').hidden, true);
+    assert.equal(page.$('.macro-import-text').value, '', 'the pasted text is cleared');
+  } finally {
+    page.close();
+  }
+});
+
+ui('an import writes the notes as someone else\'s change, so the note boxes accept it instead of writing the old text back', async () => {
+  const page = await boot({ extraHtml: MACRO_ROWS });
+  try {
+    page.$('.mimport').click();
+    await paste(page, IMPORT_TEXT);
+    page.$('.macro-confirm-ok').click();
+    assert.ok(await waitFor(() => /已匯入/.test(page.$('.macro-io-msg').textContent)));
+    const note = page.w.document.querySelector('#macro_list input.note[data-row="2"]');
+    note.value = '手動改的';
+    note.dispatchEvent(new page.w.Event('input', { bubbles: true }));
+    note.dispatchEvent(new page.w.Event('change', { bubbles: true }));
+    await sleep(20);
+    assert.equal(page.store.macroNotes[2], '手動改的', 'later edits of the notes still save normally');
+    assert.equal(page.store.macroNotes[3], '另一條', 'and the imported notes are still there');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a bad text is refused with the reason, nothing is written and there is nothing to confirm', async () => {
+  const page = await boot();
+  try {
+    const before = page.w.localStorage.getItem('MACROS');
+    page.$('.mimport').click();
+    for (const bad of ['not json', JSON.stringify({ version: 1, macros: game({ 0: ['112', 'a'], 1: ['112', 'b'] }) })]) {
+      await paste(page, bad);
+      assert.equal(page.$('.macro-confirm').hidden, true);
+      assert.match(page.$('.macro-io-msg').textContent, /匯入失敗，沒有改動任何資料/);
+      assert.ok(page.$('.macro-io-msg').classList.contains('alert'));
+    }
+    assert.match(page.$('.macro-io-msg').textContent, /重複/, 'the reason of the last one is shown');
+    assert.equal(page.w.localStorage.getItem('MACROS'), before);
+    assert.deepEqual(page.store.macroNotes, { 1: '開門', 5: '跑路' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('cancelling writes nothing, and changing the pasted text drops a confirmation that was already asked', async () => {
+  const page = await boot();
+  try {
+    const before = page.w.localStorage.getItem('MACROS');
+    page.$('.mimport').click();
+    await paste(page, IMPORT_TEXT);
+    page.$('.macro-confirm-cancel').click();
+    assert.equal(page.$('.macro-confirm').hidden, true);
+    assert.equal(page.w.localStorage.getItem('MACROS'), before);
+    await paste(page, IMPORT_TEXT);
+    assert.equal(page.$('.macro-confirm').hidden, false);
+    const area = page.$('.macro-import-text');
+    area.value = IMPORT_TEXT + ' ';
+    area.dispatchEvent(new page.w.Event('input', { bubbles: true }));
+    assert.equal(page.$('.macro-confirm').hidden, true, 'the old confirmation would apply text that is no longer in the box');
+    page.$('.macro-confirm-ok').click();
+    assert.equal(page.w.localStorage.getItem('MACROS'), before, 'and a stale confirm button does nothing');
+    page.$('.macro-import-cancel').click();
+    assert.equal(page.$('.macro-import').hidden, true);
+  } finally {
+    page.close();
+  }
+});
+
+ui('what the export gives can be imported back and leaves the game macros and the notes the same', async () => {
+  const page = await boot({ extraHtml: MACRO_ROWS });
+  try {
+    page.$('.mexport').click();
+    assert.ok(await waitFor(() => page.copied.length === 1));
+    const macrosBefore = page.w.localStorage.getItem('MACROS');
+    const notesBefore = { ...page.store.macroNotes };
+    page.$('.mimport').click();
+    await paste(page, page.copied[0]);
+    page.$('.macro-confirm-ok').click();
+    assert.ok(await waitFor(() => /已匯入/.test(page.$('.macro-io-msg').textContent)));
+    assert.deepEqual(JSON.parse(page.w.localStorage.getItem('MACROS')), JSON.parse(macrosBefore));
+    assert.deepEqual(plain(page.store.macroNotes), plain(notesBefore));
+  } finally {
+    page.close();
+  }
+});
+
+ui('when the game storage refuses the write, nothing changes and the panel says so', async () => {
+  const page = await boot();
+  try {
+    const { there, $ } = elsewhere(page, depsOf({
+      writeMacros: () => { throw new Error('QuotaExceededError'); },
+      writeNotes: async () => { there.push('notes written'); },
+    }));
+    $('.mimport').click();
+    $('.macro-import-text').value = IMPORT_TEXT;
+    $('.macro-import-check').click();
+    $('.macro-confirm-ok').click();
+    await sleep(20);
+    assert.match($('.macro-io-msg').textContent, /匯入失敗.*沒有改動/);
+    assert.ok($('.macro-io-msg').classList.contains('alert'));
+    assert.deepEqual(there, [], 'the notes were not touched either');
+  } finally {
+    page.close();
+  }
+});
+
+ui('the import works in a panel that lives in another document too', async () => {
+  const page = await boot();
+  try {
+    const written = [];
+    const { $ } = elsewhere(page, depsOf({
+      writeMacros: text => { written.push(text); },
+      writeNotes: async notes => { written.push(notes); },
+    }));
+    $('.mimport').click();
+    $('.macro-import-text').value = IMPORT_TEXT;
+    $('.macro-import-check').click();
+    assert.equal($('.macro-confirm').hidden, false);
+    $('.macro-confirm-ok').click();
+    await sleep(20);
+    assert.deepEqual(plain([JSON.parse(written[0]), written[1]]), [NEW_MACROS, { 2: '新備註', 3: '另一條' }]);
+  } finally {
+    page.close();
+  }
+});
+
+ui('closing the import box drops a confirmation that was waiting', async () => {
+  const page = await boot();
+  try {
+    const before = page.w.localStorage.getItem('MACROS');
+    page.$('.mimport').click();
+    await paste(page, IMPORT_TEXT);
+    assert.equal(page.$('.macro-confirm').hidden, false);
+    page.$('.mimport').click();
+    assert.equal(page.$('.macro-confirm').hidden, true);
+    page.$('.macro-confirm-ok').click();
+    await sleep(20);
+    assert.equal(page.w.localStorage.getItem('MACROS'), before, 'a confirm button that is no longer on screen does nothing');
   } finally {
     page.close();
   }

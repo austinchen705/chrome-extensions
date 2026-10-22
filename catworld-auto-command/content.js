@@ -636,7 +636,8 @@ function initPanel() {
       .macro-io-msg { font-size: 14px; color: #bbb; }
       .macro-io-msg.warn { color: #ffb347; }
       .macro-io-msg.alert { color: #ff8a7a; }
-      .macro-io-text { width: 100%; height: 80px; box-sizing: border-box; margin-top: 4px; background: #1e1e20; color: #ddd;
+      .macro-confirm-msg { font-size: 14px; color: #ffb347; margin-bottom: 4px; }
+      .macro-import-text, .macro-io-text { width: 100%; height: 80px; box-sizing: border-box; margin-top: 4px; background: #1e1e20; color: #ddd;
         border: 1px solid #555; border-radius: 4px; font-size: 13px; }
       .collapsed .body { display: none; }
       /* 面板在置頂浮窗裡（宿主帶 data-pip）：拖曳與收合沒有意義（視窗可以自己縮放），而且收合過的面板在浮窗裡不能卡在收合 */
@@ -652,7 +653,9 @@ function initPanel() {
         ${groupList.map(group => `<div class="line" data-group="${group.id}"><span class="t">${group.name}</span><span class="s trigger-text"></span>
           <span class="mini"><button class="tstart">開始</button><button class="tstop">停止</button></span></div>`).join('\n        ')}
         <div class="line macro-line"><span class="t">巨集</span><span class="s macro-text"></span>
-          <span class="mini"><button class="mexport" title="把遊戲的巨集和備註複製成一段文字">匯出</button><button class="mstop">停止</button></span></div>
+          <span class="mini"><button class="mexport" title="把遊戲的巨集和備註複製成一段文字">匯出</button><button class="mimport" title="貼上匯出的文字，整份取代遊戲的巨集和備註">匯入</button><button class="mstop">停止</button></span></div>
+        <div class="line macro-import" hidden><span class="t"></span><span class="s"><textarea class="macro-import-text" placeholder="貼上匯出的巨集文字"></textarea><span class="mini"><button class="macro-import-check">檢查</button><button class="macro-import-cancel">取消</button></span></span></div>
+        <div class="line macro-confirm" hidden><span class="t"></span><span class="s"><div class="macro-confirm-msg"></div><span class="mini"><button class="macro-confirm-ok">確認取代</button><button class="macro-confirm-cancel">取消</button></span></span></div>
         <div class="line macro-io" hidden><span class="t"></span><span class="s"><div class="macro-io-msg"></div><textarea class="macro-io-text" readonly hidden></textarea></span></div>
       </div>
     </div>`;
@@ -710,6 +713,9 @@ function initPanel() {
     CatworldMacroIOUI.attach(root, {
       readRaw: () => window.localStorage.getItem('MACROS'),
       readNotes: async () => (await chrome.storage.local.get('macroNotes')).macroNotes,
+      writeMacros: text => window.localStorage.setItem('MACROS', text),
+      // 匯入寫備註時的寫入者不是備註模組自己的代號，備註模組才會把它當成別處的改動、直接更新畫面上的備註框
+      writeNotes: notes => chrome.storage.local.set({ macroNotes: notes, macroNotesWriter: 'macro-io' }),
       relayout: () => panel.replace(),
     });
   } catch (error) {
