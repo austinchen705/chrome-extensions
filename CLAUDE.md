@@ -128,6 +128,13 @@
 - 任何儲存或網路問題都不能弄壞內建資料的查詢（`sharedLayer` 失敗回空的共用層）。
 - 測試：`tests/shared-data.test.js`（CSV → 共用層與報告）、`tests/shared-background.test.js`（在記憶體裡執行 `background.js`，假 `chrome.storage.local` 與 `fetch`，檢查請求次數、快取、回覆）、`tests/zap-route-ui.test.js`（面板標示）、`tests/shared-settings-ui.test.js`（jsdom 載入真正的 popup.html 與 popup.js，假的 `chrome`，檢查設定頁結果行與逐列清單的文字和 `msg-error`／`msg-warn` 顏色）。範本檔在 `docs/templates/`（`shared-mobs.csv`、`shared-riddles.csv`，標題列要和 README 一致，測試會對照）。
 
+## 巨集匯入匯出
+
+- 遊戲把巨集存在頁面的 `localStorage.MACROS`（長度 90 的陣列，每格 0 或 `[按鍵值字串, 指令字串]`；來源是遊戲的 `/js/web.js`，遊戲頁 `/web` 對使用者可能回 403，但 `web.js` 讀得到）。遊戲用閉包裡的私有陣列管理巨集視窗，外部改輸入框值寫不進去，所以匯入（之後的票）要直接寫 `localStorage.MACROS` 並要求重新整理遊戲頁，不模擬輸入事件。
+- `macro-io.js` 不碰 DOM 與 `chrome.*`（`readMacros` 讀遊戲存的巨集一律回 90 格並帶 `status`：`ok`／`missing`／`damaged`，壞資料不丟例外；`normalizeNotes`；`exportText` 產生 `{ version, macros, notes }`），`macro-io-ui.js` 管面板「巨集」列的按鈕與訊息；兩個都要加進 manifest 的 content script 與 popup 備援注入的 `files`，在 `content.js` 之前。`content.js` 把 `localStorage` 與備註（`chrome.storage.local.macroNotes`）用 `deps.readRaw`、`deps.readNotes` 注入，初始化要包 try/catch，壞了不能牽連後面按鈕的綁定。
+- 「巨集」列常駐顯示（按鈕在列上），狀態文字沒有巨集在跑時要清成空的；剪貼簿一律用按鈕所在 document 的視窗（面板可能在置頂浮窗），複製失敗要把文字放進可手動複製的框；文字框要擋掉 `mousedown`、`click` 與按鍵事件的冒泡。
+- 測試：`tests/macro-io.test.js`（純函式，邊界案例都放這裡）、`tests/macro-io-ui.test.js`（jsdom 載入整個 content script，假的 `chrome`、`localStorage.MACROS` 與剪貼簿）；真實排版、遊戲重新整理後是否讀到新巨集只能在真實頁面驗證。
+
 ## 數值區塊
 
 - 面板最上方的「數值」區塊由兩個模組組成：`stats-view.js`（不碰 DOM，`rows(readings, exp)` 決定每列顯示什麼）與 `stats-block.js`（畫面，`attach(root)` 回傳 `render(readings, exp)`）。兩個都要加進 manifest 的 content script 與 popup 備援注入清單，`stats-view.js` 在 `stats-block.js` 之前、都在 `content.js` 之前；`content.js` 建立區塊要包 try/catch，壞了不能牽連後面按鈕的綁定。

@@ -633,6 +633,11 @@ function initPanel() {
       .mini button.start, .mini button.tstart { background: #2f7d4a; }
       .mini button[disabled] { opacity: .35; cursor: default; }
       .line[hidden] { display: none; }
+      .macro-io-msg { font-size: 14px; color: #bbb; }
+      .macro-io-msg.warn { color: #ffb347; }
+      .macro-io-msg.alert { color: #ff8a7a; }
+      .macro-io-text { width: 100%; height: 80px; box-sizing: border-box; margin-top: 4px; background: #1e1e20; color: #ddd;
+        border: 1px solid #555; border-radius: 4px; font-size: 13px; }
       .collapsed .body { display: none; }
       /* 面板在置頂浮窗裡（宿主帶 data-pip）：拖曳與收合沒有意義（視窗可以自己縮放），而且收合過的面板在浮窗裡不能卡在收合 */
       :host([data-pip]) .toggle { display: none; }
@@ -646,8 +651,9 @@ function initPanel() {
           <span class="mini"><button class="start">開始</button><button class="stop">停止</button></span></div>
         ${groupList.map(group => `<div class="line" data-group="${group.id}"><span class="t">${group.name}</span><span class="s trigger-text"></span>
           <span class="mini"><button class="tstart">開始</button><button class="tstop">停止</button></span></div>`).join('\n        ')}
-        <div class="line macro-line" hidden><span class="t">巨集</span><span class="s macro-text"></span>
-          <span class="mini"><button class="mstop">停止</button></span></div>
+        <div class="line macro-line"><span class="t">巨集</span><span class="s macro-text"></span>
+          <span class="mini"><button class="mexport" title="把遊戲的巨集和備註複製成一段文字">匯出</button><button class="mstop">停止</button></span></div>
+        <div class="line macro-io" hidden><span class="t"></span><span class="s"><div class="macro-io-msg"></div><textarea class="macro-io-text" readonly hidden></textarea></span></div>
       </div>
     </div>`;
   const $ = selector => root.querySelector(selector);
@@ -659,7 +665,7 @@ function initPanel() {
       return [group.id, { text: row.querySelector('.trigger-text'), start: row.querySelector('.tstart'), stop: row.querySelector('.tstop') }];
     })),
     start: $('.start'), stop: $('.stop'),
-    macroLine: $('.macro-line'), macroText: $('.macro-text'), mstop: $('.mstop'),
+    macroText: $('.macro-text'), mstop: $('.mstop'),
     confirm: $('.confirm'),
   };
   // 「數值」區塊放在面板最上方；壞了不能牽連後面開始／停止按鈕的綁定
@@ -698,6 +704,16 @@ function initPanel() {
     });
   } catch (error) {
     console.error('[catworld] 裝備列初始化失敗', error);
+  }
+  // 「巨集」列的匯出：讀遊戲存巨集的 localStorage 與我們的備註；壞了不能牽連後面按鈕的綁定
+  try {
+    CatworldMacroIOUI.attach(root, {
+      readRaw: () => window.localStorage.getItem('MACROS'),
+      readNotes: async () => (await chrome.storage.local.get('macroNotes')).macroNotes,
+      relayout: () => panel.replace(),
+    });
+  } catch (error) {
+    console.error('[catworld] 巨集匯出初始化失敗', error);
   }
   // 怪物／鑑定（含裝備比較）／解謎三組功能的開關，預設全關；popup 設定頁改了馬上生效
   const applyZapFeatures = features => {
@@ -874,7 +890,7 @@ function triggerSummary(group) {
   return { text: `${rules.length} 條待命`, alert: false, disabled: 0 };
 }
 
-// 巨集列：有巨集在跑就顯示「還有幾秒、下一個指令」，格式錯誤沒有執行時顯示原因 8 秒；都沒有就整列隱藏
+// 巨集列：有巨集在跑就顯示「還有幾秒、下一個指令」，格式錯誤沒有執行時顯示原因 8 秒；都沒有就只剩列上的按鈕（匯出等），狀態文字是空的
 function macroSummary() {
   if (!macroRuns.size) {
     if (macroNote && Date.now() < macroNote.until) return { text: macroNote.text, alert: true };
@@ -937,9 +953,9 @@ function renderPanel() {
   });
   if (changed) panel.replace();
   const macro = macroSummary();
-  panel.macroLine.hidden = !macro;
-  if (macro && panel.macroText.textContent !== macro.text) {
-    panel.macroText.textContent = macro.text;
+  const macroText = macro?.text ?? '';
+  if (panel.macroText.textContent !== macroText) {
+    panel.macroText.textContent = macroText;
     panel.replace();
   }
   panel.macroText.classList.toggle('alert', Boolean(macro?.alert));
