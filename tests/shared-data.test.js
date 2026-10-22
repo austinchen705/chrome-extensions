@@ -838,3 +838,26 @@ test('a fix never reaches the mobs the sheet added, and applySharedMobs without 
   assert.equal(S.applySharedMobs(WILD, {}, {}), WILD);
   assert.equal(S.applySharedMobs(WILD, {}, { [Z.customKey('不存在(x)')]: { exp: 1, by: '', at: null } }), WILD, 'a fix that matches no mob changes nothing');
 });
+
+test('a fix and 停用 on one row: the strength is fixed and the route is turned off', () => {
+  const result = buildFix('老虎(tiger),桃花島,5000,停用,路線不對,小明,');
+  const key = Z.customKey('老虎(tiger)|桃花島');
+  assert.equal(result.fixes[key].exp, 5000);
+  assert.equal(result.routes[key].disabled, true);
+});
+
+test('for a built-in mob without a location a row without a location beats located rows, which fall back to the newest', () => {
+  const NONE = { name: '黑熊(Bear)', id: 'bear', exp: 600, location: '' };
+  const fix = (...lines) => S.applySharedMobs([NONE], {}, S.buildMobRoutes([HEADER_STRENGTH, ...lines].join('\n'), [NONE]).fixes)[0].exp;
+  assert.equal(fix('黑熊(Bear),長安城,900,,,甲,2026-10-21 09:00', '黑熊(Bear),,700,,,乙,2026-10-18 09:00'), 700);
+  assert.equal(fix('黑熊(Bear),長安城,900,,,甲,2026-10-19 09:00', '黑熊(Bear),蒙古,800,,,乙,2026-10-21 09:00'), 800);
+  assert.equal(fix('黑熊(Bear),蒙古,800,,,乙,2026-10-21 09:00', '黑熊(Bear),長安城,900,,,甲,2026-10-19 09:00'), 800, 'the newest wins whatever the row order');
+});
+
+test('a mob the sheet added and a fix for the built-in mobs of the same name do not disturb each other', () => {
+  const result = buildFix('老虎(tiger),華山,500,run hs,,甲,', '老虎(tiger),,5000,,,乙,');
+  assert.equal(result.report.created, 1);
+  const merged = S.applySharedMobs(WILD, result.mobs, result.fixes);
+  assert.deepEqual([merged[0].exp, merged[1].exp], [5000, 5000]);
+  assert.deepEqual([merged.at(-1).location, merged.at(-1).exp, merged.at(-1).fixed], ['華山', 500, undefined]);
+});

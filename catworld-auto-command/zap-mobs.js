@@ -70,7 +70,7 @@ function findMobs(mobs, name) {
 function metaText({ mob, q, idOnly }) {
   const strength = !Number.isFinite(mob.exp) ? '強度未知' : q === null ? `強度 ${mob.exp}` : `強度 ${mob.exp}（q=${q.toFixed(2)}）`;
   const added = mob.source === 'shared' ? `共用新增（${mob.by || '未署名'}）` : '';
-  const fixed = mob.fixed ? `共用修正強度（${mob.fixed.by || '未署名'}）　zap 站原值 ${mob.fixed.original}` : '';
+  const fixed = mob.fixed ? `共用修正強度（${mob.fixed.by || '未署名'}）　內建原值${Number.isFinite(mob.fixed.original) ? ` ${mob.fixed.original}` : '未知'}` : '';
   return [strength, mob.location, mob.note, idOnly ? '僅 ID 命中' : '', added, fixed].filter(Boolean).join('　');
 }
 

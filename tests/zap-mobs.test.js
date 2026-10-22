@@ -327,7 +327,9 @@ test('metaText marks a built-in mob whose strength the shared sheet corrected, w
   const text = Z.metaText({ mob: fixed, q: 4.8, idOnly: false });
   assert.match(text, /強度 2000000/);
   assert.match(text, /共用修正強度（小明）/);
-  assert.match(text, /zap 站原值 250000$/);
-  assert.match(Z.metaText({ mob: { ...fixed, fixed: { by: '', original: 5 } }, q: 1, idOnly: false }), /共用修正強度（未署名）　zap 站原值 5$/);
+  assert.match(text, /內建原值 250000$/);
+  assert.match(Z.metaText({ mob: { ...fixed, fixed: { by: '', original: 5 } }, q: 1, idOnly: false }), /共用修正強度（未署名）　內建原值 5$/);
+  assert.match(Z.metaText({ mob: { ...fixed, fixed: { by: '小明', original: null } }, q: 1, idOnly: false }), /共用修正強度（小明）　內建原值未知$/, 'an unknown original is not shown as null');
+  assert.doesNotMatch(Z.metaText({ mob: { ...fixed, source: 'override' }, q: 1, idOnly: false }), /zap 站/, 'the original may come from a supplement, not the zap site');
   assert.doesNotMatch(Z.metaText({ mob: { ...fixed, fixed: undefined }, q: 1, idOnly: false }), /共用修正強度|原值/);
 });

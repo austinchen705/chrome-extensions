@@ -299,5 +299,5 @@ ui('a built-in mob with a corrected strength shows who corrected it and the orig
   const fixed = { mob: { name: '白猿(white ape)', id: 'white ape', exp: 2000000, location: '古墓', note: '內建備註', source: 'zap', fixed: { by: '小明', original: 250000 } }, q: 4.8, grade: 'red', idOnly: false, route: null };
   const { shadow } = boot({ items: [fixed] });
   assert.ok(await waitFor(() => shadow.querySelector('.zap-item .meta')));
-  assert.match(shadow.querySelector('.zap-item .meta').textContent, /內建備註.*共用修正強度（小明）.*zap 站原值 250000/);
+  assert.match(shadow.querySelector('.zap-item .meta').textContent, /內建備註.*共用修正強度（小明）.*內建原值 250000/);
 });

@@ -386,3 +386,15 @@ test('a fix is read from the cache, and an old cache without fixes changes nothi
   const old = (await lookup()).items[0].candidates[0];
   assert.deepEqual([old.mob.exp, old.mob.fixed], [250000, undefined]);
 });
+
+test('the list of fitting mobs and its grades use the corrected strength', async () => {
+  reset();
+  csvBody = [STR_HEADER, '白猿(white ape),古墓,2000000,,,小明,2026-10-21 14:30'].join('\n') + '\n';
+  const grade = (await lookup()).items[0].candidates[0].grade;
+  const list = await ask({ type: 'ZAP_SUITABLE', exp: 414748, thresholds: undefined, grades: [grade], query: '白猿' });
+  const entry = list.items.find(item => item.mob.name === '白猿(white ape)');
+  assert.ok(entry, 'listed under the grade of the corrected number');
+  assert.deepEqual([entry.mob.exp, entry.mob.fixed.original, entry.grade], [2000000, 250000, grade]);
+  const old = await ask({ type: 'ZAP_SUITABLE', exp: 414748, thresholds: undefined, grades: ['green'], query: '白猿' });
+  assert.equal(old.items.some(item => item.mob.name === '白猿(white ape)'), false, 'no longer green');
+});

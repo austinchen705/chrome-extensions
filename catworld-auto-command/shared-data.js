@@ -215,6 +215,19 @@ const bracketId = name => {
   return match ? globalThis.CatworldZapMobs.normalizeName(match[1]) : '';
 };
 
+const atOrNull = at => (Number.isFinite(at) ? at : null);
+
+// 有填位置、但 keep 判定「位置挑不到怪」的列，退回名稱：同名的取更新時間最新的（rank 大的），回 Map<名稱鍵, 該列>
+const collapseToName = (rows, keep) => {
+  const out = new Map();
+  rows.forEach((item, key) => {
+    if (!item.location || !keep(item, key)) return;
+    const nameKey = globalThis.CatworldZapMobs.customKey(item.name);
+    if (!out.has(nameKey) || item.rank >= out.get(nameKey).rank) out.set(nameKey, item);
+  });
+  return out;
+};
+
 // 怪物路線分頁：怪物名稱 | 位置（選填） | 強度（選填） | 指令 | 備註 | 更新者 | 更新時間。
 // 鍵是「名稱」或「名稱|位置」（位置有填才帶）：同名的怪常在不同地方，位置有填就只管那個地方的怪。指令寫「停用」代表這隻怪不要路線。
 // 有填強度、而且名稱＋位置不在內建怪物資料裡的列是「新怪」（要帶括號 ID、強度要合法；可以沒有指令）；
@@ -225,10 +238,9 @@ const bracketId = name => {
 //      report: { rows, used, created, dropped: [{row, reason}], unmatched: [{row, name, location?, reason}] } }。
 // 同一個鍵多列取更新時間最新的；被丟掉的列什麼都不留下（路線和新怪都不會有）
 function buildMobRoutes(csvText, mobs) {
-  const customKey = globalThis.CatworldZapMobs.customKey;
   const sheet = readSheet(csvText, ['怪物名稱']);
   if (sheet.error) return { ok: false, error: sheet.error };
-  // 一列要嘛有指令、要嘛是有強度的新怪：標題列兩個欄位都沒有的表，沒有任何一列能用
+  // 一列要嘛有指令、要嘛有強度（新怪或修正內建怪的強度）：標題列兩個欄位都沒有的表，沒有任何一列能用
   if (!sheet.has('指令') && !sheet.has('強度')) return { ok: false, error: '缺少欄位「指令」，第一列要是標題列' };
   const known = knownMobs(mobs);
   const best = new Map();
@@ -242,13 +254,13 @@ function buildMobRoutes(csvText, mobs) {
     const key = mobKey(name, location);
     // 先把整列驗證完才寫進結果：被丟掉的列不能留下一半
     const hasStrength = cell('強度') !== '';
-    const fixes = hasStrength && known.has(name, location);
-    const creates = hasStrength && !fixes;
+    const isFix = hasStrength && known.has(name, location);
+    const isNew = hasStrength && !isFix;
     let exp = null;
     if (hasStrength) {
       const parsed = parseStrength(cell('強度'));
       if (!parsed.ok) return report.dropped.push({ row, reason: parsed.reason });
-      if (creates && !bracketId(name)) return report.dropped.push({ row, reason: '新怪的名稱要寫成「稱號 名稱(ID)」，缺少括號 ID' });
+      if (isNew && !bracketId(name)) return report.dropped.push({ row, reason: '新怪的名稱要寫成「稱號 名稱(ID)」，缺少括號 ID' });
       exp = parsed.value;
     }
     const hasCommand = cell('指令') !== '';
@@ -261,24 +273,19 @@ function buildMobRoutes(csvText, mobs) {
       const old = best.get(key);
       if (!old || made.rank >= old.rank) best.set(key, { rank: made.rank, row, name, location, entry: made.entry });
     }
-    if (fixes) {
+    if (isFix) {
       const old = bestFix.get(key);
-      if (!old || rank >= old.rank) bestFix.set(key, { rank, name, location, fix: { exp, by: cell('更新者'), at: Number.isFinite(at) ? at : null } });
+      if (!old || rank >= old.rank) bestFix.set(key, { rank, name, location, fix: { exp, by: cell('更新者'), at: atOrNull(at) } });
     }
-    if (creates) {
+    if (isNew) {
       const old = bestMob.get(key);
-      if (!old || rank >= old.rank) bestMob.set(key, { rank, mob: { name, id: bracketId(name), exp, location, note: cell('備註'), by: cell('更新者'), at: Number.isFinite(at) ? at : null } });
+      if (!old || rank >= old.rank) bestMob.set(key, { rank, mob: { name, id: bracketId(name), exp, location, note: cell('備註'), by: cell('更新者'), at: atOrNull(at) } });
     }
   });
   const routes = {};
   // 位置不屬於任何同名的內建怪（內建怪沒有位置、或填錯地方）的列：位置挑不到怪，就退回名稱套用到同名的怪，
   // 但輸給真正沒填位置的列；這種列之間取最新的。共用表自己新增的怪的路線只給那隻怪
-  const loose = new Map();
-  best.forEach(({ rank, name, location, entry }, key) => {
-    if (!location || !known.hasName(name) || known.hasPlace(name, location) || bestMob.has(key)) return;
-    const nameKey = customKey(name);
-    if (!loose.has(nameKey) || rank >= loose.get(nameKey).rank) loose.set(nameKey, { rank, entry });
-  });
+  const loose = collapseToName(best, ({ name, location }, key) => known.hasName(name) && !known.hasPlace(name, location) && !bestMob.has(key));
   best.forEach(({ row, name, location, entry }, key) => {
     routes[key] = entry;
     if (known.has(name, location) || bestMob.has(key)) return;
@@ -288,13 +295,7 @@ function buildMobRoutes(csvText, mobs) {
   loose.forEach(({ entry }, nameKey) => { routes[nameKey] ??= entry; });
   const fixesByKey = Object.fromEntries([...bestFix].map(([key, { fix }]) => [key, fix]));
   // 內建怪沒有位置時，位置挑不到怪：修正也退回名稱（輸給真正沒填位置的列，這種列之間取最新的）
-  const looseFix = new Map();
-  bestFix.forEach(({ rank, name, location, fix }) => {
-    if (!location || known.hasPlace(name, location)) return;
-    const nameKey = customKey(name);
-    if (!looseFix.has(nameKey) || rank >= looseFix.get(nameKey).rank) looseFix.set(nameKey, { rank, fix });
-  });
-  looseFix.forEach(({ fix }, nameKey) => { fixesByKey[nameKey] ??= fix; });
+  collapseToName(bestFix, ({ name, location }) => !known.hasPlace(name, location)).forEach(({ fix }, nameKey) => { fixesByKey[nameKey] ??= fix; });
   const newMobs = Object.fromEntries([...bestMob].map(([key, { mob }]) => [key, mob]));
   report.used = new Set([...best.keys(), ...bestMob.keys(), ...bestFix.keys()]).size;
   report.created = bestMob.size;
