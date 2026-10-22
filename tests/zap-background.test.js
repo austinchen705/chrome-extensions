@@ -23,10 +23,12 @@ globalThis.fetch = async url => {
 };
 const noop = { addListener() {} };
 globalThis.chrome = {
-  runtime: { onMessage: { addListener: fn => listeners.push(fn) }, getURL: file => file },
+  runtime: { onMessage: { addListener: fn => listeners.push(fn) }, onInstalled: noop, getURL: file => file },
   tabs: { onRemoved: noop },
   notifications: { onButtonClicked: noop, onClicked: noop },
-  storage: { session: {} },
+  storage: { session: {}, local: { get: async () => ({}), set: async () => {} }, onChanged: noop },
+  permissions: { contains: async () => false, onAdded: { addListener() {} }, onRemoved: { addListener() {} } },
+  scripting: { registerContentScripts: async () => {}, unregisterContentScripts: async () => { throw new Error('Nonexistent script ID'); } },
 };
 require(path.join(extensionDir, 'background.js'));
 

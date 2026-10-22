@@ -71,6 +71,8 @@
     .safety .check input { margin-top:3px; }
     .safety input:disabled { background:#eee; color:#aaa; }
     .detail { white-space: pre-wrap; max-height: 160px; overflow: auto; user-select: text; }
+    .extra-item { display:flex; gap:6px; align-items:center; margin-top:6px; font-size:12px; }
+    .extra-name { flex:1; min-width:0; overflow-wrap:anywhere; }
   </style>
 </head>
 <body>
@@ -187,6 +189,15 @@ px</textarea>
     <p class="hint tight">大家共同維護的路線：優先順序是個人 &gt; 共用 &gt; 內建。連結只存在這台瀏覽器的本機，不會匯出。</p>
   </div>
   <div class="alertbox">
+    <b>額外的遊戲網址（臨時）</b>
+    <p class="hint tight">讓面板也出現在別的網站上，例如 ngrok 的臨時網址。貼上網址按「新增」，Chrome 會問你要不要讓這個 extension 存取那個網站，按「允許」才會生效；用完按「移除」。新增或移除後，要到那個網站的分頁重新整理。只存在這台瀏覽器的本機，不會匯出。</p>
+    <label for="extraUrl">網址（整個網站都會算，port 會被忽略）</label>
+    <input id="extraUrl" type="text" autocomplete="off" placeholder="https://xxxx.ngrok-free.app">
+    <button id="extraAdd" type="button">新增</button>
+    <div id="extraMessage" class="hint tight"></div>
+    <div id="extraList"></div>
+  </div>
+  <div class="alertbox">
     <b>手機通知（LINE）</b>
     <label for="lineToken">Channel access token</label>
     <input id="lineToken" type="password" autocomplete="off">
@@ -213,6 +224,7 @@ px</textarea>
   <script src="shared-data.js"></script>
   <script src="line-notify.js"></script>
   <script src="line-notify-ui.js"></script>
+  <script src="game-urls.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

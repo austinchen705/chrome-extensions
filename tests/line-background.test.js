@@ -46,7 +46,9 @@ function loadBackground({ local = {}, session = {}, fetchImpl = okFetch, notifyT
   const pushes = [];
   const noop = () => {};
   const chrome = {
-    runtime: { id: EXT, getURL: file => `chrome-extension://${EXT}/${file}`, onMessage: { addListener: fn => listeners.push(fn) } },
+    runtime: { id: EXT, getURL: file => `chrome-extension://${EXT}/${file}`, onMessage: { addListener: fn => listeners.push(fn) }, onInstalled: { addListener: noop } },
+    permissions: { contains: async () => false, onAdded: { addListener() {} }, onRemoved: { addListener() {} } },
+    scripting: { registerContentScripts: async () => {}, unregisterContentScripts: async () => { throw new Error('Nonexistent script ID'); } },
     storage: { local: area('local'), session: area('session'), onChanged: { addListener: noop } },
     tabs: {
       onRemoved: { addListener: noop }, get: async () => { throw new Error('no tab'); }, remove: async () => {},

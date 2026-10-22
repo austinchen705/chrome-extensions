@@ -4,14 +4,15 @@ const Engine = CatworldTriggerEngine;
 
 // 面板的 ⚙ 會把這一頁當成分頁開啟，網址帶 ?tab=遊戲分頁的 id：這時要控制那個遊戲分頁，
 // 不是「目前的分頁」（那是設定頁自己）。遊戲分頁被關掉了就找別的遊戲分頁
-const GAME_URL = 'https://catworld.muds.tw/web';
+// 額外的遊戲網址（設定頁的「額外的遊戲網址」）：沒填就只有內建的遊戲
+const readExtraSites = async () => CatworldGameUrls.extraPatterns((await chrome.storage.local.get('extraGameUrls')).extraGameUrls);
 const pageTabId = Number(new URLSearchParams(location.search).get('tab')) || null;
 if (pageTabId) document.body.classList.add('page');
 
 async function getTab() {
   if (pageTabId) {
     try { return await chrome.tabs.get(pageTabId); } catch { /* 遊戲分頁已關閉，往下找別的 */ }
-    const [game] = await chrome.tabs.query({ url: `${GAME_URL}*` });
+    const [game] = await chrome.tabs.query({ url: CatworldGameUrls.tabPatterns(await readExtraSites()) });
     return game;
   }
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -69,7 +70,7 @@ function setStatus(text, level = 'info') {
 
 async function send(message) {
   const tab = await getTab();
-  if (!tab?.id || !tab.url?.startsWith(GAME_URL)) {
+  if (!tab?.id || !CatworldGameUrls.isGameUrl(tab.url, await readExtraSites())) {
     throw new Error('請先切到 CatWorld Web 分頁');
   }
 
@@ -197,6 +198,68 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && (changes.sharedSources || changes.sharedCache || changes.zapFeatures)) showShared();
 });
 showShared();
+
+// ---- 額外的遊戲網址（臨時加進來的網站，例如 ngrok）----
+// 清單在 chrome.storage.local.extraGameUrls（match pattern 的陣列）。新增要先問 Chrome 授權那個網站（按了「允許」才存），
+// 移除時連授權一起還給 Chrome；實際註冊或移除 content script 是 background 的事（依清單與授權同步）。
+// 授權詢問要在使用者按下去的當下問，所以先在記憶體裡的清單擋掉重複與超過上限，再問授權。
+let extraSites = [];
+const showExtraMessage = (level, text) => showParts($('extraMessage'), [{ level, text }]);
+const siteName = pattern => pattern.replace(/\/\*$/, '');
+
+async function extraRow(pattern) {
+  const allowed = await chrome.permissions.contains({ origins: [pattern] });
+  const parts = [element('span', { className: 'extra-name', textContent: siteName(pattern) }), element('span', { className: allowed ? 'extra-state' : 'extra-state msg-warn', textContent: allowed ? '已授權' : '未授權，不會生效' })];
+  if (!allowed) {
+    const grant = element('button', { type: 'button', className: 'extra-grant', textContent: '授權' });
+    grant.addEventListener('click', () => grantExtraSite(pattern));
+    parts.push(grant);
+  }
+  const remove = element('button', { type: 'button', className: 'extra-remove', textContent: '移除' });
+  remove.addEventListener('click', () => removeExtraSite(pattern));
+  parts.push(remove);
+  return element('div', { className: 'extra-item' }, ...parts);
+}
+
+async function showExtraSites() {
+  extraSites = await readExtraSites();
+  $('extraList').replaceChildren(...await Promise.all(extraSites.map(extraRow)));
+}
+
+async function grantExtraSite(pattern) {
+  const allowed = await chrome.permissions.request({ origins: [pattern] });
+  if (allowed) showExtraMessage('info', `已授權 ${siteName(pattern)}，到那個網站的分頁重新整理後面板就會出現`);
+  else showExtraMessage('warn', '沒有授權，這個網站還是不會生效');
+  await showExtraSites();
+}
+
+async function removeExtraSite(pattern) {
+  await chrome.permissions.remove({ origins: [pattern] });
+  await chrome.storage.local.set({ extraGameUrls: CatworldGameUrls.remove(await readExtraSites(), pattern) });
+  showExtraMessage('info', `已移除 ${siteName(pattern)}，並把存取權還給 Chrome。已經開著的分頁重新整理後面板會消失`);
+  await showExtraSites();
+}
+
+$('extraAdd').addEventListener('click', async () => {
+  const parsed = CatworldGameUrls.parse($('extraUrl').value);
+  if (!parsed.ok) return showExtraMessage('error', parsed.error);
+  const next = CatworldGameUrls.add(extraSites, parsed.pattern);
+  if (!next.ok) return showExtraMessage('error', next.error);
+  const allowed = await chrome.permissions.request({ origins: [parsed.pattern] });
+  if (!allowed) return showExtraMessage('warn', '沒有授權，所以沒有新增。要用的話請再按一次，並在 Chrome 的詢問按「允許」');
+  const fresh = CatworldGameUrls.add(await readExtraSites(), parsed.pattern);
+  if (!fresh.ok) return showExtraMessage('error', fresh.error);
+  await chrome.storage.local.set({ extraGameUrls: fresh.list });
+  $('extraUrl').value = '';
+  showExtraMessage('info', `已新增 ${siteName(parsed.pattern)}。到那個網站的分頁重新整理後面板就會出現`);
+  await showExtraSites();
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.extraGameUrls) showExtraSites();
+});
+chrome.permissions.onAdded.addListener(showExtraSites);
+chrome.permissions.onRemoved.addListener(showExtraSites);
+showExtraSites();
 
 // 主要武器類型：存起來，遊戲頁的面板監聽 storage 變化，馬上生效。不合法的值當成未設定
 const weaponValue = value => (CatworldZapItems.WEAPON_TYPES.includes(value) ? value : '');

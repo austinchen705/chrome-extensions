@@ -1,5 +1,5 @@
 // content script 不能直接彈系統通知、也不能開分頁，由這裡代為處理
-importScripts('zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'shared-data.js', 'line-notify.js');
+importScripts('zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'shared-data.js', 'line-notify.js', 'game-urls.js');
 // 面板上的 ⚙：按一下在新分頁開啟設定頁（popup.html 當成分頁開，?tab= 帶遊戲分頁的 id），再按一次關閉並切回遊戲分頁。
 // 「遊戲分頁 → 設定分頁」的對應放在 storage.session，service worker 被收掉再醒來也還在
 const settingsKey = gameTabId => `settingsTab:${gameTabId}`;
@@ -66,6 +66,39 @@ function notifyLine(reason) {
   lineQueue = task.catch(() => {});
   return task;
 }
+
+// ---- 額外的遊戲網址（臨時加進來的網站，例如 ngrok）----
+// 清單在 chrome.storage.local.extraGameUrls（設定頁管理）。manifest 的 content script 只認遊戲網站，所以其他網站要用動態註冊：
+// 註冊的是和 manifest 同一份 js 與 css，只註冊使用者已經授權（optional host permission）的網站。
+// 動態註冊的 content script 在擴充功能更新時會被清掉，所以載入、安裝／更新、清單改變、授權改變時都重新同步；
+// 同步一個接一個排隊做，連續觸發時不會交錯，最後的結果一定對應最後的清單。已經開著的分頁要重新整理才會有面板。
+const EXTRA_SITES_ID = 'extra-game-sites';
+async function syncExtraGameSites() {
+  const { extraGameUrls } = await chrome.storage.local.get('extraGameUrls');
+  const allowed = [];
+  for (const pattern of CatworldGameUrls.extraPatterns(extraGameUrls)) {
+    if (await chrome.permissions.contains({ origins: [pattern] })) allowed.push(pattern);
+  }
+  try {
+    await chrome.scripting.unregisterContentScripts({ ids: [EXTRA_SITES_ID] });
+  } catch {
+    // 本來就沒有註冊
+  }
+  if (!allowed.length) return;
+  const declared = chrome.runtime.getManifest().content_scripts[0];
+  await chrome.scripting.registerContentScripts([{ id: EXTRA_SITES_ID, matches: allowed, js: declared.js, css: declared.css, runAt: declared.run_at, persistAcrossSessions: true }]);
+}
+let extraSitesQueue = Promise.resolve();
+const queueExtraSitesSync = () => {
+  extraSitesQueue = extraSitesQueue.then(syncExtraGameSites).catch(error => console.error('[catworld] 額外的遊戲網址同步失敗', error));
+};
+queueExtraSitesSync();
+chrome.runtime.onInstalled.addListener(queueExtraSitesSync);
+chrome.permissions.onAdded.addListener(queueExtraSitesSync);
+chrome.permissions.onRemoved.addListener(queueExtraSitesSync);
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.extraGameUrls) queueExtraSitesSync();
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // 設定頁的測試訊息：設定頁是開成分頁的（sender.tab 有值），所以看訊息是不是來自擴充功能自己的頁面（content script 的 sender.url 是遊戲網址）；

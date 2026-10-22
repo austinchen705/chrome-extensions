@@ -51,7 +51,10 @@ globalThis.chrome = {
       get: async keys => Object.fromEntries([].concat(keys).filter(key => key in store).map(key => [key, structuredClone(store[key])])),
       set: async values => { Object.assign(store, structuredClone(values)); },
     },
+    onChanged: noop,
   },
+  permissions: { contains: async () => false, onAdded: { addListener() {} }, onRemoved: { addListener() {} } },
+  scripting: { registerContentScripts: async () => {}, unregisterContentScripts: async () => { throw new Error('Nonexistent script ID'); } },
 };
 // background 用 chrome.runtime.getURL('zap-data.json') 取資料：假的 fetch 認得結尾
 const realFetch = globalThis.fetch;
