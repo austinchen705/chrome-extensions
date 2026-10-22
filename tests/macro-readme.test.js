@@ -13,14 +13,39 @@ const README = fs.readFileSync(path.join(root, 'README.md'), 'utf8').replace(/\r
 const section = title => {
   const start = README.indexOf(`## ${title}\n`);
   assert.ok(start >= 0, `README has the section ${title}`);
-  return README.slice(start, README.indexOf('\n## ', start + 5));
+  const end = README.indexOf('\n## ', start + 5);
+  return end < 0 ? README.slice(start) : README.slice(start, end);
 };
 const MACRO_TEXT = ['巨集備註', '巨集匯出與匯入', '巨集視窗調整大小'].map(section).join('\n');
 const CONTENT = fs.readFileSync(path.join(root, 'catworld-auto-command', 'content.js'), 'utf8');
 
-test('the numbers README gives for the macro features are the ones the code uses', () => {
-  [M.COUNT, M.MAX_COMMAND, M.MAX_NOTE, M.MAX_KEY, M.MIN_WINDOW.width, M.MIN_WINDOW.height]
-    .forEach(number => assert.ok(MACRO_TEXT.includes(String(number)), `README mentions ${number}`));
+// 數字連同它的語境一起比對：只看數字有沒有出現在某處，別處剛好有 90 或 200 也會放行
+test('the numbers README gives for the macro features are the ones the code uses, each with what it limits', () => {
+  [
+    `${M.COUNT} 格`,
+    `指令超過 ${M.MAX_COMMAND} 字`,
+    `超過 ${M.MAX_NOTE} 字`,
+    `1 到 ${M.MAX_KEY}`,
+    `寬 ${M.MIN_WINDOW.width}、高 ${M.MIN_WINDOW.height}`,
+  ].forEach(phrase => assert.ok(MACRO_TEXT.includes(phrase), `README says "${phrase}"`));
+});
+
+test('the limit README gives for a remembered window size is where the code stops believing it', () => {
+  assert.ok(M.sanitizeSize({ width: 10000, height: 500 }), '10000 is still believed');
+  assert.equal(M.sanitizeSize({ width: 10001, height: 500 }), null, '10001 is not');
+  assert.ok(section('巨集視窗調整大小').includes('超過 10000'), 'README says over 10000 counts as broken');
+});
+
+test('README says when a drag ends and that the success message goes away by itself', () => {
+  const resize = section('巨集視窗調整大小');
+  assert.ok(resize.includes('失去焦點') && resize.includes('滑鼠鍵'), 'a drag also ends on losing focus or when the button is already up');
+  assert.ok(section('巨集匯出與匯入').includes('8 秒後自動收起'));
+});
+
+test('README says the restore button stays pressable when the backup is broken, and why it is in the import box', () => {
+  const io = section('巨集匯出與匯入');
+  assert.ok(io.includes('仍然可以按'));
+  assert.ok(io.includes('310px'));
 });
 
 test('every button of the panel macro row and its import box is named in README with the label it has on screen', () => {
@@ -30,7 +55,8 @@ test('every button of the panel macro row and its import box is named in README 
 });
 
 test('README does not say the macro row only shows while a macro runs, now that it is always on the panel', () => {
-  assert.doesNotMatch(README, /「巨集」列[^。\n]*才出現/);
+  assert.doesNotMatch(README, /「巨集」列[^\n]{0,40}才(?:會)?(?:出現|顯示)/);
+  assert.doesNotMatch(README, /有巨集在跑(?:時)?才(?:會)?(?:出現|顯示)/);
   assert.doesNotMatch(README, /平常只顯示「匯出」/);
 });
 

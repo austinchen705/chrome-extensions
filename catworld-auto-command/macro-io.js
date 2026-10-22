@@ -149,5 +149,6 @@ function clampWindowSize(size, available) {
   return { width: fit(size.width, MIN_WINDOW.width, available?.width), height: fit(size.height, MIN_WINDOW.height, available?.height) };
 }
 
+// MAX_COMMAND、MAX_NOTE、MAX_KEY 公開出去是給 README 對照測試用的：說明裡的數字要從程式讀，不寫死在測試裡
 globalThis.CatworldMacroIO = { COUNT, VERSION, MAX_COMMAND, MAX_NOTE, MAX_KEY, MIN_WINDOW, readMacros, exportText, countFilled, parseImport, makeBackup, parseBackup, sanitizeSize, clampWindowSize };
 })();
