@@ -961,3 +961,52 @@ test('a newer 停用 replaces an older route for a new mob, and the mob stays', 
   assert.equal(result.mobs[Z.customKey(`${KING}|蒙古`)].exp, 250000);
   assert.equal(result.routes[Z.customKey(`${KING}|蒙古`)].disabled, true);
 });
+
+// ---- 設定頁摘要與逐列報告：新增與修正強度 ----
+test('the report counts the new mobs and the fixed strengths separately', () => {
+  const result = buildFix(`${KING},蒙古,250000,run e,,甲,`, '老虎(tiger),桃花島,5000,,,乙,', '老虎(tiger),長安城,6000,,,乙,', '野狗(dog),襄陽,9,,,丙,');
+  assert.deepEqual([result.report.created, result.report.fixed, result.report.used], [1, 3, 4]);
+  const none = buildFix('老虎(tiger),桃花島,,run e,,甲,');
+  assert.deepEqual([none.report.created, none.report.fixed], [0, 0]);
+});
+
+test('the mob summary adds 新增 and 修正強度 only when there are some, and the riddle summary never does', () => {
+  const entry = extra => okEntry({ at: 5, report: { ...okEntry().report, ...extra } });
+  assert.equal(S.describeSheet('mob', 'u', entry({ created: 1, fixed: 2 }), at), '怪物路線：上次更新 <5>：共 3 列，生效 2 隻，新增 1 隻、修正強度 2 隻，丟掉 1 列，對不到怪物 1 筆');
+  assert.match(S.describeSheet('mob', 'u', entry({ created: 3, fixed: 0 }), at), /生效 2 隻，新增 3 隻，丟掉 1 列/);
+  assert.match(S.describeSheet('mob', 'u', entry({ created: 0, fixed: 4 }), at), /生效 2 隻，修正強度 4 隻，丟掉 1 列/);
+  assert.equal(S.describeSheet('mob', 'u', entry({ created: 0, fixed: 0 }), at), S.describeSheet('mob', 'u', okEntry({ at: 5 }), at), 'without any the text is the same as before');
+  assert.equal(S.describeSheet('mob', 'u', okEntry({ at: 5 }), at), '怪物路線：上次更新 <5>：共 3 列，生效 2 隻，丟掉 1 列，對不到怪物 1 筆', 'an old cache without the counts');
+  assert.doesNotMatch(S.describeSheet('riddle', 'u', entry({ created: 1, fixed: 1 }), at), /新增|修正強度/);
+});
+
+test('rows dropped for a new mob or a fix are listed one by one as errors, and a typo stays an amber unmatched row', () => {
+  const result = buildFix(
+    `${KING},蒙古,250000,run e,,甲,`,
+    '缺括號 忽必烈,蒙古,250000,run e,,甲,',
+    '寫錯(wrong),蒙古,很強,run e,,乙,',
+    '負數(neg),蒙古,-5,run e,,乙,',
+    '太大(huge),蒙古,100000001,run e,,乙,',
+    '老虎(tiger),桃花島,0,run e,,丙,',
+    '老虎(tiger),桃花島,5000,,,丙,',
+    '打錯字(typo),,,run e,,丁,');
+  const entries = S.reportEntries(result.report);
+  assert.deepEqual(entries.map(entry => entry.level), ['error', 'error', 'error', 'error', 'error', 'warn']);
+  assert.deepEqual(entries.map(entry => entry.text.match(/^第 (\d+) 列/)[1]), ['3', '4', '5', '6', '7', '9']);
+  assert.match(entries[0].text, /^第 3 列：丟掉（新怪的名稱要寫成「稱號 名稱\(ID\)」，缺少括號 ID）$/);
+  assert.match(entries[1].text, /寫錯.*看不懂|強度「很強」看不懂/);
+  assert.match(entries[2].text, /強度「-5」看不懂/);
+  assert.match(entries[3].text, /強度超過上限 1 億/);
+  assert.match(entries[4].text, /強度要大於 0/);
+  assert.match(entries[5].text, /^第 9 列：打錯字\(typo\)　資料裡沒有這個怪物$/);
+  assert.deepEqual([result.report.created, result.report.fixed, result.report.unmatched.length], [1, 1, 1], 'a row with a strength is never counted as unmatched');
+});
+
+test('the mob summary line is amber when rows were dropped or unmatched, and plain when everything went through', () => {
+  const clean = buildFix(`${KING},蒙古,250000,run e,,甲,`, '老虎(tiger),桃花島,5000,,,乙,');
+  const parts = S.describeSheetParts('mob', 'u', { url: 'u', at: 5, report: clean.report }, at, BOTH);
+  assert.deepEqual(parts.map(part => part.level), ['info']);
+  assert.match(parts[0].text, /生效 2 隻，新增 1 隻、修正強度 1 隻，丟掉 0 列，對不到怪物 0 筆/);
+  const dirty = buildFix(`${KING},蒙古,250000,run e,,甲,`, '缺括號 忽必烈,蒙古,250000,run e,,甲,');
+  assert.deepEqual(S.describeSheetParts('mob', 'u', { url: 'u', at: 5, report: dirty.report }, at, BOTH).map(part => part.level), ['warn']);
+});

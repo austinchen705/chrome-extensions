@@ -302,6 +302,7 @@ function buildMobRoutes(csvText, mobs) {
   const newMobs = Object.fromEntries([...bestMob].map(([key, { mob }]) => [key, mob]));
   report.used = new Set([...best.keys(), ...bestMob.keys(), ...bestFix.keys()]).size;
   report.created = bestMob.size;
+  report.fixed = bestFix.size;
   report.unmatched.sort((a, b) => a.row - b.row);
   return { ok: true, routes, mobs: newMobs, fixes: fixesByKey, report };
 }
@@ -424,8 +425,10 @@ function describeFetched(kind, entry, timeText, enabled) {
   const report = entry.report;
   const rows = report?.overflow > 0 ? `共 ${report.rows} 列（其中 ${report.overflow} 列超過上限沒有讀）` : `共 ${report?.rows} 列`;
   const usable = Boolean(entry.at && report);
+  // 怪物路線分頁才有的新增與修正強度（有才寫；舊快取沒有這兩個數字就當作沒有）
+  const added = kind !== 'mob' ? [] : [report?.created > 0 ? `新增 ${report.created} ${used}` : '', report?.fixed > 0 ? `修正強度 ${report.fixed} ${used}` : ''].filter(Boolean);
   const ok = usable
-    ? `上次更新 ${timeText(entry.at)}：${rows}，生效 ${report.used} ${used}，丟掉 ${report.dropped.length} 列，對不到${unmatched} ${report.unmatched.length} 筆`
+    ? `上次更新 ${timeText(entry.at)}：${rows}，生效 ${report.used} ${used}，${added.length ? `${added.join('、')}，` : ''}丟掉 ${report.dropped.length} 列，對不到${unmatched} ${report.unmatched.length} 筆`
     : '沒有可用的資料';
   // 有被丟掉或對不到的列、超過上限、或根本沒有可用的資料，都是需要使用者留意的
   const level = !usable || report.dropped.length || report.unmatched.length || report.overflow > 0 ? 'warn' : 'info';
