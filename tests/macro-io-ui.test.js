@@ -725,3 +725,128 @@ ui('a restore writes through the same path as an import, also in a panel of anot
     page.close();
   }
 });
+
+// ---- 備份與還原的失敗路徑 ----
+// 在另一個 document 的片段裡走一遍「貼上、檢查、確認取代」，回傳各個寫入的記錄
+async function runImport(page, extra = {}) {
+  const log = { backups: [], macros: [], notes: [] };
+  const old = { raw: JSON.stringify(game({ 9: ['120', 'old backup'] })), notes: { 9: '舊備份' }, at: 1 };
+  const { $ } = elsewhere(page, depsOf({
+    readBackup: async () => old,
+    writeBackup: async backup => { log.backups.push(backup); },
+    writeMacros: text => { log.macros.push(text); },
+    writeNotes: async notes => { log.notes.push(notes); },
+    ...extra,
+  }));
+  $('.mimport').click();
+  $('.macro-import-text').value = IMPORT_TEXT;
+  $('.macro-import-check').click();
+  $('.macro-confirm-ok').click();
+  await sleep(30);
+  return { log, old, $ };
+}
+
+ui('when the game storage refuses the import after the backup was written, the earlier backup is put back', async () => {
+  const page = await boot();
+  try {
+    const { log, old, $ } = await runImport(page, { writeMacros: () => { throw new Error('QuotaExceededError'); } });
+    assert.equal(log.backups.length, 2, 'the new backup, then the earlier one again');
+    assert.deepEqual(plain(log.backups[1]), old, 'the backup people could go back to is the same as before');
+    assert.match($('.macro-io-msg').textContent, /匯入失敗.*沒有改動/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('when only the notes cannot be written the import counts as done, so the new backup stays', async () => {
+  const page = await boot();
+  try {
+    const { log, $ } = await runImport(page, { writeNotes: async () => { throw new Error('storage gone'); } });
+    assert.equal(log.backups.length, 1, 'no step back: the macros were replaced and the backup is how to undo that');
+    assert.equal(log.macros.length, 1);
+    assert.match($('.macro-io-msg').textContent, /巨集已寫入，但備註沒有寫進去/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a failed import does not write an old backup that never existed', async () => {
+  const page = await boot();
+  try {
+    const { log } = await runImport(page, { readBackup: async () => undefined, writeMacros: () => { throw new Error('QuotaExceededError'); } });
+    assert.equal(log.backups.length, 1, 'only the backup of the current macros, nothing put back');
+  } finally {
+    page.close();
+  }
+});
+
+ui('without the current notes there is no complete backup, so the import does not happen', async () => {
+  const page = await boot();
+  try {
+    const { log, $ } = await runImport(page, { readNotes: async () => { throw new Error('storage gone'); } });
+    assert.deepEqual([log.backups.length, log.macros.length, log.notes.length], [0, 0, 0]);
+    assert.match($('.macro-io-msg').textContent, /匯入失敗.*沒有改動.*備註.*備份/);
+    assert.ok($('.macro-io-msg').classList.contains('alert'));
+  } finally {
+    page.close();
+  }
+});
+
+ui('without being able to read the current game macros there is no backup, so the import does not happen', async () => {
+  const page = await boot();
+  try {
+    const { log, $ } = await runImport(page, { readRaw: () => { throw new Error('SecurityError'); } });
+    assert.deepEqual([log.backups.length, log.macros.length, log.notes.length], [0, 0, 0]);
+    assert.match($('.macro-io-msg').textContent, /匯入失敗.*沒有改動.*讀不到.*備份/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('pressing the confirm button twice writes once', async () => {
+  const page = await boot();
+  try {
+    const log = { macros: 0 };
+    const { $ } = elsewhere(page, depsOf({ writeMacros: () => { log.macros++; } }));
+    $('.mimport').click();
+    $('.macro-import-text').value = IMPORT_TEXT;
+    $('.macro-import-check').click();
+    $('.macro-confirm-ok').click();
+    $('.macro-confirm-ok').click();
+    await sleep(40);
+    assert.equal(log.macros, 1);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a backup whose text the game cannot read is restored only after a warning, and as it is', async () => {
+  const page = await boot();
+  try {
+    const written = [];
+    const broken = { raw: 'not json at all', notes: {}, at: 7 };
+    const { $ } = elsewhere(page, depsOf({ readBackup: async () => broken, writeMacros: text => { written.push(text); } }));
+    assert.ok(await waitFor(() => $('.macro-restore').disabled === false));
+    $('.macro-restore').click();
+    assert.ok(await waitFor(() => $('.macro-confirm').hidden === false));
+    assert.match($('.macro-confirm-msg').textContent, /讀不懂.*載入失敗/, 'the warning says the game may fail to load');
+    $('.macro-confirm-ok').click();
+    await sleep(30);
+    assert.deepEqual(written, ['not json at all'], 'the user decides, and the text goes back exactly');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a backup the game can read comes with no such warning', async () => {
+  const page = await boot();
+  try {
+    const { $ } = elsewhere(page, depsOf({ readBackup: async () => ({ raw: JSON.stringify(MACROS), notes: {}, at: 7 }) }));
+    assert.ok(await waitFor(() => $('.macro-restore').disabled === false));
+    $('.macro-restore').click();
+    assert.ok(await waitFor(() => $('.macro-confirm').hidden === false));
+    assert.doesNotMatch($('.macro-confirm-msg').textContent, /讀不懂/);
+  } finally {
+    page.close();
+  }
+});

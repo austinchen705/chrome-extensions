@@ -26,10 +26,29 @@ const WARNINGS = [
   '重新整理前不要在遊戲的巨集視窗改巨集，遊戲會用記憶體裡的舊內容存回去、蓋掉匯入。',
   '開了多個遊戲分頁時，每個分頁都要重新整理。',
 ];
+
+// 匯入與還原是同一套流程，只有這幾處不同：確認文字的開頭、失敗與完成的訊息、要不要先留備份、要不要清掉貼上框
+const KINDS = {
+  import: {
+    headline: pending => `將取代 ${pending.replaced} 列（目前有內容的巨集），備註也會整份換成匯入的。`,
+    failed: IMPORT_FAILED,
+    done: '已匯入，請重新整理遊戲頁，遊戲才會讀到新的巨集',
+    backupFirst: true,
+    clearPaste: true,
+  },
+  restore: {
+    headline: pending => `將用匯入前的備份${pending.at ? `（${new Date(pending.at).toLocaleString('zh-TW', { hour12: false })}）` : ''}取代目前 ${pending.replaced} 列，備註也會整份換回備份的。`,
+    failed: RESTORE_FAILED,
+    done: '已還原成匯入前的備份，請重新整理遊戲頁，遊戲才會讀到還原的巨集',
+    backupFirst: false,
+    clearPaste: false,
+  },
+};
+// 備份是原樣的文字：遊戲讀不懂的也原樣還原（那是唯一的備份，由玩家決定），但要先說清楚
+const UNREADABLE_BACKUP = '這份備份的內容遊戲讀不懂（不是正常的巨集資料），還原後遊戲可能載入失敗，請想清楚再按。';
 const confirmText = pending => [
-  pending.kind === 'restore'
-    ? `將用匯入前的備份${pending.at ? `（${new Date(pending.at).toLocaleString('zh-TW', { hour12: false })}）` : ''}取代目前 ${pending.replaced} 列，備註也會整份換回備份的。`
-    : `將取代 ${pending.replaced} 列（目前有內容的巨集），備註也會整份換成匯入的。`,
+  KINDS[pending.kind].headline(pending),
+  ...(pending.unreadable ? [UNREADABLE_BACKUP] : []),
   ...WARNINGS,
 ].join('\n');
 
@@ -96,22 +115,23 @@ function setupImport(pick, deps, messages, relayout) {
   const confirmBox = pick('.macro-confirm');
   const confirmMessage = pick('.macro-confirm-msg');
   const restoreButton = pick('.macro-restore');
-  // 等玩家確認的那一份：{ kind: 'import' | 'restore', raw（要寫進遊戲的文字）, notes, replaced（現在有幾列）, at }。
+  // 等玩家確認的那一份：{ kind, raw（要寫進遊戲的文字）, notes, replaced（現在有幾列）, at, unreadable }。
   // 貼的文字一改、收起匯入框或取消就作廢，確認鈕只套用「檢查當下」的結果，不重新解析
   let pending = null;
   const dropPending = () => {
     pending = null;
     confirmBox.hidden = true;
   };
-  const askToConfirm = next => {
-    let currentRaw = null;
+  const readCurrentRaw = () => {
     try {
-      currentRaw = deps.readRaw();
-    } catch {
-      // 讀不到目前的巨集就當作 0 列
+      return { raw: deps.readRaw() };
+    } catch (error) {
+      return { error };
     }
+  };
+  const askToConfirm = next => {
     messages.hide();
-    pending = { ...next, replaced: M.countFilled(M.readMacros(currentRaw).macros) };
+    pending = { ...next, replaced: M.countFilled(M.readMacros(readCurrentRaw().raw).macros) };
     confirmMessage.textContent = confirmText(pending);
     confirmBox.hidden = false;
     relayout();
@@ -128,24 +148,56 @@ function setupImport(pick, deps, messages, relayout) {
   }
   refreshRestore();
 
-  // 匯入與還原共用的寫入：先寫遊戲的 localStorage（寫不進去就停，什麼都沒動），再寫備註
-  async function apply({ raw, notes }, { failed, done, clearPaste }) {
+  // 匯入與還原共用的寫入：先寫遊戲的 localStorage（寫不進去就停，什麼都沒動），再寫備註。
+  // 回傳巨集有沒有寫進去（備註失敗時巨集已經換了，算寫進去）
+  async function apply({ raw, notes }, kind) {
     try {
       deps.writeMacros(raw);
     } catch (error) {
-      messages.show(`${failed}遊戲的儲存寫不進去（${describeError(error)}）`, { level: 'error' });
-      return;
+      messages.show(`${kind.failed}遊戲的儲存寫不進去（${describeError(error)}）`, { level: 'error' });
+      return false;
     }
     importBox.hidden = true;
-    if (clearPaste) pasteBox.value = '';
+    if (kind.clearPaste) pasteBox.value = '';
     try {
       await deps.writeNotes(notes);
     } catch (error) {
       messages.show(`巨集已寫入，但備註沒有寫進去（${describeError(error)}）。請重新整理遊戲頁，遊戲才會讀到新的巨集`, { level: 'warn' });
-      return;
+      return true;
     }
-    messages.show(done);
+    messages.show(kind.done);
     await refreshRestore();
+    return true;
+  }
+
+  // 匯入取代之前先把現在的留起來（原樣的巨集文字加備註），留不住就不匯入，免得一邊沒備份一邊覆蓋。
+  // 成功回 { previous }（原本那份備份，之後匯入失敗時要放回去），失敗已經顯示原因並回 null
+  async function backupCurrent() {
+    const current = readCurrentRaw();
+    if (current.error) {
+      messages.show(`${IMPORT_FAILED}讀不到目前遊戲的巨集，沒辦法留備份（${describeError(current.error)}）`, { level: 'error' });
+      return null;
+    }
+    let notes;
+    try {
+      notes = await deps.readNotes();
+    } catch (error) {
+      messages.show(`${IMPORT_FAILED}讀不到目前的備註，沒辦法留完整的備份（${describeError(error)}）`, { level: 'error' });
+      return null;
+    }
+    let previous;
+    try {
+      previous = await deps.readBackup();
+    } catch {
+      previous = undefined; // 原本的備份讀不到，就沒有東西可以在失敗時放回去
+    }
+    try {
+      await deps.writeBackup(M.makeBackup(current.raw, notes, Date.now()));
+    } catch (error) {
+      messages.show(`${IMPORT_FAILED}匯入前的備份寫不進去（${describeError(error)}），為了讓你能回頭，匯入沒有進行`, { level: 'error' });
+      return null;
+    }
+    return { previous };
   }
 
   pick('.mimport').addEventListener('click', () => {
@@ -186,7 +238,7 @@ function setupImport(pick, deps, messages, relayout) {
       messages.show(`${RESTORE_FAILED}${backup.error}`, { level: 'error' });
       return;
     }
-    askToConfirm({ kind: 'restore', raw: backup.raw, notes: backup.notes, at: backup.at });
+    askToConfirm({ kind: 'restore', raw: backup.raw, notes: backup.notes, at: backup.at, unreadable: M.readMacros(backup.raw).status === 'damaged' });
   });
   pick('.macro-confirm-cancel').addEventListener('click', () => {
     dropPending();
@@ -196,30 +248,18 @@ function setupImport(pick, deps, messages, relayout) {
     const data = pending;
     if (!data) return;
     dropPending();
-    if (data.kind === 'restore') {
-      await apply(data, { failed: RESTORE_FAILED, done: '已還原成匯入前的備份，請重新整理遊戲頁，遊戲才會讀到還原的巨集', clearPaste: false });
-      return;
+    const kind = KINDS[data.kind];
+    const backed = kind.backupFirst ? await backupCurrent() : {};
+    if (!backed) return;
+    const written = await apply(data, kind);
+    // 匯入沒有發生，那份新備份只是「現在的樣子」，原本的備份別讓它蓋掉
+    if (!written && backed.previous !== undefined) {
+      try {
+        await deps.writeBackup(backed.previous);
+      } catch {
+        // 放不回去也沒辦法，現在的巨集沒有被動到
+      }
     }
-    // 匯入：取代之前先把現在的留起來；留不住就不匯入，免得一邊沒備份一邊覆蓋
-    let currentRaw = null;
-    let currentNotes = {};
-    try {
-      currentRaw = deps.readRaw();
-    } catch {
-      // 讀不到目前的巨集，備份就是空的
-    }
-    try {
-      currentNotes = await deps.readNotes();
-    } catch {
-      // 讀不到備註，備份就沒有備註
-    }
-    try {
-      await deps.writeBackup(M.makeBackup(currentRaw, currentNotes, Date.now()));
-    } catch (error) {
-      messages.show(`${IMPORT_FAILED}匯入前的備份寫不進去（${describeError(error)}），為了讓你能回頭，匯入沒有進行`, { level: 'error' });
-      return;
-    }
-    await apply(data, { failed: IMPORT_FAILED, done: '已匯入，請重新整理遊戲頁，遊戲才會讀到新的巨集', clearPaste: true });
   });
 }
 
