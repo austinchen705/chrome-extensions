@@ -126,7 +126,7 @@
 - 預設連結：`shared-data.js` 的 `DEFAULT_SOURCES`（作者這群朋友的兩份表）。`background.js` 在 `onInstalled`（安裝、更新、重新載入）時，**只有 `sharedSources` 從來沒有被設定過（儲存裡沒有這個欄位）**才寫入預設值；設定頁清空會存成空字串，之後不會再帶入，自己填過的也不動。功能開關預設關閉，所以預設連結不會讓沒開功能的人連 Google。預設值要和 README「現在在用的共用表連結」一樣（測試會對照）。
 - README「共用資料」一節和模組要一致，`tests/shared-data.test.js` 會對照：「允許的動詞」那一行要和 `ALLOWED_VERBS` 一樣（改清單要同步改 README），兩個標題列程式碼區塊要保留 Tab 且欄位位置解析器吃得進去。連結沒有 `gid=` 仍然收（單一分頁的表沒問題），但設定頁會提醒「讀到的是第一個分頁」。
 - 任何儲存或網路問題都不能弄壞內建資料的查詢（`sharedLayer` 失敗回空的共用層）。
-- 測試：`tests/shared-data.test.js`（CSV → 共用層與報告）、`tests/shared-background.test.js`（在記憶體裡執行 `background.js`，假 `chrome.storage.local` 與 `fetch`，檢查請求次數、快取、回覆）、`tests/zap-route-ui.test.js`（面板標示）、`tests/shared-settings-ui.test.js`（jsdom 載入真正的 popup.html 與 popup.js，假的 `chrome`，檢查設定頁結果行與逐列清單的文字和 `msg-error`／`msg-warn` 顏色）。
+- 測試：`tests/shared-data.test.js`（CSV → 共用層與報告）、`tests/shared-background.test.js`（在記憶體裡執行 `background.js`，假 `chrome.storage.local` 與 `fetch`，檢查請求次數、快取、回覆）、`tests/zap-route-ui.test.js`（面板標示）、`tests/shared-settings-ui.test.js`（jsdom 載入真正的 popup.html 與 popup.js，假的 `chrome`，檢查設定頁結果行與逐列清單的文字和 `msg-error`／`msg-warn` 顏色）。範本檔在 `docs/templates/`（`shared-mobs.csv`、`shared-riddles.csv`，標題列要和 README 一致，測試會對照）。
 
 ## 數值區塊
 

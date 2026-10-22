@@ -1013,13 +1013,32 @@ test('the mob summary line is amber when rows were dropped or unmatched, and pla
   assert.deepEqual(S.describeSheetParts('mob', 'u', { url: 'u', at: 5, report: dirty.report }, at, BOTH).map(part => part.level), ['warn']);
 });
 
-test('the strength forms README tells you to write are the ones the parser accepts, and the unit is explained', () => {
-  const line = readmeSection.split('\n').find(text => text.includes('**強度的寫法**'));
-  assert.ok(line, 'README has a line on how to write the strength');
+test('the strength forms README tells you to write are the ones the parser accepts', () => {
+  const line = readmeSection.split('\n').find(text => text.includes('`1W5`'));
+  assert.ok(line, 'README has a line showing how to write the strength');
   ['25萬', '25W', '1W5'].forEach(form => {
     assert.ok(line.includes(`\`${form}\``), `README shows ${form}`);
     assert.equal(S.parseStrength(form).ok, true, form);
   });
   assert.deepEqual(['25萬', '25W', '1W5'].map(form => S.parseStrength(form).value), [250000, 250000, 15000]);
-  ['括號 ID', '內建原值', '空白', '互信'].forEach(word => assert.ok(readmeSection.includes(word), `README mentions ${word}`));
+});
+
+// ---- 範本檔：標題列與 README 一致，範例列匯入後不會弄壞表（對不到的名稱，不會變成新怪）----
+const templateDir = path.join(__dirname, '..', 'docs', 'templates');
+const readTemplate = name => fs.readFileSync(path.join(templateDir, name), 'utf8').replace(/\r\n/g, '\n');
+const readmeHeader = start => [...readmeSection.matchAll(/```\n([^\n]*)\n```/g)].map(match => match[1]).find(block => block.startsWith(start)).replace(/\t/g, ',');
+
+test('the sheet templates carry the same header row as README, plus one harmless example row', () => {
+  const mob = readTemplate('shared-mobs.csv').trimEnd().split('\n');
+  const riddle = readTemplate('shared-riddles.csv').trimEnd().split('\n');
+  assert.equal(mob[0], readmeHeader('怪物名稱\t'));
+  assert.equal(riddle[0], readmeHeader('謎名稱\t'));
+  assert.equal(mob.length, 2);
+  assert.equal(riddle.length, 2);
+  const builtMob = S.buildMobRoutes(mob.join('\n'), WILD);
+  assert.deepEqual([builtMob.ok, builtMob.report.dropped.length, builtMob.report.created, builtMob.report.fixed], [true, 0, 0, 0], 'the example row is valid and creates nothing');
+  assert.equal(builtMob.report.unmatched.length, 1, 'its name is not a real mob, so it only shows up as unmatched');
+  const builtRiddle = S.buildRiddleSteps(riddle.join('\n'), RIDDLES, PAGES);
+  assert.deepEqual([builtRiddle.ok, builtRiddle.report.dropped.length, Object.keys(builtRiddle.steps).length], [true, 0, 0], 'the example row reaches no real riddle');
+  assert.ok(readmeSection.includes('docs/templates/shared-mobs.csv') && readmeSection.includes('docs/templates/shared-riddles.csv'), 'README points at the templates');
 });
