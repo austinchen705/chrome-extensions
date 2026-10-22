@@ -489,3 +489,50 @@ ui('closing the import box drops a confirmation that was waiting', async () => {
     page.close();
   }
 });
+
+ui('a text that passes the check clears the earlier failure message, so an old error is not shown next to the confirmation', async () => {
+  const page = await boot();
+  try {
+    page.$('.mimport').click();
+    await paste(page, 'not json');
+    assert.equal(page.$('.macro-io').hidden, false);
+    assert.match(page.$('.macro-io-msg').textContent, /匯入失敗/);
+    await paste(page, IMPORT_TEXT);
+    assert.equal(page.$('.macro-confirm').hidden, false);
+    assert.equal(page.$('.macro-io').hidden, true, 'the old error message is gone');
+  } finally {
+    page.close();
+  }
+});
+
+ui('the panel is laid out after the confirmation is hidden, not before, when the pasted text changes', async () => {
+  const page = await boot();
+  try {
+    const seen = [];
+    const { $ } = elsewhere(page, depsOf({ relayout: () => { seen.push($('.macro-confirm').hidden); } }));
+    $('.mimport').click();
+    $('.macro-import-text').value = IMPORT_TEXT;
+    $('.macro-import-check').click();
+    assert.equal($('.macro-confirm').hidden, false);
+    seen.length = 0;
+    $('.macro-import-text').value = 'changed';
+    $('.macro-import-text').dispatchEvent(new page.w.Event('input', { bubbles: true }));
+    assert.deepEqual(seen, [true], 'laid out once, with the confirmation already hidden');
+  } finally {
+    page.close();
+  }
+});
+
+ui('when the current game macros cannot be read the confirmation still comes, counting 0 rows to replace', async () => {
+  const page = await boot();
+  try {
+    const { $ } = elsewhere(page, depsOf({ readRaw: () => { throw new Error('SecurityError'); } }));
+    $('.mimport').click();
+    $('.macro-import-text').value = IMPORT_TEXT;
+    $('.macro-import-check').click();
+    assert.equal($('.macro-confirm').hidden, false);
+    assert.match($('.macro-confirm-msg').textContent, /將取代 0 列/);
+  } finally {
+    page.close();
+  }
+});

@@ -6,6 +6,8 @@
 if (globalThis.CatworldMacroIOUI) return;
 
 const MESSAGE_MS = 8000;
+const IMPORT_FAILED = '匯入失敗，沒有改動任何資料：';
+const describeError = error => error?.message || error;
 
 // 面板其他地方為了不搶遊戲輸入框的游標擋掉 mousedown，輸入框要放行；click 也要擋（遊戲的 window.onclick 會把游標搶回
 // 遊戲輸入框）；打字也不讓遊戲的快捷鍵收到
@@ -44,8 +46,8 @@ function attach(root, deps) {
   let pending = null;
   const relayout = () => deps.relayout?.();
 
-  // 訊息：要手動複製時文字框一直留著，直到下一次匯出；autoHide 的訊息一會兒就收掉，其他（錯誤、匯入結果）留著等玩家看
-  function show(text, level = 'info', manualText = '', autoHide = false) {
+  // 訊息：manual 有文字時文字框一直留著，直到下一次匯出；autoHide 的訊息一會兒就收掉，其他（錯誤、匯入結果）留著等玩家看
+  function show(text, { level = 'info', manual: manualText = '', autoHide = false } = {}) {
     clearTimeout(hideTimer);
     message.textContent = text;
     message.classList.toggle('warn', level === 'warn');
@@ -55,6 +57,10 @@ function attach(root, deps) {
     ioBox.hidden = false;
     if (autoHide && !manualText) hideTimer = setTimeout(() => { ioBox.hidden = true; relayout(); }, MESSAGE_MS);
     relayout();
+  }
+  function hideMessage() {
+    clearTimeout(hideTimer);
+    ioBox.hidden = true;
   }
 
   exportButton.addEventListener('click', async () => {
@@ -77,9 +83,9 @@ function attach(root, deps) {
     const win = exportButton.ownerDocument.defaultView;
     try {
       await (win?.navigator ?? navigator).clipboard.writeText(text);
-      show(`已複製到剪貼簿${hint ? `（${hint}）` : ''}`, level, '', true);
+      show(`已複製到剪貼簿${hint ? `（${hint}）` : ''}`, { level, autoHide: true });
     } catch {
-      show(`無法寫入剪貼簿，請從下面的文字框自己複製${hint ? `（${hint}）` : ''}`, 'warn', text);
+      show(`無法寫入剪貼簿，請從下面的文字框自己複製${hint ? `（${hint}）` : ''}`, { level: 'warn', manual: text });
     }
   });
 
@@ -95,8 +101,9 @@ function attach(root, deps) {
     relayout();
   });
   pasteBox.addEventListener('input', () => {
-    if (pending) relayout();
+    const asked = Boolean(pending);
     dropPending();
+    if (asked) relayout();
   });
   pick('.macro-import-cancel').addEventListener('click', () => {
     importBox.hidden = true;
@@ -107,17 +114,18 @@ function attach(root, deps) {
     const result = M.parseImport(pasteBox.value);
     if (!result.ok) {
       dropPending();
-      show(`匯入失敗，沒有改動任何資料：${result.error}`, 'error');
+      show(`${IMPORT_FAILED}${result.error}`, { level: 'error' });
       return;
     }
-    let replaced = 0;
+    let currentRaw = null;
     try {
-      replaced = M.countFilled(M.readMacros(deps.readRaw()).macros);
+      currentRaw = deps.readRaw();
     } catch {
       // 讀不到目前的巨集就當作 0 列
     }
+    hideMessage();
     pending = result;
-    confirmMessage.textContent = confirmText(replaced);
+    confirmMessage.textContent = confirmText(M.countFilled(M.readMacros(currentRaw).macros));
     confirmBox.hidden = false;
     relayout();
   });
@@ -132,7 +140,7 @@ function attach(root, deps) {
     try {
       deps.writeMacros(JSON.stringify(data.macros));
     } catch (error) {
-      show(`匯入失敗，沒有改動任何資料：遊戲的儲存寫不進去（${error?.message || error}）`, 'error');
+      show(`${IMPORT_FAILED}遊戲的儲存寫不進去（${describeError(error)}）`, { level: 'error' });
       return;
     }
     importBox.hidden = true;
@@ -140,10 +148,10 @@ function attach(root, deps) {
     try {
       await deps.writeNotes(data.notes);
     } catch (error) {
-      show(`巨集已寫入，但備註沒有寫進去（${error?.message || error}）。請重新整理遊戲頁，遊戲才會讀到新的巨集`, 'warn');
+      show(`巨集已寫入，但備註沒有寫進去（${describeError(error)}）。請重新整理遊戲頁，遊戲才會讀到新的巨集`, { level: 'warn' });
       return;
     }
-    show('已匯入，請重新整理遊戲頁，遊戲才會讀到新的巨集', 'info');
+    show('已匯入，請重新整理遊戲頁，遊戲才會讀到新的巨集');
   });
 }
 
