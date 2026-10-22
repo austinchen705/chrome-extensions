@@ -1,4 +1,4 @@
-// 巨集匯入匯出的純函式模組：不碰 DOM、不碰 chrome.*，content script、popup 備援注入與測試共用。
+// 巨集共用的純函式模組（匯入匯出的格式與檢查、備份、巨集視窗大小的夾限）：不碰 DOM、不碰 chrome.*，content script、popup 備援注入與測試共用。
 // 遊戲把巨集存在頁面的 localStorage.MACROS：長度 90 的陣列，每格是 0（空）或 [按鍵值字串, 指令字串]。
 // 匯出的文字是 { version, macros, notes }：macros 就是遊戲那份的原樣，notes 是我們自己的備註（列號 → 文字，只放有內容的列）。
 (() => {

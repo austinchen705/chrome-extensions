@@ -47,6 +47,7 @@ async function boot({ html = TABLE, saved, gate = null, failSave = false } = {})
     };
   });
   const store = saved === undefined ? {} : { macroWindowSize: saved };
+  const saves = []; // 每一次寫進 storage 的內容
   w.AudioContext = class {
     constructor() { this.state = 'suspended'; }
     resume() { return Promise.resolve(); }
@@ -64,6 +65,7 @@ async function boot({ html = TABLE, saved, gate = null, failSave = false } = {})
         },
         set: async values => {
           if (failSave) throw new Error('quota');
+          saves.push(JSON.parse(JSON.stringify(values)));
           Object.assign(store, JSON.parse(JSON.stringify(values)));
         },
       },
@@ -75,7 +77,7 @@ async function boot({ html = TABLE, saved, gate = null, failSave = false } = {})
   const table = w.document.getElementById('macro_table');
   const handle = () => w.document.querySelector('#macro_table .macro-resize');
   const mouse = (target, type, x, y) => {
-    const event = new w.MouseEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true, cancelable: true });
+    const event = new w.MouseEvent(type, { clientX: x, clientY: y, button: 0, buttons: type === 'mouseup' ? 0 : 1, bubbles: true, cancelable: true });
     target.dispatchEvent(event);
     return event;
   };
@@ -85,7 +87,7 @@ async function boot({ html = TABLE, saved, gate = null, failSave = false } = {})
     mouse(w.document, 'mousemove', to[0], to[1]);
     mouse(w.document, 'mouseup', to[0], to[1]);
   };
-  return { w, table, handle, store, mouse, drag, close: () => timers.forEach(id => { w.clearTimeout(id); w.clearInterval(id); }) };
+  return { w, table, handle, store, saves, mouse, drag, close: () => timers.forEach(id => { w.clearTimeout(id); w.clearInterval(id); }) };
 }
 
 ui('the macro window gets a drag handle, and the page without a macro window is left alone', async () => {
@@ -252,6 +254,101 @@ ui('only the main mouse button drags the handle', async () => {
     assert.equal(page.table.style.width, '', 'a right click does not resize');
     assert.equal(right.defaultPrevented, false, 'and does not take over the context menu');
     assert.equal(page.store.macroWindowSize, undefined);
+  } finally {
+    page.close();
+  }
+});
+
+ui('the window cannot be made bigger than the room left from where it sits: its left edge and bottom edge stay on the screen', async () => {
+  const page = await boot({ html: '<div id="macro_table" style="right: 100px; top: 50px"><div id="macro_header"></div></div>' });
+  try {
+    page.drag([500, 300], [-5000, 5000]);
+    assert.deepEqual([page.table.style.width, page.table.style.height], [`${page.w.innerWidth - 100}px`, `${page.w.innerHeight - 50}px`]);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a saved size that would put the window off the screen from where it sits now is cut down when it is applied', async () => {
+  const page = await boot({ saved: { width: 9000, height: 9000 }, html: '<div id="macro_table" style="right: 200px; top: 80px"><div id="macro_header"></div></div>' });
+  try {
+    assert.ok(await waitFor(() => page.table.style.width !== ''));
+    assert.deepEqual([page.table.style.width, page.table.style.height], [`${page.w.innerWidth - 200}px`, `${page.w.innerHeight - 80}px`]);
+  } finally {
+    page.close();
+  }
+});
+
+ui('the drag ends when the mouse button is no longer held even if the button release never arrived, and the size is saved', async () => {
+  const page = await boot();
+  try {
+    page.mouse(page.handle(), 'mousedown', 500, 300);
+    page.mouse(page.w.document, 'mousemove', 450, 330);
+    assert.equal(page.table.style.width, '740px');
+    page.w.document.dispatchEvent(new page.w.MouseEvent('mousemove', { clientX: 300, clientY: 400, buttons: 0, bubbles: true }));
+    assert.equal(page.table.style.width, '740px', 'a move without the button held is not a drag');
+    assert.ok(await waitFor(() => page.store.macroWindowSize));
+    assert.deepEqual(page.store.macroWindowSize, { width: 740, height: 493 });
+    page.mouse(page.w.document, 'mousemove', 100, 100);
+    assert.equal(page.table.style.width, '740px', 'and it does not come back to life');
+  } finally {
+    page.close();
+  }
+});
+
+ui('the drag also ends when the page loses focus', async () => {
+  const page = await boot();
+  try {
+    page.mouse(page.handle(), 'mousedown', 500, 300);
+    page.mouse(page.w.document, 'mousemove', 450, 330);
+    page.w.dispatchEvent(new page.w.Event('blur'));
+    assert.ok(await waitFor(() => page.store.macroWindowSize));
+    page.mouse(page.w.document, 'mousemove', 100, 100);
+    assert.equal(page.table.style.width, '740px');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a click on the handle that moves nothing does not count as the player having set a size', async () => {
+  let open = null;
+  const gate = new Promise(resolve => { open = resolve; });
+  const page = await boot({ saved: { width: 900, height: 600 }, gate });
+  try {
+    page.mouse(page.handle(), 'mousedown', 500, 300);
+    page.mouse(page.w.document, 'mouseup', 500, 300);
+    open();
+    assert.ok(await waitFor(() => page.table.style.width === '900px'), 'the saved size still applies');
+    assert.equal(page.store.macroWindowSize.width, 900, 'and a click saves nothing new');
+  } finally {
+    page.close();
+  }
+});
+
+ui('pressing the handle again while an earlier drag never ended first finishes that drag, saving what it had made', async () => {
+  const page = await boot();
+  try {
+    page.mouse(page.handle(), 'mousedown', 500, 300);
+    page.mouse(page.w.document, 'mousemove', 450, 330);
+    assert.equal(page.store.macroWindowSize, undefined, 'the first drag is still going');
+    page.mouse(page.handle(), 'mousedown', 600, 300);
+    assert.ok(await waitFor(() => page.store.macroWindowSize), 'the earlier drag was closed off before the new one started');
+    assert.deepEqual(page.store.macroWindowSize, { width: 740, height: 493 });
+  } finally {
+    page.close();
+  }
+});
+
+ui('once a drag is over nothing from it is left behind: losing focus later or pressing the handle again saves nothing more', async () => {
+  const page = await boot();
+  try {
+    page.drag([500, 300], [450, 330]);
+    assert.ok(await waitFor(() => page.saves.length === 1));
+    page.w.dispatchEvent(new page.w.Event('blur'));
+    page.mouse(page.handle(), 'mousedown', 500, 300);
+    page.mouse(page.w.document, 'mouseup', 500, 300);
+    await sleep(30);
+    assert.equal(page.saves.length, 1, 'no second save from a finished drag, and a click that moved nothing saves nothing');
   } finally {
     page.close();
   }
