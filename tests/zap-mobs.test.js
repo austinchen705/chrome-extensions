@@ -313,3 +313,11 @@ test('parseCustomRoutes accepts a name → command object only', () => {
   ['not json', '[]', '{"a":5}', '{"":"x"}', 'null'].forEach(text => assert.equal(Z.parseCustomRoutes(text).ok, false, text));
   assert.deepEqual(Z.parseCustomRoutes('{"a":"  "}'), { ok: true, routes: {} }, 'empty commands are dropped');
 });
+
+test('metaText marks a mob the shared sheet added with who added it, and leaves built-in mobs alone', () => {
+  const added = { ...mob('橫霸四方 忽必烈(king)', 250000, '蒙古'), source: 'shared', by: '小明' };
+  assert.match(Z.metaText({ mob: added, q: 1.2, idOnly: false }), /共用新增（小明）$/);
+  assert.match(Z.metaText({ mob: { ...added, by: '' }, q: 1.2, idOnly: false }), /共用新增（未署名）$/);
+  const builtIn = { ...mob('華山弟子(a)', 250000, '華山'), source: 'zap' };
+  assert.doesNotMatch(Z.metaText({ mob: builtIn, q: 1.2, idOnly: false }), /共用新增/);
+});

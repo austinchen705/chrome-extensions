@@ -619,3 +619,93 @@ test('report entries are errors for dropped rows, warnings for unmatched rows an
   assert.deepEqual(S.reportEntries(null), []);
   assert.deepEqual(S.reportLines(mixed.report), S.reportEntries(mixed.report).map(entry => entry.text), 'reportLines is the plain text of the entries');
 });
+
+// ---- 共用表新增怪物（強度欄）----
+const HEADER_STR = '怪物名稱,位置,強度,指令,備註,更新者,更新時間';
+const buildStr = (...lines) => S.buildMobRoutes([HEADER_STR, ...lines].join('\n'), WILD);
+const KING = '橫霸四方 忽必烈(king)';
+
+test('strength is a plain number or a 萬 / W / 1W5 style number, between 1 and 100 million', () => {
+  const ok = text => S.parseStrength(text);
+  assert.deepEqual([ok('250000'), ok(' 250000 ')].map(r => r.value), [250000, 250000]);
+  assert.deepEqual(['25萬', '25W', '25w', '25 萬'].map(text => ok(text).value), [250000, 250000, 250000, 250000]);
+  assert.deepEqual(['1W5', '2w1', '1W25', '1.5萬', '1W'].map(text => ok(text).value), [15000, 21000, 12500, 15000, 10000]);
+  assert.equal(ok('100000000').ok, true, 'the limit itself is allowed');
+  ['', '   ', '-5', '0', 'abc', '25X', '1e5', '1,000', 'W5', '12.5.1萬'].forEach(text => {
+    const r = ok(text);
+    assert.equal(r.ok, false, JSON.stringify(text));
+    assert.ok(r.reason, JSON.stringify(text));
+  });
+  const over = ok('100000001');
+  assert.equal(over.ok, false);
+  assert.match(over.reason, /1 億/);
+  assert.match(ok('25X').reason, /萬|W/, 'the reason shows the accepted ways to write it');
+});
+
+test('a row with a strength for a mob the data does not have creates a new mob, with its route when it has a command', () => {
+  const result = buildStr(`${KING},蒙古,250000,run e 5n,先買藥,小明,2026-10-21 14:30`);
+  assert.equal(result.ok, true);
+  const key = `${Z.customKey(KING)}|${Z.customKey('蒙古')}`;
+  const mob = result.mobs[key];
+  assert.deepEqual([mob.name, mob.id, mob.exp, mob.location, mob.note, mob.by], [KING, 'king', 250000, '蒙古', '先買藥', '小明']);
+  assert.equal(result.routes[key].command, 'run e 5n');
+  assert.deepEqual([result.report.created, result.report.dropped.length, result.report.unmatched.length], [1, 0, 0], 'it is not reported as unmatched');
+});
+
+test('a new mob may have no command (no route), and no location (the key is just the name)', () => {
+  const result = buildStr(`${KING},,25W,,,小明,`);
+  assert.equal(result.ok, true);
+  const key = Z.customKey(KING);
+  assert.equal(result.mobs[key].exp, 250000);
+  assert.equal(result.mobs[key].location, '');
+  assert.equal(result.routes[key], undefined, 'no command, no route');
+  assert.equal(result.report.dropped.length, 0);
+});
+
+test('a new mob needs a bracketed id and a valid strength, or the whole row is dropped with the reason', () => {
+  const result = buildStr('橫霸四方 忽必烈,蒙古,250000,run e,,小明,', `${KING},蒙古,很強,run e,,小明,`, `${KING},蒙古,100000001,run e,,小明,`, `${KING},蒙古,-5,run e,,小明,`);
+  assert.deepEqual(Object.keys(result.mobs), []);
+  assert.deepEqual(result.report.dropped.map(item => item.row), [2, 3, 4, 5]);
+  assert.match(result.report.dropped[0].reason, /括號 ID/);
+  assert.match(result.report.dropped[1].reason, /萬|W/);
+  assert.match(result.report.dropped[2].reason, /1 億/);
+  assert.deepEqual(Object.keys(result.routes), [], 'a dropped row never leaves a route behind');
+});
+
+test('without a strength a name the data does not have stays unmatched, and a row without strength still needs a command', () => {
+  const result = buildStr(`${KING},蒙古,,run e,,小明,`, '不存在(x),,,,,小明,');
+  assert.deepEqual(Object.keys(result.mobs), []);
+  assert.equal(result.report.created, 0);
+  assert.deepEqual(result.report.unmatched.map(item => [item.row, item.reason]), [[2, '資料裡沒有這個怪物']]);
+  assert.deepEqual(result.report.dropped.map(item => [item.row, item.reason]), [[3, '指令是空的']]);
+});
+
+test('the same name at a place the data does not know is a new mob; at a known place or with no place it is not', () => {
+  const result = buildStr('老虎(tiger),火星,5000,run e,,甲,', '老虎(tiger),桃花島,5000,run w,,乙,', '老虎(tiger),,5000,run n,,丙,');
+  assert.deepEqual(Object.values(result.mobs).map(mob => [mob.name, mob.location]), [['老虎(tiger)', '火星']]);
+  assert.equal(result.report.created, 1);
+  assert.equal(result.routes[Z.customKey('老虎(tiger)')].command, 'run n', 'the other rows are plain route rows');
+});
+
+test('the new mobs are appended to the built-in mobs without touching the input, and never duplicate a mob the data has by now', () => {
+  const result = buildStr(`${KING},蒙古,250000,run e,備註X,小明,`);
+  const before = JSON.stringify(WILD);
+  const merged = S.applySharedMobs(WILD, result.mobs);
+  assert.equal(JSON.stringify(WILD), before, 'the input is not changed');
+  assert.equal(merged.length, WILD.length + 1);
+  assert.deepEqual(merged.slice(0, WILD.length), WILD);
+  const added = merged.at(-1);
+  assert.deepEqual([added.name, added.id, added.exp, added.location, added.note, added.source, added.by], [KING, 'king', 250000, '蒙古', '備註X', 'shared', '小明']);
+  const nowBuiltIn = S.applySharedMobs([...WILD, { name: KING, id: 'king', exp: 300000, location: '蒙古', note: '', source: 'zap' }], result.mobs);
+  assert.equal(nowBuiltIn.length, WILD.length + 1, 'the zap data won since it now has this mob');
+  assert.equal(S.applySharedMobs(WILD, undefined).length, WILD.length);
+  assert.equal(S.applySharedMobs(WILD, {}).length, WILD.length);
+});
+
+test('the route given with a new mob reaches that mob through the overlay', () => {
+  const result = buildStr(`${KING},蒙古,250000,run e 5n,,小明,`);
+  const merged = S.applySharedMobs(WILD, result.mobs);
+  const mob = merged.at(-1);
+  const out = S.overlayReply({ ok: true, items: [{ mob, route: null }] }, result.routes);
+  assert.equal(out.items[0].route.route.command, 'run e 5n');
+});

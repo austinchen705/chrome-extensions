@@ -130,10 +130,10 @@ const SHARED_CACHE_KEY = 'sharedCache';
 const SHARED_FRESH_MS = 60 * 60 * 1000;
 const SHARED_RETRY_MS = 5 * 60 * 1000;
 const SHARED_TIMEOUT_MS = 15000;
-// layer 是快取裡存共用層的欄位名稱
+// layers 是快取裡存共用層的欄位名稱（第一個是主要的）：怪物路線分頁有路線（routes）與共用表新增的怪（mobs）
 const SHARED_SHEETS = {
-  mob: { layer: 'routes', build: (csv, data) => CatworldSharedData.buildMobRoutes(csv, data.mobs ?? []) },
-  riddle: { layer: 'steps', build: (csv, data) => CatworldSharedData.buildRiddleSteps(csv, data.riddles ?? [], data.pages ?? {}) },
+  mob: { layers: ['routes', 'mobs'], build: (csv, data) => CatworldSharedData.buildMobRoutes(csv, data.mobs ?? []) },
+  riddle: { layers: ['steps'], build: (csv, data) => CatworldSharedData.buildRiddleSteps(csv, data.riddles ?? [], data.pages ?? {}) },
 };
 let sharedInflight = null;
 
@@ -151,13 +151,13 @@ async function fetchSharedCsv(url) {
 
 // 抓一個分頁，回新的快取項目（成功或失敗都回；失敗保留同一個連結的舊資料並記下原因）
 async function fetchSheet(kind, url, entry, now) {
-  const { layer, build } = SHARED_SHEETS[kind];
-  const fail = reason => ({ url, at: null, [layer]: {}, report: null, ...entry, error: { at: now, reason } });
+  const { layers, build } = SHARED_SHEETS[kind];
+  const fail = reason => ({ url, at: null, ...Object.fromEntries(layers.map(layer => [layer, {}])), report: null, ...entry, error: { at: now, reason } });
   const checked = CatworldSharedData.checkUrl(url);
   if (!checked.ok) return fail(checked.error);
   try {
     const built = build(await fetchSharedCsv(url), await loadZapData());
-    return built.ok ? { url, at: now, [layer]: built[layer], report: built.report } : fail(built.error);
+    return built.ok ? { url, at: now, ...Object.fromEntries(layers.map(layer => [layer, built[layer]])), report: built.report } : fail(built.error);
   } catch (error) {
     return fail(error.name === 'AbortError' ? `逾時（${SHARED_TIMEOUT_MS / 1000} 秒）` : error.message);
   }
@@ -202,7 +202,9 @@ function refreshSharedOnce(force) {
 }
 
 // 儲存或網路出任何問題都不能弄壞內建資料的查詢：回空的共用層
-const sharedLayer = kind => refreshSharedOnce(false).then(cache => cache[kind]?.[SHARED_SHEETS[kind].layer] ?? {}, () => ({}));
+const sharedLayer = kind => refreshSharedOnce(false).then(cache => cache[kind]?.[SHARED_SHEETS[kind].layers[0]] ?? {}, () => ({}));
+// 怪物查詢要的共用資料：路線與共用表新增的怪（舊快取沒有 mobs 欄位時當作沒有）
+const sharedMobData = () => refreshSharedOnce(false).then(cache => ({ routes: cache.mob?.routes ?? {}, mobs: cache.mob?.mobs ?? {} }), () => ({ routes: {}, mobs: {} }));
 
 // 安裝或更新時，共用表連結「從來沒有設定過」（儲存裡沒有這個欄位）才帶入預設的；清空過（存了空字串）或自己填過的一律不動
 chrome.runtime.onInstalled?.addListener(async () => {
@@ -222,9 +224,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   const withShared = message.type === 'ZAP_LOOKUP' || message.type === 'ZAP_SUITABLE';
-  Promise.all([loadZapData(), withShared ? sharedLayer('mob') : {}])
+  Promise.all([loadZapData(), withShared ? sharedMobData() : { routes: {}, mobs: {} }])
     .then(([data, shared]) => sendResponse(
-      CatworldSharedData.overlayReply(CatworldZapMobs.handleMessage(data.mobs ?? [], message, data.routes ?? [], data.routeAliases ?? {}), shared)
+      // 先把共用表新增的怪併進怪物表再算（清單、分級、出現提示都用併好的），最後疊上共用路線
+      CatworldSharedData.overlayReply(CatworldZapMobs.handleMessage(CatworldSharedData.applySharedMobs(data.mobs ?? [], shared.mobs), message, data.routes ?? [], data.routeAliases ?? {}), shared.routes)
         ?? CatworldZapItems.handleMessage(data.items ?? [], message)
         ?? CatworldZapRiddles.handleMessage(data, message)
         ?? { ok: false, error: '未知的查詢' }))

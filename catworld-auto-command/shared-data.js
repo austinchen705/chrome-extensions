@@ -143,7 +143,7 @@ function readSheet(csvText, required) {
     }
     rows.push({ row: i + 2, cell: name => (name in index ? String(record[index[name]] ?? '').trim() : '') });
   });
-  return { rows, total, overflow: total - rows.length, overflowFrom };
+  return { rows, total, overflow: total - rows.length, overflowFrom, has: name => name in index };
 }
 
 // 兩個分頁共用的報告起點：rows 是有資料的列數（含超過上限沒讀的），其餘由各自的 build 填
@@ -163,41 +163,110 @@ function commandEntry(cell) {
   return { entry, rank: Number.isFinite(at) ? at : -Infinity };
 }
 
-// 怪物路線分頁：怪物名稱 | 位置（選填） | 指令 | 備註 | 更新者 | 更新時間。
+// 強度的寫法：純數字、`N萬`、`NW`（大小寫不拘）、`1W5`（＝1.5 萬，W 後面接小數）；要大於 0、不超過 1 億
+const MAX_STRENGTH = 100000000;
+const STRENGTH_HINT = '強度要寫成純數字，或「25萬」「25W」「1W5」這樣的寫法';
+function parseStrength(text) {
+  const raw = String(text ?? '').trim();
+  if (!raw) return { ok: false, reason: `強度是空的：${STRENGTH_HINT}` };
+  let value = NaN;
+  let match;
+  if (/^\d+$/.test(raw)) value = Number(raw);
+  else if ((match = /^(\d+(?:\.\d+)?)\s*(?:萬|w)$/i.exec(raw))) value = Number(match[1]) * 10000;
+  else if ((match = /^(\d+)w(\d+)$/i.exec(raw))) value = Number(`${match[1]}.${match[2]}`) * 10000;
+  if (!Number.isFinite(value)) return { ok: false, reason: `強度「${raw}」看不懂：${STRENGTH_HINT}` };
+  value = Math.round(value);
+  if (value < 1) return { ok: false, reason: '強度要大於 0' };
+  if (value > MAX_STRENGTH) return { ok: false, reason: `強度超過上限 1 億（${raw}）` };
+  return { ok: true, value };
+}
+
+// 新怪的名稱要帶括號 ID（遊戲輸出是 ※名稱(ID)，怪物出現提示靠名稱、再退而用 ID 比對）；ID 正規化成和 findMobs 比對的一樣（小寫）
+const bracketId = name => {
+  const match = /[(（]([^()（）]+)[)）]\s*$/.exec(String(name ?? ''));
+  return match ? globalThis.CatworldZapMobs.normalizeName(match[1]) : '';
+};
+
+// 怪物路線分頁：怪物名稱 | 位置（選填） | 強度（選填） | 指令 | 備註 | 更新者 | 更新時間。
 // 鍵是「名稱」或「名稱|位置」（位置有填才帶）：同名的怪常在不同地方，位置有填就只管那個地方的怪。指令寫「停用」代表這隻怪不要路線。
-// 回 { ok, routes: { 鍵: { command, by, note, at, disabled? } }, report: { rows, used, dropped: [{row, reason}], unmatched: [{row, name, location?}] } }。
-// 同一個鍵多列取更新時間最新的；在怪物表找不到的名稱（或那個名稱沒有在那個位置）照樣保留（也許是資料還沒收錄），只列在 unmatched
+// 有填強度、而且名稱＋位置不在內建怪物資料裡的列是「新怪」（要帶括號 ID、強度要合法；可以沒有指令）；
+// 沒填強度、不在內建資料的列維持原樣（只列在 unmatched，打錯字的名稱不會變成新怪）。
+// 回 { ok, routes: { 鍵: { command, by, note, at, disabled? } }, mobs: { 鍵: { name, id, exp, location, note, by, at } },
+//      report: { rows, used, created, dropped: [{row, reason}], unmatched: [{row, name, location?, reason}] } }。
+// 同一個鍵多列取更新時間最新的；被丟掉的列什麼都不留下（路線和新怪都不會有）
 function buildMobRoutes(csvText, mobs) {
   const customKey = globalThis.CatworldZapMobs.customKey;
-  const sheet = readSheet(csvText, ['怪物名稱', '指令']);
+  const sheet = readSheet(csvText, ['怪物名稱']);
   if (sheet.error) return { ok: false, error: sheet.error };
+  // 一列要嘛有指令、要嘛是有強度的新怪：標題列兩個欄位都沒有的表，沒有任何一列能用
+  if (!sheet.has('指令') && !sheet.has('強度')) return { ok: false, error: '缺少欄位「指令」，第一列要是標題列' };
   const known = new Set();
   (mobs ?? []).forEach(mob => {
     known.add(customKey(mob.name));
     mobPlaces(mob).forEach(place => known.add(`${customKey(mob.name)}|${place}`));
   });
   const best = new Map();
+  const bestMob = new Map();
   const report = newReport(sheet);
   sheet.rows.forEach(({ row, cell }) => {
     const name = cell('怪物名稱');
     if (!name) return report.dropped.push({ row, reason: '怪物名稱是空的' });
-    const made = commandEntry(cell);
-    if (!made.entry) return report.dropped.push({ row, reason: made.reason });
     const location = cell('位置');
     const key = location ? `${customKey(name)}|${customKey(location)}` : customKey(name);
-    const old = best.get(key);
-    if (!old || made.rank >= old.rank) best.set(key, { rank: made.rank, row, name, location, entry: made.entry });
+    // 先把整列驗證完才寫進結果：被丟掉的列不能留下一半
+    const creates = cell('強度') !== '' && !known.has(key);
+    let exp = null;
+    if (creates) {
+      const parsed = parseStrength(cell('強度'));
+      if (!parsed.ok) return report.dropped.push({ row, reason: parsed.reason });
+      if (!bracketId(name)) return report.dropped.push({ row, reason: '新怪的名稱要寫成「稱號 名稱(ID)」，缺少括號 ID' });
+      exp = parsed.value;
+    }
+    const hasCommand = cell('指令') !== '';
+    if (!hasCommand && !creates) return report.dropped.push({ row, reason: '指令是空的' });
+    const made = hasCommand ? commandEntry(cell) : null;
+    if (made && !made.entry) return report.dropped.push({ row, reason: made.reason });
+    const at = parseTime(cell('更新時間'));
+    const rank = Number.isFinite(at) ? at : -Infinity;
+    if (made) {
+      const old = best.get(key);
+      if (!old || made.rank >= old.rank) best.set(key, { rank: made.rank, row, name, location, entry: made.entry });
+    }
+    if (creates) {
+      const old = bestMob.get(key);
+      if (!old || rank >= old.rank) bestMob.set(key, { rank, mob: { name, id: bracketId(name), exp, location, note: cell('備註'), by: cell('更新者'), at: Number.isFinite(at) ? at : null } });
+    }
   });
   const routes = {};
   best.forEach(({ row, name, location, entry }, key) => {
     routes[key] = entry;
-    if (known.has(key)) return;
+    if (known.has(key) || bestMob.has(key)) return;
     const unmatched = location ? { row, name, location, reason: known.has(customKey(name)) ? `這個怪物沒有在「${location}」` : '資料裡沒有這個怪物' } : { row, name, reason: '資料裡沒有這個怪物' };
     report.unmatched.push(unmatched);
   });
-  report.used = best.size;
+  const newMobs = Object.fromEntries([...bestMob].map(([key, { mob }]) => [key, mob]));
+  report.used = new Set([...best.keys(), ...bestMob.keys()]).size;
+  report.created = bestMob.size;
   report.unmatched.sort((a, b) => a.row - b.row);
-  return { ok: true, routes, report };
+  return { ok: true, routes, mobs: newMobs, report };
+}
+
+// background 用：把共用表新增的怪併進內建怪物表（附在後面），回傳新陣列、不改動輸入。
+// 內建資料後來已經有同一隻（名稱＋位置，或沒填位置的名稱）就以內建的為準，不重複列出
+function applySharedMobs(mobs, shared) {
+  const list = mobs ?? [];
+  const entries = Object.values(shared ?? {});
+  if (!entries.length) return list;
+  const customKey = globalThis.CatworldZapMobs.customKey;
+  const known = new Set();
+  list.forEach(mob => {
+    known.add(customKey(mob.name));
+    mobPlaces(mob).forEach(place => known.add(`${customKey(mob.name)}|${place}`));
+  });
+  const added = entries
+    .filter(mob => !known.has(mob.location ? `${customKey(mob.name)}|${customKey(mob.location)}` : customKey(mob.name)))
+    .map(mob => ({ name: mob.name, id: mob.id, exp: mob.exp, location: mob.location, note: mob.note, source: 'shared', by: mob.by }));
+  return added.length ? [...list, ...added] : list;
 }
 
 // 解謎指令分頁：謎名稱 | 步驟 | 指令 | 備註 | 更新者 | 更新時間 | 步驟數（選填）。
@@ -326,5 +395,5 @@ function overlayReply(reply, shared) {
   return { ...reply, items: reply.items.map(item => (item.candidates ? { ...item, candidates: item.candidates.map(apply) } : apply(item))) };
 }
 
-globalThis.CatworldSharedData = { DEFAULT_SOURCES, MAX_SEGMENT, MAX_ROWS, ALLOWED_VERBS, SHEET_LABELS, describeSheet, describeSheetParts, describeRejectedUrl, reportEntries, reportLines, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, overlayReply };
+globalThis.CatworldSharedData = { parseStrength, applySharedMobs, DEFAULT_SOURCES, MAX_SEGMENT, MAX_ROWS, ALLOWED_VERBS, SHEET_LABELS, describeSheet, describeSheetParts, describeRejectedUrl, reportEntries, reportLines, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, overlayReply };
 })();

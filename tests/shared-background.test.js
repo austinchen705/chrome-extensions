@@ -318,3 +318,50 @@ test('the defaults alone do not fetch anything while both features are off', asy
   await lookup();
   assert.equal(csvCalls.length, 0);
 });
+
+// ---- 新怪 ----
+const KING = '橫霸四方 忽必烈(king)';
+const STR_HEADER = '怪物名稱,位置,強度,指令,備註,更新者,更新時間';
+const suitable = () => ask({ type: 'ZAP_SUITABLE', exp: 414748, thresholds: undefined, grades: ['green', 'yellow'], query: '' });
+
+test('a new mob from the sheet is in the suitable list and in a lookup, with its route and who added it', async () => {
+  reset();
+  csvBody = [STR_HEADER, `${KING},蒙古,250000,run e 5n,先買藥,小明,2026-10-21 14:30`].join('\n') + '\n';
+  const list = await suitable();
+  const entry = list.items.find(item => item.mob.name === KING);
+  assert.ok(entry, 'the new mob is listed for an exp that can fight it');
+  assert.deepEqual([entry.mob.source, entry.mob.by, entry.mob.exp, entry.grade], ['shared', '小明', 250000, 'green']);
+  assert.equal(entry.route.route.command, 'run e 5n');
+  const hint = await ask({ type: 'ZAP_LOOKUP', exp: 414748, names: [{ name: KING, count: 1 }] });
+  const candidate = hint.items[0].candidates[0];
+  assert.deepEqual([candidate.mob.name, candidate.idOnly, candidate.grade], [KING, false, 'green']);
+  assert.equal(candidate.route.shared.by, '小明');
+});
+
+test('a new mob found only by its id still shows up in the lookup', async () => {
+  reset();
+  csvBody = [STR_HEADER, `${KING},,250000,,,小明,`].join('\n') + '\n';
+  const hint = await ask({ type: 'ZAP_LOOKUP', exp: 414748, names: [{ name: '某某稱號 忽必烈(king)', count: 1 }] });
+  assert.equal(hint.items[0].candidates[0].mob.name, KING);
+  assert.equal(hint.items[0].candidates[0].idOnly, true);
+});
+
+test('an old cache without the mobs field, or a sheet without the strength column, behaves as before', async () => {
+  reset();
+  store.sharedCache = { mob: { url: SHEET, at: clock, routes: {}, report: { rows: 0, used: 0, dropped: [], unmatched: [], overflow: 0 } } };
+  const list = await suitable();
+  assert.equal(list.ok, true);
+  assert.ok(list.items.every(item => item.mob.source !== 'shared'));
+  reset();
+  const plain = await suitable();
+  assert.equal(plain.ok, true);
+  assert.equal(plain.items.some(item => item.mob.name === KING), false);
+});
+
+test('with the mob and riddle features both off no new mob is fetched or shown', async () => {
+  reset(undefined, { mobs: false, items: true, riddles: false });
+  csvBody = [STR_HEADER, `${KING},蒙古,250000,run e,,小明,`].join('\n') + '\n';
+  const list = await suitable();
+  assert.equal(csvCalls.length, 0);
+  assert.equal(list.items.some(item => item.mob.name === KING), false);
+});

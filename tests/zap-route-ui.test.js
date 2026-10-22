@@ -285,3 +285,12 @@ ui('a failed lookup in the floating hint is shown as an error line', async () =>
   const note = [...dom.shadow.querySelectorAll('.zap-more')].find(node => /查詢失敗/.test(node.textContent));
   assert.ok(note.classList.contains('zap-bad'));
 });
+
+ui('a mob the shared sheet added is labelled in its description line, and still walks with its route', async () => {
+  const added = { mob: { name: '橫霸四方 忽必烈(king)', id: 'king', exp: 250000, location: '蒙古', note: '先買藥', source: 'shared', by: '小明' }, q: 1.2, grade: 'green', idOnly: false, route: { route: { name: '橫霸四方 忽必烈(king)', path: '', command: 'run e 5n' }, exact: true, shared: { by: '小明', note: '' } } };
+  const { shadow, started } = boot({ items: [added] });
+  assert.ok(await waitFor(() => shadow.querySelector('.zap-item .meta')));
+  assert.match(shadow.querySelector('.zap-item .meta').textContent, /先買藥.*共用新增（小明）/);
+  shadow.querySelector('.zap-walk').click();
+  assert.deepEqual(started, ['run e 5n']);
+});
