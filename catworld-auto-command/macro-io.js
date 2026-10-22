@@ -129,5 +129,25 @@ function parseBackup(value) {
   return { ok: true, raw: value.raw, notes: normalizeNotes(value.notes), at: Number.isFinite(value.at) ? value.at : null };
 }
 
-globalThis.CatworldMacroIO = { COUNT, VERSION, readMacros, exportText, countFilled, parseImport, makeBackup, parseBackup };
+// 巨集視窗的最小大小：寬 690（遊戲原本 435 加上備註欄 255）、高 463（遊戲原值）。記住的大小超過 10000 當作壞掉
+const MIN_WINDOW = { width: 690, height: 463 };
+const MAX_REMEMBERED = 10000;
+
+// 讀回記住的大小：寬和高都是有限的正數、不超過 10000 才相信，否則回 null（當作沒記過）
+function sanitizeSize(value) {
+  if (!value || typeof value !== 'object') return null;
+  const ok = number => typeof number === 'number' && Number.isFinite(number) && number > 0 && number <= MAX_REMEMBERED;
+  return ok(value.width) && ok(value.height) ? { width: value.width, height: value.height } : null;
+}
+
+// 把大小夾在最小視窗與螢幕可用範圍之間（整數像素）；螢幕比最小視窗還小時仍然不小於最小視窗，螢幕大小不明就沒有上限
+function clampWindowSize(size, available) {
+  const fit = (value, min, room) => {
+    const max = Number.isFinite(room) ? Math.max(min, Math.floor(room)) : Infinity;
+    return Math.min(Math.max(Math.round(value), min), max);
+  };
+  return { width: fit(size.width, MIN_WINDOW.width, available?.width), height: fit(size.height, MIN_WINDOW.height, available?.height) };
+}
+
+globalThis.CatworldMacroIO = { COUNT, VERSION, MIN_WINDOW, readMacros, exportText, countFilled, parseImport, makeBackup, parseBackup, sanitizeSize, clampWindowSize };
 })();

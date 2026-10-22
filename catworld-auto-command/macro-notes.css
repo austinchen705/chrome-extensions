@@ -1,3 +1,4 @@
+/* 巨集視窗的樣式：多一欄「備註」與可調整大小（macro-notes.js、macro-resize.js） */
 /* 巨集視窗多一欄「備註」：遊戲原本寬 435px（序號 25 + 按鍵 155 + 指令 250），加寬 255px 給備註（macro-notes.js 加的欄位） */
 /* 遊戲自己的樣式表比這個晚載入，同樣的優先權會被它蓋掉，所以多加一層 body */
 body #macro_table {
@@ -6,4 +7,24 @@ body #macro_table {
 
 #macro_table .note {
   width: 250px;
+}
+
+/* 調整大小：拖把手時 macro-resize.js 在 #macro_table 上設 --macro-extra（寬度比 690px 多出來的部分），多出來的寬度全部給指令欄。
+   指令欄的 class 是 command（遊戲的 #macro_table .command 固定 250px），一樣要多一層 body 才贏得過遊戲的樣式表 */
+body #macro_table .command {
+  width: calc(250px + var(--macro-extra, 0px));
+}
+
+/* 左下角的把手：視窗用 right 與 top 定位（右邊緣固定），往左拖變寬、往下拖變高 */
+body #macro_table .macro-resize {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border-left: 3px solid #bbb;
+  border-bottom: 3px solid #bbb;
+  cursor: nesw-resize;
+  z-index: 1;
 }

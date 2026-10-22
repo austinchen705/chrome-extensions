@@ -196,3 +196,29 @@ test('a backup without notes or without a time still reads; bad notes are droppe
   assert.deepEqual([cleaned.notes, cleaned.at], [{ 1: 'ok' }, null]);
   assert.equal(M.parseBackup({ raw: JSON.stringify(SAMPLE), notes: 'x' }).notes.constructor, Object, 'notes that are not an object become empty');
 });
+
+// ---- 巨集視窗的大小：記住的值要檢查、套用前夾在螢幕範圍內 ----
+const SCREEN = { width: 1600, height: 900 };
+
+test('the window never gets smaller than the game window with the notes column, and never bigger than the screen', () => {
+  assert.deepEqual(M.MIN_WINDOW, { width: 690, height: 463 });
+  assert.deepEqual(M.clampWindowSize({ width: 800, height: 600 }, SCREEN), { width: 800, height: 600 }, 'in range stays');
+  assert.deepEqual(M.clampWindowSize({ width: 100, height: 100 }, SCREEN), { width: 690, height: 463 }, 'too small goes up to the minimum');
+  assert.deepEqual(M.clampWindowSize({ width: 5000, height: 5000 }, SCREEN), { width: 1600, height: 900 }, 'too big is cut to the screen');
+  assert.deepEqual(M.clampWindowSize({ width: 690, height: 463 }, SCREEN), { width: 690, height: 463 });
+  assert.deepEqual(M.clampWindowSize({ width: 800.6, height: 500.4 }, SCREEN), { width: 801, height: 500 }, 'whole pixels');
+});
+
+test('a screen smaller than the minimum cannot push the window below the minimum, and an unknown screen has no upper limit', () => {
+  assert.deepEqual(M.clampWindowSize({ width: 800, height: 600 }, { width: 500, height: 300 }), { width: 690, height: 463 });
+  assert.deepEqual(M.clampWindowSize({ width: 3000, height: 2000 }, { width: NaN, height: undefined }), { width: 3000, height: 2000 });
+  assert.deepEqual(M.clampWindowSize({ width: 3000, height: 2000 }, undefined), { width: 3000, height: 2000 });
+});
+
+test('a remembered size is only believed when both numbers are plain positive numbers of a sane size', () => {
+  assert.deepEqual(M.sanitizeSize({ width: 800, height: 600 }), { width: 800, height: 600 });
+  [null, undefined, 'x', 5, [], {}, { width: 800 }, { height: 600 }, { width: '800', height: '600' }, { width: NaN, height: 600 },
+    { width: Infinity, height: 600 }, { width: 0, height: 600 }, { width: 800, height: -1 }, { width: 10001, height: 600 }, { width: 800, height: 10001 }]
+    .forEach(value => assert.equal(M.sanitizeSize(value), null, JSON.stringify(value)));
+  assert.deepEqual(M.sanitizeSize({ width: 10000, height: 10000 }), { width: 10000, height: 10000 }, 'the limit itself is fine');
+});

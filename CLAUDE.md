@@ -138,6 +138,14 @@
 - 「巨集」列常駐顯示（按鈕在列上），狀態文字沒有巨集在跑時要清成空的；剪貼簿一律用按鈕所在 document 的視窗（面板可能在置頂浮窗），複製失敗要把文字放進可手動複製的框；文字框要擋掉 `mousedown`、`click` 與按鍵事件的冒泡。
 - 測試：`tests/macro-io.test.js`（純函式，邊界案例都放這裡）、`tests/macro-io-ui.test.js`（jsdom 載入整個 content script，假的 `chrome`、`localStorage.MACROS` 與剪貼簿）；真實排版、遊戲重新整理後是否讀到新巨集只能在真實頁面驗證。
 
+## 巨集視窗調整大小
+
+- 遊戲的巨集視窗（`#macro_table`）是 CSS 固定大小（寬 435、高 463，遊戲 `web.css`），遊戲完全沒有調整大小的機制；位置用 `right` 與 `top` 定位（右邊緣固定），只有標題列（`#macro_header`）能拖曳，拖曳邊界在按下滑鼠時才用 `offsetWidth`／`offsetHeight` 現算，所以改大小不會弄壞遊戲自己的拖曳。內層列表（`#macro_list_wrapper`）用固定的上下邊界加內部捲動，視窗變高時自然顯示更多列。
+- `macro-resize.js`（和 `macro-notes.js` 一樣自成一體，要加進 manifest 的 content script 與 popup 備援注入的 `files`，在 `macro-io.js` 之後，因為夾限與檢查用 `CatworldMacroIO` 的 `clampWindowSize`、`sanitizeSize`、`MIN_WINDOW`）在 `#macro_table` 內加一個 `.macro-resize` 把手。**把手放在左下角，不是右下角**：視窗右邊緣固定，往左拖才是變寬，把手才會跟著滑鼠；放在右下角往右拖時右邊緣不動，視窗會往左長、把手離開滑鼠。拖曳時 `mousedown` 要 `preventDefault` 並 `stopPropagation`（不讓遊戲的 `onmousedown` 看到、不選到文字）。拖出來的寬高直接設在 `#macro_table` 的 inline style（比遊戲的樣式表優先），並設 `--macro-extra`（寬度比 690 多的部分）。
+- 樣式在 `macro-notes.css`（和備註欄同一份，manifest 與 popup 備援注入都已載入）：多出來的寬度只給指令欄（遊戲輸入框的 class 就是 `command`，`#macro_table .command` 固定 250px，要多一層 `body` 才贏得過遊戲的樣式表），備註欄維持 250px。
+- 大小記在 `chrome.storage.local.macroWindowSize`（`{ width, height }`）：放開滑鼠才存，存不進去不影響視窗；讀回來用 `sanitizeSize` 檢查（兩個數字都是有限的正數、不超過 10000，否則當作沒記過、不設任何 inline style），套用前用 `clampWindowSize` 夾在最小視窗與瀏覽器視窗之間；玩家在讀取回來之前就拖過的話，晚回來的讀取不能蓋掉（`touched`）；擴充功能重新載入後頁面上舊程式留下的把手，新程式啟動時換掉。
+- 測試：`tests/macro-io.test.js`（夾限與檢查的邊界案例）、`tests/macro-resize.test.js`（jsdom 載入整個 content script，檢查把手、拖曳後的寬高與 `--macro-extra`、存起來、載入時沿用、壞資料、晚到的讀取、事件不傳給遊戲）。jsdom 算不出排版，真實手感、把手有沒有被遮住、指令欄是否變長只能在真實遊戲頁驗證。
+
 ## 數值區塊
 
 - 面板最上方的「數值」區塊由兩個模組組成：`stats-view.js`（不碰 DOM，`rows(readings, exp)` 決定每列顯示什麼）與 `stats-block.js`（畫面，`attach(root)` 回傳 `render(readings, exp)`）。兩個都要加進 manifest 的 content script 與 popup 備援注入清單，`stats-view.js` 在 `stats-block.js` 之前、都在 `content.js` 之前；`content.js` 建立區塊要包 try/catch，壞了不能牽連後面按鈕的綁定。
