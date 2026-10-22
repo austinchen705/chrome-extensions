@@ -149,5 +149,5 @@ function clampWindowSize(size, available) {
   return { width: fit(size.width, MIN_WINDOW.width, available?.width), height: fit(size.height, MIN_WINDOW.height, available?.height) };
 }
 
-globalThis.CatworldMacroIO = { COUNT, VERSION, MIN_WINDOW, readMacros, exportText, countFilled, parseImport, makeBackup, parseBackup, sanitizeSize, clampWindowSize };
+globalThis.CatworldMacroIO = { COUNT, VERSION, MAX_COMMAND, MAX_NOTE, MAX_KEY, MIN_WINDOW, readMacros, exportText, countFilled, parseImport, makeBackup, parseBackup, sanitizeSize, clampWindowSize };
 })();
