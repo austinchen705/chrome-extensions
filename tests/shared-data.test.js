@@ -864,21 +864,25 @@ test('a mob the sheet added and a fix for the built-in mobs of the same name do 
 
 // ---- 同一隻怪多列：各欄各取最新有填的那一列 ----
 const KEY_KING = Z.customKey(KING);
-const KING_HEADER = '怪物名稱,位置,強度,指令,備註,更新者,更新時間';
-const buildKing = (...lines) => S.buildMobRoutes([KING_HEADER, ...lines].join('\n'), WILD);
 
 test('a newer row that only changes the route keeps the mob an older row defined, and takes over the route', () => {
-  const result = buildKing(`${KING},,250000,run old,舊備註,甲,2026-10-20 09:00`, `${KING},,,run new,,乙,2026-10-21 09:00`);
+  const result = buildFix(`${KING},,250000,run old,舊備註,甲,2026-10-20 09:00`, `${KING},,,run new,,乙,2026-10-21 09:00`);
   assert.deepEqual([result.mobs[KEY_KING].exp, result.mobs[KEY_KING].by, result.mobs[KEY_KING].note], [250000, '甲', '舊備註']);
   assert.deepEqual([result.routes[KEY_KING].command, result.routes[KEY_KING].by], ['run new', '乙']);
   assert.equal(result.report.unmatched.length, 0);
 });
 
 test('a newer row that only gives a strength keeps the route of an older row', () => {
-  const result = buildKing(`${KING},,100,run old,,甲,2026-10-20 09:00`, `${KING},,500,,,乙,2026-10-21 09:00`);
+  const result = buildFix(`${KING},,100,run old,,甲,2026-10-20 09:00`, `${KING},,500,,,乙,2026-10-21 09:00`);
   assert.deepEqual([result.mobs[KEY_KING].exp, result.routes[KEY_KING].command], [500, 'run old']);
+});
+
+test('a newer row that only gives a strength fix keeps the route of an older row', () => {
   const fix = buildFix('老虎(tiger),桃花島,5000,run old,,甲,2026-10-20 09:00', '老虎(tiger),桃花島,6000,,,乙,2026-10-21 09:00');
   assert.deepEqual([fix.fixes[Z.customKey('老虎(tiger)|桃花島')].exp, fix.routes[Z.customKey('老虎(tiger)|桃花島')].command], [6000, 'run old']);
+});
+
+test('the newest fix wins whatever the row order, rows without a time are the oldest, and the later row wins a tie', () => {
   const reversed = buildFix('老虎(tiger),桃花島,6000,,,乙,2026-10-21 09:00', '老虎(tiger),桃花島,5000,,,甲,2026-10-20 09:00');
   assert.equal(reversed.fixes[Z.customKey('老虎(tiger)|桃花島')].exp, 6000, 'the newest fix wins whatever the row order');
   const noTime = buildFix('老虎(tiger),桃花島,6000,,,乙,2026-10-21 09:00', '老虎(tiger),桃花島,5000,,,甲,');
@@ -888,7 +892,7 @@ test('a newer row that only gives a strength keeps the route of an older row', (
 });
 
 test('the newest strength wins whatever the row order, and rows without a time are the oldest (the later row wins a tie)', () => {
-  const exp = (...lines) => buildKing(...lines).mobs[KEY_KING].exp;
+  const exp = (...lines) => buildFix(...lines).mobs[KEY_KING].exp;
   assert.equal(exp(`${KING},,100,,,甲,2026-10-20 09:00`, `${KING},,200,,,乙,2026-10-21 09:00`), 200);
   assert.equal(exp(`${KING},,200,,,乙,2026-10-21 09:00`, `${KING},,100,,,甲,2026-10-20 09:00`), 200);
   assert.equal(exp(`${KING},,200,,,乙,2026-10-21 09:00`, `${KING},,100,,,甲,`), 200, 'a row without a time is older than one with a time');
@@ -897,28 +901,63 @@ test('the newest strength wins whatever the row order, and rows without a time a
 });
 
 test('a dropped row never takes part: it does not hide an older valid row', () => {
-  const strength = buildKing(`${KING},,100,run old,,甲,2026-10-20 09:00`, `${KING},,很強,run bad,,乙,2026-10-21 09:00`);
+  const strength = buildFix(`${KING},,100,run old,,甲,2026-10-20 09:00`, `${KING},,很強,run bad,,乙,2026-10-21 09:00`);
   assert.deepEqual([strength.mobs[KEY_KING].exp, strength.routes[KEY_KING].command], [100, 'run old'], 'the invalid strength drops the whole newer row, route too');
-  const command = buildKing(`${KING},,100,run old,,甲,2026-10-20 09:00`, `${KING},,,drop x,,乙,2026-10-21 09:00`);
+  const command = buildFix(`${KING},,100,run old,,甲,2026-10-20 09:00`, `${KING},,,drop x,,乙,2026-10-21 09:00`);
   assert.deepEqual([command.mobs[KEY_KING].exp, command.routes[KEY_KING].command], [100, 'run old']);
   assert.equal(command.report.dropped.length, 1);
 });
 
 test('a row removed from the sheet takes its contribution away: the mob goes, the fix is gone', () => {
-  const both = buildKing(`${KING},,100,run e,,甲,2026-10-20 09:00`, '老虎(tiger),桃花島,5000,,,乙,');
+  const both = buildFix(`${KING},,100,run e,,甲,2026-10-20 09:00`, '老虎(tiger),桃花島,5000,,,乙,');
   assert.ok(both.mobs[KEY_KING]);
   assert.equal(both.fixes[Z.customKey('老虎(tiger)|桃花島')].exp, 5000);
-  const without = buildKing();
+  const without = buildFix();
   assert.deepEqual([without.mobs, without.fixes, without.routes], [{}, {}, {}]);
   assert.equal(S.applySharedMobs(WILD, without.mobs, without.fixes), WILD, 'built-in strength is back');
 });
 
 test('停用 on a new mob only takes its route away: the mob stays', () => {
-  const result = buildKing(`${KING},蒙古,250000,停用,路線壞了,小明,`);
+  const result = buildFix(`${KING},蒙古,250000,停用,路線壞了,小明,`);
   assert.equal(result.mobs[Z.customKey(`${KING}|蒙古`)].exp, 250000);
   assert.equal(result.routes[Z.customKey(`${KING}|蒙古`)].disabled, true);
   const merged = S.applySharedMobs(WILD, result.mobs, result.fixes);
   const out = S.overlayReply({ ok: true, items: [{ mob: merged.at(-1), route: { route: { command: 'builtin' } } }] }, result.routes);
   assert.equal(out.items[0].route, null);
   assert.deepEqual(out.items[0].sharedDisabled, { by: '小明', note: '路線壞了' });
+});
+
+// ---- 新怪的位置只是自己填的標籤：位置挑不到新怪時，路線退回名稱 ----
+const routeOfNew = (result, location) => {
+  const merged = S.applySharedMobs(WILD, result.mobs, result.fixes);
+  const mob = merged.find(item => item.source === 'shared' && item.location === location);
+  return S.overlayReply({ ok: true, items: [{ mob, route: null }] }, result.routes).items[0].route?.route?.command ?? null;
+};
+
+test('a route row whose location the new mob does not have still reaches it by name (the mob has no location)', () => {
+  const result = buildFix(`${KING},,250000,,,甲,2026-10-20 09:00`, `${KING},蒙古,,run new,,乙,2026-10-21 09:00`);
+  assert.equal(routeOfNew(result, ''), 'run new');
+  assert.deepEqual(result.report.unmatched.map(item => [item.row, item.reason]), [[3, '這個怪物沒有在「蒙古」，已改用名稱套用']]);
+  const withOwn = buildFix(`${KING},,250000,run old,,甲,2026-10-20 09:00`, `${KING},蒙古,,run new,,乙,2026-10-21 09:00`);
+  assert.equal(routeOfNew(withOwn, ''), 'run old', 'a row without a location beats the mismatched one, even an older one');
+});
+
+test('a route row for another place reaches a new mob that has a location, below a row for its own place and a row without a location', () => {
+  const only = buildFix(`${KING},蒙古,250000,,,甲,2026-10-20 09:00`, `${KING},長安城,,run city,,乙,2026-10-21 09:00`);
+  assert.equal(routeOfNew(only, '蒙古'), 'run city');
+  const own = buildFix(`${KING},蒙古,250000,run own,,甲,2026-10-19 09:00`, `${KING},長安城,,run city,,乙,2026-10-21 09:00`);
+  assert.equal(routeOfNew(own, '蒙古'), 'run own', 'the row for its own place wins');
+  const plain = buildFix(`${KING},蒙古,250000,,,甲,2026-10-19 09:00`, `${KING},長安城,,run city,,乙,2026-10-21 09:00`, `${KING},,,run all,,丙,2026-10-18 09:00`);
+  assert.equal(routeOfNew(plain, '蒙古'), 'run all', 'a row without a location beats a mismatched one');
+});
+
+test('with two new mobs of one name at different places, a route row for one place is not borrowed by the other', () => {
+  const result = buildFix(`${KING},蒙古,250000,,,甲,`, `${KING},華山,300000,,,乙,`, `${KING},蒙古,,run mongol,,丙,`);
+  assert.deepEqual([routeOfNew(result, '蒙古'), routeOfNew(result, '華山')], ['run mongol', null]);
+});
+
+test('a newer 停用 replaces an older route for a new mob, and the mob stays', () => {
+  const result = buildFix(`${KING},蒙古,250000,run old,,甲,2026-10-20 09:00`, `${KING},蒙古,,停用,不要走,乙,2026-10-21 09:00`);
+  assert.equal(result.mobs[Z.customKey(`${KING}|蒙古`)].exp, 250000);
+  assert.equal(result.routes[Z.customKey(`${KING}|蒙古`)].disabled, true);
 });

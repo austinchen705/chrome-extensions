@@ -283,13 +283,16 @@ function buildMobRoutes(csvText, mobs) {
     }
   });
   const routes = {};
-  // 位置不屬於任何同名的內建怪（內建怪沒有位置、或填錯地方）的列：位置挑不到怪，就退回名稱套用到同名的怪，
-  // 但輸給真正沒填位置的列；這種列之間取最新的。共用表自己新增的怪的路線只給那隻怪
-  const loose = collapseToName(best, ({ name, location }, key) => known.hasName(name) && !known.hasPlace(name, location) && !bestMob.has(key));
+  // 位置挑不到怪的列（位置不屬於任何同名的怪；內建怪沒有位置；共用表新怪自己填的位置也只是標籤）：
+  // 退回名稱套用到同名的怪，但輸給真正沒填位置的列；這種列之間取最新的。位置挑得到某隻怪（含共用表新怪）的列只給那個位置的怪
+  const newNames = new Set([...bestMob.values()].map(({ mob }) => globalThis.CatworldZapMobs.customKey(mob.name)));
+  const hasName = name => known.hasName(name) || newNames.has(globalThis.CatworldZapMobs.customKey(name));
+  const hasPlace = (name, location) => known.hasPlace(name, location) || bestMob.has(mobKey(name, location));
+  const loose = collapseToName(best, ({ name, location }) => hasName(name) && !hasPlace(name, location));
   best.forEach(({ row, name, location, entry }, key) => {
     routes[key] = entry;
     if (known.has(name, location) || bestMob.has(key)) return;
-    const unmatched = location ? { row, name, location, reason: known.hasName(name) ? `這個怪物沒有在「${location}」，已改用名稱套用` : '資料裡沒有這個怪物' } : { row, name, reason: '資料裡沒有這個怪物' };
+    const unmatched = location ? { row, name, location, reason: hasName(name) ? `這個怪物沒有在「${location}」，已改用名稱套用` : '資料裡沒有這個怪物' } : { row, name, reason: '資料裡沒有這個怪物' };
     report.unmatched.push(unmatched);
   });
   loose.forEach(({ entry }, nameKey) => { routes[nameKey] ??= entry; });

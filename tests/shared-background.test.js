@@ -431,3 +431,10 @@ test('a newer row with only a route keeps the new mob, and 停用 on a new mob k
   assert.equal(hint.route, null);
   assert.deepEqual(hint.sharedDisabled, { by: '小明', note: '路線壞了' });
 });
+
+test('a route row with a location the new mob does not have still gives the new mob its route in the list', async () => {
+  reset();
+  csvBody = [STR_HEADER, `${KING},,250000,,,甲,2026-10-20 09:00`, `${KING},蒙古,,run new,,乙,2026-10-21 09:00`].join('\n') + '\n';
+  const entry = (await suitable()).items.find(item => item.mob.name === KING);
+  assert.deepEqual([entry.mob.by, entry.route.route.command, entry.route.shared.by], ['甲', 'run new', '乙']);
+});
