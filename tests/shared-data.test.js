@@ -594,9 +594,11 @@ test('the header rows in README code blocks keep their tabs and put every column
   const riddleBlock = blocks.find(block => block.startsWith('謎名稱\t'));
   assert.ok(mobBlock && riddleBlock, 'one tab-separated header block for each sheet');
   const [mobHeader, riddleHeader] = [mobBlock, riddleBlock].map(block => block.replace(/\t/g, ','));
-  const mob = S.buildMobRoutes(`${mobHeader}\n老虎(tiger),桃花島,run e,備註X,小明,2026-10-21 14:30\n`, WILD);
+  const mob = S.buildMobRoutes(`${mobHeader}\n老虎(tiger),桃花島,5000,run e,備註X,小明,2026-10-21 14:30\n`, WILD);
   assert.deepEqual(Object.values(mob.routes).map(entry => [entry.command, entry.note, entry.by]), [['run e', '備註X', '小明']]);
-  assert.ok(mob.routes[`${Z.customKey('老虎(tiger)')}|${Z.customKey('桃花島')}`], 'the location column is the second one');
+  const tigerKey = `${Z.customKey('老虎(tiger)')}|${Z.customKey('桃花島')}`;
+  assert.ok(mob.routes[tigerKey], 'the location column is the second one');
+  assert.equal(mob.fixes[tigerKey].exp, 5000, 'the strength column is the third one');
   const riddle = S.buildRiddleSteps(`${riddleHeader}\n獨孤九劍,2,run e,備註X,小明,2026-10-21 14:30,3\n`, RIDDLES, PAGES);
   const entry = riddle.steps['a.htm'][2];
   assert.deepEqual([entry.command, entry.note, entry.by, entry.n], ['run e', '備註X', '小明', 3]);
@@ -1009,4 +1011,15 @@ test('the mob summary line is amber when rows were dropped or unmatched, and pla
   assert.match(parts[0].text, /生效 2 隻，新增 1 隻、修正強度 1 隻，丟掉 0 列，對不到怪物 0 筆/);
   const dirty = buildFix(`${KING},蒙古,250000,run e,,甲,`, '缺括號 忽必烈,蒙古,250000,run e,,甲,');
   assert.deepEqual(S.describeSheetParts('mob', 'u', { url: 'u', at: 5, report: dirty.report }, at, BOTH).map(part => part.level), ['warn']);
+});
+
+test('the strength forms README tells you to write are the ones the parser accepts, and the unit is explained', () => {
+  const line = readmeSection.split('\n').find(text => text.includes('**強度的寫法**'));
+  assert.ok(line, 'README has a line on how to write the strength');
+  ['25萬', '25W', '1W5'].forEach(form => {
+    assert.ok(line.includes(`\`${form}\``), `README shows ${form}`);
+    assert.equal(S.parseStrength(form).ok, true, form);
+  });
+  assert.deepEqual(['25萬', '25W', '1W5'].map(form => S.parseStrength(form).value), [250000, 250000, 15000]);
+  ['括號 ID', '內建原值', '空白', '互信'].forEach(word => assert.ok(readmeSection.includes(word), `README mentions ${word}`));
 });
