@@ -365,3 +365,24 @@ test('with the mob and riddle features both off no new mob is fetched or shown',
   assert.equal(csvCalls.length, 0);
   assert.equal(list.items.some(item => item.mob.name === KING), false);
 });
+
+// ---- 修正內建怪的強度 ----
+test('a strength on a built-in mob fixes its strength, so the grade in the lookup follows the corrected number', async () => {
+  reset();
+  const original = (await lookup()).items[0].candidates[0];
+  assert.deepEqual([original.mob.exp, original.mob.fixed], [250000, undefined]);
+  reset();
+  csvBody = [STR_HEADER, '白猿(white ape),古墓,2000000,run e,只是路線,小明,2026-10-21 14:30'].join('\n') + '\n';
+  const fixed = (await lookup()).items[0].candidates[0];
+  assert.deepEqual([fixed.mob.exp, fixed.mob.fixed], [2000000, { by: '小明', original: 250000 }]);
+  assert.notEqual(fixed.grade, original.grade, 'the grade is worked out from the corrected strength');
+  assert.equal(fixed.mob.note, '', 'the built-in mob note is kept; the row note is only the route note');
+  assert.equal(fixed.route.shared.note, '只是路線');
+});
+
+test('a fix is read from the cache, and an old cache without fixes changes nothing', async () => {
+  reset();
+  store.sharedCache = { mob: { url: SHEET, at: clock, routes: {}, mobs: {}, report: { rows: 0, used: 0, dropped: [], unmatched: [], overflow: 0 } } };
+  const old = (await lookup()).items[0].candidates[0];
+  assert.deepEqual([old.mob.exp, old.mob.fixed], [250000, undefined]);
+});

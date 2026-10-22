@@ -130,9 +130,9 @@ const SHARED_CACHE_KEY = 'sharedCache';
 const SHARED_FRESH_MS = 60 * 60 * 1000;
 const SHARED_RETRY_MS = 5 * 60 * 1000;
 const SHARED_TIMEOUT_MS = 15000;
-// layers 是快取裡存共用層的欄位名稱（第一個是主要的）：怪物路線分頁有路線（routes）與共用表新增的怪（mobs）
+// layers 是快取裡存共用層的欄位名稱（第一個是主要的）：怪物路線分頁有路線（routes）、共用表新增的怪（mobs）與修正內建怪強度（fixes）
 const SHARED_SHEETS = {
-  mob: { layers: ['routes', 'mobs'], build: (csv, data) => CatworldSharedData.buildMobRoutes(csv, data.mobs ?? []) },
+  mob: { layers: ['routes', 'mobs', 'fixes'], build: (csv, data) => CatworldSharedData.buildMobRoutes(csv, data.mobs ?? []) },
   riddle: { layers: ['steps'], build: (csv, data) => CatworldSharedData.buildRiddleSteps(csv, data.riddles ?? [], data.pages ?? {}) },
 };
 let sharedInflight = null;
@@ -203,9 +203,9 @@ function refreshSharedOnce(force) {
 
 // 儲存或網路出任何問題都不能弄壞內建資料的查詢：回空的共用層
 const sharedLayer = kind => refreshSharedOnce(false).then(cache => cache[kind]?.[SHARED_SHEETS[kind].layers[0]] ?? {}, () => ({}));
-// 怪物查詢要的共用資料：路線與共用表新增的怪（舊快取沒有 mobs 欄位時當作沒有）
-const NO_SHARED_MOBS = Object.freeze({ routes: {}, mobs: {} });
-const sharedMobData = () => refreshSharedOnce(false).then(cache => ({ routes: cache.mob?.routes ?? {}, mobs: cache.mob?.mobs ?? {} }), () => NO_SHARED_MOBS);
+// 怪物查詢要的共用資料：路線、共用表新增的怪與修正強度（舊快取沒有 mobs、fixes 欄位時當作沒有）
+const NO_SHARED_MOBS = Object.freeze({ routes: {}, mobs: {}, fixes: {} });
+const sharedMobData = () => refreshSharedOnce(false).then(cache => ({ routes: cache.mob?.routes ?? {}, mobs: cache.mob?.mobs ?? {}, fixes: cache.mob?.fixes ?? {} }), () => NO_SHARED_MOBS);
 
 // 安裝或更新時，共用表連結「從來沒有設定過」（儲存裡沒有這個欄位）才帶入預設的；清空過（存了空字串）或自己填過的一律不動
 chrome.runtime.onInstalled?.addListener(async () => {
@@ -228,7 +228,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   Promise.all([loadZapData(), withShared ? sharedMobData() : NO_SHARED_MOBS])
     .then(([data, shared]) => sendResponse(
       // 先把共用表新增的怪併進怪物表再算（清單、分級、出現提示都用併好的），最後疊上共用路線
-      CatworldSharedData.overlayReply(CatworldZapMobs.handleMessage(CatworldSharedData.applySharedMobs(data.mobs ?? [], shared.mobs), message, data.routes ?? [], data.routeAliases ?? {}), shared.routes)
+      CatworldSharedData.overlayReply(CatworldZapMobs.handleMessage(CatworldSharedData.applySharedMobs(data.mobs ?? [], shared.mobs, shared.fixes), message, data.routes ?? [], data.routeAliases ?? {}), shared.routes)
         ?? CatworldZapItems.handleMessage(data.items ?? [], message)
         ?? CatworldZapRiddles.handleMessage(data, message)
         ?? { ok: false, error: '未知的查詢' }))

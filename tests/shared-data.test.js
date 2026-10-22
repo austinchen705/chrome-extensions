@@ -761,3 +761,80 @@ test('the route given with a new mob reaches that mob through the overlay', () =
   const out = S.overlayReply({ ok: true, items: [{ mob, route: null }] }, result.routes);
   assert.equal(out.items[0].route.route.command, 'run e 5n');
 });
+
+// ---- 修正內建怪的強度（名稱＋位置對得上內建怪、有填強度）----
+const buildFix = (...lines) => S.buildMobRoutes([HEADER_STRENGTH, ...lines].join('\n'), WILD);
+const expOf = (mobs, location) => mobs.filter(mob => mob.location === location).map(mob => mob.exp);
+
+test('a row that matches a built-in mob and has a strength fixes that strength and creates nothing', () => {
+  const result = buildFix('老虎(tiger),桃花島,5000,,只是備註,小明,2026-10-21 14:30');
+  assert.equal(result.ok, true);
+  const key = Z.customKey('老虎(tiger)|桃花島');
+  assert.deepEqual([result.fixes[key].exp, result.fixes[key].by], [5000, '小明']);
+  assert.deepEqual([result.report.created, Object.keys(result.mobs).length, result.report.dropped.length, result.report.unmatched.length], [0, 0, 0, 0]);
+  assert.deepEqual(result.routes, {}, 'no command, so no route');
+  assert.equal(result.report.used, 1);
+});
+
+test('a row with a strength and a command fixes the strength and gives the route; the strength accepts the same forms as a new mob', () => {
+  const result = buildFix('老虎(tiger),桃花島,25萬,run e,備註,小明,');
+  assert.equal(result.fixes[Z.customKey('老虎(tiger)|桃花島')].exp, 250000);
+  assert.equal(result.routes[Z.customKey('老虎(tiger)|桃花島')].command, 'run e');
+});
+
+test('without a strength a row never touches the strength of a built-in mob', () => {
+  const result = buildFix('老虎(tiger),桃花島,,run e,,小明,');
+  assert.deepEqual(result.fixes, {});
+});
+
+test('an invalid strength on a built-in mob drops the whole row, route included', () => {
+  const result = buildFix('老虎(tiger),桃花島,很強,run e,,小明,');
+  assert.deepEqual([result.fixes, result.routes, result.mobs], [{}, {}, {}]);
+  assert.match(result.report.dropped[0].reason, /看不懂/);
+  assert.equal(result.report.dropped[0].row, 2);
+});
+
+test('the fix only changes the strength: name, id, location and the mob note stay, and the original value is kept', () => {
+  const withNote = WILD.map(mob => ({ ...mob, note: '內建備註' }));
+  const result = buildFix('老虎(tiger),桃花島,5000,run e,路線備註,小明,');
+  const before = JSON.stringify(withNote);
+  const merged = S.applySharedMobs(withNote, result.mobs, result.fixes);
+  assert.equal(JSON.stringify(withNote), before, 'the input is not changed');
+  assert.deepEqual(expOf(merged, '桃花島'), [5000]);
+  const fixed = merged[0];
+  assert.deepEqual([fixed.name, fixed.id, fixed.location, fixed.note, fixed.source], ['老虎(tiger)', 'tiger', '桃花島', '內建備註', undefined]);
+  assert.deepEqual(fixed.fixed, { by: '小明', original: 100 });
+  assert.deepEqual(merged.slice(1), withNote.slice(1), 'the others are untouched');
+  assert.equal(result.routes[Z.customKey('老虎(tiger)|桃花島')].note, '路線備註', 'the row note is the route note only');
+});
+
+test('a fix reaches every same-name mob without a location, and only the matching place with one', () => {
+  const all = S.applySharedMobs(WILD, {}, buildFix('老虎(tiger),,5000,,,小明,').fixes);
+  assert.deepEqual([...expOf(all, '桃花島'), ...expOf(all, '長安城')], [5000, 5000]);
+  const one = S.applySharedMobs(WILD, {}, buildFix('老虎(tiger),長安城,5000,,,小明,').fixes);
+  assert.deepEqual([...expOf(one, '桃花島'), ...expOf(one, '長安城')], [100, 5000]);
+  const dog = S.applySharedMobs(WILD, {}, buildFix('野狗(dog), 襄陽 ,7,,,小明,').fixes);
+  assert.equal(dog.find(mob => mob.id === 'dog').exp, 7, 'one place of a multi-place mob is enough, spaces ignored');
+});
+
+test('a fix for a built-in mob without a location applies whatever location the row gives', () => {
+  const NONE = { name: '黑熊(Bear)', id: 'bear', exp: 600, location: '' };
+  const result = S.buildMobRoutes([HEADER_STRENGTH, '黑熊(Bear),長安城,900,,,小明,'].join('\n'), [NONE]);
+  assert.equal(result.report.created, 0);
+  assert.equal(S.applySharedMobs([NONE], {}, result.fixes)[0].exp, 900);
+});
+
+test('the same mob and place twice takes the newest row for the fix', () => {
+  const result = buildFix('老虎(tiger),桃花島,111,,,甲,2026-10-20 09:00', '老虎(tiger),桃花島,222,,,乙,2026-10-21 09:00');
+  assert.deepEqual([result.fixes[Z.customKey('老虎(tiger)|桃花島')].exp, result.fixes[Z.customKey('老虎(tiger)|桃花島')].by], [222, '乙']);
+});
+
+test('a fix never reaches the mobs the sheet added, and applySharedMobs without fixes behaves as before', () => {
+  const created = buildFix(`${KING},蒙古,250000,,,小明,`);
+  const merged = S.applySharedMobs(WILD, created.mobs, created.fixes);
+  assert.equal(merged.at(-1).exp, 250000);
+  assert.equal(merged.at(-1).fixed, undefined);
+  assert.equal(S.applySharedMobs(WILD, {}, undefined), WILD);
+  assert.equal(S.applySharedMobs(WILD, {}, {}), WILD);
+  assert.equal(S.applySharedMobs(WILD, {}, { [Z.customKey('不存在(x)')]: { exp: 1, by: '', at: null } }), WILD, 'a fix that matches no mob changes nothing');
+});

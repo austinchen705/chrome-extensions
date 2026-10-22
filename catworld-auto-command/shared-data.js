@@ -218,8 +218,10 @@ const bracketId = name => {
 // 怪物路線分頁：怪物名稱 | 位置（選填） | 強度（選填） | 指令 | 備註 | 更新者 | 更新時間。
 // 鍵是「名稱」或「名稱|位置」（位置有填才帶）：同名的怪常在不同地方，位置有填就只管那個地方的怪。指令寫「停用」代表這隻怪不要路線。
 // 有填強度、而且名稱＋位置不在內建怪物資料裡的列是「新怪」（要帶括號 ID、強度要合法；可以沒有指令）；
+// 有填強度、而且名稱＋位置對得上內建怪的列是「修正強度」：只改那隻怪的強度（強度寫法與新怪相同，不合法整列丟掉），備註只當路線備註；
 // 沒填強度、不在內建資料的列維持原樣（只列在 unmatched，打錯字的名稱不會變成新怪）。
 // 回 { ok, routes: { 鍵: { command, by, note, at, disabled? } }, mobs: { 鍵: { name, id, exp, location, note, by, at } },
+//      fixes: { 鍵: { exp, by, at } },
 //      report: { rows, used, created, dropped: [{row, reason}], unmatched: [{row, name, location?, reason}] } }。
 // 同一個鍵多列取更新時間最新的；被丟掉的列什麼都不留下（路線和新怪都不會有）
 function buildMobRoutes(csvText, mobs) {
@@ -231,6 +233,7 @@ function buildMobRoutes(csvText, mobs) {
   const known = knownMobs(mobs);
   const best = new Map();
   const bestMob = new Map();
+  const bestFix = new Map();
   const report = newReport(sheet);
   sheet.rows.forEach(({ row, cell }) => {
     const name = cell('怪物名稱');
@@ -238,16 +241,18 @@ function buildMobRoutes(csvText, mobs) {
     const location = cell('位置');
     const key = mobKey(name, location);
     // 先把整列驗證完才寫進結果：被丟掉的列不能留下一半
-    const creates = cell('強度') !== '' && !known.has(name, location);
+    const hasStrength = cell('強度') !== '';
+    const fixes = hasStrength && known.has(name, location);
+    const creates = hasStrength && !fixes;
     let exp = null;
-    if (creates) {
+    if (hasStrength) {
       const parsed = parseStrength(cell('強度'));
       if (!parsed.ok) return report.dropped.push({ row, reason: parsed.reason });
-      if (!bracketId(name)) return report.dropped.push({ row, reason: '新怪的名稱要寫成「稱號 名稱(ID)」，缺少括號 ID' });
+      if (creates && !bracketId(name)) return report.dropped.push({ row, reason: '新怪的名稱要寫成「稱號 名稱(ID)」，缺少括號 ID' });
       exp = parsed.value;
     }
     const hasCommand = cell('指令') !== '';
-    if (!hasCommand && !creates) return report.dropped.push({ row, reason: '指令是空的' });
+    if (!hasCommand && !hasStrength) return report.dropped.push({ row, reason: '指令是空的' });
     const made = hasCommand ? commandEntry(cell) : null;
     if (made && !made.entry) return report.dropped.push({ row, reason: made.reason });
     const at = parseTime(cell('更新時間'));
@@ -255,6 +260,10 @@ function buildMobRoutes(csvText, mobs) {
     if (made) {
       const old = best.get(key);
       if (!old || made.rank >= old.rank) best.set(key, { rank: made.rank, row, name, location, entry: made.entry });
+    }
+    if (fixes) {
+      const old = bestFix.get(key);
+      if (!old || rank >= old.rank) bestFix.set(key, { rank, name, location, fix: { exp, by: cell('更新者'), at: Number.isFinite(at) ? at : null } });
     }
     if (creates) {
       const old = bestMob.get(key);
@@ -277,24 +286,47 @@ function buildMobRoutes(csvText, mobs) {
     report.unmatched.push(unmatched);
   });
   loose.forEach(({ entry }, nameKey) => { routes[nameKey] ??= entry; });
+  const fixesByKey = Object.fromEntries([...bestFix].map(([key, { fix }]) => [key, fix]));
+  // 內建怪沒有位置時，位置挑不到怪：修正也退回名稱（輸給真正沒填位置的列，這種列之間取最新的）
+  const looseFix = new Map();
+  bestFix.forEach(({ rank, name, location, fix }) => {
+    if (!location || known.hasPlace(name, location)) return;
+    const nameKey = customKey(name);
+    if (!looseFix.has(nameKey) || rank >= looseFix.get(nameKey).rank) looseFix.set(nameKey, { rank, fix });
+  });
+  looseFix.forEach(({ fix }, nameKey) => { fixesByKey[nameKey] ??= fix; });
   const newMobs = Object.fromEntries([...bestMob].map(([key, { mob }]) => [key, mob]));
-  report.used = new Set([...best.keys(), ...bestMob.keys()]).size;
+  report.used = new Set([...best.keys(), ...bestMob.keys(), ...bestFix.keys()]).size;
   report.created = bestMob.size;
   report.unmatched.sort((a, b) => a.row - b.row);
-  return { ok: true, routes, mobs: newMobs, report };
+  return { ok: true, routes, mobs: newMobs, fixes: fixesByKey, report };
 }
 
-// background 用：把共用表新增的怪併進內建怪物表（附在後面），回傳新陣列、不改動輸入。
-// 內建資料後來已經有同一隻（名稱＋位置，或沒填位置的名稱）就以內建的為準，不重複列出
-function applySharedMobs(mobs, shared) {
+// 共用層（鍵是名稱或名稱|位置）裡這隻怪對得上的項目：有填位置的先比（怪的位置整串或其中一個地點相符），沒有才用沒填位置的
+const entryFor = (table, mob) => {
+  const nameKey = globalThis.CatworldZapMobs.customKey(mob.name);
+  const hit = mobPlaces(mob).find(place => table[`${nameKey}|${place}`]);
+  return hit ? table[`${nameKey}|${hit}`] : table[nameKey];
+};
+
+// background 用：把共用表的修正強度套在內建怪上（只改強度，帶 fixed: { by, original }），再把新增的怪併在後面，
+// 回傳新陣列、不改動輸入（沒有任何變動就回同一個陣列）。
+// 內建資料後來已經有同一隻新怪（名稱＋位置，或沒填位置的名稱）就以內建的為準，不重複列出
+function applySharedMobs(mobs, shared, fixes) {
   const list = mobs ?? [];
   const entries = Object.values(shared ?? {});
-  if (!entries.length) return list;
+  const table = fixes ?? {};
+  if (!entries.length && !Object.keys(table).length) return list;
+  const corrected = list.map(mob => {
+    const fix = entryFor(table, mob);
+    return fix ? { ...mob, exp: fix.exp, fixed: { by: fix.by, original: mob.exp } } : mob;
+  });
+  const base = corrected.some((mob, index) => mob !== list[index]) ? corrected : list;
   const known = knownMobs(list);
   const added = entries
     .filter(mob => !known.has(mob.name, mob.location))
     .map(mob => ({ name: mob.name, id: mob.id, exp: mob.exp, location: mob.location, note: mob.note, source: 'shared', by: mob.by }));
-  return added.length ? [...list, ...added] : list;
+  return added.length ? [...base, ...added] : base;
 }
 
 // 解謎指令分頁：謎名稱 | 步驟 | 指令 | 備註 | 更新者 | 更新時間 | 步驟數（選填）。
@@ -408,14 +440,8 @@ function describeRejectedUrl(kind, error, hasStored) {
 // 有填位置的列先比（怪的位置整串或其中一個地點相符），沒有才用沒填位置的列。不改動輸入
 function overlayReply(reply, shared) {
   if (!reply?.ok || !shared || !Object.keys(shared).length) return reply;
-  const customKey = globalThis.CatworldZapMobs.customKey;
-  const find = mob => {
-    const nameKey = customKey(mob.name);
-    const hit = mobPlaces(mob).find(place => shared[`${nameKey}|${place}`]);
-    return hit ? shared[`${nameKey}|${hit}`] : shared[nameKey];
-  };
   const apply = item => {
-    const entry = item?.mob && find(item.mob);
+    const entry = item?.mob && entryFor(shared, item.mob);
     if (!entry) return item;
     if (entry.disabled) return { ...item, route: null, sharedDisabled: { by: entry.by, note: entry.note } };
     return { ...item, route: { route: { name: item.mob.name, path: '', command: entry.command }, exact: true, shared: { by: entry.by, note: entry.note } } };

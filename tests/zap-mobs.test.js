@@ -321,3 +321,13 @@ test('metaText marks a mob the shared sheet added with who added it, and leaves 
   const builtIn = { ...mob('華山弟子(a)', 250000, '華山'), source: 'zap' };
   assert.doesNotMatch(Z.metaText({ mob: builtIn, q: 1.2, idOnly: false }), /共用新增/);
 });
+
+test('metaText marks a built-in mob whose strength the shared sheet corrected, with who corrected it and the original value', () => {
+  const fixed = { ...mob('華山弟子(a)', 2000000, '華山'), source: 'zap', fixed: { by: '小明', original: 250000 } };
+  const text = Z.metaText({ mob: fixed, q: 4.8, idOnly: false });
+  assert.match(text, /強度 2000000/);
+  assert.match(text, /共用修正強度（小明）/);
+  assert.match(text, /zap 站原值 250000$/);
+  assert.match(Z.metaText({ mob: { ...fixed, fixed: { by: '', original: 5 } }, q: 1, idOnly: false }), /共用修正強度（未署名）　zap 站原值 5$/);
+  assert.doesNotMatch(Z.metaText({ mob: { ...fixed, fixed: undefined }, q: 1, idOnly: false }), /共用修正強度|原值/);
+});

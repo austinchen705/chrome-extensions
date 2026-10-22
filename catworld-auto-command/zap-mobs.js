@@ -70,7 +70,8 @@ function findMobs(mobs, name) {
 function metaText({ mob, q, idOnly }) {
   const strength = !Number.isFinite(mob.exp) ? '強度未知' : q === null ? `強度 ${mob.exp}` : `強度 ${mob.exp}（q=${q.toFixed(2)}）`;
   const added = mob.source === 'shared' ? `共用新增（${mob.by || '未署名'}）` : '';
-  return [strength, mob.location, mob.note, idOnly ? '僅 ID 命中' : '', added].filter(Boolean).join('　');
+  const fixed = mob.fixed ? `共用修正強度（${mob.fixed.by || '未署名'}）　zap 站原值 ${mob.fixed.original}` : '';
+  return [strength, mob.location, mob.note, idOnly ? '僅 ID 命中' : '', added, fixed].filter(Boolean).join('　');
 }
 
 // 怪物的出沒地點對應「總路徑」表。完全同名優先；否則只接受「其中一個名稱以另一個開頭」（天魔塔2f↔天魔塔、襄陽↔襄陽城），
