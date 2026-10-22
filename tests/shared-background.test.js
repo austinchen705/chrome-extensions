@@ -398,3 +398,36 @@ test('the list of fitting mobs and its grades use the corrected strength', async
   const old = await ask({ type: 'ZAP_SUITABLE', exp: 414748, thresholds: undefined, grades: ['green'], query: '白猿' });
   assert.equal(old.items.some(item => item.mob.name === '白猿(white ape)'), false, 'no longer green');
 });
+
+// ---- 刪列、多列與停用（跨兩次抓取）----
+const refreshNow = () => ask({ type: 'SHARED_REFRESH' }, settingsPage);
+
+test('deleting rows from the sheet between two fetches removes the new mob and restores the built-in strength', async () => {
+  reset();
+  csvBody = [STR_HEADER, `${KING},蒙古,250000,run e,,小明,2026-10-21 14:30`, '白猿(white ape),古墓,2000000,,,小明,2026-10-21 14:30'].join('\n') + '\n';
+  const before = await suitable();
+  assert.ok(before.items.some(item => item.mob.name === KING), 'the new mob is there');
+  const fixed = (await lookup()).items[0].candidates[0];
+  assert.equal(fixed.mob.exp, 2000000);
+  csvBody = [STR_HEADER, '白猿(white ape),古墓,,run e,只剩路線,小明,2026-10-21 15:00'].join('\n') + '\n';
+  assert.equal((await refreshNow()).ok, true);
+  const after = await suitable();
+  assert.equal(after.items.some(item => item.mob.name === KING), false, 'the mob is gone');
+  const restored = (await lookup()).items[0].candidates[0];
+  assert.deepEqual([restored.mob.exp, restored.mob.fixed], [250000, undefined], 'the strength is back to the built-in value');
+  assert.equal(restored.route.route.command, 'run e', 'the route row is still there');
+});
+
+test('a newer row with only a route keeps the new mob, and 停用 on a new mob keeps the mob but takes its route away', async () => {
+  reset();
+  csvBody = [STR_HEADER, `${KING},蒙古,250000,run old,,甲,2026-10-20 09:00`, `${KING},蒙古,,run new,,乙,2026-10-21 09:00`].join('\n') + '\n';
+  const list = await suitable();
+  const entry = list.items.find(item => item.mob.name === KING);
+  assert.deepEqual([entry.mob.exp, entry.mob.by, entry.route.route.command, entry.route.shared.by], [250000, '甲', 'run new', '乙']);
+  reset();
+  csvBody = [STR_HEADER, `${KING},蒙古,250000,停用,路線壞了,小明,`].join('\n') + '\n';
+  const hint = (await ask({ type: 'ZAP_LOOKUP', exp: 414748, names: [{ name: KING, count: 1 }] })).items[0].candidates[0];
+  assert.equal(hint.mob.name, KING);
+  assert.equal(hint.route, null);
+  assert.deepEqual(hint.sharedDisabled, { by: '小明', note: '路線壞了' });
+});
