@@ -240,6 +240,58 @@ test('a location that no mob of that name has is reported as unmatched but kept'
   assert.equal(result.report.used, 2);
 });
 
+// 內建怪沒有位置、或填的位置對不上時，列仍然套用（位置只是用來在同名怪之間挑，挑不到就退回名稱）
+const NO_PLACE = { name: '野狗(Dog)', id: 'dog', exp: 5, location: '' };
+const route = (reply, shared, extra) => S.overlayReply(reply, shared, extra).items[0].route?.route?.command ?? null;
+const single = mob => ({ ok: true, items: [{ mob, route: null }] });
+
+test('a row with a location still reaches a built-in mob that has no location', () => {
+  const { routes } = S.buildMobRoutes([HEADER_LOC, '野狗(Dog),長安城,run city,,小明,'].join('\n'), [NO_PLACE]);
+  assert.equal(route(single(NO_PLACE), routes), 'run city');
+});
+
+test('a location no mob of that name has still applies by name, below a row for the right place and a row without a location', () => {
+  const { routes } = buildLoc('老虎(tiger),火星,run mars,,甲,2026-10-21 09:00');
+  assert.deepEqual(commands(routes), ['run mars', 'run mars'], 'applied to every mob of that name');
+  const exact = buildLoc('老虎(tiger),火星,run mars,,甲,2026-10-21 09:00', '老虎(tiger),桃花島,run peach,,乙,2026-10-19 09:00');
+  assert.deepEqual(commands(exact.routes), ['run peach', 'run mars'], 'the row for its own place wins');
+  const plain = buildLoc('老虎(tiger),火星,run mars,,甲,2026-10-21 09:00', '老虎(tiger),,run all,,乙,2026-10-19 09:00');
+  assert.deepEqual(commands(plain.routes), ['run all', 'run all'], 'a row without a location beats a mismatched one');
+});
+
+test('several rows whose locations all miss: the newest one is used', () => {
+  const { routes } = buildLoc('老虎(tiger),火星,run old,,甲,2026-10-19 09:00', '老虎(tiger),木星,run new,,乙,2026-10-21 09:00');
+  assert.deepEqual(commands(routes), ['run new', 'run new']);
+});
+
+const HEADER_STRENGTH = '怪物名稱,位置,強度,指令,備註,更新者,更新時間';
+
+test('a located row for a built-in mob that has no location is not a new mob (there is no place to differ from)', () => {
+  const sheet = [HEADER_STRENGTH, '野狗(Dog),長安城,500,run city,,小明,'].join('\n');
+  const built = S.buildMobRoutes(sheet, [NO_PLACE]);
+  assert.equal(built.report.created, 0);
+  assert.deepEqual(Object.keys(built.mobs), []);
+  assert.equal(route(single(NO_PLACE), built.routes), 'run city');
+  const stale = { [Z.customKey('野狗(Dog)|長安城')]: { name: '野狗(Dog)', id: 'dog', exp: 500, location: '長安城', note: '', by: '小明' } };
+  assert.deepEqual(S.applySharedMobs([NO_PLACE], stale), [NO_PLACE], 'an older cache is not added twice either');
+});
+
+test('a route that belongs to a mob the sheet created stays with it and does not fall back onto built-in mobs', () => {
+  const sheet = [HEADER_STRENGTH, '老虎(tiger),火星,500,run mars,,小明,'].join('\n');
+  const built = S.buildMobRoutes(sheet, WILD);
+  assert.equal(built.report.created, 1);
+  const mobs = S.applySharedMobs(WILD, built.mobs);
+  const created = mobs.find(mob => mob.source === 'shared');
+  const reply = { ok: true, items: [{ name: '老虎(tiger)', count: 3, candidates: [WILD[0], WILD[1], created].map(mob => ({ mob, route: null })) }] };
+  const out = S.overlayReply(reply, built.routes, built.mobs).items[0].candidates.map(item => item.route?.route?.command ?? null);
+  assert.deepEqual(out, [null, null, 'run mars']);
+});
+
+test('a row that only applies through its name is still listed as a warning, saying it was applied', () => {
+  const result = buildLoc('老虎(tiger),火星,run e,,小明,');
+  assert.deepEqual(result.report.unmatched.map(item => item.reason), ['這個怪物沒有在「火星」，已改用名稱套用']);
+});
+
 test('a sheet without the location column still works (the column is optional)', () => {
   const result = S.buildMobRoutes('怪物名稱,指令\n老虎(tiger),run e\n', WILD);
   assert.equal(result.ok, true);
@@ -391,7 +443,7 @@ test('a shared step is flagged as changed only when its step count was filled in
 // ---- 報告：原因文字、列數上限、逐列顯示 ----
 test('every unmatched row says what could not be matched', () => {
   const mob = buildLoc('不存在(x),,run e,,小明,', '老虎(tiger),火星,run e,,小明,');
-  assert.deepEqual(mob.report.unmatched.map(item => item.reason), ['資料裡沒有這個怪物', '這個怪物沒有在「火星」']);
+  assert.deepEqual(mob.report.unmatched.map(item => item.reason), ['資料裡沒有這個怪物', '這個怪物沒有在「火星」，已改用名稱套用']);
   const riddle = buildRiddle('不存在的謎,1,run a,,甲,', '獨孤九劍,9,run a,,甲,');
   assert.deepEqual(riddle.report.unmatched.map(item => item.reason), ['資料裡沒有這個謎', '這個謎沒有第 9 步']);
 });
@@ -417,7 +469,7 @@ test('reportLines lists every dropped and unmatched row with its row number and 
   assert.deepEqual(S.reportLines(mob.report), [
     '第 2 列：丟掉（不允許的指令「drop」）',
     '第 3 列：不存在(x)　資料裡沒有這個怪物',
-    '第 4 列：老虎(tiger)（火星）　這個怪物沒有在「火星」',
+    '第 4 列：老虎(tiger)（火星）　這個怪物沒有在「火星」，已改用名稱套用',
   ]);
   const riddle = buildRiddle('獨孤九劍,9,run a,,甲,');
   assert.deepEqual(S.reportLines(riddle.report), ['第 2 列：獨孤九劍 第 9 步　這個謎沒有第 9 步']);

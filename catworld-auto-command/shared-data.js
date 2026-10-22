@@ -116,15 +116,26 @@ const mobKey = (name, location) => {
   return location ? `${key(name)}|${key(location)}` : key(name);
 };
 
-// 內建怪物資料裡所有認得的鍵：每隻怪的名稱，加上名稱配它的整串位置與每個地點
-const knownMobKeys = mobs => {
+// 內建怪物資料認得的怪：名稱，或名稱配它的整串位置與每個地點。
+// 內建怪沒有位置的（野狗、黑熊…），位置欄填什麼都沒有可以「不同」的地方，所以不算新地點，名稱對上就算認得
+const knownMobs = mobs => {
   const key = globalThis.CatworldZapMobs.customKey;
-  const known = new Set();
+  const names = new Set();
+  const placed = new Set();
+  const placeless = new Set();
   (mobs ?? []).forEach(mob => {
-    known.add(key(mob.name));
-    mobPlaces(mob).forEach(place => known.add(`${key(mob.name)}|${place}`));
+    const name = key(mob.name);
+    names.add(name);
+    const places = mobPlaces(mob);
+    if (!places.length) placeless.add(name);
+    places.forEach(place => placed.add(`${name}|${place}`));
   });
-  return known;
+  const hasPlace = (name, location) => placed.has(mobKey(name, location));
+  return {
+    hasName: name => names.has(key(name)),
+    hasPlace,
+    has: (name, location) => (location ? hasPlace(name, location) || placeless.has(key(name)) : names.has(key(name))),
+  };
 };
 
 // 更新時間：2026-10-21 14:30（秒可有可無、斜線也行、只有日期也行）。解析不了回 NaN
@@ -217,7 +228,7 @@ function buildMobRoutes(csvText, mobs) {
   if (sheet.error) return { ok: false, error: sheet.error };
   // 一列要嘛有指令、要嘛是有強度的新怪：標題列兩個欄位都沒有的表，沒有任何一列能用
   if (!sheet.has('指令') && !sheet.has('強度')) return { ok: false, error: '缺少欄位「指令」，第一列要是標題列' };
-  const known = knownMobKeys(mobs);
+  const known = knownMobs(mobs);
   const best = new Map();
   const bestMob = new Map();
   const report = newReport(sheet);
@@ -227,7 +238,7 @@ function buildMobRoutes(csvText, mobs) {
     const location = cell('位置');
     const key = mobKey(name, location);
     // 先把整列驗證完才寫進結果：被丟掉的列不能留下一半
-    const creates = cell('強度') !== '' && !known.has(key);
+    const creates = cell('強度') !== '' && !known.has(name, location);
     let exp = null;
     if (creates) {
       const parsed = parseStrength(cell('強度'));
@@ -251,12 +262,21 @@ function buildMobRoutes(csvText, mobs) {
     }
   });
   const routes = {};
+  // 位置不屬於任何同名的內建怪（內建怪沒有位置、或填錯地方）的列：位置挑不到怪，就退回名稱套用到同名的怪，
+  // 但輸給真正沒填位置的列；這種列之間取最新的。共用表自己新增的怪的路線只給那隻怪
+  const loose = new Map();
+  best.forEach(({ rank, name, location, entry }, key) => {
+    if (!location || !known.hasName(name) || known.hasPlace(name, location) || bestMob.has(key)) return;
+    const nameKey = customKey(name);
+    if (!loose.has(nameKey) || rank >= loose.get(nameKey).rank) loose.set(nameKey, { rank, entry });
+  });
   best.forEach(({ row, name, location, entry }, key) => {
     routes[key] = entry;
-    if (known.has(key) || bestMob.has(key)) return;
-    const unmatched = location ? { row, name, location, reason: known.has(customKey(name)) ? `這個怪物沒有在「${location}」` : '資料裡沒有這個怪物' } : { row, name, reason: '資料裡沒有這個怪物' };
+    if (known.has(name, location) || bestMob.has(key)) return;
+    const unmatched = location ? { row, name, location, reason: known.hasName(name) ? `這個怪物沒有在「${location}」，已改用名稱套用` : '資料裡沒有這個怪物' } : { row, name, reason: '資料裡沒有這個怪物' };
     report.unmatched.push(unmatched);
   });
+  loose.forEach(({ entry }, nameKey) => { routes[nameKey] ??= entry; });
   const newMobs = Object.fromEntries([...bestMob].map(([key, { mob }]) => [key, mob]));
   report.used = new Set([...best.keys(), ...bestMob.keys()]).size;
   report.created = bestMob.size;
@@ -270,9 +290,9 @@ function applySharedMobs(mobs, shared) {
   const list = mobs ?? [];
   const entries = Object.values(shared ?? {});
   if (!entries.length) return list;
-  const known = knownMobKeys(list);
+  const known = knownMobs(list);
   const added = entries
-    .filter(mob => !known.has(mobKey(mob.name, mob.location)))
+    .filter(mob => !known.has(mob.name, mob.location))
     .map(mob => ({ name: mob.name, id: mob.id, exp: mob.exp, location: mob.location, note: mob.note, source: 'shared', by: mob.by }));
   return added.length ? [...list, ...added] : list;
 }

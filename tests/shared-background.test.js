@@ -225,10 +225,10 @@ test('a sheet that never answers is given up on after the timeout and the reason
   assert.match(store.sharedCache.mob.error.reason, /逾時/);
 });
 
-test('a row with a location only reaches the mob at that place, and 停用 hides the route through a real lookup', async () => {
+test('a row whose location no mob of that name has still applies by name, a matching location applies, and 停用 hides the route through a real lookup', async () => {
   reset();
   csvBody = '怪物名稱,位置,指令,備註,更新者,更新時間\n白猿(white ape),長安,run elsewhere,,小明,2026-10-21 14:30\n';
-  assert.equal(routeOf(await lookup()), null, 'the row is for another place');
+  assert.equal(routeOf(await lookup()).route.command, 'run elsewhere', 'a location nobody has is a typo, so the name decides');
   reset();
   csvBody = '怪物名稱,位置,指令,備註,更新者,更新時間\n白猿(white ape),古墓,run here,,小明,2026-10-21 14:30\n';
   assert.equal(routeOf(await lookup()).route.command, 'run here');
