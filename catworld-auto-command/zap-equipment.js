@@ -50,17 +50,20 @@ function parseEquipmentBlocks(text) {
 }
 
 // ---- 比較 ----
-// 規則（使用者定的：先比攻擊力／防禦力，再比附加屬性，和自己主要武器類型相關的屬性加分）：
-// 主要數值相差 PRIMARY_GAP 以上就以高者為準；差不多再比屬性分數（相關屬性每點 2 分、其他每點 1 分、負值照扣）。
-// PRIMARY_GAP 與權重是設計者的猜測，之後依實際使用校準。
+// 規則（使用者定的：先比攻擊力／防禦力，再比附加屬性，相關屬性加分，主要數值差一點但屬性補得回來也推薦）：
+// 主要數值相差不到 PRIMARY_GAP 時只比屬性分數；相差 PRIMARY_GAP 以上時，每 1 點主要數值換成 PRIMARY_WEIGHT 分，
+// 和屬性分數的差距加在一起，總分大於 0 才算比較好（相關屬性每點 2 分、其他每點 1 分、負值照扣）。
+// PRIMARY_GAP 與兩個權重是設計者的猜測，之後依實際使用校準。
 const PRIMARY_GAP = 3;
+const PRIMARY_WEIGHT = 4;
 const IGNORED_ATTRS = ['重量', '硬度', '潛能', '損修'];
+const ALWAYS_RELATED = ['攻擊', '輔助氣恢復', '內功'];
 const RELATED_BY_WEAPON = {
-  劍: ['劍術', '劍法'], 刀: ['刀術', '刀法'], 杖: ['棒法', '杖法'], 鞭: ['鞭法'], 拳套: ['拳腳'], 暗器: ['暗器', '暗器使用'],
+  劍: ['劍術'], 刀: ['刀法'], 杖: ['棒法', '杖法'], 鞭: ['鞭法'], 拳套: ['拳術'], 暗器: ['暗器', '暗器使用'],
 };
 
-// 「攻擊」對任何人都算相關；主要武器類型沒設定或不認得時只有「攻擊」
-const relatedAttrNames = mainWeapon => ['攻擊', ...(RELATED_BY_WEAPON[mainWeapon] ?? [])];
+// 攻擊、輔助氣恢復、內功對任何人都算相關；主要武器類型沒設定或不認得時只有這三個
+const relatedAttrNames = mainWeapon => [...ALWAYS_RELATED, ...(RELATED_BY_WEAPON[mainWeapon] ?? [])];
 
 function scoreAttrs(attrs, related) {
   return attrs
@@ -92,7 +95,9 @@ function compareEquipment(candidate, baseline, { mainWeapon, exp } = {}) {
     else if (delta < 0) reasons.push(`少了 ${name} ${-delta}`);
   });
   const scoreDiff = scoreAttrs(candidate.attrs, related) - weakest.score;
-  const decided = Math.abs(diff) >= PRIMARY_GAP ? diff : scoreDiff;
+  const primaryPoints = Math.abs(diff) >= PRIMARY_GAP ? diff * PRIMARY_WEIGHT : 0;
+  const decided = primaryPoints + scoreDiff;
+  if (primaryPoints < 0 && decided > 0) reasons.push(`屬性補回：屬性 +${scoreDiff} 分，抵過主要數值少的 ${-primaryPoints} 分`);
   const verdict = decided > 0 ? 'better' : decided < 0 ? 'worse' : 'equal';
   return { verdict, text: VERDICT_TEXT[verdict], reasons, against: weakest.item.name, blocked };
 }

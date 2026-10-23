@@ -89,10 +89,13 @@ const piece = (name, primary, attrs = [], extra = {}) => ({
 const base = (name, primary, attrs = []) => ({ name, primary, attrs, needExp: 0, readAt: 0 });
 const stats = { mainWeapon: '劍', exp: 414748 };
 
-test('relatedAttrNames follows the main weapon type', () => {
-  assert.ok(['攻擊', '劍術', '劍法'].every(name => E.relatedAttrNames('劍').includes(name)));
-  assert.ok(E.relatedAttrNames('拳套').includes('拳腳'));
-  ['', undefined, '法師'].forEach(value => assert.deepEqual(E.relatedAttrNames(value), ['攻擊']));
+const ALWAYS_RELATED = ['攻擊', '輔助氣恢復', '內功'];
+
+test('relatedAttrNames: attack, assist qi recovery and inner power count for everyone, the weapon skill follows the main weapon type', () => {
+  assert.deepEqual(E.relatedAttrNames('劍'), [...ALWAYS_RELATED, '劍術']);
+  assert.deepEqual(E.relatedAttrNames('刀'), [...ALWAYS_RELATED, '刀法']);
+  assert.deepEqual(E.relatedAttrNames('拳套'), [...ALWAYS_RELATED, '拳術']);
+  ['', undefined, '法師'].forEach(value => assert.deepEqual(E.relatedAttrNames(value), ALWAYS_RELATED));
 });
 
 test('scoreAttrs weights related attributes double and ignores weight and hardness', () => {
@@ -131,6 +134,49 @@ test('compareEquipment decides by attributes when the primary values are close',
   const equal = E.compareEquipment(piece('甲', 30, plus), [base('乙', 30, plus)], stats);
   assert.equal(equal.verdict, 'equal');
   assert.equal(equal.text, '相當');
+});
+
+// 真實裝備（使用者貼的鑑定輸出）：黑羽長風鎧 防 48／攻擊 +22；烈陽戰甲 防 44／內功 +3、防禦 +9、攻擊 +9；血玉手套 防 23／輔助氣恢復 +5、氣上限 +16
+const BLACK = base('黑羽長風鎧', 48, [{ name: '攻擊', value: 22 }]);
+const armor = (name, primary, attrs) => piece(name, primary, attrs, { category: '盔甲類防具' });
+
+test('compareEquipment recommends a piece whose primary value is a bit lower when its attributes make up for it', () => {
+  const result = E.compareEquipment(armor('近似甲', 44, [{ name: '攻擊', value: 40 }, { name: '內功', value: 5 }]), [BLACK], stats);
+  assert.equal(result.verdict, 'better');
+  assert.equal(result.text, '比現在好，建議留下');
+  assert.ok(result.reasons.includes('防禦 -4'));
+  assert.ok(result.reasons.some(reason => reason.startsWith('屬性補回')), result.reasons.join('｜'));
+});
+
+test('compareEquipment: assist qi recovery and inner power are worth double like attack', () => {
+  const lowerBy4 = (attrs) => E.compareEquipment(armor('甲', 44, attrs), [BLACK], stats).verdict;
+  // 基準的攻擊 +22 值 44 分，主要數值少 4 值 16 分：候選的屬性要剛好 60 分才打平
+  assert.equal(lowerBy4([{ name: '攻擊', value: 22 }, { name: '輔助氣恢復', value: 5 }, { name: '內功', value: 4 }]), 'better', '44 + 10 + 8 = 62');
+  assert.equal(lowerBy4([{ name: '攻擊', value: 22 }, { name: '輔助氣恢復', value: 4 }, { name: '內功', value: 4 }]), 'equal', '44 + 8 + 8 = 60');
+  assert.equal(lowerBy4([{ name: '攻擊', value: 22 }, { name: '行動', value: 15 }]), 'worse', '不相關的屬性每點只算 1 分：44 + 15 = 59');
+});
+
+test('compareEquipment: the weapon skill of the main weapon type is worth double, another weapon type is not', () => {
+  const candidate = piece('劍衣', 27, [{ name: '劍術', value: 12 }]);
+  const baseline = [base('舊衣', 31, [{ name: '攻擊', value: 1 }])];
+  assert.equal(E.compareEquipment(candidate, baseline, { mainWeapon: '劍', exp: 0 }).verdict, 'better');
+  assert.equal(E.compareEquipment(candidate, baseline, { mainWeapon: '刀', exp: 0 }).verdict, 'worse');
+});
+
+test('compareEquipment still says worse when the primary value is much lower and the attributes do not make up for it', () => {
+  const result = E.compareEquipment(armor('烈陽戰甲', 20, [{ name: '內功', value: 3 }, { name: '防禦', value: 9 }, { name: '攻擊', value: 9 }]), [BLACK], stats);
+  assert.equal(result.verdict, 'worse');
+  assert.ok(!result.reasons.some(reason => reason.startsWith('屬性補回')));
+});
+
+test('compareEquipment: the real 烈陽戰甲 (44, with attributes) against the black armor (48, attack +22) is worse', () => {
+  const sun = armor('烈陽戰甲', 44, [{ name: '內功', value: 3 }, { name: '防禦', value: 9 }, { name: '攻擊', value: 9 }]);
+  assert.equal(E.compareEquipment(sun, [BLACK], stats).verdict, 'worse');
+});
+
+test('compareEquipment: a much higher primary value no longer wins when its attributes are far worse', () => {
+  const candidate = piece('高防低屬', 34, [{ name: '攻擊', value: -10 }]);
+  assert.equal(E.compareEquipment(candidate, [base('原本', 31, [{ name: '攻擊', value: 5 }])], stats).verdict, 'worse');
 });
 
 test('compareEquipment has no baseline to compare with', () => {
