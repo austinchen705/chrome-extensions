@@ -17,6 +17,8 @@ const READ_IDLE_MS = 20000;
 const HTML_WINDOW_MS = 3000;
 const HTML_BUFFER_CHARS = 30000;
 const RESULT_MAX = 12;
+// 結果的排序：越小越上面、越後面才被擠掉
+const VERDICT_RANK = { better: 0, equal: 1, none: 2, worse: 3 };
 const VERDICT_COLOR = { better: '#3ecf6e', worse: '#999999', equal: '#e6c029', none: '#7a7a7a' };
 const WEAPON_TYPES = ['劍', '刀', '杖', '鞭', '拳套', '暗器'];
 
@@ -186,7 +188,8 @@ function attach(root, { overlay, readExp, startSteps }) {
       result.blocked ? '你還不能穿' : '',
       against ? `基準讀取於 ${minutesAgo(against.readAt)} 分鐘前` : '',
     ].filter(Boolean).join('　');
-    return el('div', { className: 'zap-block zap-item' }, el('div', { textContent: head }), verdict, ' ', el('span', { className: 'meta', textContent: detail }));
+    const node = el('div', { className: 'zap-block zap-item' }, el('div', { textContent: head }), verdict, ' ', el('span', { className: 'meta', textContent: detail }));
+    return { node, rank: VERDICT_RANK[result.verdict] };
   }
 
   function showCandidates(candidates) {
@@ -195,11 +198,20 @@ function attach(root, { overlay, readExp, startSteps }) {
       section.append(el('div', { className: 'title', textContent: '鑑定裝備' }));
     }
     candidates.forEach(block => {
-      const node = candidateNode(block);
-      section.append(node);
-      blocks.push(node);
+      const entry = candidateNode(block);
+      // 顯示順序：好的在上，同一級照來的順序（排序穩定）；blocks 只依來的順序存
+      const shown = blocks.slice().sort((a, b) => a.rank - b.rank);
+      const before = shown.filter(item => item.rank <= entry.rank).pop();
+      if (before) before.node.after(entry.node);
+      else if (shown.length) shown[0].node.before(entry.node);
+      else section.append(entry.node);
+      blocks.push(entry);
     });
-    while (blocks.length > RESULT_MAX) blocks.shift().remove();
+    // 超過上限時先丟最差的一級裡最舊的，推薦留下的最後才會被擠掉
+    while (blocks.length > RESULT_MAX) {
+      const worst = Math.max(...blocks.map(item => item.rank));
+      blocks.splice(blocks.findIndex(item => item.rank === worst), 1)[0].node.remove();
+    }
     touchHint();
   }
 

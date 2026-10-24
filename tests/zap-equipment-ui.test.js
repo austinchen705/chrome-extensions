@@ -204,6 +204,51 @@ ui('an identify run compares every block with the stored baseline', async () => 
   assert.match(row('銅棒'), /沒有基準可比/);
 });
 
+const CLOAK_BASELINE = { '': { '披風類防具': [{ name: '貓斗篷', primary: 30, attrs: [], needExp: 0, readAt: Date.now() }] } };
+const identifyRun = blocks => `> 你想請馬鑑定師鑑定所有無名物。\n${blocks.map(([name, category, primary]) => `此物名曰 ：${name}，${category}\n防 禦 力 ：${primary} / ${primary}\n`).join('')}馬鑑定師說道：共鑑定${blocks.length}樣無名物，歡迎再次光臨。\n`;
+const names = rows => rows.map(text => text.split('（')[0]);
+
+ui('identify results are listed best first: better, then equal, then no baseline, then worse, each group in the order they came', async () => {
+  const page = boot({ stored: { wornEquipment: CLOAK_BASELINE } });
+  await sleep(30);
+  page.add(identifyRun([
+    ['差一', '披風類防具', 20], ['無基準', '戒指類防具', 10], ['好一', '披風類防具', 40], ['相當', '披風類防具', 30], ['差二', '披風類防具', 21], ['好二', '披風類防具', 45],
+  ]));
+  await sleep(150);
+  assert.deepEqual(names(page.rows()), ['好一', '好二', '相當', '無基準', '差一', '差二']);
+});
+
+ui('a later identify run slots its results into the same order instead of going to the bottom', async () => {
+  const page = boot({ stored: { wornEquipment: CLOAK_BASELINE } });
+  await sleep(30);
+  page.add(identifyRun([['差一', '披風類防具', 20], ['好一', '披風類防具', 40]]));
+  await sleep(150);
+  page.add(identifyRun([['差二', '披風類防具', 22], ['好二', '披風類防具', 41]]));
+  await sleep(150);
+  assert.deepEqual(names(page.rows()), ['好一', '好二', '差一', '差二']);
+});
+
+ui('past the limit of 12 results the worst and oldest are dropped first, so a recommended piece is not pushed out by worse ones', async () => {
+  const page = boot({ stored: { wornEquipment: CLOAK_BASELINE } });
+  await sleep(30);
+  const worse = [1, 2, 3, 4, 5, 6].map(n => [`差${n}`, '披風類防具', 20]);
+  const better = [1, 2, 3, 4, 5, 6, 7].map(n => [`好${n}`, '披風類防具', 40 + n]);
+  page.add(identifyRun([...worse, ...better]));
+  await sleep(150);
+  assert.deepEqual(names(page.rows()), ['好1', '好2', '好3', '好4', '好5', '好6', '好7', '差2', '差3', '差4', '差5', '差6']);
+});
+
+ui('a new worse result does not push out recommended ones when the list is already full', async () => {
+  const page = boot({ stored: { wornEquipment: CLOAK_BASELINE } });
+  await sleep(30);
+  page.add(identifyRun([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => [`好${n}`, '披風類防具', 40 + n])));
+  await sleep(150);
+  page.add(identifyRun([['差新', '披風類防具', 20]]));
+  await sleep(150);
+  assert.equal(page.rows().length, 12);
+  assert.ok(!names(page.rows()).includes('差新'));
+});
+
 ui('an identify end line split across packets does not leave the run open', async () => {
   const page = boot();
   await sleep(20);
