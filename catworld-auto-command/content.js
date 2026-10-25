@@ -159,14 +159,21 @@ function stopAndAlert(reason) {
   return stopEverything(reason);
 }
 // 只有某條觸發規則被停用：響一次、閃標題、跳通知，其他功能照常；原因文字不含「驗證」，不會被當成驗證碼停止
-function alertOnly(reason) {
+function alertOnly(reason, title = '⚠ 觸發已停用') {
   beep();
-  flashTitle('⚠ 觸發已停用');
+  flashTitle(title);
   try {
     chrome.runtime.sendMessage({ type: 'ALERT', reason });
   } catch {
     // 擴充功能剛重新載入，通知送不出去
   }
+}
+// 有人從別處連線取代目前的人物：這個分頁已經不是在控制角色，全部停下並提醒一次（原因不含「驗證」，之後可以直接再按開始）
+const takeoverPattern = /有人從別處[\s\S]{0,40}?連線取代你所控制的人物/;
+function stopForTakeover() {
+  const reason = '遊戲顯示有人從別處連線取代你所控制的人物，已停止';
+  alertOnly(reason, '⚠ 連線被取代');
+  return stopEverything(reason);
 }
 // 指令送出後遊戲通常會回覆；超時沒新輸出視為需要驗證
 function armWatchdog() {
@@ -257,7 +264,11 @@ const captchaObserver = new MutationObserver(allRecords => {
       hasCaptchaText(node.textContent));
   });
   if (addedPrompt) stopAndAlert('偵測到「請輸入上面的數字／請輸入上方的數字」，已停止；請完成驗證後再按開始');
-  else checkCaptcha();
+  else if (checkCaptcha()) return;
+  else if (takeoverPattern.test(addedText)) {
+    stopForTakeover();
+    return;
+  }
   // 驗證碼檢查放在前面：同一批含驗證碼時上面已經停止（各組觸發都變 off），不會再比對關鍵字或送指令
   if (anyTriggerOn()) feedKeywords(records);
 });

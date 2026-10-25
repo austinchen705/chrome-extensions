@@ -118,6 +118,27 @@ ui('a captcha stops everything even when the notification cannot be sent', async
   }
 });
 
+ui('being replaced by a connection from elsewhere stops everything and rings once', async () => {
+  const page = await boot();
+  try {
+  await page.ask(START);
+  assert.ok(await waitFor(() => page.sent.length >= 1, 4000));
+  const alerts = [];
+  page.w.chrome.runtime.sendMessage = message => { alerts.push(message); return Promise.resolve({}); };
+  page.w.document.getElementById('message').append('有人從別處( 203.0.113.9 )連線取代你所控制的人物。');
+  assert.ok(await waitFor(async () => (await page.ask({ type: 'STATUS' }))?.running === false, 2000), 'the timer is stopped');
+  const before = page.sent.length;
+  await sleep(2200);
+  assert.equal(page.sent.length, before, 'and nothing more is sent');
+  const takeover = alerts.filter(message => message.type === 'ALERT');
+  assert.equal(takeover.length, 1);
+  assert.ok(!/驗證/.test(takeover[0].reason), 'not treated as a captcha stop');
+  assert.ok(!takeover[0].confirmable, 'rings once, no confirm needed');
+  } finally {
+    page.close();
+  }
+});
+
 ui('a new instance injected into the same page replaces the leftover panel instead of adding a second one', async () => {
   const page = await boot();
   try {
