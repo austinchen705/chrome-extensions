@@ -68,9 +68,11 @@ function notifyLine(reason) {
 }
 
 // 驗證碼樣本收集：遊戲頁每一回合自動辨識的結果連同那張圖的 HTML（CAPTCHA_SAMPLE），送到設定頁填的 Google Apps Script 網址
-// （chrome.storage.local.captchaSampleUrl；空的就什麼都不做、不碰網路）。版本在這裡補上；最近一次結果放 storage.session 給設定頁看。
+// （chrome.storage.local.captchaSampleUrl；安裝時帶入作者的收集表 CAPTCHA_SAMPLE_DEFAULT_URL，見 onInstalled；空的就什麼都不做、不碰網路）。
+// 版本在這裡補上；最近一次結果放 storage.session 給設定頁看。
 // 失敗不重試、不影響任何流程；呼叫端要自己 .catch
 const CAPTCHA_SAMPLE_URL_KEY = 'captchaSampleUrl';
+const CAPTCHA_SAMPLE_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycby1DYGCKM1Wyhq7TKLAS2iQo1owOSbNDJz9qk3DS7BPqwPQbDHOouh9Yb0j60koMWRa/exec';
 const CAPTCHA_SAMPLE_RESULT_KEY = 'captchaSampleLastResult';
 const CAPTCHA_SAMPLE_TIMEOUT_MS = 15000;
 
@@ -276,10 +278,13 @@ const sharedLayer = kind => refreshSharedOnce(false).then(cache => cache[kind]?.
 const NO_SHARED_MOBS = Object.freeze({ routes: {}, mobs: {}, fixes: {} });
 const sharedMobData = () => refreshSharedOnce(false).then(cache => ({ routes: cache.mob?.routes ?? {}, mobs: cache.mob?.mobs ?? {}, fixes: cache.mob?.fixes ?? {} }), () => NO_SHARED_MOBS);
 
-// 安裝或更新時，共用表連結「從來沒有設定過」（儲存裡沒有這個欄位）才帶入預設的；清空過（存了空字串）或自己填過的一律不動
+// 安裝或更新時，共用表連結與樣本收集網址「從來沒有設定過」（儲存裡沒有這個欄位）才帶入預設的；清空過（存了空字串）或自己填過的一律不動
 chrome.runtime.onInstalled?.addListener(async () => {
-  const { sharedSources } = await chrome.storage.local.get(SHARED_SOURCES_KEY);
-  if (sharedSources === undefined) await chrome.storage.local.set({ [SHARED_SOURCES_KEY]: { ...CatworldSharedData.DEFAULT_SOURCES } });
+  const { sharedSources, captchaSampleUrl } = await chrome.storage.local.get([SHARED_SOURCES_KEY, CAPTCHA_SAMPLE_URL_KEY]);
+  const defaults = {};
+  if (sharedSources === undefined) defaults[SHARED_SOURCES_KEY] = { ...CatworldSharedData.DEFAULT_SOURCES };
+  if (captchaSampleUrl === undefined) defaults[CAPTCHA_SAMPLE_URL_KEY] = CAPTCHA_SAMPLE_DEFAULT_URL;
+  if (Object.keys(defaults).length) await chrome.storage.local.set(defaults);
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

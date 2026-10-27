@@ -129,7 +129,7 @@ try {
   console.error('[catworld] 手機通知區塊初始化失敗', error.name);
 }
 
-// 驗證碼樣本收集：網址只存本機（captchaSampleUrl），送出由 background 做，最近一次結果由 background 寫在 storage.session
+// 驗證碼樣本收集：網址只存本機（captchaSampleUrl，安裝時由 background 帶入作者的收集表），送出由 background 做，最近一次結果由 background 寫在 storage.session
 const CAPTCHA_SAMPLE_URL_PREFIX = 'https://script.google.com/macros/';
 try {
   const field = $('captchaSampleUrl');

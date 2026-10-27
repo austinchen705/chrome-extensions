@@ -478,7 +478,7 @@ popup 的規則清單下方有兩顆新增按鈕：「＋ 數值規則」（上�
 2. 等圖印完（1 秒內沒有新的遊戲輸出），用格子模板比對把方塊拼成的數字讀出來，直接送進遊戲（和你自己打數字一樣），面板顯示「驗證碼：已送出 663（第 1 次），等遊戲回應…」。
 3. 遊戲有任何回應（「驗證成功。」「恭喜你獲得…」，或其他新輸出）就當作通過，佇列裡的指令接著送。
 4. 答錯時遊戲**不會有任何回應**，所以送出後 8 秒沒有新輸出就把同一個答案再送一次，最多 3 次；第 3 次還是沒回應才依下面「停了之後」處理。
-5. 讀不出數字（圖裡有沒看過的字形）就不送、直接停止並警報；遊戲頁 console（篩 `[catworld]`）會印出那個字形的矩陣，請把那段輸出回報，加進字形庫後就認得（或設定「驗證碼樣本收集」自動收進試算表，見下面）。
+5. 讀不出數字（圖裡有沒看過的字形）就不送、直接停止並警報；遊戲頁 console（篩 `[catworld]`）會印出那個字形的矩陣，請把那段輸出回報，加進字形庫後就認得（預設會自動收進作者的收集表，見下面「驗證碼樣本收集」）。
 
 領獎（`reward`）的「請輸入上方的數字，以便完成領取手續」也走同一套，答對會看到「恭喜你獲得…」。
 
@@ -505,17 +505,17 @@ popup 的規則清單下方有兩顆新增按鈕：「＋ 數值規則」（上�
 1. 回到遊戲頁，**自己**輸入驗證碼完成驗證（會停在這裡的只有兩種情況：自動辨識讀不出數字，或送了 3 次都沒回應）。
 2. 看到驗證成功後，按浮動面板或 popup 的「開始」（定時）或「開始觸發」。
 
-## 驗證碼樣本收集（選用）
+## 驗證碼樣本收集
 
-自動辨識認得的字形有限（遇到沒看過的字形會停下來），每一張真實的圖都是補字形庫的材料。這個功能把樣本自動收進一張 Google 試算表，不用自己從 console 複製。預設關閉：設定頁的網址空白時什麼都不會送、不碰網路。
+自動辨識認得的字形有限（遇到沒看過的字形會停下來），每一張真實的圖都是補字形庫的材料。這個功能把樣本自動收進一張 Google 試算表，不用自己從 console 複製。安裝時設定頁會帶入作者的收集表網址（`background.js` 的 `CAPTCHA_SAMPLE_DEFAULT_URL`），預設就會送；不想分享就把設定頁的網址清空，空白時什麼都不會送、不碰網路（清空過就不會再帶入預設）。
 
-**什麼時候送、送什麼**：每次自動辨識結束（通過、送 3 次都沒回應、讀不出數字）送一筆：結果（`passed`／`silent`／`unknown`）、送出的答案（讀不出時是帶 `?` 的結果或空字串）、送了幾次、extension 版本，以及那張圖的 HTML（和 console 印的一樣）。HTML 可能含圖前幾行的遊戲輸出（例如狀態卡裡的角色名與數值），不想分享就不要填網址。送失敗（沒網路、部署設定錯）不重試、不影響遊戲，只在設定頁顯示最近一次結果。
+**什麼時候送、送什麼**：每次自動辨識結束（通過、送 3 次都沒回應、讀不出數字）送一筆：結果（`passed`／`silent`／`unknown`）、送出的答案（讀不出時是帶 `?` 的結果或空字串）、送了幾次、extension 版本，以及那張圖的 HTML（和 console 印的一樣）。HTML 可能含圖前幾行的遊戲輸出（例如狀態卡裡的角色名與數值），不想分享就把網址清空。送失敗（沒網路、部署設定錯）不重試、不影響遊戲，只在設定頁顯示最近一次結果。
 
-**建表與部署**（一次，約 5 分鐘，不需要伺服器或固定 IP）
+**要收進自己的試算表**（選用；一次約 5 分鐘，不需要伺服器或固定 IP）
 1. 開一個新的 Google 試算表，選單「擴充功能 → Apps Script」。
 2. 把下面的程式貼進去取代原本的內容，存檔。
 3. 右上角「部署 → 新增部署作業」，類型選「網頁應用程式」，「執行身分」選**我**、「誰可以存取」選**任何人**，按「部署」，複製「網頁應用程式」的網址（`https://script.google.com/macros/s/…/exec`）。第一次會要求授權這個指令碼存取你的試算表。
-4. 貼到 ⚙ 設定頁「驗證碼樣本收集」的欄位，看到「已儲存」就完成。之後每次驗證碼結束，試算表的「樣本」分頁會多一列；同一張圖（HTML 完全相同）只存一次。用瀏覽器直接開那個網址看到 `ok`，代表部署成功。
+4. 貼到 ⚙ 設定頁「驗證碼樣本收集」的欄位，看到「已儲存」就完成。之後每次驗證碼結束，試算表的「樣本」分頁會多一列；同一張圖（HTML 完全相同）只存一次。用瀏覽器直接開那個網址會看到目前收到的樣本（JSON，還沒有樣本時是 `[]`），代表部署成功。
 5. 改過指令碼要重新部署（「部署 → 管理部署作業 → 編輯 → 版本：新版本」），網址不變。
 
 ```js
@@ -532,10 +532,16 @@ function doPost(e) {
   if (!seen) sheet.appendRow([new Date(), sample.outcome, sample.answer, sample.attempts, sample.version, hash, sample.html]);
   return ContentService.createTextOutput(JSON.stringify({ ok: true, duplicate: seen })).setMimeType(ContentService.MimeType.JSON);
 }
-function doGet() { return ContentService.createTextOutput('ok'); }
+// 用瀏覽器或 curl 開網頁應用程式的網址：回傳目前收到的全部樣本（JSON 陣列，欄位同試算表）
+function doGet() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET);
+  const rows = sheet ? sheet.getDataRange().getValues().slice(1) : [];
+  const samples = rows.map(([at, outcome, answer, attempts, version, hash, html]) => ({ at, outcome, answer, attempts, version, hash, html }));
+  return ContentService.createTextOutput(JSON.stringify(samples)).setMimeType(ContentService.MimeType.JSON);
+}
 ```
 
-**把樣本變成字形**：把「HTML」那一格的內容存成檔案，`node tools/captcha-grid.js <檔> --debug` 會印出每個字形的矩陣；確認後貼進 `captcha-grid.js` 的 `LIBRARY`，樣本放進 `tests/fixtures/captcha/`。
+**把樣本變成字形**：`curl -L <網頁應用程式網址>` 會把全部樣本以 JSON 下載回來（或把「HTML」那一格的內容存成檔案），`node tools/captcha-grid.js <檔> --debug` 會印出每個字形的矩陣；確認後貼進 `captcha-grid.js` 的 `LIBRARY`，樣本放進 `tests/fixtures/captcha/`。
 
 ## 額外的遊戲網址（臨時）
 

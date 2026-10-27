@@ -22,6 +22,7 @@ const EXT = 'abcdefghijklmnopabcdefghijklmnop';
 const GAME = 'https://catworld.muds.tw/web';
 const URL = 'https://script.google.com/macros/s/AKfycb-example/exec';
 const SAMPLE = { outcome: 'passed', answer: '62044', attempts: 1, html: '<span class="H7 B3">   </span>' };
+const DEFAULT_URL = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
 const clone = value => JSON.parse(JSON.stringify(value));
 const okFetch = async () => ({ ok: true, status: 200, text: async () => 'ok' });
 
@@ -37,13 +38,14 @@ function loadBackground({ local = {}, fetchImpl = okFetch, timerScale = 1 } = {}
     remove: async keys => { [].concat(keys).forEach(key => delete store[name][key]); },
   });
   const listeners = [];
+  const installed = [];
   const notifications = [];
   const pushes = [];
   const noop = () => {};
   const chrome = {
     runtime: {
       id: EXT, getURL: file => `chrome-extension://${EXT}/${file}`, getManifest: () => ({ version: '9.9.9', content_scripts: [{ js: [], css: [] }] }),
-      onMessage: { addListener: fn => listeners.push(fn) }, onInstalled: { addListener: noop },
+      onMessage: { addListener: fn => listeners.push(fn) }, onInstalled: { addListener: fn => installed.push(fn) },
     },
     permissions: { contains: async () => false, onAdded: { addListener: noop }, onRemoved: { addListener: noop } },
     scripting: { registerContentScripts: async () => {}, unregisterContentScripts: async () => { throw new Error('Nonexistent script ID'); } },
@@ -72,7 +74,8 @@ function loadBackground({ local = {}, fetchImpl = okFetch, timerScale = 1 } = {}
   const gamePage = { id: EXT, url: GAME, tab: { id: 1, windowId: 1 } };
   const settingsPage = { id: EXT, url: `chrome-extension://${EXT}/popup.html?tab=1` };
   const bodies = () => pushes.map(push => JSON.parse(push.init.body));
-  return { store, notifications, pushes, bodies, send, gamePage, settingsPage };
+  const install = async () => { for (const listener of installed) await listener({ reason: 'install' }); };
+  return { store, notifications, pushes, bodies, send, install, gamePage, settingsPage };
 }
 
 test('with a collection url, one sample from the game page is one POST carrying the sample plus the extension version, and the result is recorded', async () => {
@@ -87,6 +90,20 @@ test('with a collection url, one sample from the game page is one POST carrying 
   assert.equal(bg.store.session.captchaSampleLastResult.status, 200);
   assert.equal(bg.store.session.captchaSampleLastResult.outcome, 'passed');
   assert.equal(bg.notifications.length, 0, 'a sample is not an alert');
+});
+
+test('on install or update the default collection url is filled in only when nothing was ever set, and samples then go there', async () => {
+  const bg = loadBackground();
+  await bg.install();
+  assert.match(bg.store.local.captchaSampleUrl, DEFAULT_URL);
+  bg.send({ type: 'CAPTCHA_SAMPLE', sample: SAMPLE }, bg.gamePage);
+  assert.ok(await waitFor(() => bg.pushes.length === 1));
+  assert.equal(bg.pushes[0].url, bg.store.local.captchaSampleUrl);
+  for (const kept of ['', URL]) {
+    const other = loadBackground({ local: { captchaSampleUrl: kept } });
+    await other.install();
+    assert.equal(other.store.local.captchaSampleUrl, kept, 'cleared on purpose or set by hand is never touched');
+  }
 });
 
 test('no url (never set, or cleared to blank) means nothing touches the network and nothing is recorded', async () => {

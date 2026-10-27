@@ -113,6 +113,9 @@ for (const [name, expected] of [
   ['grid-reward-after-status-94227.html', '94227'],
   ['noise-highlight-reward-94227.html', '94227'],
   ['grid-inverted-reward-94227.html', '94227'],
+  ['grid-inverted-reward-1595.html', '1595'],
+  ['noise-inverted-reward-648.html', '648'],
+  ['symbol-reward-after-status-648.html', '648'],
 ]) {
   test(`真實樣本 ${name} 解出 ${expected}`, () => {
     const result = cg.decodeHtml(fixture(name));
