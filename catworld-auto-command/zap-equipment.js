@@ -145,9 +145,9 @@ function mergeBaseline(oldStore, blocks, expectedNames, now) {
 const INVENTORY_HEADER = '你身上帶著下列這些東西';
 function parseWornHtml(html) {
   const worn = [];
-  const text = String(html ?? '');
-  const start = text.lastIndexOf(INVENTORY_HEADER);
-  for (const line of (start >= 0 ? text.slice(start) : text).split(/\r?\n/)) {
+  const buffer = String(html ?? '');
+  const start = buffer.lastIndexOf(INVENTORY_HEADER);
+  for (const line of (start >= 0 ? buffer.slice(start) : buffer).split(/\r?\n/)) {
     const id = /target="view #(\d+)"/.exec(line)?.[1];
     if (!line.includes('ˇ') || !id) continue;
     const text = line.replace(/<[^>]*>/g, '');
