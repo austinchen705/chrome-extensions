@@ -12,7 +12,7 @@
 ## 狀態觸發
 
 - 規則判斷在 `catworld-auto-command/trigger-engine.js`（不碰 DOM，讀數、時間、送出指令都由呼叫端傳入），content script 與 popup 共用；規則狀態機與安全上限的語意寫在該檔開頭註解。manifest 的 content script 與 popup 的備援注入都要帶上它。
-- 驗證碼偵測、看門狗、送出佇列在「定時或觸發任一個在跑」時都要作用（`active()`），新增會送指令的功能要接同一套；遊戲浮動視窗（`#monitor`、`#map_table`、`#macro_table`、`#setting_table`）內的變動不能當成遊戲輸出。
+- 看門狗、送出佇列、關鍵字在「定時或觸發任一個在跑」時都要作用（`active()`），驗證碼偵測與自動辨識則閒置時也作用（手動 `reward` 領獎也要幫忙輸入），新增會送指令的功能要接同一套；只有輸出區 `#content` 裡的變動算遊戲輸出（`inContent`），右上角每秒跳的時鐘 `#uptime`、`#monitor`、地圖、巨集、設定視窗、重連倒數 `#notice` 都不算，時鐘每秒一跳、漏掉它看門狗永遠不會響。
 - 觸發分成「戰鬥」「練功」兩組（`trigger-engine.js` 的 `GROUPS`），功能相同、完全獨立：各自的設定存在 `triggerGroupSettings.<id>`、各自一個引擎與計時器，送出佇列來源是 `trigger:<id>`。`START_TRIGGER` / `STOP_TRIGGER` / `REARM_RULE` 一定要帶 `group`（未知或沒帶回 `ok:false`）；`STATUS` 回 `stats`（讀數，共用）與 `triggerGroups.<id>`。popup 用 `<template id="triggerPaneTemplate">` 為每組產生一個分頁，template 內的 id 都帶 `-__G__`；新增一組只要加進 `GROUPS`。舊的 `triggerSettings` 由 `loadGroupSettings` 整份放進練功組。驗證碼、`stopEverything` 對所有組一起作用。
 - 關鍵字規則（`kind: 'keyword'`）的新文字由 `captchaObserver` 在驗證碼檢查之後交給 `engine.onText`，只取 `#content` 內新增的內容。防迴圈靠「只看新文字、冷卻中的直接丟掉、`>` 開頭的回聲行略過」三件事，改動時不能拿掉任何一個，對應測試要保留。
 
@@ -25,8 +25,11 @@
 ## 驗證碼圖形偵測
 
 - 偵測規則在 `captcha-art.js`（`artText`、`looksLikeAsciiArt`、`looksLikeNoiseCaptcha`、`createWatcher`；content script 與測試共用，manifest 與 popup 的備援注入都要載入、且在 `content.js` 之前）。偵測規則都是看「連續好幾行」，而遊戲輸出常分成好幾批新增文字到達（一張圖可能被切成一行一批），所以 `content.js` 的 `captchaObserver` 不能只看單一批：一律經 `artWatcher.feed`（把最近 5 秒的新增文字接在一起、最多 120 行，偵測到就清空；`armDetection` 重新開始時也清）。
-- 診斷：驗證碼偵測沒反應時看遊戲頁 console（篩 `[catworld]`）：`疑似驗證碼的批次`（有在跑，印這一批的行數、長行數、背景色標記數與是否偵測到）、`看到疑似驗證碼，但定時、觸發、巨集都沒有在跑`（沒功能在跑本來就不偵測，每 5 秒最多印一次）。不要為了這個把規則放寬到會誤判一般輸出。
+- 診斷：驗證碼偵測沒反應時看遊戲頁 console（篩 `[catworld]`）：`疑似驗證碼的批次`（印這一批的行數、長行數、背景色標記數與是否偵測到）、`驗證碼自動辨識：送出 …`／`通過`／`失敗，字形矩陣`。不要為了這個把規則放寬到會誤判一般輸出。
 - 測試：`tests/captcha-art.test.js`（jsdom，用 `tests/fixtures/captcha/` 的真實樣本：英數亂碼塊、B3 背景空白拼的數字圖、一般輸出；分批大小 1～4 行都要抓到、一般輸出逐行餵也不能誤判、隔太久的片段不能接在一起）。新增驗證碼樣式時先把真實輸出放進 fixtures 再改偵測。
+- 自動辨識在 `captcha-grid.js`（`decodeHtml` 吃遊戲輸出的 HTML：背景色 `B1～B9` span 裡的每個字元都是方塊，空白或亂碼文字都算，沒有 span 時 `@ $ # % & * █` 符號本身是方塊但只限整行同一種符號的行（一般輸出的 `(100%)` 不算），數字可能是方塊本身也可能是方塊間的空洞；圖只取「連續有填色的列」裡填色最多的一段，圖前幾秒的一般輸出（整張 `sc` 狀態卡、背景色物品名）才不會影響反相判定；模糊比對門檻 0.9，沒把握回 `?`，曾以 0.86 把 5 猜成 6；`LIBRARY` 是以整個字形矩陣為鍵的精確模板庫，查不到才做 5x7 模糊比對；content script、測試與 `tools/captcha-grid.js` CLI 共用，manifest 與 popup 備援注入都要載入、排在 `captcha-art.js` 之後）。`content.js` 的流程：偵測到圖或提示 → `beginCaptcha` 暫停送出佇列、把後續批次的 HTML 接上去（偵測看 artText，辨識要原始 HTML，`artWatcher.feed` 兩個都收）→ `CAPTCHA_QUIET_MS` 沒新輸出才 `solveCaptcha` 送出答案 → 看門狗的 `NO_REPLY_MS` 沒回應＝答錯（遊戲答錯不回應）→ `retryCaptcha` 重送同一答案到 `CAPTCHA_MAX_ATTEMPTS` 次才 `stopAndAlert`；有回應就 `endCaptcha` 恢復送出。讀不出數字直接停，矩陣印在 console。偵測器在第 5～8 行就命中而圖有 10～16 行，所以不能在命中那一刻解；偵測器命中那一刻的視窗已含當批，再接一次會讓圖重複。
+- 測試：`tests/captcha-grid.test.js`（解碼：合成字形、八種真實版面）、`tests/captcha-solve.test.js`（整個 content script 在 jsdom 裡跑、計時器縮小 `SCALE` 倍：答案送出、有回應恢復、沒回應重送 3 次後停、通知送不出去也要停、領獎提示併進同一輪、讀不出就停）。底座在 `tests/helpers/game-page.js`。新字形：先把真實輸出放進 fixtures，用 `node tools/captcha-grid.js <檔> --debug` 看矩陣，確認後貼進 `LIBRARY`。
+- 樣本收集：`content.js` 的 `reportSample` 在每回合結束（`endCaptcha`＝passed、`retryCaptcha` 滿次數＝silent、`solveCaptcha` 讀不出＝unknown）送 `CAPTCHA_SAMPLE`（`{ outcome, answer, attempts, html }`），不等結果、送不出去不影響流程。`background.js` 的 `uploadCaptchaSample` 讀 `chrome.storage.local.captchaSampleUrl`（空的就不碰網路；**content script 不讀這個鍵**），補上 `version` 後以 `text/plain` POST 到 Apps Script（JSON 會觸發 CORS 預檢而 Apps Script 不回應預檢；POST 會 302 到 `script.googleusercontent.com`，所以 `host_permissions` 要同時有 `script.google.com` 與 `*.googleusercontent.com`），15 秒逾時、不重試，結果存 `storage.session.captchaSampleLastResult` 給設定頁顯示；設定頁只收 `https://script.google.com/macros/` 開頭的網址（別的主機沒權限、會悄悄失敗）。Apps Script 的 `doPost` 範例與部署步驟只寫在 README「驗證碼樣本收集」。測試：`tests/captcha-solve.test.js`（三種結果各送一筆、樣本的 HTML 可直接解碼）、`tests/captcha-sample-background.test.js`（vm 執行 background：有網址才打、只收遊戲頁、失敗不丟例外且不影響警報、逾時）、`tests/captcha-sample-ui.test.js`（設定頁欄位與結果列）。
 
 ## 定時分頁的隨機指令
 

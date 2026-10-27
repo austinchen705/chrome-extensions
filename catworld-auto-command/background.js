@@ -67,6 +67,38 @@ function notifyLine(reason) {
   return task;
 }
 
+// 驗證碼樣本收集：遊戲頁每一回合自動辨識的結果連同那張圖的 HTML（CAPTCHA_SAMPLE），送到設定頁填的 Google Apps Script 網址
+// （chrome.storage.local.captchaSampleUrl；空的就什麼都不做、不碰網路）。版本在這裡補上；最近一次結果放 storage.session 給設定頁看。
+// 失敗不重試、不影響任何流程；呼叫端要自己 .catch
+const CAPTCHA_SAMPLE_URL_KEY = 'captchaSampleUrl';
+const CAPTCHA_SAMPLE_RESULT_KEY = 'captchaSampleLastResult';
+const CAPTCHA_SAMPLE_TIMEOUT_MS = 15000;
+
+async function uploadCaptchaSample(sample) {
+  const url = String((await chrome.storage.local.get(CAPTCHA_SAMPLE_URL_KEY))[CAPTCHA_SAMPLE_URL_KEY] ?? '').trim();
+  if (!url) return;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CAPTCHA_SAMPLE_TIMEOUT_MS);
+  const result = { at: Date.now(), outcome: sample?.outcome ?? '', ok: false, status: 0, reason: '' };
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      // text/plain：Apps Script 一樣從 e.postData.contents 拿到內容，而且不會觸發 CORS 預檢（Apps Script 不回應預檢）
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ ...sample, version: chrome.runtime.getManifest().version }),
+      signal: controller.signal,
+    });
+    result.ok = response.ok;
+    result.status = response.status;
+    if (!response.ok) result.reason = `HTTP ${response.status}`;
+  } catch (error) {
+    result.reason = error?.name === 'AbortError' ? `逾時（${CAPTCHA_SAMPLE_TIMEOUT_MS / 1000} 秒）` : String(error?.message ?? error);
+  } finally {
+    clearTimeout(timer);
+  }
+  await chrome.storage.session.set({ [CAPTCHA_SAMPLE_RESULT_KEY]: result });
+}
+
 // ---- 額外的遊戲網址（臨時加進來的網站，例如 ngrok）----
 // 清單在 chrome.storage.local.extraGameUrls（設定頁管理）。manifest 的 content script 只認遊戲網站，所以其他網站要用動態註冊：
 // 註冊的是和 manifest 同一份 js 與 css，只註冊使用者已經授權（optional host permission）的網站。
@@ -111,6 +143,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!sender.tab) return;
   if (message.type === 'TOGGLE_SETTINGS') {
     toggleSettings(sender.tab);
+    return;
+  }
+  if (message.type === 'CAPTCHA_SAMPLE') {
+    uploadCaptchaSample(message.sample).catch(() => {});
     return;
   }
   if (message.type !== 'ALERT') return;

@@ -11,7 +11,7 @@ let stopReason = '';
 let nextRunAt = null;
 let nextRandomAt = null;
 let nextRandomCommand = null;
-// 狀態觸發與定時循環各有獨立開關；驗證碼偵測、看門狗、送出佇列在任一個開著時都要作用
+// 狀態觸發與定時循環各有獨立開關；看門狗、送出佇列、關鍵字在任一個開著時都要作用；驗證碼偵測與自動辨識閒置時也作用
 // 觸發有兩組（戰鬥、練功），各有自己的規則、開關、引擎與計時器，功能完全一樣
 const triggerGroups = Object.fromEntries(CatworldTriggerEngine.GROUPS.map(({ id, name }) =>
   [id, { id, name, on: false, timer: null, engine: null, config: null, note: '' }]));
@@ -62,6 +62,14 @@ const REPEAT_BEEP_MAX_MS = 5 * 60 * 1000;
 let persistentAlert = false;
 let watchdogTimer = null;
 let lastCommand = '';
+// 驗證碼自動辨識（閒置時也作用，手動打 reward 領獎也會幫忙輸入）：偵測到圖或提示後暫停送出佇列，等圖印完（CAPTCHA_QUIET_MS 內沒有新輸出）
+// 用 CatworldCaptchaGrid 解出數字送出。
+// 答錯時遊戲不會有任何回應，所以「送出答案後 NO_REPLY_MS 沒有新輸出」就是答錯：重送同一個答案，滿 CAPTCHA_MAX_ATTEMPTS 次才停止並警報；
+// 送出後任何新輸出（不是驗證碼、不是回聲）就當作通過，恢復送出。解不出來（沒看過的字形、沒有數字）直接停止並警報，
+// 字形矩陣印在 console（[catworld]），貼進 captcha-grid.js 的 LIBRARY 就能擴充
+const CAPTCHA_QUIET_MS = 1000;
+const CAPTCHA_MAX_ATTEMPTS = 3;
+let captcha = null; // { html, answer, attempts, quietTimer }：answer 為空表示圖還在收、還沒送
 const { artText, createWatcher, describeBatch, isArtLike } = globalThis.CatworldCaptchaArt;
 const { HOST_ATTR, contextAlive, removeStalePanels } = globalThis.CatworldInstanceGuard;
 // 驗證碼圖形偵測的緩衝：新增文字分批到達時要接在一起判斷（見 captcha-art.js）
@@ -175,12 +183,13 @@ function stopForTakeover() {
   alertOnly(reason, '⚠ 連線被取代');
   return stopEverything(reason);
 }
-// 指令送出後遊戲通常會回覆；超時沒新輸出視為需要驗證
+// 指令送出後遊戲通常會回覆；超時沒新輸出視為需要驗證。送的是驗證碼答案時，沒回應＝答錯，交給重送
 function armWatchdog() {
   if (watchdogTimer) clearTimeout(watchdogTimer);
   watchdogTimer = setTimeout(() => {
     watchdogTimer = null;
-    if (active()) stopAndAlert(`送出指令後 ${NO_REPLY_MS / 1000} 秒沒有收到遊戲回應，疑似需要驗證，已停止；請完成驗證後再按開始`);
+    if (captcha?.answer) retryCaptcha();
+    else if (active()) stopAndAlert(`送出指令後 ${NO_REPLY_MS / 1000} 秒沒有收到遊戲回應，疑似需要驗證，已停止；請完成驗證後再按開始`);
   }, NO_REPLY_MS);
 }
 function isCommandEcho(text) {
@@ -190,22 +199,98 @@ function countCaptcha() {
   const text = document.body?.textContent || '';
   return (text.match(captchaPattern) || []).length;
 }
+// 畫面上的提示文字變多＝新的驗證碼：開始自動辨識（圖的內容取偵測器最近看到的文字）
 function checkCaptcha() {
   const count = countCaptcha();
-  if (active() && count > captchaCount) {
-    stopAndAlert('偵測到「請輸入上面的數字／請輸入上方的數字」，已停止；請完成驗證後再按開始');
+  if (count > captchaCount) {
+    beginCaptcha(artWatcher.recentHtml());
     return true;
   }
   captchaCount = count;
   return false;
 }
-// 遊戲頁的浮動視窗（狀態 #monitor、地圖 #map_table、巨集、設定）會一直重畫，不是遊戲回覆，
-// 不能拿來清掉看門狗、當驗證碼內容，也不能當關鍵字來源
+// 開始或延續一輪自動辨識：圖還在收就把新批次接上去並重新等靜默；答完又來一張就換新圖、次數延續。
+// 畫面上的提示數量在這裡就當成新基準，答案送出後遊戲回應時 checkCaptcha 才不會把同一個提示再當成新的驗證碼
+function beginCaptcha(html) {
+  captchaCount = countCaptcha();
+  if (captcha?.answer) {
+    captcha.html = '';
+    captcha.answer = '';
+  }
+  captcha ??= { html: '', answer: '', attempts: 0, quietTimer: null };
+  captcha.html += html;
+  if (captcha.quietTimer) clearTimeout(captcha.quietTimer);
+  captcha.quietTimer = setTimeout(solveCaptcha, CAPTCHA_QUIET_MS);
+  renderPanel();
+}
+function solveCaptcha() {
+  captcha.quietTimer = null;
+  const result = CatworldCaptchaGrid.decodeHtml(captcha.html);
+  if (!result.text || result.digits.some(digit => !digit.confident)) {
+    console.info('[catworld] 驗證碼自動辨識失敗，字形矩陣（確認後可貼進 captcha-grid.js 的 LIBRARY）：\n' + CatworldCaptchaGrid.describeDigits(result.digits));
+    // 原始 HTML 一起印：新版面的樣本要靠這個放進 tests/fixtures/captcha/
+    console.info('[catworld] 這次收到的驗證碼 HTML：\n' + captcha.html);
+    reportSample('unknown', result.text);
+    stopAndAlert(`驗證碼自動辨識失敗（${result.text || '沒有讀到數字'}），已停止；請完成驗證後再按開始`);
+    return;
+  }
+  // 成功也印矩陣：模糊比對猜中的字形可以從 console 核對、貼進模板庫，不用等它哪天猜錯
+  console.info(`[catworld] 驗證碼自動辨識：讀到 ${result.text}，字形矩陣：\n` + CatworldCaptchaGrid.describeDigits(result.digits));
+  captcha.answer = result.text;
+  submitCaptcha();
+}
+function submitCaptcha() {
+  captcha.attempts += 1;
+  console.info(`[catworld] 驗證碼自動辨識：送出 ${captcha.answer}（第 ${captcha.attempts} 次）`);
+  const result = sendCommand(captcha.answer, { answer: true });
+  if (!result.ok) {
+    stopEverything(result.error);
+    return;
+  }
+  lastSentAt = Date.now();
+  // 偵測器的視窗清掉：答完若再來一張圖，從它自己的第一行開始接，不會接到這張的尾巴
+  artWatcher.clear();
+  renderPanel();
+}
+// 答案送出後 NO_REPLY_MS 沒有任何回應＝答錯：同一個答案再送，滿次數才停
+function retryCaptcha() {
+  if (captcha.attempts >= CAPTCHA_MAX_ATTEMPTS) {
+    reportSample('silent');
+    stopAndAlert(`驗證碼自動辨識送出 ${captcha.answer} ${CAPTCHA_MAX_ATTEMPTS} 次都沒有收到遊戲回應，已停止；請完成驗證後再按開始`);
+    return;
+  }
+  submitCaptcha();
+}
+// 答案送出後遊戲有新輸出＝通過：以現在畫面上的提示數量當新基準，恢復送出佇列
+function endCaptcha() {
+  console.info(`[catworld] 驗證碼自動辨識：${captcha.answer} 通過`);
+  reportSample('passed');
+  clearCaptcha();
+  captchaCount = countCaptcha();
+  artWatcher.clear();
+  renderPanel();
+  pumpQueue();
+}
+function clearCaptcha() {
+  if (captcha?.quietTimer) clearTimeout(captcha.quietTimer);
+  captcha = null;
+}
+// 每一回合的結果連同這張圖的 HTML 交給 background 送去收集（設定頁填了收集網址才會送出，網址 content script 不讀）：
+// passed＝通過、silent＝送滿次數都沒回應（答案猜錯）、unknown＝讀不出數字（answer 是帶 ? 的結果）。送不出去不影響任何流程
+function reportSample(outcome, answer = captcha.answer) {
+  try {
+    chrome.runtime.sendMessage({ type: 'CAPTCHA_SAMPLE', sample: { outcome, answer, attempts: captcha.attempts, html: captcha.html } }).catch(() => {});
+  } catch {
+    // 擴充功能剛重新載入，孤兒 content script 送不出訊息
+  }
+}
+// 遊戲回覆只在輸出區 #content 裡。頁面上其他一直在變的東西（右上角每秒跳的時鐘 #uptime、狀態 #monitor、地圖、巨集、設定視窗、
+// 重連倒數 #notice）都不是遊戲回覆，不能拿來清掉看門狗、當驗證碼內容，也不能當關鍵字來源；時鐘每秒一跳，漏掉它看門狗永遠不會響
 function closestOf(node, selector) {
   const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
   return Boolean(element?.closest(selector));
 }
-const inGameWindow = node => closestOf(node, '#monitor, #map_table, #macro_table, #setting_table');
+const escapeHtml = text => text.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[ch]);
 const inContent = node => closestOf(node, '#content');
 // 關鍵字觸發只看遊戲輸出區（#content）裡「新出現」的文字
 function feedKeywords(records) {
@@ -217,44 +302,25 @@ function feedKeywords(records) {
     .join('');
   if (text.trim()) groupList.forEach(group => { if (group.on) group.engine.onText(text); });
 }
-// 診斷（遊戲頁 console 篩 [catworld]）：驗證碼偵測沒反應時，靠這幾行看那一刻偵測器看到了什麼、做了什麼決定。
-// 沒有任何功能在跑時本來就不偵測，看到疑似驗證碼的批次就說一聲（最多每 5 秒一次，不洗版）
-let lastIdleLog = 0;
-function logIdleCaptcha(allRecords) {
-  const now = Date.now();
-  if (now - lastIdleLog < 5000) return;
-  const text = allRecords
-    .filter(record => !inGameWindow(record.target))
-    .flatMap(record => (record.type === 'characterData' ? [record.target.textContent || ''] : Array.from(record.addedNodes, artText)))
-    .join('');
-  if (!isArtLike(text)) return;
-  lastIdleLog = now;
-  console.info('[catworld] 看到疑似驗證碼，但定時、觸發、巨集都沒有在跑，所以沒有偵測', describeBatch(text));
-}
 const captchaObserver = new MutationObserver(allRecords => {
   if (!contextAlive(chrome)) {
     retire();
     return;
   }
-  if (!active()) {
-    logIdleCaptcha(allRecords);
-    return;
-  }
-  const records = allRecords.filter(record => !inGameWindow(record.target));
+  const records = allRecords.filter(record => inContent(record.target));
   if (!records.length) return;
   const addedTexts = records.flatMap(record => record.type === 'characterData'
     ? [record.target.textContent || '']
     : Array.from(record.addedNodes, artText));
-  if (addedTexts.some(text => text.trim() && !isCommandEcho(text.trim()))) {
-    if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
-  }
+  const meaningful = addedTexts.some(text => text.trim() && !isCommandEcho(text.trim()));
+  if (meaningful && watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
   const addedText = addedTexts.join('');
-  const artHit = artWatcher.feed(addedText);
-  if (artHit || isArtLike(addedText)) console.info('[catworld] 疑似驗證碼的批次', describeBatch(addedText), artHit ? '→ 偵測到，停止' : '→ 規則還不成立（可能分批，會和前幾秒的新增文字一起判斷）');
-  if (artHit) {
-    stopAndAlert('偵測到驗證碼圖形，已停止；請完成驗證後再按開始');
-    return;
-  }
+  // 自動辨識要原始 HTML（背景色 span 裡的亂碼文字也是方塊）：元素取 outerHTML，文字節點照 HTML 規則跳脫
+  const addedHtml = records.map(record => (record.type === 'characterData'
+    ? escapeHtml(record.target.textContent || '')
+    : Array.from(record.addedNodes, node => (node.nodeType === Node.ELEMENT_NODE ? node.outerHTML : escapeHtml(node.textContent || ''))).join(''))).join('');
+  const artHit = artWatcher.feed(addedText, addedHtml);
+  if (artHit || isArtLike(addedText)) console.info('[catworld] 疑似驗證碼的批次', describeBatch(addedText), artHit ? '→ 偵測到，交給自動辨識' : '→ 規則還不成立（可能分批，會和前幾秒的新增文字一起判斷）');
   const addedPrompt = records.some(record => {
     if (record.type === 'characterData') {
       return hasCaptchaText(record.target.textContent) &&
@@ -263,15 +329,30 @@ const captchaObserver = new MutationObserver(allRecords => {
     return Array.from(record.addedNodes).some(node =>
       hasCaptchaText(node.textContent));
   });
-  if (addedPrompt) stopAndAlert('偵測到「請輸入上面的數字／請輸入上方的數字」，已停止；請完成驗證後再按開始');
-  else if (checkCaptcha()) return;
-  else if (takeoverPattern.test(addedText)) {
+  // 圖還在收時每一批都接上去（偵測器命中那一刻已含這一批，不能再接一次）；新的一張圖從偵測器看到的文字開始
+  if (artHit || addedPrompt) {
+    beginCaptcha(captcha && !captcha.answer ? addedHtml : artHit ? artWatcher.lastHitHtml() : artWatcher.recentHtml());
+    return;
+  }
+  if (checkCaptcha()) return;
+  if (captcha) {
+    if (meaningful) {
+      if (captcha.answer) endCaptcha();
+      else beginCaptcha(addedHtml);
+    }
+    return;
+  }
+  // 驗證碼的偵測與自動辨識到這裡為止，閒置時也作用（手動打 reward 領獎也會幫忙輸入）；連線被取代與關鍵字只在有功能在跑時才看
+  if (!active()) return;
+  if (takeoverPattern.test(addedText)) {
     stopForTakeover();
     return;
   }
-  // 驗證碼檢查放在前面：同一批含驗證碼時上面已經停止（各組觸發都變 off），不會再比對關鍵字或送指令
+  // 驗證碼檢查放在前面：同一批含驗證碼時已交給自動辨識（送出佇列暫停），不會再比對關鍵字或送指令
   if (anyTriggerOn()) feedKeywords(records);
 });
+// 歷史紀錄裡已有的提示不是新的驗證碼：先以載入時畫面上的數量當基準
+captchaCount = countCaptcha();
 captchaObserver.observe(document.body, {
   subtree: true, childList: true, characterData: true, characterDataOldValue: true
 });
@@ -285,12 +366,13 @@ let settings = {
 };
 const randomItems = () => CatworldTimer.normalizeRandomItems(settings);
 
-function sendCommand(command) {
+// answer：送的是驗證碼答案，不受「辨識中暫停送出」限制
+function sendCommand(command, { answer = false } = {}) {
   if (!contextAlive(chrome)) {
     retire();
     return { ok: false, error: '擴充功能已重新載入，請重新整理遊戲頁' };
   }
-  if (checkCaptcha()) return { ok: false, error: stopReason };
+  if (!answer && (captcha || checkCaptcha())) return { ok: false, error: '驗證碼自動辨識中，先不送出指令' };
   if (/驗證/.test(stopReason)) return { ok: false, error: stopReason };
   const input = document.querySelector('#input');
   if (!input || !input.form) {
@@ -308,7 +390,8 @@ function sendCommand(command) {
     input.setSelectionRange(selection[0], selection[1]);
   }
   lastCommand = command.trim();
-  if (active()) armWatchdog();
+  // 驗證碼答案閒置時也送，看門狗同樣要上（沒回應＝答錯）
+  if (active() || answer) armWatchdog();
   return { ok: true };
 }
 
@@ -321,6 +404,7 @@ function clearTimers() {
   if (randomTimer) clearTimeout(randomTimer);
   if (watchdogTimer) clearTimeout(watchdogTimer);
   watchdogTimer = null;
+  clearCaptcha();
   loopTimer = null;
   queueTimer = null;
   randomTimer = null;
@@ -366,7 +450,8 @@ function pumpQueue() {
   const wait = Math.max(0, lastSentAt + gap - Date.now());
   queueTimer = setTimeout(() => {
     queueTimer = null;
-    if (!active() || checkCaptcha()) return;
+    // 驗證碼辨識中先不送（通過後 endCaptcha 會再 pumpQueue）
+    if (!active() || captcha || checkCaptcha()) return;
     const entry = queue.shift();
     const result = sendCommand(entry.command);
     if (!result.ok) { stopEverything(result.error); return; }
@@ -961,6 +1046,7 @@ function renderPanel() {
     if (nextRandomAt) lines.push(`隨機 ${left(nextRandomAt)}：${nextRandomCommand}`);
     timerText = lines.join('\n') || '執行中';
   }
+  if (captcha) timerText = captcha.answer ? `驗證碼：已送出 ${captcha.answer}（第 ${captcha.attempts} 次），等遊戲回應…` : '驗證碼：等圖印完再自動辨識…';
   let changed = panel.timerText.textContent !== timerText;
   panel.timerText.textContent = timerText;
   groupList.forEach((group, index) => {

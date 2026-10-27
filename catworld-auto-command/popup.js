@@ -82,7 +82,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'instance-guard.js', 'zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'zap-panel.js', 'zap-riddle-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'zap-panel.js', 'zap-riddle-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -127,6 +127,46 @@ try {
   CatworldLineNotifyUI.attach(document);
 } catch (error) {
   console.error('[catworld] 手機通知區塊初始化失敗', error.name);
+}
+
+// 驗證碼樣本收集：網址只存本機（captchaSampleUrl），送出由 background 做，最近一次結果由 background 寫在 storage.session
+const CAPTCHA_SAMPLE_URL_PREFIX = 'https://script.google.com/macros/';
+try {
+  const field = $('captchaSampleUrl');
+  const resultBox = $('captchaSampleResult');
+  const say = (text, level = 'info') => { resultBox.textContent = text; markLevel(resultBox, level); };
+  const pad = value => String(value).padStart(2, '0');
+  const show = result => {
+    if (!result) return;
+    const at = new Date(result.at);
+    const clock = `${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
+    say(result.ok ? `${clock}　HTTP ${result.status}　已送出（${result.outcome}）` : `${clock}　沒有送出：${result.reason}`, result.ok ? 'info' : 'error');
+  };
+  // 載入完成前欄位先停用：否則一打字就把空欄位存回去，蓋掉已存的網址；載入失敗維持停用
+  let loaded = false;
+  field.disabled = true;
+  chrome.storage.local.get('captchaSampleUrl').then(data => {
+    field.value = data.captchaSampleUrl ?? '';
+    loaded = true;
+    field.disabled = false;
+  }).catch(() => say('讀取設定失敗，請重新整理設定頁再試', 'error'));
+  chrome.storage.session.get('captchaSampleLastResult').then(data => show(data.captchaSampleLastResult)).catch(() => {});
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'session' && changes.captchaSampleLastResult) show(changes.captchaSampleLastResult.newValue);
+  });
+  // 只收 Apps Script 網頁應用程式的網址：別的主機 background 沒有權限打，會悄悄失敗
+  field.addEventListener('input', () => {
+    if (!loaded) return;
+    const url = field.value.trim();
+    if (url && !url.startsWith(CAPTCHA_SAMPLE_URL_PREFIX)) {
+      say(`沒有儲存：網址要以 ${CAPTCHA_SAMPLE_URL_PREFIX} 開頭（Apps Script 部署成網頁應用程式的網址）`, 'error');
+      return;
+    }
+    chrome.storage.local.set({ captchaSampleUrl: url });
+    say(url ? '已儲存，下次驗證碼結束就會送' : '已清空，不收集');
+  });
+} catch (error) {
+  console.error('[catworld] 驗證碼樣本收集區塊初始化失敗', error.name);
 }
 
 // 三組輔助功能的開關（預設關閉）：存成一個物件，遊戲頁的面板監聽 storage 變化，馬上生效

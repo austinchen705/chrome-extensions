@@ -78,21 +78,30 @@ function isArtLike(text) {
 }
 
 // 最近 windowMs 內新增的文字接在一起（最多 maxLines 行）交給上面兩個偵測；偵測到就清空，同一張圖剩下的幾行不會再觸發一次。
-// 批次之間隔太久的不接，不然一般輸出裡零星的幾行會被拼成圖
+// 批次之間隔太久的不接，不然一般輸出裡零星的幾行會被拼成圖。
+// feed 可以一併帶這批的 HTML：偵測看文字，自動辨識要原始 HTML（背景色 span 裡的亂碼文字也是方塊，文字版看不出來）；
+// lastHitHtml 是偵測到那一刻視窗內的 HTML、recentHtml 是目前視窗內的 HTML，自動辨識拿它們當圖的起點（之後的批次再接上去）
 function createWatcher({ now = Date.now, windowMs = 5000, maxLines = 120 } = {}) {
   let pieces = [];
+  let lastHitHtml = '';
+  const prune = at => { pieces = pieces.filter(piece => at - piece.at <= windowMs); };
+  const joinedText = () => pieces.map(piece => piece.text).join('').split('\n').slice(-maxLines).join('\n');
+  const joinedHtml = () => pieces.map(piece => piece.html).join('');
   return {
-    feed(text) {
+    feed(text, html = '') {
       const at = now();
-      pieces = pieces.filter(piece => at - piece.at <= windowMs);
-      pieces.push({ at, text });
-      const lines = pieces.map(piece => piece.text).join('').split('\n');
-      const joined = lines.slice(-maxLines).join('\n');
-      const hit = looksLikeAsciiArt(joined) || looksLikeNoiseCaptcha(joined);
-      if (hit) pieces = [];
+      prune(at);
+      pieces.push({ at, text, html });
+      const hit = looksLikeAsciiArt(joinedText()) || looksLikeNoiseCaptcha(joinedText());
+      if (hit) {
+        lastHitHtml = joinedHtml();
+        pieces = [];
+      }
       return hit;
     },
-    clear() { pieces = []; },
+    lastHitHtml() { return lastHitHtml; },
+    recentHtml() { prune(now()); return joinedHtml(); },
+    clear() { pieces = []; lastHitHtml = ''; },
   };
 }
 

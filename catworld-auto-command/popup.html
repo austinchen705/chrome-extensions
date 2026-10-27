@@ -215,10 +215,17 @@ px</textarea>
     <div id="lineResult" class="hint tight">尚未發送</div>
     <p class="hint tight">只存在這台瀏覽器的本機，不會同步或匯出。請用自己的 LINE 官方帳號（Messaging API）的 token 與你的 userId。</p>
   </div>
+  <div class="alertbox">
+    <b>驗證碼樣本收集</b>
+    <label for="captchaSampleUrl">Google Apps Script 網頁應用程式的網址（空白＝不收集）</label>
+    <input id="captchaSampleUrl" type="text" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec">
+    <div id="captchaSampleResult" class="hint tight">尚未送出</div>
+    <p class="hint tight">每次驗證碼自動辨識結束（通過、送 3 次都沒回應、讀不出數字）就把那張圖的 HTML 與結果送到這個網址，用來補字形庫（怎麼建見 README）。HTML 可能含圖前幾行的遊戲輸出，例如狀態卡裡的角色名。網址只存在這台瀏覽器的本機，不會匯出。</p>
+  </div>
   <button id="test">測試送出 ps</button>
   <button id="beep">測試提示音</button>
   <button id="skills">悟招清單（新分頁開啟）</button>
-  <div class="hint">新出現「請輸入上面的數字」或「請輸入上方的數字」會立即停止。請先手動完成驗證，再按開始；舊紀錄不會重複觸發。需在 CatWorld Web 分頁使用。重新整理遊戲頁後會自動停止，避免意外持續執行。</div>
+  <div class="hint">出現驗證碼（「請輸入上方的數字」或數字圖）會先自動辨識並送出，讀不出數字或送 3 次都沒回應才停止；停了請先手動完成驗證，再按開始。舊紀錄不會重複觸發。需在 CatWorld Web 分頁使用。重新整理遊戲頁後會自動停止，避免意外持續執行。</div>
   <script src="trigger-engine.js"></script>
   <script src="timer-settings.js"></script>
   <script src="zap-mobs.js"></script>
