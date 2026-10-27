@@ -224,6 +224,14 @@ test('parseWornHtml pairs the mark and the view link on the same line only', () 
   assert.deepEqual(E.parseWornHtml(html), [{ name: '勁衣', id: '111', weapon: false }]);
 });
 
+test('parseWornHtml lists each worn id once even when the inventory appears twice in the buffer', () => {
+  // 介面的 HTML 緩衝是滑動視窗：玩家先前自己打過 i、房間一直有人說話讓緩衝不清，新舊兩份清單會接在一起
+  const html = fixture('inventory.html');
+  const worn = E.parseWornHtml(html + '\n' + html);
+  assert.equal(worn.length, 11);
+  assert.equal(new Set(worn.map(item => item.id)).size, 11);
+});
+
 const worn = (name, id = '1', weapon = false) => ({ name, id, weapon });
 
 test('baseline helpers group by category and never mutate', () => {

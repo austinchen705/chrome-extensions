@@ -101,6 +101,25 @@ ui('after the inventory arrives it sends one view macro with every worn id', asy
   assert.ok(views.every(command => /^view #\d+$/.test(command)));
 });
 
+ui('an earlier i still in the buffer does not make every view go out twice', async () => {
+  // 玩家幾分鐘前自己打過 i，之後房間裡一直有人說話（3 秒內都有新輸出）讓 HTML 緩衝一直不清；
+  // 按下按鈕後新的清單接在舊的後面，以前會變成 18 步的巨集（同樣 9 件、同樣順序送兩輪）
+  const page = boot();
+  await sleep(20);
+  page.add(fixture('inventory.html'));
+  await sleep(10);
+  page.add('<span class="H6">【閒聊】路人說：有人要組隊嗎</span>\n');
+  await sleep(10);
+  page.click();
+  await sleep(5);
+  page.add('&gt; i\n' + fixture('inventory.html'));
+  await sleep(150);
+  assert.equal(page.sent.length, 2);
+  const views = page.sent[1].split(';');
+  assert.equal(views.length, 11, 'each worn piece is viewed once, not twice');
+  assert.equal(new Set(views).size, 11);
+});
+
 ui('a worn line split across two packets is still picked up', async () => {
   const page = boot();
   await sleep(20);

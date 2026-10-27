@@ -139,10 +139,15 @@ function mergeBaseline(oldStore, blocks, expectedNames, now) {
 }
 
 // 背包（i）輸出裡穿著的行：有「ˇ」標記，同一行有 view #編號 的連結（武器是 unwield）。
-// 名稱常被 <span> 拆開（「金線」＋「手套」），去掉標籤後取到「(英文 id)」之前
+// 名稱常被 <span> 拆開（「金線」＋「手套」），去掉標籤後取到「(英文 id)」之前。
+// 呼叫端給的是幾秒內所有輸出接起來的緩衝，房間一直有人說話時緩衝不會清，玩家先前自己打的 i 還留在裡面，
+// 所以只看最後一次背包標題之後的內容，不然新舊兩份清單接在一起、每件都會 view 兩次
+const INVENTORY_HEADER = '你身上帶著下列這些東西';
 function parseWornHtml(html) {
   const worn = [];
-  for (const line of String(html ?? '').split(/\r?\n/)) {
+  const text = String(html ?? '');
+  const start = text.lastIndexOf(INVENTORY_HEADER);
+  for (const line of (start >= 0 ? text.slice(start) : text).split(/\r?\n/)) {
     const id = /target="view #(\d+)"/.exec(line)?.[1];
     if (!line.includes('ˇ') || !id) continue;
     const text = line.replace(/<[^>]*>/g, '');
