@@ -57,6 +57,17 @@ if (!globalThis.CatworldCaptchaGrid) {
     [key(['....X.', '...XX.', '..X.X.', '.X..X.', 'XXXXXX', '....X.', '...XXX']), '4'],
     [key(['.XXXXX.', 'X.....X', 'X.....X', '.XXXXX.', 'X.....X', 'X.....X', '.XXXXX.']), '8'],
     [key(['..XXX.', '.X...X', '.X...X', '.XXXX.', '.X..X.', 'X...X.', 'X...X.', '.XXX..']), '8'],
+    // 394 那一輪領獎（四種畫法互相印證）：3 的 6x8（斜體）／7x7／5x5、9 的 5x8（斜體）／5x5、4 的 4x7；381（亂碼圖）：8 的 4x7
+    [key(['..XXX.', '.X...X', '.....X', '..XXX.', '....X.', '....X.', 'X...X.', '.XXX..']), '3'],
+    [key(['.XXXXX.', 'X.....X', '......X', '.XXXXX.', '......X', 'X.....X', '.XXXXX.']), '3'],
+    [key(['XXXX.', '....X', '.XXX.', '....X', 'XXXX.']), '3'],
+    [key(['.XXX.', 'X..XX', 'X...X', 'X...X', '.XXXX', '....X', 'X..X.', 'XXX..']), '9'],
+    [key(['.XXX.', 'X...X', '.XXXX', '....X', '.XXX.']), '9'],
+    [key(['..X.', '.XX.', '.XX.', 'X.X.', 'XXXX', '..X.', '.XXX']), '4'],
+    [key(['.XX.', 'X..X', 'X..X', '.XX.', 'X..X', 'X..X', '.XX.']), '8'],
+    // 058 那一輪（一般的 B6 方塊圖）：5 的 4x8、8 的 5x8（右下角多一格）
+    [key(['XXXX', 'X...', 'X...', 'XXX.', '..XX', '...X', 'X..X', 'XXX.']), '5'],
+    [key(['.XXX.', 'X...X', 'X...X', '.XXX.', 'X..XX', 'X...X', 'X...X', '.XXX.']), '8'],
   ]);
 
   // 模糊比對用的 5x7 標準像素字型（圓角風格，與觀察到的字形同一家族）
@@ -127,26 +138,25 @@ if (!globalThis.CatworldCaptchaGrid) {
     }));
   }
 
-  // 圖所在的列帶：連續「有填色的列」的各段裡，填色格最多的那一段。圖前後幾秒的一般輸出偶爾也有填色格
-  // （背景色標出的物品名稱、符號），和圖之間隔著沒有填色的列，不能讓它們影響反相判定或變成假的數字
-  function imageBand(filled) {
+  // 圖的候選列帶：連續「有填色的列」的各段，填色格多的在前。圖前後幾秒的一般輸出偶爾也有填色格
+  // （背景色標出的物品名稱、符號、整片底色的公告橫幅），和圖之間隔著沒有填色的列，不能讓它們影響反相判定或變成假的數字；
+  // 填色最多的那段通常就是圖，但圖印完後 1 秒內接著印的公告橫幅會比圖大，所以 decodeHtml 會依序試到有一段整段都認得
+  function imageBands(filled) {
     const counts = filled.map(r => r.filter(Boolean).length);
-    let best = null;
+    const bands = [];
     let start = null;
     for (let y = 0; y <= counts.length; y++) {
       if (y < counts.length && counts[y] > 0) { start ??= y; continue; }
       if (start !== null) {
-        const total = counts.slice(start, y).reduce((a, b) => a + b, 0);
-        if (!best || total > best.total) best = { y0: start, y1: y - 1, total };
+        bands.push({ y0: start, y1: y - 1, total: counts.slice(start, y).reduce((a, b) => a + b, 0) });
         start = null;
       }
     }
-    return best;
+    return bands.sort((a, b) => b.total - a.total);
   }
 
-  // 數字方塊的佔用矩陣。列帶內填色面積超過外框一半視為反相（整片背景填色、數字是空洞）
-  function occupancyFrom(filled) {
-    const band = imageBand(filled);
+  // 數字方塊的佔用矩陣（預設取填色最多的列帶）。列帶內填色面積超過外框一半視為反相（整片背景填色、數字是空洞）
+  function occupancyFrom(filled, band = imageBands(filled)[0]) {
     if (!band) return filled;
     const inBand = filled.map((r, y) => (y >= band.y0 && y <= band.y1 ? r : r.map(() => false)));
     let x0 = Infinity, x1 = -1;
@@ -261,7 +271,17 @@ if (!globalThis.CatworldCaptchaGrid) {
     const digits = glyphsFromOccupancy(occ).map(g => classify(g, useLibrary));
     return { text: digits.map(d => d.char).join(''), digits };
   }
-  const decodeHtml = (html, { useLibrary = true } = {}) => decodeOccupancy(occupancyFromHtml(html), useLibrary);
+  // 依填色多寡試每一段列帶，第一段每個字形都認得的就是圖；都認不出就回填色最多那段的結果（讓呼叫端印出 `?` 的矩陣）
+  function decodeHtml(html, { useLibrary = true } = {}) {
+    const filled = filledCellsFromHtml(html);
+    let first = null;
+    for (const band of imageBands(filled)) {
+      const result = decodeOccupancy(occupancyFrom(filled, band), useLibrary);
+      first ??= result;
+      if (result.digits.length && result.digits.every(d => d.confident)) return result;
+    }
+    return first ?? decodeOccupancy(filled, useLibrary);
+  }
 
   // 認不出時給 console 看的字形矩陣，貼進 LIBRARY 就能擴充
   const describeDigits = digits => digits.map(d => `${d.char} ${d.matrix[0].length}x${d.matrix.length}\n${toAscii(d.matrix).join('\n')}`).join('\n\n');

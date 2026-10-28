@@ -1,5 +1,5 @@
 // 驗證碼數字的格子模板比對：合成 HTML（已知字形排成 span 方塊、夾雜雜訊文字 span）驗證解析、切字、縮減與模糊比對，
-// 再用 tests/fixtures/captcha/ 的真實樣本驗證八種版面（含「圖前面接著整張 sc 狀態卡」的反相圖）：方塊拼數字、反相（整片填色、數字是空洞、span 跨行、片段底部被截斷）、
+// 再用 tests/fixtures/captcha/ 的真實樣本驗證各種版面（含「圖前面接著整張 sc 狀態卡」的反相圖、「圖後面 1 秒內接著整片底色的公告橫幅」的亂碼圖）：方塊拼數字、反相（整片填色、數字是空洞、span 跨行、片段底部被截斷）、
 // 亂碼文字背景加方塊、背景色 span 裡是亂碼文字而數字是空洞、純 @ 符號畫的圖、亂碼裡以背景色標出的字元拼成數字（含時鐘雜訊與前後的一般輸出）、
 // 以及 captcha-art 既有的 sprite 樣本。
 // 真實樣本的行尾空白是資料的一部分，編輯器不能剝掉。
@@ -85,7 +85,7 @@ test('模糊比對：關掉模板庫時，只有很接近標準字型的才認�
   assert.deepEqual(result.digits.map(d => d.confident), [false, false, false, true]);
 });
 
-test('一般輸出裡的符號與零星的背景色不會變成數字：只有整行同一種符號才算方塊，圖只取填色最多的那一段連續列', () => {
+test('一般輸出裡的符號與零星的背景色不會變成數字：只有整行同一種符號才算方塊，圖先取填色最多的那一段連續列', () => {
   // (100%) 的 % 不算方塊；@ 整行才算
   const F = false, T = true;
   assert.deepEqual(cg.filledCellsFromHtml(' 840 (100%)\n  @@ @\n'), [
@@ -97,6 +97,13 @@ test('一般輸出裡的符號與零星的背景色不會變成數字：只有�
   const stray = '<span class="H7 B5">潛水裝</span>\n\n';
   assert.equal(cg.decodeHtml(stray + fixture('grid-inverted-3608.html')).text, '3608');
   assert.equal(cg.decodeHtml(stray + fixture('sprite-62044.html')).text, '62044');
+});
+
+test('圖印完後接著印的公告橫幅填色比圖多：橫幅那段認不出，就往下試填色次多的那段（真正的圖）', () => {
+  const html = fixture('noise-highlight-reward-then-banner-381.html');
+  const banner = cg.glyphsFromOccupancy(cg.occupancyFromHtml(html)).map(g => cg.classify(g));
+  assert.ok(!banner.length || banner.some(d => !d.confident), '填色最多的那段（橫幅）本身讀不出數字');
+  assert.equal(cg.decodeHtml(html).text, '381');
 });
 
 for (const [name, expected] of [
@@ -116,6 +123,12 @@ for (const [name, expected] of [
   ['grid-inverted-reward-1595.html', '1595'],
   ['noise-inverted-reward-648.html', '648'],
   ['symbol-reward-after-status-648.html', '648'],
+  ['noise-highlight-reward-then-banner-381.html', '381'],
+  ['grid-inverted-reward-394.html', '394'],
+  ['grid-reward-394.html', '394'],
+  ['symbol-reward-394.html', '394'],
+  ['grid-b1-reward-394.html', '394'],
+  ['grid-058.html', '058'],
 ]) {
   test(`真實樣本 ${name} 解出 ${expected}`, () => {
     const result = cg.decodeHtml(fixture(name));
