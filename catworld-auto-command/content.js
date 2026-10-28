@@ -382,14 +382,14 @@ let settings = {
 };
 const randomItems = () => CatworldTimer.normalizeRandomItems(settings);
 
-// answer：送的是驗證碼答案，不受「辨識中暫停送出」限制
+// answer：送的是驗證碼答案，不受「辨識中暫停送出」和「因驗證停止後不送指令」限制（停止後手動打 reward 的圖也要幫忙答）
 function sendCommand(command, { answer = false } = {}) {
   if (!contextAlive(chrome)) {
     retire();
     return { ok: false, error: '擴充功能已重新載入，請重新整理遊戲頁' };
   }
   if (!answer && (captcha || checkCaptcha())) return { ok: false, error: '驗證碼自動辨識中，先不送出指令' };
-  if (/驗證/.test(stopReason)) return { ok: false, error: stopReason };
+  if (!answer && /驗證/.test(stopReason)) return { ok: false, error: stopReason };
   const input = document.querySelector('#input');
   if (!input || !input.form) {
     return { ok: false, error: '找不到 CatWorld 指令輸入框 #input' };

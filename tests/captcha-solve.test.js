@@ -278,3 +278,24 @@ ui('an image with a glyph the library and fuzzy match cannot read stops at once,
     page.close();
   }
 });
+
+ui('after a captcha stop, an image that arrives later (the player typing reward by hand) is still read and its answer sent', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    await page.ask(START);
+    assert.ok(await waitFor(() => page.sent.length >= 1, 4000));
+    const block = n => `<span class="H7 B3">${' '.repeat(n)}</span>`;
+    page.output(Array.from({ length: 7 }, () => `   ${block(3)}   \n`).join(''));
+    assert.ok(await waitFor(async () => !(await page.running()), 2000), 'stopped by the unreadable image');
+    assert.equal(alerts(page).length, 1);
+    page.output(SPRITE);
+    assert.ok(await waitFor(() => answers(page, '62044') === 1, QUIET + SEND_MAX * 2), 'the answer is sent although the timer is stopped');
+    page.output('<span class="H3">驗證成功。\n</span>&gt; ');
+    assert.ok(await waitFor(() => outcomes(page).length === 2, 2000), 'the round ends');
+    assert.deepEqual(outcomes(page)[1], ['passed', '62044', 1]);
+    assert.equal(alerts(page).length, 1, 'no second alert');
+    assert.equal(await page.running(), false, 'the timer stays stopped: the player presses start');
+  } finally {
+    page.close();
+  }
+});

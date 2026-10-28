@@ -174,6 +174,10 @@ for (const [name, expected] of [
   ['noise-highlight-reward-51301.html', '51301'],
   ['symbol-reward-51301.html', '51301'],
   ['noise-highlight-reward-2679.html', '2679'],
+  ['noise-inverted-reward-after-status-02544.html', '02544'],
+  ['noise-inverted-reward-367.html', '367'],
+  ['symbol-reward-5857.html', '5857'],
+  ['noise-highlight-697.html', '697'],
 ]) {
   test(`真實樣本 ${name} 解出 ${expected}`, () => {
     const result = cg.decodeHtml(fixture(name));
