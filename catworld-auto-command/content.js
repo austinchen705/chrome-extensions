@@ -63,13 +63,14 @@ let persistentAlert = false;
 let watchdogTimer = null;
 let lastCommand = '';
 // 驗證碼自動辨識（閒置時也作用，手動打 reward 領獎也會幫忙輸入）：偵測到圖或提示後暫停送出佇列，等圖印完（CAPTCHA_QUIET_MS 內沒有新輸出）
-// 用 CatworldCaptchaGrid 解出數字送出。
+// 用 CatworldCaptchaGrid 解出數字，再隨機等 CAPTCHA_SEND_DELAY_MS 範圍內的時間才送出（像人看完圖再打字、每次快慢不同；等的期間又有新輸出就接上去、重新等靜默）。
 // 答錯時遊戲不會有任何回應，所以「送出答案後 NO_REPLY_MS 沒有新輸出」就是答錯：重送同一個答案，滿 CAPTCHA_MAX_ATTEMPTS 次才停止並警報；
 // 送出後任何新輸出（不是驗證碼、不是回聲）就當作通過，恢復送出。解不出來（沒看過的字形、沒有數字）直接停止並警報，
 // 字形矩陣印在 console（[catworld]），貼進 captcha-grid.js 的 LIBRARY 就能擴充
 const CAPTCHA_QUIET_MS = 1000;
+const CAPTCHA_SEND_DELAY_MS = [3000, 10000]; // [最短, 最長]
 const CAPTCHA_MAX_ATTEMPTS = 3;
-let captcha = null; // { html, answer, attempts, quietTimer }：answer 為空表示圖還在收、還沒送
+let captcha = null; // { html, read, sendSeconds, answer, attempts, quietTimer, sendTimer }：answer 為空表示圖還在收或還沒送；read 是讀到、等著送的數字，sendSeconds 是這次抽到要等幾秒
 const { artText, createWatcher, describeBatch, isArtLike } = globalThis.CatworldCaptchaArt;
 const { HOST_ATTR, contextAlive, removeStalePanels } = globalThis.CatworldInstanceGuard;
 // 驗證碼圖形偵測的緩衝：新增文字分批到達時要接在一起判斷（見 captcha-art.js）
@@ -217,9 +218,15 @@ function beginCaptcha(html) {
     captcha.html = '';
     captcha.answer = '';
   }
-  captcha ??= { html: '', answer: '', attempts: 0, quietTimer: null };
+  captcha ??= { html: '', read: '', sendSeconds: 0, answer: '', attempts: 0, quietTimer: null, sendTimer: null };
   captcha.html += html;
   if (captcha.quietTimer) clearTimeout(captcha.quietTimer);
+  // 讀到數字、還沒送就又有新輸出：取消送出，接上去重新辨識
+  if (captcha.sendTimer) {
+    clearTimeout(captcha.sendTimer);
+    captcha.sendTimer = null;
+    captcha.read = '';
+  }
   captcha.quietTimer = setTimeout(solveCaptcha, CAPTCHA_QUIET_MS);
   renderPanel();
 }
@@ -235,9 +242,17 @@ function solveCaptcha() {
     return;
   }
   // 成功也印矩陣：模糊比對猜中的字形可以從 console 核對、貼進模板庫，不用等它哪天猜錯
-  console.info(`[catworld] 驗證碼自動辨識：讀到 ${result.text}，字形矩陣：\n` + CatworldCaptchaGrid.describeDigits(result.digits));
-  captcha.answer = result.text;
-  submitCaptcha();
+  const [minDelay, maxDelay] = CAPTCHA_SEND_DELAY_MS;
+  const delay = minDelay + Math.random() * (maxDelay - minDelay);
+  captcha.read = result.text;
+  captcha.sendSeconds = Math.round(delay / 1000);
+  console.info(`[catworld] 驗證碼自動辨識：讀到 ${result.text}，${captcha.sendSeconds} 秒後送出，字形矩陣：\n` + CatworldCaptchaGrid.describeDigits(result.digits));
+  captcha.sendTimer = setTimeout(() => {
+    captcha.sendTimer = null;
+    captcha.answer = captcha.read;
+    submitCaptcha();
+  }, delay);
+  renderPanel();
 }
 function submitCaptcha() {
   captcha.attempts += 1;
@@ -273,6 +288,7 @@ function endCaptcha() {
 }
 function clearCaptcha() {
   if (captcha?.quietTimer) clearTimeout(captcha.quietTimer);
+  if (captcha?.sendTimer) clearTimeout(captcha.sendTimer);
   captcha = null;
 }
 // 每一回合的結果連同這張圖的 HTML 交給 background 送去收集（設定頁填了收集網址才會送出，網址 content script 不讀）：
@@ -1046,7 +1062,11 @@ function renderPanel() {
     if (nextRandomAt) lines.push(`隨機 ${left(nextRandomAt)}：${nextRandomCommand}`);
     timerText = lines.join('\n') || '執行中';
   }
-  if (captcha) timerText = captcha.answer ? `驗證碼：已送出 ${captcha.answer}（第 ${captcha.attempts} 次），等遊戲回應…` : '驗證碼：等圖印完再自動辨識…';
+  if (captcha) {
+    timerText = captcha.answer ? `驗證碼：已送出 ${captcha.answer}（第 ${captcha.attempts} 次），等遊戲回應…`
+      : captcha.sendTimer ? `驗證碼：讀到 ${captcha.read}，${captcha.sendSeconds} 秒後送出…`
+        : '驗證碼：等圖印完再自動辨識…';
+  }
   let changed = panel.timerText.textContent !== timerText;
   panel.timerText.textContent = timerText;
   groupList.forEach((group, index) => {

@@ -1,5 +1,5 @@
 // 驗證碼自動辨識（整個 content script 在 jsdom 裡跑，用 tests/fixtures/captcha/ 的真實樣本）：
-// 偵測到圖後暫停送出、等圖印完再解出數字送出；遊戲有回應就通過並恢復送出；答錯遊戲不會回應，所以沒回應就重送、
+// 偵測到圖後暫停送出、等圖印完再解出數字、隨機等 3～10 秒才送出（等的期間又有輸出就接上去重新等）；遊戲有回應就通過並恢復送出；答錯遊戲不會回應，所以沒回應就重送、
 // 滿 3 次才停止並警報（通知送不出去也要停）；解不出來直接停。每一回合結束都把樣本（結果、答案、次數、HTML）送給 background（CAPTCHA_SAMPLE）。
 // 頁面的計時器縮小 SCALE 倍（8 秒無回應變 400 毫秒）。
 const assert = require('node:assert/strict');
@@ -8,6 +8,9 @@ const cg = require('../catworld-auto-command/captcha-grid');
 
 const SCALE = 20;
 const NO_REPLY = 8000 / SCALE;
+const QUIET = 1000 / SCALE;
+const SEND_MIN = 3000 / SCALE;
+const SEND_MAX = 10000 / SCALE;
 const SPRITE = fixture('sprite-62044.html');
 const INVERTED = fixture('grid-inverted-3608.html');
 const NOISE = fixture('grid-noise-663.html');
@@ -35,6 +38,42 @@ ui('a captcha image pauses sending, the decoded digits are sent once the image i
     assert.ok(await page.running());
     assert.deepEqual(outcomes(page), [['passed', '62044', 1]], 'one sample for the round, sent when the game replied');
     assert.equal(cg.decodeHtml(samples(page)[0].html).text, '62044', 'the html in the sample is what the decoder saw');
+  } finally {
+    page.close();
+  }
+});
+
+ui('the answer is sent a random 3 to 10 seconds after the image is read, not the moment it is read', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    await page.ask(START);
+    assert.ok(await waitFor(() => page.sent.length >= 1, 4000));
+    page.output(SPRITE);
+    await sleep(QUIET + SEND_MIN / 2);
+    assert.equal(answers(page, '62044'), 0, 'read but not sent yet');
+    assert.ok(await waitFor(() => answers(page, '62044') === 1, SEND_MAX * 2), 'sent after the delay');
+    assert.ok(await page.running());
+  } finally {
+    page.close();
+  }
+});
+
+ui('output arriving while waiting to send (the reward prompt) joins the round: still one answer, and the round ends normally', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    await page.ask(START);
+    assert.ok(await waitFor(() => page.sent.length >= 1, 4000));
+    page.output(INVERTED);
+    await sleep(QUIET + SEND_MIN / 2);
+    assert.equal(answers(page, '3608'), 0);
+    page.output('請輸入上方的數字，以便完成領取手續。\n');
+    assert.ok(await waitFor(() => answers(page, '3608') === 1, SEND_MAX * 2), 'the answer is sent once');
+    page.output('&gt; 3608\n恭喜你獲得一個在線獎勵禮盒。\n');
+    const afterAnswer = page.sent.length;
+    assert.ok(await waitFor(() => page.sent.length > afterAnswer, 2000), 'commands resume');
+    assert.equal(answers(page, '3608'), 1);
+    assert.equal(alerts(page).length, 0);
+    assert.deepEqual(outcomes(page), [['passed', '3608', 1]]);
   } finally {
     page.close();
   }

@@ -476,7 +476,7 @@ popup 的規則清單下方有兩顆新增按鈕：「＋ 數值規則」（上�
 偵測到前三項的任何一種時，extension 會先自己試著通過（不管定時、觸發、巨集有沒有在跑，自己打 `reward` 領獎也一樣）：
 
 1. 暫停送出指令（定時、觸發、巨集的指令都先留在佇列），面板顯示「驗證碼：等圖印完再自動辨識…」。
-2. 等圖印完（1 秒內沒有新的遊戲輸出），用格子模板比對把方塊拼成的數字讀出來，直接送進遊戲（和你自己打數字一樣），面板顯示「驗證碼：已送出 663（第 1 次），等遊戲回應…」。
+2. 等圖印完（1 秒內沒有新的遊戲輸出），用格子模板比對把方塊拼成的數字讀出來，隨機等 3～10 秒（面板顯示「驗證碼：讀到 663，7 秒後送出…」）再送進遊戲（和你自己打數字一樣），面板顯示「驗證碼：已送出 663（第 1 次），等遊戲回應…」。等的期間又有新輸出（例如領獎提示）就接上去重新辨識。
 3. 遊戲有任何回應（「驗證成功。」「恭喜你獲得…」，或其他新輸出）就當作通過，佇列裡的指令接著送。
 4. 答錯時遊戲**不會有任何回應**，所以送出後 8 秒沒有新輸出就把同一個答案再送一次，最多 3 次；第 3 次還是沒回應才依下面「停了之後」處理。
 5. 讀不出數字（圖裡有沒看過的字形）就不送、直接停止並警報；遊戲頁 console（篩 `[catworld]`）會印出那個字形的矩陣，請把那段輸出回報，加進字形庫後就認得（預設會自動收進作者的收集表，見下面「驗證碼樣本收集」）。
@@ -530,7 +530,11 @@ function doPost(e) {
   const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, sample.html || '', Utilities.Charset.UTF_8);
   const hash = digest.map(b => ((b + 256) % 256).toString(16).padStart(2, '0')).join('').slice(0, 16);
   const seen = sheet.getLastRow() > 1 && sheet.getRange(2, 6, sheet.getLastRow() - 1, 1).getValues().flat().includes(hash);
-  if (!seen) sheet.appendRow([new Date(), sample.outcome, sample.answer, sample.attempts, sample.version, hash, sample.html]);
+  if (!seen) {
+    sheet.appendRow([new Date(), sample.outcome, sample.answer, sample.attempts, sample.version, hash, sample.html]);
+    // 答案欄存成文字：開頭是 0 的答案（例如 061）才不會被試算表當成數字 61
+    sheet.getRange(sheet.getLastRow(), 3).setNumberFormat('@').setValue(String(sample.answer));
+  }
   return ContentService.createTextOutput(JSON.stringify({ ok: true, duplicate: seen })).setMimeType(ContentService.MimeType.JSON);
 }
 // 用瀏覽器或 curl 開網頁應用程式的網址：回傳目前收到的全部樣本（JSON 陣列，欄位同試算表）
