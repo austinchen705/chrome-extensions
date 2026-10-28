@@ -313,6 +313,24 @@ $('mainWeapon').addEventListener('change', () => {
   chrome.storage.local.set({ mainWeapon: weaponValue($('mainWeapon').value) });
 });
 
+// 附屬能力門檻：存起來，遊戲頁的面板監聽 storage 變化，馬上生效。門檻不是 1 以上的整數就不存，欄位還原
+let equipmentKeep = CatworldZapEquipment.normalizeKeepRule(undefined);
+function showEquipmentKeep() {
+  $('keepEnabled').checked = equipmentKeep.enabled;
+  $('keepMin').value = equipmentKeep.min;
+}
+['keepEnabled', 'keepMin'].forEach(id => $(id).addEventListener('change', () => {
+  const raw = { enabled: $('keepEnabled').checked, min: Number($('keepMin').value) };
+  const valid = CatworldZapEquipment.normalizeKeepRule(raw);
+  if (valid.min !== raw.min) {
+    showEquipmentKeep();
+    setStatus('門檻需為 1 以上的整數', 'error');
+    return;
+  }
+  equipmentKeep = valid;
+  chrome.storage.local.set({ equipmentKeep });
+}));
+
 // 怪物分級門檻：存起來，遊戲頁的面板監聽 storage 變化，馬上生效。無效的值（需 1 < 綠上限 < 黃上限）不存，欄位還原
 let zapThresholds = CatworldZapMobs.normalizeThresholds(undefined);
 function showZapThresholds() {
@@ -613,10 +631,12 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 });
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures']);
+  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep']);
   Object.entries(FEATURE_BOXES).forEach(([key, id]) => { $(id).checked = data.zapFeatures?.[key] === true; });
   $('persistentAlert').checked = data.persistentAlert === true;
   $('mainWeapon').value = weaponValue(data.mainWeapon);
+  equipmentKeep = CatworldZapEquipment.normalizeKeepRule(data.equipmentKeep);
+  showEquipmentKeep();
   zapThresholds = CatworldZapMobs.normalizeThresholds(data.zapThresholds);
   showZapThresholds();
   if (data.settings) {

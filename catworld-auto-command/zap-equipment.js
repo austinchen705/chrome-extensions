@@ -71,11 +71,11 @@ function scoreAttrs(attrs, related) {
     .reduce((sum, attr) => sum + attr.value * (related.includes(attr.name) ? 2 : 1), 0);
 }
 
-const VERDICT_TEXT = { better: '比現在好，建議留下', worse: '比現在差', equal: '相當', none: '沒有基準可比' };
+const VERDICT_TEXT = { better: '比現在好，建議留下', keep: '屬性達門檻，建議留下', worse: '比現在差', equal: '相當', none: '沒有基準可比' };
 
 // baseline 是「同類別」現在穿的清單（呼叫端先依類別取出）；同類別有好幾件時（兩枚戒指）和最弱的那一件比，
 // 這樣比較差的裝備不可能被標成比較好
-function compareEquipment(candidate, baseline, { mainWeapon, exp } = {}) {
+function compareWithBaseline(candidate, baseline, { mainWeapon, exp } = {}) {
   const blocked = Number.isFinite(exp) && candidate.needExp !== null && candidate.needExp > exp;
   const none = { verdict: 'none', text: VERDICT_TEXT.none, reasons: [], against: null, blocked };
   const usable = (baseline ?? []).filter(item => item.primary !== null);
@@ -100,6 +100,24 @@ function compareEquipment(candidate, baseline, { mainWeapon, exp } = {}) {
   if (primaryPoints < 0 && decided > 0) reasons.push(`屬性補回：屬性 +${scoreDiff} 分，抵過主要數值少的 ${-primaryPoints} 分`);
   const verdict = decided > 0 ? 'better' : decided < 0 ? 'worse' : 'equal';
   return { verdict, text: VERDICT_TEXT[verdict], reasons, against: weakest.item.name, blocked };
+}
+
+// 附屬能力門檻（設定頁「附屬能力達到門檻就建議留下」，存在 chrome.storage.local.equipmentKeep）：
+// 開著時，候選裝備只要有一條計分的屬性（重量、硬度、潛能、損修不算）數值達到門檻就標「留下」，
+// 不管主要數值比不比得過、有沒有基準、能不能穿；本來就「比現在好」的維持原判斷
+const KEEP_DEFAULT = { enabled: false, min: 10 };
+function normalizeKeepRule(value) {
+  const min = value?.min;
+  return { enabled: value?.enabled === true, min: Number.isInteger(min) && min >= 1 ? min : KEEP_DEFAULT.min };
+}
+// 好幾條都達門檻時理由寫數值最大的那條
+const keepHit = (attrs, keep) => (keep?.enabled ? attrs.filter(attr => !IGNORED_ATTRS.includes(attr.name) && attr.value >= keep.min).sort((a, b) => b.value - a.value)[0] : undefined);
+
+function compareEquipment(candidate, baseline, { mainWeapon, exp, keep } = {}) {
+  const result = compareWithBaseline(candidate, baseline, { mainWeapon, exp });
+  const hit = keepHit(candidate.attrs, keep);
+  if (!hit || result.verdict === 'better') return result;
+  return { ...result, verdict: 'keep', text: VERDICT_TEXT.keep, reasons: [`${hit.name} +${hit.value} 達門檻 ${keep.min}`, ...result.reasons] };
 }
 
 // ---- 基準（現在穿的裝備）----
@@ -229,7 +247,7 @@ function createTracker({ runTimeoutMs = 30000 } = {}) {
 }
 
 globalThis.CatworldZapEquipment = {
-  PRIMARY_GAP, IGNORED_ATTRS, normalizeAttrName, parseEquipmentBlocks, relatedAttrNames, scoreAttrs, compareEquipment,
+  PRIMARY_GAP, IGNORED_ATTRS, normalizeAttrName, parseEquipmentBlocks, relatedAttrNames, scoreAttrs, normalizeKeepRule, compareEquipment,
   toBaselineItem, replaceBaseline, upsertBaseline, mergeBaseline, parseWornHtml, createTracker,
 };
 })();

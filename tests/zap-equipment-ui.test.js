@@ -310,3 +310,23 @@ ui('no inventory output is a caution line, not an error', async () => {
   assert.ok(note.classList.contains('zap-caution'));
   assert.equal(note.classList.contains('zap-bad'), false);
 });
+
+const KEEP_RUN = `> 你想請馬鑑定師鑑定所有無名物。\n此物名曰 ：差一，披風類防具\n防 禦 力 ：20 / 20\n此物名曰 ：留著，披風類防具\n防 禦 力 ：20 / 20\n屬    性 ：+10   行動\n此物名曰 ：相當，披風類防具\n防 禦 力 ：30 / 30\n馬鑑定師說道：共鑑定3樣無名物，歡迎再次光臨。\n`;
+
+ui('with the attribute threshold on, a worse piece whose attribute reaches it is marked keep and sorts with the recommended ones', async () => {
+  const page = boot({ stored: { wornEquipment: CLOAK_BASELINE, equipmentKeep: { enabled: true, min: 10 } } });
+  await sleep(30);
+  page.add(KEEP_RUN);
+  await sleep(150);
+  assert.deepEqual(names(page.rows()), ['留著', '相當', '差一']);
+  assert.match(page.rows()[0], /屬性達門檻，建議留下 對象：貓斗篷 行動 \+10 達門檻 10 防禦 -10/);
+});
+
+ui('with the attribute threshold off (the default) the same piece is just worse', async () => {
+  const page = boot({ stored: { wornEquipment: CLOAK_BASELINE } });
+  await sleep(30);
+  page.add(KEEP_RUN);
+  await sleep(150);
+  assert.deepEqual(names(page.rows()), ['相當', '差一', '留著']);
+  assert.match(page.rows()[2], /比現在差/);
+});

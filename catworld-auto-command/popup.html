@@ -175,6 +175,9 @@ px</textarea>
     <label for="mainWeapon">主要武器類型</label>
     <select id="mainWeapon"></select>
     <p class="hint tight">用來判斷鑑定後的鑄模與材料是否適合你；未設定時只依等級建議（LV1～2 賣掉、LV3 以上留著）。</p>
+    <label class="check"><input id="keepEnabled" type="checkbox"> 附屬能力達到門檻就建議留下</label>
+    <div class="row"><div><label for="keepMin">門檻（屬性數值）</label><input id="keepMin" type="number" min="1" step="1"></div></div>
+    <p class="hint tight">預設關閉。開啟後，鑑定出的裝備只要有一條屬性的數值達到門檻（例如 +10 攻擊），就算傷害／防禦比現在穿的差、沒有基準或還不能穿，都標「屬性達門檻，建議留下」並排在最上面；重量、硬度、潛能、損修不算。</p>
   </div>
   <div class="alertbox">
     <b>共用資料（Google 試算表）</b>
@@ -230,6 +233,7 @@ px</textarea>
   <script src="timer-settings.js"></script>
   <script src="zap-mobs.js"></script>
   <script src="zap-items.js"></script>
+  <script src="zap-equipment.js"></script>
   <script src="shared-data.js"></script>
   <script src="line-notify.js"></script>
   <script src="line-notify-ui.js"></script>

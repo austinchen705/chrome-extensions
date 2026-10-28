@@ -351,3 +351,42 @@ test('compareEquipment phrases a missing attribute without a misleading plus sig
   const gone = E.compareEquipment(piece('甲', 30), [base('乙', 30, [{ name: '攻擊', value: 5 }])], stats);
   assert.ok(gone.reasons.includes('少了 攻擊 5'));
 });
+
+// ---- 附屬能力門檻（設定頁「附屬能力達到門檻就建議留下」）----
+test('normalizeKeepRule: off with the default threshold when unset or broken, a valid rule is kept as is', () => {
+  assert.deepEqual(E.normalizeKeepRule(undefined), { enabled: false, min: 10 });
+  assert.deepEqual(E.normalizeKeepRule({ enabled: true, min: 15 }), { enabled: true, min: 15 });
+  assert.deepEqual(E.normalizeKeepRule({ enabled: 'yes', min: 0 }), { enabled: false, min: 10 });
+  assert.deepEqual(E.normalizeKeepRule({ enabled: true, min: 2.5 }), { enabled: true, min: 10 });
+  assert.deepEqual(E.normalizeKeepRule({ enabled: true, min: '8' }), { enabled: true, min: 10 });
+});
+
+const KEEP = { enabled: true, min: 10 };
+
+test('keep rule: a worse piece with one attribute at the threshold is marked keep, the comparison reasons stay', () => {
+  const result = E.compareEquipment(armor('薄甲', 20, [{ name: '行動', value: 10 }]), [BLACK], { ...stats, keep: KEEP });
+  assert.equal(result.verdict, 'keep');
+  assert.equal(result.text, '屬性達門檻，建議留下');
+  assert.equal(result.reasons[0], '行動 +10 達門檻 10');
+  assert.ok(result.reasons.includes('防禦 -28'), result.reasons.join('｜'));
+  assert.equal(result.against, '黑羽長風鎧');
+  const two = E.compareEquipment(armor('薄甲', 20, [{ name: '行動', value: 10 }, { name: '攻擊', value: 25 }]), [BLACK], { ...stats, keep: KEEP });
+  assert.equal(two.reasons[0], '攻擊 +25 達門檻 10', 'the reason names the strongest qualifying attribute');
+});
+
+test('keep rule: off by default; an attribute just under the threshold, an ignored attribute or a negative one does not keep', () => {
+  const thin = attrs => E.compareEquipment(armor('薄甲', 20, attrs), [BLACK], { ...stats, keep: KEEP }).verdict;
+  assert.equal(E.compareEquipment(armor('薄甲', 20, [{ name: '行動', value: 10 }]), [BLACK], stats).verdict, 'worse');
+  assert.equal(E.compareEquipment(armor('薄甲', 20, [{ name: '行動', value: 10 }]), [BLACK], { ...stats, keep: { enabled: false, min: 10 } }).verdict, 'worse');
+  assert.equal(thin([{ name: '行動', value: 9 }]), 'worse');
+  assert.equal(thin([{ name: '硬度', value: 80 }, { name: '潛能', value: 30 }, { name: '重量', value: 12 }]), 'worse');
+  assert.equal(thin([{ name: '行動', value: -12 }]), 'worse');
+});
+
+test('keep rule: applies without a baseline and when the piece cannot be worn yet; a better piece stays better', () => {
+  const alone = E.compareEquipment(piece('孤品', 5, [{ name: '攻擊', value: 12 }]), [], { ...stats, keep: KEEP });
+  assert.deepEqual([alone.verdict, alone.against, alone.reasons], ['keep', null, ['攻擊 +12 達門檻 10']]);
+  const blocked = E.compareEquipment(piece('重品', 5, [{ name: '攻擊', value: 12 }], { needExp: 999999999 }), [base('暮歌', 31)], { ...stats, keep: KEEP });
+  assert.deepEqual([blocked.verdict, blocked.blocked], ['keep', true]);
+  assert.equal(E.compareEquipment(piece('新披風', 40, [{ name: '攻擊', value: 12 }]), [base('暮歌', 31)], { ...stats, keep: KEEP }).verdict, 'better');
+});

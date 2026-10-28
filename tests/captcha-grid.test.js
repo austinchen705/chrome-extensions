@@ -1,7 +1,7 @@
 // 驗證碼數字的格子模板比對：合成 HTML（已知字形排成 span 方塊、夾雜雜訊文字 span）驗證解析、切字、縮減與模糊比對，
 // 再用 tests/fixtures/captcha/ 的真實樣本驗證各種版面（含「圖前面接著整張 sc 狀態卡」的反相圖、「圖後面 1 秒內接著整片底色的公告橫幅」的亂碼圖）：方塊拼數字、反相（整片填色、數字是空洞、span 跨行、片段底部被截斷）、
 // 亂碼文字背景加方塊、背景色 span 裡是亂碼文字而數字是空洞、純 @ 符號畫的圖、亂碼裡以背景色標出的字元拼成數字（含時鐘雜訊與前後的一般輸出）、
-// 以及 captcha-art 既有的 sprite 樣本。
+// 同一輪連印兩張反相圖（兩張各自都要讀得出同一個答案），以及 captcha-art 既有的 sprite 樣本。
 // 真實樣本的行尾空白是資料的一部分，編輯器不能剝掉。
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -106,6 +106,16 @@ test('圖印完後接著印的公告橫幅填色比圖多：橫幅那段認不�
   assert.equal(cg.decodeHtml(html).text, '381');
 });
 
+test('同一輪連印兩張反相圖（B1 再 B2，同一個答案）：合在一起讀得出，只留其中一張也各自讀得出', () => {
+  const html = fixture('grid-inverted-twice-reward-after-status-52082.html');
+  assert.equal(cg.decodeHtml(html).text, '52082');
+  for (const [keep, drop] of [['B1', 'B2'], ['B2', 'B1']]) {
+    const one = cg.decodeHtml(html.replace(new RegExp(`H7 ${drop}`, 'g'), 'H7'));
+    assert.equal(one.text, '52082', `只留 ${keep} 那張`);
+    assert.ok(one.digits.every(d => d.confident));
+  }
+});
+
 for (const [name, expected] of [
   ['grid-68693.html', '68693'],
   ['grid-inverted-3608.html', '3608'],
@@ -129,6 +139,17 @@ for (const [name, expected] of [
   ['symbol-reward-394.html', '394'],
   ['grid-b1-reward-394.html', '394'],
   ['grid-058.html', '058'],
+  ['grid-inverted-reward-03865.html', '03865'],
+  ['symbol-reward-01565.html', '01565'],
+  ['grid-reward-42965.html', '42965'],
+  ['symbol-reward-after-status-2713.html', '2713'],
+  ['grid-inverted-twice-reward-after-status-52082.html', '52082'],
+  ['noise-inverted-reward-671.html', '671'],
+  ['grid-reward-after-status-9397.html', '9397'],
+  ['grid-inverted-reward-2500.html', '2500'],
+  ['grid-inverted-reward-7576.html', '7576'],
+  ['noise-inverted-reward-after-status-032.html', '032'],
+  ['grid-reward-230.html', '230'],
 ]) {
   test(`真實樣本 ${name} 解出 ${expected}`, () => {
     const result = cg.decodeHtml(fixture(name));

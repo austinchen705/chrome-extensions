@@ -9,6 +9,7 @@ if (globalThis.CatworldZapEquipmentUI) return;
 const E = globalThis.CatworldZapEquipment;
 const WORN_KEY = 'wornEquipment';
 const WEAPON_KEY = 'mainWeapon';
+const KEEP_KEY = 'equipmentKeep';
 const GAME_WINDOWS = '#monitor, #map_table, #macro_table, #setting_table';
 const FLUSH_MS = 600;
 const FLUSH_MAX_WAIT_MS = 3000;
@@ -18,8 +19,8 @@ const HTML_WINDOW_MS = 3000;
 const HTML_BUFFER_CHARS = 30000;
 const RESULT_MAX = 12;
 // 結果的排序：越小越上面、越後面才被擠掉
-const VERDICT_RANK = { better: 0, equal: 1, none: 2, worse: 3 };
-const VERDICT_COLOR = { better: '#3ecf6e', worse: '#999999', equal: '#e6c029', none: '#7a7a7a' };
+const VERDICT_RANK = { better: 0, keep: 0, equal: 1, none: 2, worse: 3 };
+const VERDICT_COLOR = { better: '#3ecf6e', keep: '#3ecf6e', worse: '#999999', equal: '#e6c029', none: '#7a7a7a' };
 const WEAPON_TYPES = ['劍', '刀', '杖', '鞭', '拳套', '暗器'];
 
 // 基準依角色分開存（同一個瀏覽器可能同時開兩個角色）。登入後分頁標題是「角色名 - 小貓的世界 WEB」，沒登入沒有「 - 」
@@ -40,6 +41,7 @@ function attach(root, { overlay, readExp, startSteps }) {
   const tracker = E.createTracker();
   let stores = {};
   let mainWeapon = '';
+  let keep = E.normalizeKeepRule(undefined);
   let phase = 'idle'; // idle → waitingInventory → reading → idle
   let wornAcc = [];
   let expected = [];
@@ -79,15 +81,17 @@ function attach(root, { overlay, readExp, startSteps }) {
       return false;
     }
   };
-  chrome.storage.local.get([WORN_KEY, WEAPON_KEY]).then(data => {
+  chrome.storage.local.get([WORN_KEY, WEAPON_KEY, KEEP_KEY]).then(data => {
     stores = normalizeStores(data[WORN_KEY]);
     mainWeapon = validWeapon(data[WEAPON_KEY]);
+    keep = E.normalizeKeepRule(data[KEEP_KEY]);
     updateStatus();
   }).catch(error => note(`讀取已存的基準失敗：${error.message}`, 'error'));
   chrome.storage.onChanged?.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes[WORN_KEY]) stores = normalizeStores(changes[WORN_KEY].newValue);
     if (changes[WEAPON_KEY]) mainWeapon = validWeapon(changes[WEAPON_KEY].newValue);
+    if (changes[KEEP_KEY]) keep = E.normalizeKeepRule(changes[KEEP_KEY].newValue);
     updateStatus();
   });
 
@@ -176,7 +180,7 @@ function attach(root, { overlay, readExp, startSteps }) {
   const minutesAgo = at => Math.max(0, Math.round((Date.now() - at) / 60000));
   function candidateNode(block) {
     const list = current()[block.category] ?? [];
-    const result = E.compareEquipment(block, list, { mainWeapon, exp: readExp() });
+    const result = E.compareEquipment(block, list, { mainWeapon, exp: readExp(), keep });
     const attrs = block.attrs.map(attr => `${attr.name}${attr.value > 0 ? '+' : ''}${attr.value}`).join('　');
     const head = `${block.name}（${SHORT(block.category)}）　${block.kind === 'weapon' ? '傷' : '防'} ${block.primary ?? '?'}${attrs ? `　${attrs}` : ''}　需經驗 ${block.needExp ?? '?'}`;
     const verdict = el('b', { textContent: result.text });
