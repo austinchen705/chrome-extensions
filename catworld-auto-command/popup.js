@@ -19,9 +19,9 @@ async function getTab() {
   return tab;
 }
 
-// 隨機指令：每個指令一列（指令、最短、最長秒數）
-function randomRow(item) {
-  const command = element('input', { type: 'text', value: item.command, placeholder: '例：look', title: '指令' });
+// 固定指令與隨機指令都是每個指令一列（指令、最短、最長秒數）：固定的列在 #fixedItems、隨機的在 #randomItems
+function itemRow(item, placeholder) {
+  const command = element('input', { type: 'text', value: item.command, placeholder, title: '指令' });
   const min = element('input', { type: 'number', min: 1, value: item.minSeconds, title: '最短秒數' });
   const max = element('input', { type: 'number', min: 1, value: item.maxSeconds, title: '最長秒數' });
   const remove = element('button', { type: 'button', className: 'x', textContent: '✕', title: '刪除這個指令' });
@@ -30,24 +30,29 @@ function randomRow(item) {
   return row;
 }
 
-function renderRandomItems(items) {
-  $('randomItems').replaceChildren(...items.map(randomRow));
+const ITEM_LISTS = { fixedItems: { add: 'addFixed', placeholder: '例：ps;px' }, randomItems: { add: 'addRandom', placeholder: '例：look' } };
+
+function renderItems(id, items) {
+  $(id).replaceChildren(...items.map(item => itemRow(item, ITEM_LISTS[id].placeholder)));
 }
 
-$('addRandom').addEventListener('click', () => {
-  $('randomItems').append(randomRow({ command: '', minSeconds: CatworldTimer.DEFAULT_MIN, maxSeconds: CatworldTimer.DEFAULT_MAX }));
+function readItems(id) {
+  const get = (row, name) => row.querySelector(`[data-f="${name}"]`);
+  return [...$(id).children]
+    .map(row => ({ command: get(row, 'command').value.trim(), minSeconds: Number(get(row, 'min').value), maxSeconds: Number(get(row, 'max').value) }))
+    .filter(item => item.command);
+}
+
+Object.entries(ITEM_LISTS).forEach(([id, { add, placeholder }]) => {
+  $(add).addEventListener('click', () => {
+    $(id).append(itemRow({ command: '', minSeconds: CatworldTimer.DEFAULT_MIN, maxSeconds: CatworldTimer.DEFAULT_MAX }, placeholder));
+  });
 });
 
 function readSettings() {
-  const lines = id => $(id).value.split('\n').map(x => x.trim()).filter(Boolean);
-  const get = (row, name) => row.querySelector(`[data-f="${name}"]`);
   return {
-    commands: lines('commands'),
-    randomItems: [...$('randomItems').children]
-      .map(row => ({ command: get(row, 'command').value.trim(), minSeconds: Number(get(row, 'min').value), maxSeconds: Number(get(row, 'max').value) }))
-      .filter(item => item.command),
-    minSeconds: Number($('minSeconds').value),
-    maxSeconds: Number($('maxSeconds').value),
+    fixedItems: readItems('fixedItems'),
+    randomItems: readItems('randomItems'),
     commandDelayMs: Number($('commandDelayMs').value)
   };
 }
@@ -94,14 +99,15 @@ async function send(message) {
 $('start').addEventListener('click', async () => {
   try {
     const settings = readSettings();
-    if (!settings.commands.length && !settings.randomItems.length) throw new Error('至少要有一個指令');
-    if (settings.maxSeconds < settings.minSeconds) throw new Error('最長秒數不能小於最短秒數');
+    if (!settings.fixedItems.length && !settings.randomItems.length) throw new Error('至少要有一個指令');
+    const badFixed = settings.fixedItems.find(item => item.maxSeconds < item.minSeconds);
+    if (badFixed) throw new Error(`固定指令「${badFixed.command}」的最長秒數不能小於最短秒數`);
     const badRandom = settings.randomItems.find(item => item.maxSeconds < item.minSeconds);
     if (badRandom) throw new Error(`隨機指令「${badRandom.command}」的最長秒數不能小於最短秒數`);
     await chrome.storage.local.set({ settings });
     await send({ type: 'START', settings });
-    const randomText = settings.randomItems.length ? `；隨機：${settings.randomItems.map(item => item.command).join(' / ')}` : '';
-    setStatus(`執行中：${settings.commands.join(' → ')}${randomText}`);
+    const listText = (label, items) => (items.length ? `${label}：${items.map(item => item.command).join(' / ')}` : '');
+    setStatus(`執行中：${[listText('固定', settings.fixedItems), listText('隨機', settings.randomItems)].filter(Boolean).join('；')}`);
   } catch (e) { setStatus(e.message, 'error'); }
 });
 
@@ -599,13 +605,13 @@ function createTriggerPane(group) {
 
 const panes = Object.fromEntries(Engine.GROUPS.map(group => [group.id, createTriggerPane(group)]));
 
-// 定時分頁的倒數：固定指令的下一輪、隨機指令的下一次
+// 定時分頁的倒數：固定指令每一項的下一次、隨機指令的下一次
 function renderCountdown(status) {
   const left = at => `${Math.max(0, Math.ceil((at - Date.now()) / 1000))} 秒後`;
   const parts = [];
   if (status?.running) {
     const settings = status.settings || {};
-    if (settings.commands?.length) parts.push(`固定指令（${settings.commands.join(' → ')}）：${status.nextRunAt ? left(status.nextRunAt) : '送出中…'}`);
+    (status.fixed || []).forEach(entry => parts.push(`固定 ${entry.command}：${left(entry.at)}`));
     if (CatworldTimer.normalizeRandomItems(settings).length) {
       parts.push(`隨機指令：${status.nextRandomAt ? `${status.nextRandomCommand}，${left(status.nextRandomAt)}` : '—'}`);
     }
@@ -639,14 +645,11 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   showEquipmentKeep();
   zapThresholds = CatworldZapMobs.normalizeThresholds(data.zapThresholds);
   showZapThresholds();
-  if (data.settings) {
-    $('commands').value = (data.settings.commands || ['ps','px']).join('\n');
-    $('minSeconds').value = data.settings.minSeconds ?? 30;
-    $('maxSeconds').value = data.settings.maxSeconds ?? 40;
-    $('commandDelayMs').value = data.settings.commandDelayMs ?? 500;
-  }
-  // 舊格式（一行一個 + 共用秒數）由 normalizeRandomItems 轉成每個指令一列
-  renderRandomItems(CatworldTimer.normalizeRandomItems(data.settings));
+  if (data.settings) $('commandDelayMs').value = data.settings.commandDelayMs ?? 500;
+  // 舊格式（固定：一行一個 + 共用秒數；隨機：randomCommands + 共用秒數）由 normalizeFixedItems／normalizeRandomItems 轉成每個指令一列；
+  // 固定指令從沒設定過時是預設的 ps;px
+  renderItems('fixedItems', CatworldTimer.normalizeFixedItems(data.settings));
+  renderItems('randomItems', CatworldTimer.normalizeRandomItems(data.settings));
   // 舊版只有一組觸發設定（triggerSettings），升級時整份放進練功
   const savedGroups = Engine.loadGroupSettings(data);
   Object.values(panes).forEach(pane => pane.render(savedGroups[pane.group.id]));

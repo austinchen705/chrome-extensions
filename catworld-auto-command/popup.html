@@ -30,7 +30,7 @@
     .ritem { display:grid; grid-template-columns:minmax(0, 1fr) 62px 62px 22px; gap:6px; align-items:center; margin-top:6px; }
     .ritem input { padding:6px 8px; }
     .rhead { font-size:11px; color:#777; margin-top:2px; }
-    #addRandom { margin-top:8px; width:100%; background:#f4f4f4; }
+    .add-item { margin-top:8px; width:100%; background:#f4f4f4; }
     .tabs { display:flex; gap:4px; background:#f0f0f0; border-radius:9px; padding:3px; margin-bottom:10px; }
     .tabs button { padding:6px 0; background:transparent; color:#666; font-size:13px; }
     .tabs button[aria-selected="true"] { background:#fff; color:#222; box-shadow:0 1px 3px rgba(0,0,0,.18); }
@@ -86,19 +86,17 @@
   <div data-pane="timer">
     <div class="status" id="status">狀態：讀取中…</div>
     <div class="status" id="countdown">下一輪：—</div>
-    <label>固定指令（一行一個，每輪全部依序送出）</label>
-    <textarea id="commands">ps
-px</textarea>
-    <div class="row">
-      <div><label>固定：最短秒數</label><input id="minSeconds" type="number" min="1" value="30"></div>
-      <div><label>固定：最長秒數</label><input id="maxSeconds" type="number" min="1" value="40"></div>
-    </div>
+    <label>固定指令（每一項各自計時，到時間就送出）</label>
+    <div class="ritem rhead"><span>指令</span><span>最短（秒）</span><span>最長（秒）</span><span></span></div>
+    <div id="fixedItems"></div>
+    <button id="addFixed" class="add-item" type="button">＋ 新增固定指令</button>
+    <p class="hint tight">每一項開始時先送一次，之後在自己的秒數範圍內隨機等一段時間再送，彼此不等；要依序送好幾個指令就用 ; 接起來（例如 ps;px）。</p>
     <label>指令間隔（毫秒）</label>
     <input id="commandDelayMs" type="number" min="0" value="500">
     <label>隨機指令（先隨機挑一個，等它自己的時間才送出）</label>
     <div class="ritem rhead"><span>指令</span><span>最短（秒）</span><span>最長（秒）</span><span></span></div>
     <div id="randomItems"></div>
-    <button id="addRandom" type="button">＋ 新增隨機指令</button>
+    <button id="addRandom" class="add-item" type="button">＋ 新增隨機指令</button>
     <p class="hint tight">每個指令被挑中的機率一樣；秒數只決定「挑中它之後要等多久」，到時間才送出，送出後再挑下一個。</p>
     <div class="buttons">
       <button id="start">開始</button><button id="stop">停止</button>

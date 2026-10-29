@@ -31,10 +31,10 @@
 - 測試：`tests/captcha-grid.test.js`（解碼：合成字形、八種真實版面）、`tests/captcha-solve.test.js`（整個 content script 在 jsdom 裡跑、計時器縮小 `SCALE` 倍：答案送出、有回應恢復、沒回應重送 3 次後停、通知送不出去也要停、領獎提示併進同一輪、讀不出就停）。底座在 `tests/helpers/game-page.js`。新字形：先把真實輸出放進 fixtures，用 `node tools/captcha-grid.js <檔> --debug` 看矩陣，確認後貼進 `LIBRARY`。
 - 樣本收集：`content.js` 的 `reportSample` 在每回合結束（`endCaptcha`＝passed、`retryCaptcha` 滿次數＝silent、`solveCaptcha` 讀不出＝unknown）送 `CAPTCHA_SAMPLE`（`{ outcome, answer, attempts, html }`），不等結果、送不出去不影響流程。`background.js` 的 `uploadCaptchaSample` 讀 `chrome.storage.local.captchaSampleUrl`（`onInstalled` 在這個鍵從沒設定過時帶入 `CAPTCHA_SAMPLE_DEFAULT_URL`＝作者的收集表，和 `sharedSources` 同一個 handler；空的就不碰網路；**content script 不讀這個鍵**），補上 `version` 後以 `text/plain` POST 到 Apps Script（JSON 會觸發 CORS 預檢而 Apps Script 不回應預檢；POST 會 302 到 `script.googleusercontent.com`，所以 `host_permissions` 要同時有 `script.google.com` 與 `*.googleusercontent.com`），15 秒逾時、不重試，結果存 `storage.session.captchaSampleLastResult` 給設定頁顯示；設定頁只收 `https://script.google.com/macros/` 開頭的網址（別的主機沒權限、會悄悄失敗）。Apps Script 的 `doPost` 範例與部署步驟只寫在 README「驗證碼樣本收集」。測試：`tests/captcha-solve.test.js`（三種結果各送一筆、樣本的 HTML 可直接解碼）、`tests/captcha-sample-background.test.js`（vm 執行 background：安裝時帶入預設網址、有網址才打、只收遊戲頁、失敗不丟例外且不影響警報、逾時）、`tests/captcha-sample-ui.test.js`（設定頁欄位與結果列）。
 
-## 定時分頁的隨機指令
+## 定時分頁的固定指令與隨機指令
 
-- 設定格式是 `settings.randomItems: [{ command, minSeconds, maxSeconds }]`，轉換與抽選在 `timer-settings.js`（content script 與 popup 共用，manifest、popup.html、popup 的備援注入都要載入，且要在 `content.js` 之前）。
-- 舊格式（`randomCommands` + `randomMinSeconds` / `randomMaxSeconds`）由 `normalizeRandomItems` 轉換；**不能在 `content.js` 的預設設定裡放 `randomItems`**，否則空陣列會蓋掉升級前存下的舊設定（測試 14i、15i 會擋）。
+- 設定格式是 `settings.fixedItems` 與 `settings.randomItems`，都是 `[{ command, minSeconds, maxSeconds }]`，轉換與抽選在 `timer-settings.js`（content script 與 popup 共用，manifest、popup.html、popup 的備援注入都要載入，且要在 `content.js` 之前）。固定指令每一項各自循環（`content.js` 的 `fixedRuns`：開始時先送一次，之後在自己的秒數內隨機等再送，彼此不等；`STATUS` 回 `fixed: [{ command, at }]`）；隨機指令先挑一個再等它自己的秒數。
+- 舊格式由 `normalizeFixedItems`（`commands` + `minSeconds` / `maxSeconds`：轉成一項、指令用 `;` 接起來，才維持「每輪全部依序送出」；`commands` 也沒有時給預設的 `ps;px`）與 `normalizeRandomItems`（`randomCommands` + `randomMinSeconds` / `randomMaxSeconds`）轉換；**不能在 `content.js` 的預設設定裡放 `fixedItems`、`randomItems`**，否則空陣列會蓋掉升級前存下的舊設定（測試 14i、15i 與 `tests/timer-settings.test.js` 會擋）。
 
 ## 遊戲巨集的 @等待
 

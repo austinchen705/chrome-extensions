@@ -2,13 +2,13 @@
 if (globalThis.__catworldAutoCommandInstalled) return;
 globalThis.__catworldAutoCommandInstalled = true;
 let running = false;
-let loopTimer = null;
 let queueTimer = null;
 let randomTimer = null;
 const queue = [];
 let lastSentAt = 0;
 let stopReason = '';
-let nextRunAt = null;
+// 固定指令每一項各自循環：{ item, timer, at }，at 是下一次送出的時間
+let fixedRuns = [];
 let nextRandomAt = null;
 let nextRandomCommand = null;
 // 狀態觸發與定時循環各有獨立開關；看門狗、送出佇列、關鍵字在任一個開著時都要作用；驗證碼偵測與自動辨識閒置時也作用
@@ -373,13 +373,11 @@ captchaObserver.observe(document.body, {
   subtree: true, childList: true, characterData: true, characterDataOldValue: true
 });
 let settings = {
-  commands: ['ps', 'px'],
-  minSeconds: 30,
-  maxSeconds: 40,
   commandDelayMs: 500
-  // randomItems 不放預設值：沒有這個欄位時，normalizeRandomItems 才會去讀舊格式（randomCommands），
-  // 預設成空陣列會蓋掉升級前存下的隨機指令
+  // fixedItems、randomItems 不放預設值：沒有這個欄位時，normalizeFixedItems／normalizeRandomItems 才會去讀舊格式
+  //（commands + minSeconds／maxSeconds、randomCommands），預設成空陣列會蓋掉升級前存下的指令；固定指令從沒設定過時由 normalizeFixedItems 給預設的 ps;px
 };
+const fixedItems = () => CatworldTimer.normalizeFixedItems(settings);
 const randomItems = () => CatworldTimer.normalizeRandomItems(settings);
 
 // answer：送的是驗證碼答案，不受「辨識中暫停送出」和「因驗證停止後不送指令」限制（停止後手動打 reward 的圖也要幫忙答）
@@ -412,32 +410,21 @@ function sendCommand(command, { answer = false } = {}) {
 }
 
 function clearTimers() {
-  nextRunAt = null;
+  fixedRuns.forEach(run => clearTimeout(run.timer));
+  fixedRuns = [];
   nextRandomAt = null;
   nextRandomCommand = null;
-  if (loopTimer) clearTimeout(loopTimer);
   if (queueTimer) clearTimeout(queueTimer);
   if (randomTimer) clearTimeout(randomTimer);
   if (watchdogTimer) clearTimeout(watchdogTimer);
   watchdogTimer = null;
   clearCaptcha();
-  loopTimer = null;
   queueTimer = null;
   randomTimer = null;
   dropQueue('timer');
   cancelMacros('timer');
   // 上面清掉了送出佇列的計時器；佇列裡若還有觸發的指令，要重新排程
   pumpQueue();
-}
-
-function scheduleNextRound() {
-  if (!running) return;
-  const min = Math.max(1, Number(settings.minSeconds) || 30);
-  const max = Math.max(min, Number(settings.maxSeconds) || min);
-  const delay = (min + Math.random() * (max - min)) * 1000;
-  loopTimer = setTimeout(runRound, delay);
-  nextRunAt = Date.now() + delay;
-  chrome.storage.local.set({ nextRunAt });
 }
 
 // 固定、隨機兩條循環與狀態觸發共用同一個送出佇列，任兩次送出至少間隔 commandDelayMs；
@@ -480,12 +467,18 @@ function pumpQueue() {
   }, wait);
 }
 
-function runRound() {
+// 固定指令：每一項各自循環，開始時先送一次，之後在「它自己的」最短～最長秒數之間隨機等一段時間再送，彼此不等
+function startFixedItems() {
+  fixedRuns = fixedItems().map(item => ({ item, timer: null, at: null }));
+  fixedRuns.forEach(runFixedItem);
+}
+
+function runFixedItem(run) {
   if (!running) return;
-  nextRunAt = null;
-  chrome.storage.local.set({ nextRunAt: null });
-  settings.commands.filter(cmd => cmd.trim()).forEach(cmd => queueCommand(cmd, 'timer'));
-  scheduleNextRound();
+  queueCommand(run.item.command, 'timer');
+  const delay = CatworldTimer.delayMs(run.item);
+  run.timer = setTimeout(() => runFixedItem(run), delay);
+  run.at = Date.now() + delay;
 }
 
 // 隨機指令：先均勻隨機挑一個，再在「它自己的」最短～最長秒數之間隨機等一段時間，到時間才送出，然後再挑下一個
@@ -522,8 +515,8 @@ async function start(newSettings) {
   settings = { ...settings, ...newSettings };
   armDetection();
   running = true;
-  await chrome.storage.local.set({ running: true, settings, nextRunAt: null, stopReason: '' });
-  if (settings.commands.length) runRound();
+  await chrome.storage.local.set({ running: true, settings, stopReason: '' });
+  startFixedItems();
   scheduleRandomCommand();
   renderPanel();
 }
@@ -533,7 +526,7 @@ async function stop(reason = '已停止') {
   running = false;
   clearTimers();
   renderPanel();
-  await chrome.storage.local.set({ running: false, nextRunAt: null, stopReason });
+  await chrome.storage.local.set({ running: false, stopReason });
 }
 
 // 狀態觸發：每秒讀一次 #monitor 的數值交給規則引擎判斷，要送的指令走共用佇列
@@ -852,7 +845,7 @@ function initPanel() {
   root.addEventListener('mousedown', e => e.preventDefault());
   panel.start.addEventListener('click', () => {
     if (running) return;
-    if (!settings.commands.length && !randomItems().length) {
+    if (!fixedItems().length && !randomItems().length) {
       stop('尚未設定指令，請先在 popup 設定');
       return;
     }
@@ -1054,11 +1047,9 @@ function renderPanel() {
   panel.confirm.hidden = !ringing;
   let timerText = stopReason || '未啟動';
   if (running) {
-    // 倒數與「到時候要執行哪些指令」：固定指令一輪依序送出，隨機指令是被挑中的那一個
+    // 倒數與「到時候要執行哪些指令」：固定指令每一項一行，隨機指令是被挑中的那一個
     const left = at => `${Math.max(0, Math.ceil((at - Date.now()) / 1000))} 秒後`;
-    const fixed = settings.commands.map(command => command.trim()).filter(Boolean);
-    const lines = [];
-    if (fixed.length) lines.push(nextRunAt ? `固定 ${left(nextRunAt)}：${fixed.join(' → ')}` : '固定 送出中…');
+    const lines = fixedRuns.map(run => `固定 ${left(run.at)}：${run.item.command}`);
     if (nextRandomAt) lines.push(`隨機 ${left(nextRandomAt)}：${nextRandomCommand}`);
     timerText = lines.join('\n') || '執行中';
   }
@@ -1130,7 +1121,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       ringing,
       settings,
       stopReason,
-      nextRunAt,
+      fixed: fixedRuns.map(run => ({ command: run.item.command, at: run.at })),
       nextRandomAt,
       nextRandomCommand,
       macros: macroRuns.size,
@@ -1160,7 +1151,7 @@ chrome.storage.local.get(['running', 'settings', 'triggerGroupSettings', 'trigge
   groupList.forEach(item => { item.config = savedGroups[item.id]; });
   // Safety choice: a page reload does not silently resume automation.
   running = false;
-  if (data.running) chrome.storage.local.set({ running: false, nextRunAt: null, stopReason });
+  if (data.running) chrome.storage.local.set({ running: false, stopReason });
   renderPanel();
 });
 
