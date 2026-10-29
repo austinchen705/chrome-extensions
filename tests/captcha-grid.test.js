@@ -178,6 +178,18 @@ for (const [name, expected] of [
   ['noise-inverted-reward-367.html', '367'],
   ['symbol-reward-5857.html', '5857'],
   ['noise-highlight-697.html', '697'],
+  ['noise-highlight-after-status-656.html', '656'],
+  ['symbol-reward-5995.html', '5995'],
+  ['noise-highlight-reward-999.html', '999'],
+  ['grid-after-status-257.html', '257'],
+  ['symbol-sign-after-login-3844.html', '3844'],
+  ['noise-highlight-sign-290.html', '290'],
+  ['noise-highlight-after-m-81981.html', '81981'],
+  ['noise-highlight-reward-952.html', '952'],
+  ['symbol-reward-76325.html', '76325'],
+  ['symbol-after-m-8715.html', '8715'],
+  ['noise-highlight-reward-361.html', '361'],
+  ['grid-reward-after-status-3880.html', '3880'],
 ]) {
   test(`真實樣本 ${name} 解出 ${expected}`, () => {
     const result = cg.decodeHtml(fixture(name));
