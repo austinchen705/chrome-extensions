@@ -122,7 +122,7 @@ const meets = (rule, current) => (isUpper(rule) ? current >= rule.value : curren
 const recovered = (rule, current) => (isUpper(rule) ? current < rearmLevel(rule) : current > rearmLevel(rule));
 const improved = (rule, current, from) => (isUpper(rule) ? current < from : current > from);
 
-// io: { now(), readStat(name) → { value, max } | null, isNormal() → true | false | null, send(commands), onDisable(index, label, reason), random?() }
+// io: { now(), readStat(name) → { value, max } | null, isNormal() → true | false | null, send(commands, index), onDisable(index, label, reason), random?() }
 function createEngine(rawConfig, io) {
   const config = normalizeConfig(rawConfig);
   const runtime = config.rules.map(rule => ({
@@ -179,7 +179,7 @@ function createEngine(rawConfig, io) {
       state.pendingUntil = executeAt;
       pending.push({ index, at: executeAt });
     } else {
-      io.send(rule.commands);
+      io.send(rule.commands, index);
     }
   }
 
@@ -190,7 +190,7 @@ function createEngine(rawConfig, io) {
     due.forEach(item => {
       runtime[item.index].pendingUntil = null;
       if (config.requireNormal && io.isNormal() !== true) return;
-      io.send(config.rules[item.index].commands);
+      io.send(config.rules[item.index].commands, item.index);
     });
   }
 

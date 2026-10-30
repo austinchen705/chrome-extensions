@@ -429,6 +429,10 @@ function createTriggerPane(group) {
     });
   }
 
+  // 這條規則的指令送出後就停止這一組觸發（只停這一組，定時與另一組不受影響）；數值規則與關鍵字規則都有
+  const stopGroupField = rule => element('label', { className: 'check', title: '這條規則的指令送出後，這一組觸發就停止；定時送出與另一組觸發不受影響' },
+    field('stopGroup', element('input', { type: 'checkbox', checked: rule.stopGroup === true })), `命中送出後停止${group.name}觸發`);
+
   function ruleCard(rule) {
     const stat = field('stat', element('select', { title: '項目' }, ...STAT_NAMES.map(name => element('option', { value: name, textContent: name, selected: name === rule.stat }))));
     const op = field('op', element('select', { title: '方向：≤ 目前值小於等於門檻就觸發，≥ 目前值大於等於門檻就觸發' },
@@ -454,7 +458,7 @@ function createTriggerPane(group) {
       element('div', { className: 'row' },
         element('div', {}, element('label', { textContent: '冷卻（秒，最少 3）' }), cooldown),
         element('div', {}, element('label', { textContent: '回復緩衝（％）' }), buffer)),
-      rearm);
+      rearm, stopGroupField(rule));
 
     const updateRearm = () => {
       const text = Engine.rearmText({ op: op.value, unit: unit.value, value: Number(value.value) || 0, buffer: Number(buffer.value) || 0 });
@@ -480,7 +484,7 @@ function createTriggerPane(group) {
       element('div', { className: 'rule-head' }, enabled, element('span', { className: 'kind', textContent: '關鍵字' }), element('span', { className: 'grow' }, pill), again, remove),
       element('label', { textContent: '關鍵字（遊戲新出現的文字含有就觸發，不分大小寫）' }), pattern,
       element('label', { textContent: '送出的指令（一行一個，依序送出）' }), commands,
-      element('label', { textContent: '冷卻（秒，最少 3）' }), cooldown);
+      element('label', { textContent: '冷卻（秒，最少 3）' }), cooldown, stopGroupField(rule));
     card.dataset.kind = 'keyword';
     wireRuleControls(card, remove, again);
     return card;
@@ -499,6 +503,7 @@ function createTriggerPane(group) {
           pattern: get(card, 'pattern').value.trim(),
           commands: lines(card, 'commands'),
           cooldown: Number(get(card, 'cooldown').value),
+          stopGroup: get(card, 'stopGroup').checked,
         }
         : {
           kind: 'stat',
@@ -510,6 +515,7 @@ function createTriggerPane(group) {
           commands: lines(card, 'commands'),
           cooldown: Number(get(card, 'cooldown').value),
           buffer: Number(get(card, 'buffer').value),
+          stopGroup: get(card, 'stopGroup').checked,
         })),
       limitFires: $g('limitFires').checked,
       limitIneffective: $g('limitIneffective').checked,
