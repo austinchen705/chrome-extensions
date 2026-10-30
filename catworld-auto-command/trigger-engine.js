@@ -27,6 +27,8 @@
 //   2. 冷卻期間（waiting）出現的關鍵字直接丟掉，不補送：冷卻結束後沒有新的關鍵字文字就不會再觸發。
 //   3. 以 > 開頭的行是指令回聲（自己或使用者打的指令），整行略過。
 // 關鍵字規則沒有「有沒有效果」可判斷，limitIneffective 不適用；三道限制關閉時，冷卻（最少 3 秒）是唯一的頻率限制。
+// 規則的 stopGroup（命中送出後停止這一組）由呼叫端的 send 處理，引擎只把它帶在規則上；勾了 stopGroup 的規則可以不填指令
+//（只停止、不送任何指令），所以「指令為空」只在沒勾 stopGroup 時才算規則無效。
 (() => {
 if (globalThis.CatworldTriggerEngine) return;
 
@@ -64,18 +66,21 @@ function positive(value, fallback, min) {
 function normalizeRule(raw = {}) {
   const commands = (Array.isArray(raw.commands) ? raw.commands : String(raw.commands || '').split('\n'))
     .map(command => String(command).trim()).filter(Boolean);
+  const stopGroup = raw.stopGroup === true;
+  const hasAction = commands.length > 0 || stopGroup;
   if (raw.kind === 'keyword') {
     const pattern = String(raw.pattern ?? '').trim();
     return {
       kind: 'keyword',
-      enabled: raw.enabled !== false && pattern !== '' && commands.length > 0,
+      enabled: raw.enabled !== false && pattern !== '' && hasAction,
       pattern,
       commands,
+      stopGroup,
       cooldown: positive(raw.cooldown, DEFAULTS.cooldown, MIN_COOLDOWN_SEC),
     };
   }
   const value = Number(raw.value);
-  const valid = Boolean(STATS[raw.stat]) && Number.isFinite(value) && value >= 0 && commands.length > 0;
+  const valid = Boolean(STATS[raw.stat]) && Number.isFinite(value) && value >= 0 && hasAction;
   return {
     kind: 'stat',
     enabled: raw.enabled !== false && valid,
@@ -84,6 +89,7 @@ function normalizeRule(raw = {}) {
     unit: raw.unit === 'pct' ? 'pct' : 'abs',
     value,
     commands,
+    stopGroup,
     cooldown: positive(raw.cooldown, DEFAULTS.cooldown, MIN_COOLDOWN_SEC),
     buffer: positive(raw.buffer, DEFAULTS.buffer, 0),
   };
@@ -283,7 +289,7 @@ function createEngine(rawConfig, io) {
         let text;
         if (state.phase === 'off') text = '未啟用';
         else if (state.phase === 'disabled') text = `已停用：${state.note}`;
-        else if (pendingSeconds !== null) text = `命中，${pendingSeconds} 秒後執行：${rule.commands.join(' → ')}`;
+        else if (pendingSeconds !== null) text = `命中，${pendingSeconds} 秒後${rule.commands.length ? `執行：${rule.commands.join(' → ')}` : '停止這組觸發'}`;
         else if (state.phase === 'waiting') text = keyword ? `已觸發 ${count}，冷卻中` : `已觸發 ${count}，等待回復 ${rearmText(rule)}`;
         else text = state.note || (keyword ? '待命（等待關鍵字）' : `待命（目前 ${shown(rule, state.current)}）`);
         return { label: ruleLabel(rule), kind: rule.kind, phase: state.phase, text, rearm: keyword ? null : rearmLevel(rule), fires, commands: rule.commands, pendingSeconds };

@@ -98,3 +98,17 @@ ui('two rules hit by the same text: both commands are sent, the group stops once
     page.close();
   }
 });
+
+ui('a flagged rule with no commands still stops the group (stop-only rule)', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+  assert.equal((await page.ask({ type: 'START_TRIGGER', group: 'practice', config: config([keyword('沒有任何進步', [], { stopGroup: true })]) })).ok, true, 'a stop-only rule is enough to start the group');
+  assert.equal((await practice(page)).on, true);
+  page.output('<span>你的基礎不好，並沒有任何進步。</span>');
+  assert.ok(await waitFor(async () => (await practice(page)).on === false, 1000), 'the group stops without sending anything');
+  assert.equal(page.sent.length, 0, 'no command is sent');
+  assert.match((await practice(page)).note, /沒有任何進步/);
+  } finally {
+    page.close();
+  }
+});

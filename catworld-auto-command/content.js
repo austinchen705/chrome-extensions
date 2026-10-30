@@ -597,9 +597,9 @@ async function startTriggers(group, config) {
       // 規則勾了「命中送出後停止這組觸發」：先停這一組（stopTriggers 會丟掉這一組還沒送的指令，所以要在排指令之前停），
       // 再把這次的指令當巨集送出：巨集執行中算 active()，定時與另一組都沒在跑時最後一個指令才送得出去。
       // 同一輪有好幾條規則一起送出時只停一次（再 stopTriggers 會把前一條剛啟動的巨集取消掉），
-      // 停了之後同一輪才送出的其他規則也走巨集，它們的指令才送得出去
+      // 停了之後同一輪才送出的其他規則也走巨集，它們的指令才送得出去；只勾停止、沒填指令的規則就只停止
       if (group.on) stopTriggers(group, `規則「${group.engine.snapshot().rules[index].label}」命中，已依設定停止${group.name}觸發`);
-      startMacro(commands.join(';'), `trigger:${group.id}`);
+      if (commands.length) startMacro(commands.join(';'), `trigger:${group.id}`);
     },
     onDisable: (index, label, reason) => alertOnly(`${group.name}觸發規則「${label}」已停用：${reason}`),
   });
