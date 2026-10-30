@@ -63,7 +63,7 @@ let persistentAlert = false;
 let watchdogTimer = null;
 let lastCommand = '';
 // 驗證碼自動辨識（閒置時也作用，手動打 reward 領獎也會幫忙輸入）：偵測到圖或提示後暫停送出佇列，等圖印完（CAPTCHA_QUIET_MS 內沒有新輸出）
-// 用 CatworldCaptchaGrid 解出數字，再隨機等 CAPTCHA_SEND_DELAY_MS 範圍內的時間才送出（像人看完圖再打字、每次快慢不同；等的期間又有新輸出就接上去、重新等靜默）。
+// 用 CatworldCaptchaGrid 解出數字，再隨機等 CAPTCHA_SEND_DELAY_MS 範圍內的時間才送出（像人看完圖再打字、每次快慢不同；等的期間的一般輸出只接進樣本、照原定時間送出，又偵測到一張新圖才取消重來）。
 // 答錯時遊戲不會有任何回應，所以「送出答案後 NO_REPLY_MS 沒有新輸出」就是答錯：重送同一個答案，滿 CAPTCHA_MAX_ATTEMPTS 次才停止並警報；
 // 送出後任何新輸出（不是驗證碼、不是回聲）就當作通過，恢復送出。解不出來（沒看過的字形、沒有數字）直接停止並警報，
 // 字形矩陣印在 console（[catworld]），貼進 captcha-grid.js 的 LIBRARY 就能擴充
@@ -211,8 +211,10 @@ function checkCaptcha() {
   return false;
 }
 // 開始或延續一輪自動辨識：圖還在收就把新批次接上去並重新等靜默；答完又來一張就換新圖、次數延續。
+// 讀到數字等著送的期間，聊天、房間訊息、領獎提示那行都只接進樣本，不動送出時間（忙碌的房間每幾秒就有輸出，重抽會一直送不出去）；
+// 只有偵測器又看到一張圖（newImage）才取消送出、重新辨識
 // 畫面上的提示數量在這裡就當成新基準，答案送出後遊戲回應時 checkCaptcha 才不會把同一個提示再當成新的驗證碼
-function beginCaptcha(html) {
+function beginCaptcha(html, { newImage = false } = {}) {
   captchaCount = countCaptcha();
   if (captcha?.answer) {
     captcha.html = '';
@@ -220,13 +222,16 @@ function beginCaptcha(html) {
   }
   captcha ??= { html: '', read: '', sendSeconds: 0, answer: '', attempts: 0, quietTimer: null, sendTimer: null };
   captcha.html += html;
-  if (captcha.quietTimer) clearTimeout(captcha.quietTimer);
-  // 讀到數字、還沒送就又有新輸出：取消送出，接上去重新辨識
   if (captcha.sendTimer) {
+    if (!newImage) {
+      renderPanel();
+      return;
+    }
     clearTimeout(captcha.sendTimer);
     captcha.sendTimer = null;
     captcha.read = '';
   }
+  if (captcha.quietTimer) clearTimeout(captcha.quietTimer);
   captcha.quietTimer = setTimeout(solveCaptcha, CAPTCHA_QUIET_MS);
   renderPanel();
 }
@@ -347,7 +352,7 @@ const captchaObserver = new MutationObserver(allRecords => {
   });
   // 圖還在收時每一批都接上去（偵測器命中那一刻已含這一批，不能再接一次）；新的一張圖從偵測器看到的文字開始
   if (artHit || addedPrompt) {
-    beginCaptcha(captcha && !captcha.answer ? addedHtml : artHit ? artWatcher.lastHitHtml() : artWatcher.recentHtml());
+    beginCaptcha(captcha && !captcha.answer ? addedHtml : artHit ? artWatcher.lastHitHtml() : artWatcher.recentHtml(), { newImage: artHit });
     return;
   }
   if (checkCaptcha()) return;

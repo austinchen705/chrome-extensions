@@ -1,5 +1,5 @@
 // 驗證碼自動辨識（整個 content script 在 jsdom 裡跑，用 tests/fixtures/captcha/ 的真實樣本）：
-// 偵測到圖後暫停送出、等圖印完再解出數字、隨機等 3～10 秒才送出（等的期間又有輸出就接上去重新等）；遊戲有回應就通過並恢復送出；答錯遊戲不會回應，所以沒回應就重送、
+// 偵測到圖後暫停送出、等圖印完再解出數字、隨機等 3～10 秒才送出（等的期間的一般輸出只接進樣本、不延後送出）；遊戲有回應就通過並恢復送出；答錯遊戲不會回應，所以沒回應就重送、
 // 滿 3 次才停止並警報（通知送不出去也要停）；解不出來直接停。每一回合結束都把樣本（結果、答案、次數、HTML）送給 background（CAPTCHA_SAMPLE）。
 // 頁面的計時器縮小 SCALE 倍（8 秒無回應變 400 毫秒）。
 const assert = require('node:assert/strict');
@@ -74,6 +74,33 @@ ui('output arriving while waiting to send (the reward prompt) joins the round: s
     assert.equal(answers(page, '3608'), 1);
     assert.equal(alerts(page).length, 0);
     assert.deepEqual(outcomes(page), [['passed', '3608', 1]]);
+  } finally {
+    page.close();
+  }
+});
+
+ui('chat and room messages arriving while waiting to send do not postpone the answer: sent once, on the original schedule', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    await page.ask(START);
+    assert.ok(await waitFor(() => page.sent.length >= 1, 4000));
+    page.output(SPRITE);
+    await sleep(QUIET + SEND_MIN / 2);
+    assert.equal(answers(page, '62044'), 0, 'read but not sent yet');
+    // 比最短延遲還密的聊天：若每批輸出都重抽秒數，答案永遠送不出去
+    const chatter = setInterval(() => page.output('小販說道：歡迎光臨，慢慢看。\n'), SEND_MIN / 2);
+    try {
+      assert.ok(await waitFor(() => answers(page, '62044') === 1, SEND_MAX), 'sent within the drawn delay despite the chatter');
+    } finally {
+      clearInterval(chatter);
+    }
+    const afterAnswer = page.sent.length;
+    page.output('<span class="H3">驗證成功。\n</span>&gt; ');
+    assert.ok(await waitFor(() => page.sent.length > afterAnswer, 2000), 'commands resume after the game replies');
+    assert.equal(answers(page, '62044'), 1, 'sent once');
+    assert.equal(alerts(page).length, 0);
+    assert.deepEqual(outcomes(page), [['passed', '62044', 1]]);
+    assert.equal(cg.decodeHtml(samples(page)[0].html).text, '62044', 'the chatter joined the sample without breaking the decode');
   } finally {
     page.close();
   }
