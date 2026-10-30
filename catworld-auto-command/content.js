@@ -52,8 +52,9 @@ function notifyStateChanged() {
   }
 }
 function active() { return running || anyTriggerOn() || macroRuns.size > 0; }
-const captchaPattern = /請輸入上(?:方|面)的數字/g;
-function hasCaptchaText(text) { return /請輸入上(?:方|面)的數字/.test(text || ''); }
+// 提示要在行首才算：收集表裡 259 筆真正的提示都在行首，「> 請輸入上面的數字」是有人把提示文字當指令送進遊戲的回聲，不是遊戲出的題
+const captchaPattern = /(?:^|\n)[ \t]*請輸入上(?:方|面)的數字/g;
+function hasCaptchaText(text) { return /(?:^|\n)[ \t]*請輸入上(?:方|面)的數字/.test(text || ''); }
 let captchaCount = 0;
 const NO_REPLY_MS = 8000;
 const REPEAT_BEEP_MS = 10 * 1000;

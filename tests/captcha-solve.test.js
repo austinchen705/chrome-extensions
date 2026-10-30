@@ -106,6 +106,22 @@ ui('chat and room messages arriving while waiting to send do not postpone the an
   }
 });
 
+ui('an echoed "> 請輸入上面的數字" line (the prompt text sent as a command) is not a captcha: nothing stops, no sample', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    await page.ask(START);
+    assert.ok(await waitFor(() => page.sent.length >= 1, 4000));
+    const before = page.sent.length;
+    page.output('&gt; 請輸入上面的數字\n什麼﹖\n&gt; ');
+    assert.ok(await waitFor(() => page.sent.length > before, 4000), 'commands keep flowing');
+    assert.ok(await page.running(), 'still running');
+    assert.equal(alerts(page).length, 0);
+    assert.deepEqual(outcomes(page), [], 'no captcha round was started');
+  } finally {
+    page.close();
+  }
+});
+
 ui('no reply means a wrong answer: the same answer is resent, and after 3 tries everything stops with an alert', async () => {
   const page = await boot({ scale: SCALE });
   try {
