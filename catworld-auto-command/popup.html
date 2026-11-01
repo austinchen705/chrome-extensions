@@ -129,7 +129,7 @@
 
       <div class="safety">
         <h4>安全機制（預設全部關閉，要用再勾選）</h4>
-        <p class="hint tight">目的：避免指令沒效果時一直重複送。<b>全部關閉時，條件持續成立就每隔冷卻時間重送一次，不會自己停</b>（冷卻最少 3 秒）。</p>
+        <p class="hint tight">目的：避免指令沒效果時一直重複送。<b>全部關閉時，條件持續成立就每隔冷卻時間重送一次，不會自己停</b>（冷卻最少 1 秒）。</p>
         <label class="check"><input id="limitFires-__G__" type="checkbox"> 限制每條規則的觸發次數</label>
         <div class="row">
           <div><label for="maxFires-__G__">最多（次）</label><input id="maxFires-__G__" type="number" min="1" value="5"></div>
@@ -145,7 +145,7 @@
         <input id="globalPerMinute-__G__" type="number" min="1" value="6">
         <p class="hint tight">超過只是延後，不停用規則。</p>
         <label class="check"><input id="requireNormal-__G__" type="checkbox" checked> 角色狀態不是「正常」時不觸發（昏迷、死亡等）</label>
-        <p class="hint tight">每條規則的冷卻（最少 3 秒）與「回復緩衝」在規則裡設定。</p>
+        <p class="hint tight">每條規則的冷卻（最少 1 秒）與「回復緩衝」在規則裡設定。</p>
       </div>
 
       <div class="buttons">

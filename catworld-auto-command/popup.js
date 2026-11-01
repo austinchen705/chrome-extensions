@@ -456,7 +456,7 @@ function createTriggerPane(group) {
       element('div', { className: 'cond' }, stat, op, value, unit),
       element('label', { textContent: '送出的指令（一行一個，依序送出）' }), commands,
       element('div', { className: 'row' },
-        element('div', {}, element('label', { textContent: '冷卻（秒，最少 3）' }), cooldown),
+        element('div', {}, element('label', { textContent: '冷卻（秒，最少 1）' }), cooldown),
         element('div', {}, element('label', { textContent: '回復緩衝（％）' }), buffer)),
       rearm, stopGroupField(rule));
 
@@ -484,7 +484,7 @@ function createTriggerPane(group) {
       element('div', { className: 'rule-head' }, enabled, element('span', { className: 'kind', textContent: '關鍵字' }), element('span', { className: 'grow' }, pill), again, remove),
       element('label', { textContent: '關鍵字（遊戲新出現的文字含有就觸發，不分大小寫）' }), pattern,
       element('label', { textContent: '送出的指令（一行一個，依序送出）' }), commands,
-      element('label', { textContent: '冷卻（秒，最少 3）' }), cooldown, stopGroupField(rule));
+      element('label', { textContent: '冷卻（秒，最少 1）' }), cooldown, stopGroupField(rule));
     card.dataset.kind = 'keyword';
     wireRuleControls(card, remove, again);
     return card;
