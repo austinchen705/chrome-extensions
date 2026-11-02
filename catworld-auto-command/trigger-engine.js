@@ -67,6 +67,7 @@ function normalizeRule(raw = {}) {
   const commands = (Array.isArray(raw.commands) ? raw.commands : String(raw.commands || '').split('\n'))
     .map(command => String(command).trim()).filter(Boolean);
   const stopGroup = raw.stopGroup === true;
+  const priority = raw.priority === true;
   const hasAction = commands.length > 0 || stopGroup;
   if (raw.kind === 'keyword') {
     const pattern = String(raw.pattern ?? '').trim();
@@ -76,6 +77,7 @@ function normalizeRule(raw = {}) {
       pattern,
       commands,
       stopGroup,
+      priority,
       cooldown: positive(raw.cooldown, DEFAULTS.cooldown, MIN_COOLDOWN_SEC),
     };
   }
@@ -90,6 +92,7 @@ function normalizeRule(raw = {}) {
     value,
     commands,
     stopGroup,
+    priority,
     cooldown: positive(raw.cooldown, DEFAULTS.cooldown, MIN_COOLDOWN_SEC),
     buffer: positive(raw.buffer, DEFAULTS.buffer, 0),
   };

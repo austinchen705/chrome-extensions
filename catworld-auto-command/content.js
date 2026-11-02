@@ -453,15 +453,48 @@ function dropQueue(source) {
   }
 }
 
+// 最優先：命中時勾了「最優先」的規則，指令包成 priority 巨集。最前面那個（先命中的）放行，
+// 其他來源排隊的指令不送、等待中的巨集暫停（剩餘的等待時間凍結），它整段做完（含 @等待）才一起繼續；已經送出的收不回來
+const currentPriority = () => [...macroRuns].find(run => run.priority) ?? null;
+const isHeld = run => {
+  const current = currentPriority();
+  return current !== null && run !== current;
+};
+function startWait(run, ms) {
+  run.waitUntil = Date.now() + ms;
+  run.timer = setTimeout(() => advanceMacro(run), ms);
+}
+// 最優先的巨集開始或結束後呼叫：被壓住的巨集凍結等待，放行後接著把剩下的等待時間算完
+function syncHold() {
+  macroRuns.forEach(run => {
+    if (isHeld(run) && run.timer) {
+      clearTimeout(run.timer);
+      run.timer = null;
+      run.frozen = true;
+      run.remaining = Math.max(0, run.waitUntil - Date.now());
+      run.waitUntil = null;
+    } else if (!isHeld(run) && run.frozen) {
+      run.frozen = false;
+      startWait(run, run.remaining);
+    }
+  });
+}
+function nextQueued() {
+  const current = currentPriority();
+  return current ? queue.findIndex(entry => entry.run === current) : (queue.length ? 0 : -1);
+}
+
 function pumpQueue() {
-  if (queueTimer || !queue.length) return;
+  if (queueTimer || nextQueued() < 0) return;
   const gap = Math.max(0, Number(settings.commandDelayMs) || 0);
   const wait = Math.max(0, lastSentAt + gap - Date.now());
   queueTimer = setTimeout(() => {
     queueTimer = null;
     // 驗證碼辨識中先不送（通過後 endCaptcha 會再 pumpQueue）
     if (!active() || captcha || checkCaptcha()) return;
-    const entry = queue.shift();
+    const at = nextQueued();
+    if (at < 0) return;
+    const [entry] = queue.splice(at, 1);
     const result = sendCommand(entry.command);
     if (!result.ok) { stopEverything(result.error); return; }
     lastSentAt = Date.now();
@@ -591,8 +624,10 @@ async function startTriggers(group, config) {
     isNormal: isStatusNormal,
     send: (commands, index) => {
       const stops = config.rules[index]?.stopGroup === true;
+      const priority = config.rules[index]?.priority === true;
       if (!stops && group.on) {
-        commands.forEach(command => queueCommand(command, `trigger:${group.id}`));
+        if (priority && commands.length) startMacro(commands.join(';'), `trigger:${group.id}`, { priority: true });
+        else commands.forEach(command => queueCommand(command, `trigger:${group.id}`));
         return;
       }
       // 規則勾了「命中送出後停止這組觸發」：先停這一組（stopTriggers 會丟掉這一組還沒送的指令，所以要在排指令之前停），
@@ -600,7 +635,7 @@ async function startTriggers(group, config) {
       // 同一輪有好幾條規則一起送出時只停一次（再 stopTriggers 會把前一條剛啟動的巨集取消掉），
       // 停了之後同一輪才送出的其他規則也走巨集，它們的指令才送得出去；只勾停止、沒填指令的規則就只停止
       if (group.on) stopTriggers(group, `規則「${group.engine.snapshot().rules[index].label}」命中，已依設定停止${group.name}觸發`);
-      if (commands.length) startMacro(commands.join(';'), `trigger:${group.id}`);
+      if (commands.length) startMacro(commands.join(';'), `trigger:${group.id}`, { priority });
     },
     onDisable: (index, label, reason) => alertOnly(`${group.name}觸發規則「${label}」已停用：${reason}`),
   });
@@ -638,7 +673,7 @@ function stopEverything(reason) {
 // 遊戲巨集的 @等待：按下有等待的巨集鍵時，在遊戲處理之前攔下來，自己照順序執行。
 // 指令走同一個送出佇列（遵守指令間隔、驗證碼偵測、看門狗），等待時不擋住其他功能，別的來源的指令可以插進來。
 // 一個巨集的「執行」要到最後一個指令真的送出才算結束（active() 才不會在最後一個指令還在排隊時就變成 false）
-function startMacro(text, owner = 'user') {
+function startMacro(text, owner = 'user', { priority = false } = {}) {
   const parsed = CatworldMacro.parseSteps(text);
   if (parsed.error) {
     macroNote = { text: `巨集沒有執行：${parsed.error}`, until: Date.now() + 8000 };
@@ -647,8 +682,9 @@ function startMacro(text, owner = 'user') {
   }
   armDetection();
   macroNote = null;
-  const run = { owner, steps: parsed.steps, index: 0, pending: 0, timer: null, waitUntil: null, nextCommand: null };
+  const run = { owner, priority, steps: parsed.steps, index: 0, pending: 0, timer: null, waitUntil: null, nextCommand: null, frozen: false, remaining: 0 };
   macroRuns.add(run);
+  syncHold();
   advanceMacro(run);
   renderPanel();
   return true;
@@ -657,13 +693,19 @@ function startMacro(text, owner = 'user') {
 function advanceMacro(run) {
   run.timer = null;
   run.waitUntil = null;
+  run.frozen = false;
   while (run.index < run.steps.length) {
     const step = run.steps[run.index++];
     if (step.wait) {
       const ms = CatworldMacro.waitMs(step.wait);
       run.waitUntil = Date.now() + ms;
       run.nextCommand = run.steps.slice(run.index).find(next => next.command !== undefined)?.command ?? null;
-      run.timer = setTimeout(() => advanceMacro(run), ms);
+      if (isHeld(run)) {
+        run.frozen = true;
+        run.remaining = ms;
+      } else {
+        startWait(run, ms);
+      }
       return;
     }
     run.pending += 1;
@@ -673,17 +715,23 @@ function advanceMacro(run) {
 }
 
 function finishMacroIfDone(run) {
-  if (run.index >= run.steps.length && run.pending === 0 && !run.timer) macroRuns.delete(run);
+  if (run.index >= run.steps.length && run.pending === 0 && !run.timer && !run.frozen) {
+    macroRuns.delete(run);
+    syncHold();
+    pumpQueue();
+  }
 }
 
 // 不帶 owner 就全部取消（驗證碼、停止一切）；帶 owner 只取消那個功能啟動的（停止定時時不能順手取消使用者按的巨集）
 function cancelMacros(owner) {
   const gone = [...macroRuns].filter(run => owner === undefined || run.owner === owner);
   gone.forEach(run => { clearTimeout(run.timer); macroRuns.delete(run); });
+  syncHold();
   for (let i = queue.length - 1; i >= 0; i--) {
     if (queue[i].run && gone.includes(queue[i].run)) queue.splice(i, 1);
   }
   if (owner === undefined) dropQueue('macro');
+  pumpQueue();
 }
 
 // 捕獲階段（比遊戲掛在 body 上的處理早）：條件和遊戲一樣，只在焦點在指令輸入框或 body 時處理；
@@ -1039,6 +1087,7 @@ function macroSummary() {
   }
   const run = [...macroRuns][0];
   const more = macroRuns.size > 1 ? `（共 ${macroRuns.size} 個巨集）` : '';
+  if (run.frozen) return { text: `暫停中（最優先的指令執行中）${more}`, alert: false };
   if (run.waitUntil) {
     const left = Math.max(0, Math.ceil((run.waitUntil - Date.now()) / 1000));
     return { text: `等待 ${left} 秒後${run.nextCommand === null ? '結束' : `：${run.nextCommand}`}${more}`, alert: false };
