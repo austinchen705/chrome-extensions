@@ -861,7 +861,12 @@ function initPanel() {
 
   // 點面板不要讓遊戲輸入框失去游標
   root.addEventListener('mousedown', e => e.preventDefault());
-  panel.start.addEventListener('click', () => {
+  // 面板的「開始」每次都重新讀儲存的設定：設定頁每改一個欄位就存，但這裡的 settings 與 group.config 只在頁面載入時讀過一次，
+  // 直接用會跑到改之前的舊設定
+  panel.start.addEventListener('click', async () => {
+    if (running) return;
+    const { settings: saved } = await chrome.storage.local.get('settings');
+    if (saved) settings = { ...settings, ...saved };
     if (running) return;
     if (!fixedItems().length && !randomItems().length) {
       stop('尚未設定指令，請先在 popup 設定');
@@ -872,7 +877,10 @@ function initPanel() {
   panel.stop.addEventListener('click', () => { if (running) stop(); });
   groupList.forEach(group => {
     const row = panel.groups[group.id];
-    row.start.addEventListener('click', () => {
+    row.start.addEventListener('click', async () => {
+      if (group.on) return;
+      const saved = CatworldTriggerEngine.loadGroupSettings(await chrome.storage.local.get(['triggerGroupSettings', 'triggerSettings']));
+      if (saved[group.id]) group.config = saved[group.id];
       if (group.on) return;
       if (!group.config) {
         group.note = '尚未設定觸發規則，請先在 popup 設定';
