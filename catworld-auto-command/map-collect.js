@@ -48,7 +48,21 @@ function rows(store) {
     .sort((a, b) => `${a.area}/${a.room}`.localeCompare(`${b.area}/${b.room}`));
 }
 
-globalThis.CatworldMapCollect = { currentRoom, merge, rows, isMob, STORAGE_KEY };
+// 蒐集到某隻怪（完整名稱「名稱(ID)」，不分大小寫、忽略多餘空白）的位置文字：「武當派 2c、2e；終南山 c1」。
+// 同一區域最多列 perArea 間，其餘寫「…共 N 間」；沒蒐集到回空字串
+function whereIs(store, name, perArea = 6) {
+  const normalize = globalThis.CatworldZapMobs?.normalizeName;
+  if (!normalize) return '';
+  const target = normalize(name);
+  const byArea = new Map();
+  rows(store).filter(row => row.mobs.some(mob => normalize(mob) === target)).forEach(row => {
+    const label = row.areaName || row.area;
+    byArea.set(label, [...(byArea.get(label) || []), row.room]);
+  });
+  return [...byArea].map(([label, rooms]) => `${label} ${rooms.slice(0, perArea).join('、')}${rooms.length > perArea ? `…共 ${rooms.length} 間` : ''}`).join('；');
+}
+
+globalThis.CatworldMapCollect = { currentRoom, merge, rows, isMob, whereIs, STORAGE_KEY };
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs) return;
 

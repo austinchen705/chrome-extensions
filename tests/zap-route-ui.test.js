@@ -28,14 +28,14 @@ const mobWith = (route, exact = true) => ({
   q: 1.2, grade: 'green', idOnly: false, route: route && { route, exact },
 });
 
-function boot({ startResult = true, items, calls = [], changeListeners = [], reply = null }) {
+function boot({ startResult = true, items, calls = [], changeListeners = [], reply = null, store = {} }) {
   const dom = new JSDOM('<html><body><div id="exp">414748</div></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   w.chrome = {
-    storage: { local: { get: async () => ({}), set: async () => {} }, onChanged: { addListener: fn => changeListeners.push(fn) } },
+    storage: { local: { get: async () => store, set: async () => {} }, onChanged: { addListener: fn => changeListeners.push(fn) } },
     runtime: { sendMessage: async message => { calls.push(message.type); return reply ?? { ok: true, items, total: items.length }; } },
   };
-  ['zap-mobs.js', 'zap-items.js', 'zap-equipment.js', 'zap-panel.js'].forEach(file => w.eval(fs.readFileSync(path.join(root, file), 'utf8')));
+  ['zap-mobs.js', 'map-collect.js', 'zap-items.js', 'zap-equipment.js', 'zap-panel.js'].forEach(file => w.eval(fs.readFileSync(path.join(root, file), 'utf8')));
   const host = w.document.createElement('div');
   const shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = '<div class="panel"><div class="head"></div><div class="body"></div></div>';
@@ -300,4 +300,21 @@ ui('a built-in mob with a corrected strength shows who corrected it and the orig
   const { shadow } = boot({ items: [fixed] });
   assert.ok(await waitFor(() => shadow.querySelector('.zap-item .meta')));
   assert.match(shadow.querySelector('.zap-item .meta').textContent, /內建備註.*共用修正強度（小明）.*內建原值 250000/);
+});
+
+ui('a mob the player collected from the map shows where in the floating hint, and nothing when there is none', async () => {
+  const store = { mapMonsters: {
+    'wudon/2c': { area: 'wudon', room: '2c', areaName: '武當派', mobs: ['武當山 第四代弟子(wudon taoist)'], seen: 1 },
+    'wudon/2e': { area: 'wudon', room: '2e', areaName: '武當派', mobs: ['武當山 第四代弟子(wudon taoist)', '武當山 第三代弟子(wudon taoist)'], seen: 1 },
+    'chonyang/c1': { area: 'chonyang', room: 'c1', areaName: '終南山', mobs: ['武當山 第四代弟子(wudon taoist)'], seen: 1 },
+  } };
+  const withMap = boot({ items: [], store });
+  withMap.w.chrome.runtime.sendMessage = async message => (message.type === 'ZAP_LOOKUP'
+    ? { ok: true, items: [{ name: '武當山 第四代弟子(wudon taoist)', count: 1, candidates: [] }, { name: '野狗(dog)', count: 1, candidates: [] }] }
+    : { ok: true, items: [], total: 0 });
+  withMap.w.document.body.insertAdjacentHTML('beforeend', '<div id="content"><span id="message"></span></div>');
+  withMap.w.document.querySelector('#message').append(withMap.w.document.createTextNode('※武當山 第四代弟子(wudon taoist)\n※野狗(dog)'));
+  assert.ok(await waitFor(() => /蒐集到/.test(withMap.shadow.textContent)));
+  const lines = [...withMap.shadow.querySelectorAll('.zap-more')].map(node => node.textContent).filter(text => /蒐集到/.test(text));
+  assert.deepEqual(lines, ['蒐集到：終南山 c1；武當派 2c、2e'], 'only the mob that was collected gets the line');
 });
