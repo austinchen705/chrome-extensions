@@ -87,7 +87,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'zap-panel.js', 'zap-riddle-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'map-collect.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'zap-panel.js', 'zap-riddle-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -313,6 +313,30 @@ chrome.permissions.onRemoved.addListener(showExtraSites);
 showExtraSites();
 
 // 主要武器類型：存起來，遊戲頁的面板監聽 storage 變化，馬上生效。不合法的值當成未設定
+// 地圖怪物蒐集：紀錄由遊戲頁的 map-collect.js 寫進 storage，這裡只顯示筆數、複製成 Tab 分隔文字、清除
+const MAP_KEY = 'mapMonsters';
+const mapRows = store => Object.values(store || {}).sort((a, b) => (a.area + '/' + a.room).localeCompare(b.area + '/' + b.room));
+async function showMapCollect() {
+  const rows = mapRows((await chrome.storage.local.get(MAP_KEY))[MAP_KEY]);
+  const mobs = new Set(rows.flatMap(row => row.mobs));
+  $('mapCollectInfo').textContent = rows.length ? `已記下 ${rows.length} 個房間、${mobs.size} 種怪物` : '尚無紀錄';
+}
+function mapMessage(text, level) { $('mapCollectMsg').textContent = text; markLevel($('mapCollectMsg'), level); }
+$('mapCollectCopy').addEventListener('click', async () => {
+  const rows = mapRows((await chrome.storage.local.get(MAP_KEY))[MAP_KEY]);
+  if (!rows.length) { mapMessage('還沒有紀錄', 'warn'); return; }
+  const text = rows.map(row => [row.area, row.areaName || '', row.room, row.mobs.join(',')].join('\t')).join('\n');
+  try { await navigator.clipboard.writeText(text); mapMessage(`已複製 ${rows.length} 列`); }
+  catch (e) { mapMessage(`複製失敗：${e.message}`, 'error'); }
+});
+$('mapCollectClear').addEventListener('click', async () => {
+  if (!confirm('清除所有已蒐集的地圖怪物紀錄？清掉就回不來了。')) return;
+  await chrome.storage.local.remove(MAP_KEY);
+  mapMessage('已清除');
+});
+showMapCollect();
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[MAP_KEY]) showMapCollect(); });
+
 const weaponValue = value => (CatworldZapItems.WEAPON_TYPES.includes(value) ? value : '');
 $('mainWeapon').replaceChildren(...['', ...CatworldZapItems.WEAPON_TYPES].map(type => element('option', { value: type, textContent: type || '未設定' })));
 $('mainWeapon').addEventListener('change', () => {

@@ -194,6 +194,14 @@
     <p class="hint tight">大家共同維護的路線：優先順序是個人 &gt; 共用 &gt; 內建。連結只存在這台瀏覽器的本機，不會匯出。</p>
   </div>
   <div class="alertbox">
+    <b>地圖怪物蒐集</b>
+    <div id="mapCollectInfo" class="hint tight">尚無紀錄</div>
+    <button id="mapCollectCopy">複製（可貼進試算表）</button>
+    <button id="mapCollectClear">清除</button>
+    <div id="mapCollectMsg" class="hint tight"></div>
+    <p class="hint tight">遊戲頁的地圖視窗開著時，每個房間看到的怪物 ID 會自動記下來（只增不減，重新整理遊戲頁也不會丟）：手動走一輪就蒐集得到。複製出來每列一個房間，Tab 分隔：區域代號、區域名稱、房間代號、怪物 ID（逗號分隔）。只存在這台瀏覽器的本機。</p>
+  </div>
+  <div class="alertbox">
     <b>額外的遊戲網址（臨時）</b>
     <p class="hint tight">讓面板也出現在別的網站上，例如 ngrok 的臨時網址。貼上網址按「新增」，Chrome 會問你要不要讓這個 extension 存取那個網站，按「允許」才會生效；用完按「移除」。新增或移除後，要到那個網站的分頁重新整理。只存在這台瀏覽器的本機，不會匯出。</p>
     <label for="extraUrl">網址（整個網站都會算，port 會被忽略）</label>

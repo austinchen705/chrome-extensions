@@ -161,6 +161,10 @@
 - 新增模組要同時進 manifest 與 popup 備援注入的 `files`，`tests/injection-lists.test.js` 會比對兩份清單（檔案與順序都要一樣，樣式也是）。
 - 測試：`tests/macro-io.test.js`（夾限與檢查的邊界案例）、`tests/macro-resize.test.js`（jsdom 載入整個 content script，檢查把手、拖曳後的寬高與 `--macro-extra`、存起來、載入時沿用、壞資料、晚到的讀取、事件不傳給遊戲）。jsdom 算不出排版，真實手感、把手有沒有被遮住、指令欄是否變長只能在真實遊戲頁驗證。
 
+## 地圖怪物蒐集
+
+- `map-collect.js`（自成一體，manifest 與 popup 備援注入都要載入，順序在 `macro-resize.js` 後）每 2 秒掃遊戲地圖視窗 `#map_wrapper`：房間是 `<a id="m-區域-房間代號">`，有怪的房間 `title` 是逗號分隔的怪物英文 ID（遊戲自己填，玩家走過才有）。合併進 `chrome.storage.local.mapMonsters`（鍵 `區域代號/房間代號`，`{ area, room, areaName, mobs, seen }`）：怪物 ID 取聯集、只增不減，區域名稱只有該區域地圖正在顯示（`#m-區域` 沒有 `.invisible`）時才讀得到、讀到才更新。連不上儲存（孤兒程式）就停掉計時器。設定頁「地圖怪物蒐集」只顯示筆數、複製 Tab 分隔文字、清除；不含怪物中文名與強度，併進共用表的格式還沒定。測試在 `tests/map-collect.test.js`。
+
 ## 數值區塊
 
 - 面板最上方的「數值」區塊由兩個模組組成：`stats-view.js`（不碰 DOM，`rows(readings, exp)` 決定每列顯示什麼）與 `stats-block.js`（畫面，`attach(root)` 回傳 `render(readings, exp)`）。兩個都要加進 manifest 的 content script 與 popup 備援注入清單，`stats-view.js` 在 `stats-block.js` 之前、都在 `content.js` 之前；`content.js` 建立區塊要包 try/catch，壞了不能牽連後面按鈕的綁定。

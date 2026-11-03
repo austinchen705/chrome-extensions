@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CatWorld Auto Command",
-  "version": "1.57.0",
+  "version": "1.58.0",
   "description": "Configurable commands with immediate stop on verification prompts.",
   "permissions": [
     "storage",
@@ -40,6 +40,7 @@
         "macro-io.js",
         "macro-io-ui.js",
         "macro-resize.js",
+        "map-collect.js",
         "captcha-art.js",
         "captcha-grid.js",
         "instance-guard.js",
