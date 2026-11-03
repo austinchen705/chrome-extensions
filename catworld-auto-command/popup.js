@@ -127,6 +127,9 @@ $('test').addEventListener('click', async () => {
 $('persistentAlert').addEventListener('change', () => {
   chrome.storage.local.set({ persistentAlert: $('persistentAlert').checked });
 });
+$('autoReward').addEventListener('change', () => {
+  chrome.storage.local.set({ autoReward: $('autoReward').checked });
+});
 
 // 手機通知（LINE）：憑證只存本機，發送由 background 做（見 line-notify-ui.js）
 try {
@@ -673,9 +676,10 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 });
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep']);
+  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward']);
   Object.entries(FEATURE_BOXES).forEach(([key, id]) => { $(id).checked = data.zapFeatures?.[key] === true; });
   $('persistentAlert').checked = data.persistentAlert === true;
+  $('autoReward').checked = data.autoReward !== false;
   $('mainWeapon').value = weaponValue(data.mainWeapon);
   equipmentKeep = CatworldZapEquipment.normalizeKeepRule(data.equipmentKeep);
   showEquipmentKeep();

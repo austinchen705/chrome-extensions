@@ -165,6 +165,10 @@
     <p class="hint tight">預設關閉＝原本的行為：每 10 秒響一次、最多 5 分鐘，回到遊戲頁點一下、按鍵或按「開始」就停。開啟後不會自己停，要按遊戲頁面板標題列（或系統通知上）的「確認」才會停，標題也會一直閃。</p>
   </div>
   <div class="alertbox">
+    <label class="check"><input id="autoReward" type="checkbox"> 在線獎勵自動領取</label>
+    <p class="hint tight">預設開啟。打 sc 後看到「在線獎勵： N分鐘後可領取」，就在 N+1 分鐘後自動送出 reward（驗證碼照常自動辨識）；已經在等的時候再打 sc 不會重複排，重新整理遊戲頁會取消。</p>
+  </div>
+  <div class="alertbox">
     <div class="row">
       <div><label for="zapGreenMax">怪物分級：綠上限 q</label><input id="zapGreenMax" type="number" min="1.01" step="0.1"></div>
       <div><label for="zapYellowMax">黃上限 q</label><input id="zapYellowMax" type="number" min="1.01" step="0.1"></div>

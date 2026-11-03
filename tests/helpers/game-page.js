@@ -50,6 +50,7 @@ async function boot({ scale = 1 } = {}) {
     };
   });
   const store = {};
+  const changeListeners = [];
   w.AudioContext = class {
     constructor() { this.state = 'suspended'; }
     resume() { return Promise.resolve(); }
@@ -67,7 +68,7 @@ async function boot({ scale = 1 } = {}) {
         get: async keys => Object.fromEntries([].concat(keys ?? []).filter(key => key in store).map(key => [key, store[key]])),
         set: async values => { Object.assign(store, values); },
       },
-      onChanged: { addListener() {} },
+      onChanged: { addListener: fn => changeListeners.push(fn) },
     },
   };
   // content.js 啟動時有一段非同步的初始化（重新整理後自動停止等），等它跑完才開始操作
@@ -89,7 +90,7 @@ async function boot({ scale = 1 } = {}) {
   // 右上角的時鐘每 ms 毫秒跳一次（真實頁面每秒；用視窗自己的、不縮放的計時器，close 才清得掉）：它不是遊戲回覆
   let clock = 0;
   const startClock = ms => { timers.push(realSetInterval(() => { clock += 1; w.document.getElementById('uptime').textContent = `00:${String(clock % 60).padStart(2, '0')}`; }, ms)); };
-  return { w, sent, messages, ask, hosts, install, output, running, startClock, messageListeners, close: () => timers.forEach(id => { w.clearTimeout(id); w.clearInterval(id); }) };
+  return { w, sent, messages, ask, hosts, install, output, running, startClock, messageListeners, store, changeListeners, close: () => timers.forEach(id => { w.clearTimeout(id); w.clearInterval(id); }) };
 }
 
 const START = { type: 'START', settings: { commands: ['ps'], minSeconds: 1, maxSeconds: 1, commandDelayMs: 0 } };

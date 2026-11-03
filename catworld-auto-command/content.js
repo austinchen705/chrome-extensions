@@ -34,6 +34,7 @@ function retire() {
   cancelMacros();
   queue.length = 0;
   if (watchdogTimer) clearTimeout(watchdogTimer);
+  cancelReward();
   captchaObserver.disconnect();
   stopRepeatBeep();
   try {
@@ -52,6 +53,36 @@ function notifyStateChanged() {
   }
 }
 function active() { return running || anyTriggerOn() || macroRuns.size > 0; }
+
+// 在線獎勵：看到「在線獎勵： N分鐘後可領取」（自己打 sc 的輸出）就排一個 N+1 分鐘後送 reward 的計時，已經排著的就不再排。
+// 閒置時也作用（不走送出佇列，佇列只在 active() 時送）；開關是設定頁的 autoReward（缺值＝開）。
+// 送不出去（驗證碼辨識中、因驗證停止）隔 REWARD_RETRY_MS 再試，最多 REWARD_TRIES 次，之後放棄；等的期間 rewardTimer 一直有值，所以再打 sc 也不會重複排
+const REWARD_PATTERN = /在線獎勵[：:]\s*(\d+)\s*分鐘後可領取/;
+const REWARD_RETRY_MS = 10000;
+const REWARD_TRIES = 3;
+let autoReward = true;
+let rewardTimer = null;
+function cancelReward() {
+  clearTimeout(rewardTimer);
+  rewardTimer = null;
+}
+function watchReward(text) {
+  if (!autoReward || rewardTimer) return;
+  const match = REWARD_PATTERN.exec(text);
+  if (!match) return;
+  rewardTimer = setTimeout(() => sendReward(1), (Number(match[1]) + 1) * 60 * 1000);
+}
+function sendReward(attempt) {
+  rewardTimer = null;
+  if (retired) return;
+  const result = sendCommand('reward');
+  if (result.ok) return;
+  if (attempt >= REWARD_TRIES) {
+    console.info('[catworld] 在線獎勵：reward 送不出去，放棄', result.error);
+    return;
+  }
+  rewardTimer = setTimeout(() => sendReward(attempt + 1), REWARD_RETRY_MS);
+}
 // 提示要在行首才算：收集表裡 259 筆真正的提示都在行首，「> 請輸入上面的數字」是有人把提示文字當指令送進遊戲的回聲，不是遊戲出的題
 const captchaPattern = /(?:^|\n)[ \t]*請輸入上(?:方|面)的數字/g;
 function hasCaptchaText(text) { return /(?:^|\n)[ \t]*請輸入上(?:方|面)的數字/.test(text || ''); }
@@ -337,6 +368,7 @@ const captchaObserver = new MutationObserver(allRecords => {
   const meaningful = addedTexts.some(text => text.trim() && !isCommandEcho(text.trim()));
   if (meaningful && watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
   const addedText = addedTexts.join('');
+  watchReward(addedText);
   // 自動辨識要原始 HTML（背景色 span 裡的亂碼文字也是方塊）：元素取 outerHTML，文字節點照 HTML 規則跳脫
   const addedHtml = records.map(record => (record.type === 'characterData'
     ? escapeHtml(record.target.textContent || '')
@@ -1216,10 +1248,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // popup 改了「一直響到確認」開關，不用重新整理遊戲頁就生效
 chrome.storage.onChanged?.addListener((changes, area) => {
   if (area === 'local' && changes.persistentAlert) persistentAlert = changes.persistentAlert.newValue === true;
+  if (area === 'local' && changes.autoReward) {
+    autoReward = changes.autoReward.newValue !== false;
+    if (!autoReward) cancelReward();
+  }
 });
 
-chrome.storage.local.get(['running', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert']).then(data => {
+chrome.storage.local.get(['running', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert', 'autoReward']).then(data => {
   persistentAlert = data.persistentAlert === true;
+  autoReward = data.autoReward !== false;
   if (data.settings) settings = { ...settings, ...data.settings };
   // 規則設定會留著，但開關不會：重新整理遊戲頁後觸發不會自己恢復。舊版只有一組設定，升級時放進練功
   const savedGroups = CatworldTriggerEngine.loadGroupSettings(data);
