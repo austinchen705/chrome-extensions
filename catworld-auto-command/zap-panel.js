@@ -10,6 +10,10 @@ const THRESHOLDS_KEY = 'zapThresholds';
 const WEAPON_KEY = 'mainWeapon';
 const ROUTES_KEY = 'mobRoutes';
 const MAP_KEY = 'mapMonsters';
+const LAYOUT_KEY = 'mapLayouts';
+const MINIMAP_AREAS = 2;
+const MINIMAP_WIDTH = 290;
+const MINIMAP_LONG_MS = 15000;
 const GAME_WINDOWS = '#monitor, #map_table, #macro_table, #setting_table';
 // 浮層各區段的停留時間：怪物提示常常換所以短；鑑定結果很少出現又要慢慢看，留久一點（也可以按 ✕ 關掉）
 const SECTION_MS = { mobs: 5000, items: 15000, equipment: 20000 };
@@ -36,6 +40,11 @@ const STYLE = `
   .zap-item { padding: 3px 0; border-top: 1px solid #3a3a3e; overflow-wrap: anywhere; }
   .zap-item .meta { color: #999; font-size: 13px; }
   .zap-more { color: #999; font-size: 13px; padding-top: 4px; }
+  .zap-minimap { padding: 4px 0 2px; overflow-x: auto; }
+  .zap-minimap .cap { color: #999; font-size: 12px; }
+  .zap-minimap .row { white-space: nowrap; line-height: 1.15; color: #a0a0a8; }
+  .zap-minimap .row b { display: inline-block; width: 1em; text-align: center; font-weight: normal; }
+  .zap-minimap .row b.hit { background: #e5484d; color: #fff; border-radius: 2px; }
   .zap-hint { padding: 6px 12px 10px; border-top: 1px solid #3a3a3e; font-size: 14px; user-select: text; max-height: 280px; overflow: auto; }
   .zap-hint { position: relative; }
   .zap-hint .title { color: #999; font-size: 13px; }
@@ -75,6 +84,28 @@ function typable(node) {
   ['mousedown', 'click'].forEach(type => node.addEventListener(type, event => event.stopPropagation()));
   ['keydown', 'keyup', 'keypress'].forEach(type => node.addEventListener(type, event => event.stopPropagation()));
   return node;
+}
+
+// 小地圖：用蒐集時存下的版面（和 emap 同樣的格子）畫出來，這隻怪蒐集到的房間標紅。每個字佔一格（1em），
+// 不依賴字型怎麼處理全形符號；寬度超過 MINIMAP_WIDTH 就縮小字體。版面不見了（還沒載入過那個區域）回 null
+function miniMap(layout, place) {
+  const MC = globalThis.CatworldMapCollect;
+  if (!MC || !layout) return null;
+  const lines = MC.parseLayout(layout);
+  const width = Math.max(1, ...lines.map(line => line.length));
+  const hits = new Set(place.rooms);
+  const box = el('div', { className: 'zap-minimap' }, el('div', { className: 'cap', textContent: `${place.label}（紅色＝蒐集到）` }));
+  box.style.fontSize = `${Math.max(5, Math.min(14, Math.floor(MINIMAP_WIDTH / width)))}px`;
+  lines.forEach(line => {
+    const row = el('div', { className: 'row' });
+    line.forEach(cell => {
+      const node = el('b', { textContent: cell.ch });
+      if (cell.room !== undefined && hits.has(cell.room)) node.className = 'hit';
+      row.append(node);
+    });
+    box.append(row);
+  });
+  return box;
 }
 
 // 一隻怪的一個候選：顏色、名稱、q、位置、備註、路線。editor 只有清單才給（浮層只停幾秒，編輯到一半會消失）
@@ -175,6 +206,7 @@ function attach(root, { readExp, startSteps }) {
 
   let thresholds = Z.normalizeThresholds(undefined);
   let mapStore = {};
+  let mapLayouts = {};
   let mainWeapon = '';
   // 使用者補的路線（怪物名稱 → 指令）：存本機，浮層也套用（但只有清單能編輯）
   let customRoutes = {};
@@ -191,8 +223,9 @@ function attach(root, { readExp, startSteps }) {
   };
   const validWeapon = value => (ZI.WEAPON_TYPES.includes(value) ? value : '');
   const refresh = () => { if (!box.hidden) runQuery(); };
-  chrome.storage.local.get([THRESHOLDS_KEY, WEAPON_KEY, ROUTES_KEY, MAP_KEY]).then(data => {
+  chrome.storage.local.get([THRESHOLDS_KEY, WEAPON_KEY, ROUTES_KEY, MAP_KEY, LAYOUT_KEY]).then(data => {
     mapStore = data[MAP_KEY] ?? {};
+    mapLayouts = data[LAYOUT_KEY] ?? {};
     customRoutes = Z.parseCustomRoutes(JSON.stringify(data[ROUTES_KEY] ?? {})).routes ?? {};
     thresholds = Z.normalizeThresholds(data[THRESHOLDS_KEY]);
     mainWeapon = validWeapon(data[WEAPON_KEY]);
@@ -201,6 +234,7 @@ function attach(root, { readExp, startSteps }) {
     if (area !== 'local') return;
     if (changes[WEAPON_KEY]) mainWeapon = validWeapon(changes[WEAPON_KEY].newValue);
     if (changes[MAP_KEY]) mapStore = changes[MAP_KEY].newValue ?? {};
+    if (changes[LAYOUT_KEY]) mapLayouts = changes[LAYOUT_KEY].newValue ?? {};
     if (changes[ROUTES_KEY]) customRoutes = Z.parseCustomRoutes(JSON.stringify(changes[ROUTES_KEY].newValue ?? {})).routes ?? {};
     // 別的分頁（或「立即更新」）抓到新的共用路線：清單開著就重查一次（共用層是 background 套在查詢回覆上的）
     if (changes.sharedCache) refresh();
@@ -291,19 +325,25 @@ function attach(root, { readExp, startSteps }) {
     if (name === 'items') itemBlocks.length = 0;
     if (!Object.values(sections).some(section => section.firstChild)) hint.hidden = true;
   }
-  function touchHint(name) {
+  function touchHint(name, ms = SECTION_MS[name]) {
     hint.hidden = false;
     clearTimeout(hideTimers[name]);
-    hideTimers[name] = setTimeout(() => clearSection(name), SECTION_MS[name]);
+    hideTimers[name] = setTimeout(() => clearSection(name), ms);
   }
   close.addEventListener('click', () => Object.keys(sections).forEach(clearSection));
   function showHints(results, hidden, expReadable) {
     const nodes = [el('div', { className: 'title', textContent: expReadable ? '這裡的怪物' : '這裡的怪物（讀不到經驗，無法分級）' })];
+    let withMap = false;
     results.forEach(({ name, count, candidates }) => {
       nodes.push(el('div', { className: 'zap-item', textContent: count > 1 ? `${name} ×${count}` : name }));
       // 自己走過蒐集到的位置（地圖怪物蒐集，只顯示不影響路線）
       const seen = globalThis.CatworldMapCollect?.whereIs(mapStore, name);
       if (seen) nodes.push(el('div', { className: 'zap-more', textContent: `蒐集到：${seen}` }));
+      // 小地圖看得久一點：5 秒看不完地圖
+      globalThis.CatworldMapCollect?.locate(mapStore, name).slice(0, MINIMAP_AREAS).forEach(place => {
+        const map = miniMap(mapLayouts[place.area], place);
+        if (map) { nodes.push(map); withMap = true; }
+      });
       if (!candidates.length) nodes.push(el('div', { className: 'zap-more', textContent: '表上無此怪' }));
       const { shown, hidden: more } = Z.limitHints(candidates, CANDIDATE_MAX);
       // 只靠 ID 命中時同一個 ID 可能有幾十隻，要顯示名稱才分得出來
@@ -312,7 +352,7 @@ function attach(root, { readExp, startSteps }) {
     });
     if (hidden) nodes.push(el('div', { className: 'zap-more', textContent: `…還有 ${hidden} 種` }));
     sections.mobs.replaceChildren(...nodes);
-    touchHint('mobs');
+    touchHint('mobs', withMap ? MINIMAP_LONG_MS : undefined);
   }
 
   // ---- 鑑定結果（雜物拿給衰老頭鑑定後的真名）----

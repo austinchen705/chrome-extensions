@@ -318,3 +318,27 @@ ui('a mob the player collected from the map shows where in the floating hint, an
   const lines = [...withMap.shadow.querySelectorAll('.zap-more')].map(node => node.textContent).filter(text => /蒐集到/.test(text));
   assert.deepEqual(lines, ['蒐集到：終南山 c1；武當派 2c、2e'], 'only the mob that was collected gets the line');
 });
+
+ui('the hint draws the area mini map with the rooms the mob was collected in marked, and only for areas that have a saved layout', async () => {
+  const store = {
+    mapMonsters: {
+      'wudon/2c': { area: 'wudon', room: '2c', areaName: '武當派', mobs: ['老道(old taoist)'], seen: 1 },
+      'chonyang/c1': { area: 'chonyang', room: 'c1', areaName: '終南山', mobs: ['老道(old taoist)'], seen: 1 },
+    },
+    mapLayouts: { wudon: '　⟦2b|□⟧─⟦2c|□⟧\n　│\n　⟦2d|驛⟧' },
+  };
+  const dom = boot({ items: [], store });
+  dom.w.chrome.runtime.sendMessage = async message => (message.type === 'ZAP_LOOKUP'
+    ? { ok: true, items: [{ name: '老道(old taoist)', count: 1, candidates: [] }], total: 1 }
+    : { ok: true, items: [], total: 0 });
+  dom.w.document.body.insertAdjacentHTML('beforeend', '<div id="content"><span id="message"></span></div>');
+  dom.w.document.querySelector('#message').append(dom.w.document.createTextNode('※老道(old taoist)'));
+  assert.ok(await waitFor(() => dom.shadow.querySelector('.zap-minimap')));
+  const maps = dom.shadow.querySelectorAll('.zap-minimap');
+  assert.equal(maps.length, 1, 'chonyang has no saved layout, so it stays text only');
+  assert.match(maps[0].querySelector('.cap').textContent, /武當派/);
+  assert.equal(maps[0].querySelectorAll('.row').length, 3);
+  assert.equal(maps[0].querySelectorAll('b.hit').length, 1, 'only the collected room is marked');
+  assert.equal(maps[0].querySelector('b.hit').textContent, '□');
+  assert.match(dom.shadow.textContent, /蒐集到：終南山 c1；武當派 2c/, 'the text line still lists every area');
+});

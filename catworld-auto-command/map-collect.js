@@ -48,30 +48,80 @@ function rows(store) {
     .sort((a, b) => `${a.area}/${a.room}`.localeCompare(`${b.area}/${b.room}`));
 }
 
-// 蒐集到某隻怪（完整名稱「名稱(ID)」，不分大小寫、忽略多餘空白）的位置文字：「武當派 2c、2e；終南山 c1」。
-// 同一區域最多列 perArea 間，其餘寫「…共 N 間」；沒蒐集到回空字串
-function whereIs(store, name, perArea = 6) {
+// 蒐集到某隻怪（完整名稱「名稱(ID)」，不分大小寫、忽略多餘空白）的位置：[{ area, label, rooms }]，依區域代號排序；沒蒐集到回空陣列
+function locate(store, name) {
   const normalize = globalThis.CatworldZapMobs?.normalizeName;
-  if (!normalize) return '';
+  if (!normalize) return [];
   const target = normalize(name);
   const byArea = new Map();
   rows(store).filter(row => row.mobs.some(mob => normalize(mob) === target)).forEach(row => {
-    const label = row.areaName || row.area;
-    byArea.set(label, [...(byArea.get(label) || []), row.room]);
+    const entry = byArea.get(row.area) || { area: row.area, label: row.areaName || row.area, rooms: [] };
+    entry.rooms.push(row.room);
+    byArea.set(row.area, entry);
   });
-  return [...byArea].map(([label, rooms]) => `${label} ${rooms.slice(0, perArea).join('、')}${rooms.length > perArea ? `…共 ${rooms.length} 間` : ''}`).join('；');
+  return [...byArea.values()];
 }
 
-globalThis.CatworldMapCollect = { currentRoom, merge, rows, isMob, whereIs, STORAGE_KEY };
+// 位置文字：「武當派 2c、2e；終南山 c1」。同一區域最多列 perArea 間，其餘寫「…共 N 間」；沒蒐集到回空字串
+function whereIs(store, name, perArea = 6) {
+  return locate(store, name)
+    .map(({ label, rooms }) => `${label} ${rooms.slice(0, perArea).join('、')}${rooms.length > perArea ? `…共 ${rooms.length} 間` : ''}`)
+    .join('；');
+}
+
+// 小地圖用的版面：地圖視窗每個區域是 #map_wrapper 底下的 <div id="m-區域">，裡面是文字加房間 <a id="m-區域-房間">。
+// 存成純文字，房間寫成 ⟦房間代號|符號⟧（符號是 □、★、驛、藥…），其餘照原樣（─│╱╲↑↓ 與全形空白），顯示時再還原成方格
+const LAYOUT_KEY = 'mapLayouts';
+const LAYOUT_MAX = 20000;
+function snapshotLayouts(doc) {
+  const out = {};
+  doc.querySelectorAll('#map_wrapper > div[id^="m-"]').forEach(div => {
+    const area = div.id.slice(2);
+    const prefix = `m-${area}-`;
+    let text = '';
+    div.childNodes.forEach(node => {
+      if (node.nodeType === 3) text += node.textContent;
+      else if (node.nodeName === 'A' && node.id.startsWith(prefix)) text += `⟦${node.id.slice(prefix.length)}|${node.textContent}⟧`;
+      else text += node.textContent || '';
+    });
+    text = text.replace(/\s+$/, '');
+    if (text && text.length <= LAYOUT_MAX) out[area] = text;
+  });
+  return out;
+}
+
+// 版面文字 → 每行一個格子陣列：{ ch } 或 { ch, room }（房間）
+function parseLayout(text) {
+  return String(text ?? '').split('\n').map(line => line.split(/(⟦[^⟧]*⟧)/).flatMap(part => {
+    const room = /^⟦([^|⟧]*)\|([^⟧]*)⟧$/.exec(part);
+    return room ? [{ ch: room[2] || '□', room: room[1] }] : Array.from(part, ch => ({ ch }));
+  }));
+}
+
+globalThis.CatworldMapCollect = { currentRoom, merge, rows, isMob, locate, whereIs, snapshotLayouts, parseLayout, STORAGE_KEY, LAYOUT_KEY };
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs) return;
 
 let pending = new Set();
 let timer = null;
+// 地圖版面（小地圖用）：目前載入的區域有變才寫
+async function saveLayouts() {
+  try {
+    const found = snapshotLayouts(document);
+    if (!Object.keys(found).length) return;
+    const data = await chrome.storage.local.get(LAYOUT_KEY);
+    const old = data[LAYOUT_KEY] || {};
+    if (Object.keys(found).every(area => old[area] === found[area])) return;
+    await chrome.storage.local.set({ [LAYOUT_KEY]: { ...old, ...found } });
+  } catch {
+    // 連不上儲存的舊程式：flush 那邊會處理
+  }
+}
 async function flush() {
   const mobs = [...pending];
   pending = new Set();
   timer = null;
+  saveLayouts();
   const spot = currentRoom(document);
   if (!spot || !mobs.length) return;
   try {
@@ -93,4 +143,5 @@ const observer = new MutationObserver(records => {
   if (!timer) timer = setTimeout(flush, SETTLE_MS);
 });
 observer.observe(content, { subtree: true, childList: true, characterData: true });
+setTimeout(saveLayouts, 3000);
 })();
