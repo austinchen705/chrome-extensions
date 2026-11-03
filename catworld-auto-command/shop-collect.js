@@ -83,8 +83,8 @@ function evaluate(items, db, { exp, baseline } = {}) {
 
 const checkCommand = numbers => numbers.map(no => `check ${no}`).join(';');
 
-function summaryLines(result, exp) {
-  const lines = [`【裝備資料庫】經驗 ${Number.isFinite(exp) ? exp : '讀不到'}　這頁 ${result.total} 件，已蒐集 ${result.known} 件`];
+function summaryLines(result, exp, pages = 1) {
+  const lines = [`【裝備資料庫】經驗 ${Number.isFinite(exp) ? exp : '讀不到'}　${pages > 1 ? `累計 ${pages} 頁` : '這頁'} ${result.total} 件，已蒐集 ${result.known} 件`];
   if (result.suggest.length) {
     const shown = result.suggest.slice(0, SUGGEST_MAX).map(item => `${item.no} ${item.name}（需經驗 ${item.level}，現穿 ${item.against} ${item.wornLevel}）`);
     lines.push(`建議 check（穿得了、佩帶經驗比現在穿的高；實際數值 check 後才知道）：${shown.join('；')}${result.suggest.length > SUGGEST_MAX ? `…共 ${result.suggest.length} 件` : ''}`);
@@ -167,41 +167,58 @@ function showRecorded(blocks, before, after, data) {
   place(box);
 }
 
-// 「批次 check」：先顯示個數與預估費用，玩家按了確認才送（check 要付錢）；用注入的 sender（巨集）依序送，
-// 一次最多 BATCH_MAX 個（取這一頁的前幾個，要更多就再按一次）。list: [{ no, price }]
+const button = (text, onClick) => {
+  const node = document.createElement('button');
+  node.type = 'button';
+  node.textContent = text;
+  node.addEventListener('click', event => { event.stopPropagation(); onClick(); });
+  return node;
+};
+
+// 「批次 check」：先顯示個數與預估費用，玩家按了確認才送（check 要付錢）；用注入的 sender（巨集）依序送。
+// 一次最多 BATCH_MAX 個，多的分批：送完一批出現「下一批」按鈕，接著送後面的（不會重送已送的）。list: [{ no, price }]
 function batchControls(label, list) {
-  const batch = list.slice(0, BATCH_MAX);
-  const cost = checkCost(batch.map(item => item.price).filter(price => price !== null));
+  let offset = 0;
   const area = document.createElement('div');
-  const stop = event => event.stopPropagation();
-  const button = (text, onClick) => {
-    const node = document.createElement('button');
-    node.type = 'button';
-    node.textContent = text;
-    node.addEventListener('click', event => { stop(event); onClick(); });
-    return node;
+  const startButton = () => {
+    const batch = list.slice(offset, offset + BATCH_MAX);
+    const cost = checkCost(batch.map(item => item.price).filter(price => price !== null));
+    const range = `${formatMoney(cost.low)}～${formatMoney(cost.high)}`;
+    const start = button(`批次 check ${label} ${offset > 0 ? '下一批 ' : ''}${batch.length} 個（約 ${range}）`, () => {
+      const confirmRow = document.createElement('div');
+      confirmRow.append(
+        `將依序送出 ${batch.length} 個 check，預估約 ${range}，確認嗎？`,
+        button('確認送出', () => {
+          const started = sender ? sender(checkCommand(batch.map(item => item.no))) : false;
+          if (started === false || !sender) {
+            confirmRow.replaceChildren('送不出去（找不到送指令的功能，或指令格式錯誤）');
+            return;
+          }
+          offset += batch.length;
+          area.replaceChildren(`已開始送出 ${batch.length} 個 check，要中止請按面板巨集那一列的「停止」`);
+          if (offset < list.length) {
+            const rest = document.createElement('div');
+            rest.append(`還有 ${list.length - offset} 個：`, startButton());
+            area.append(rest);
+          } else {
+            area.append(' 全部送完了；check 完再打一次 list，推薦會重新整理。');
+          }
+        }),
+        button('取消', () => area.replaceChildren(start)),
+      );
+      area.replaceChildren(confirmRow);
+    });
+    return start;
   };
-  const start = button(`批次 check ${label} ${batch.length} 個（約 ${formatMoney(cost.low)}～${formatMoney(cost.high)}）`, () => {
-    const confirmRow = document.createElement('div');
-    confirmRow.append(
-      `將依序送出 ${batch.length} 個 check，預估約 ${formatMoney(cost.low)}～${formatMoney(cost.high)}，確認嗎？`,
-      button('確認送出', () => {
-        const started = sender ? sender(checkCommand(batch.map(item => item.no))) : false;
-        confirmRow.replaceChildren(started === false || !sender ? '送不出去（找不到送指令的功能，或指令格式錯誤）' : `已開始送出 ${batch.length} 個 check，要中止請按面板巨集那一列的「停止」`);
-      }),
-      button('取消', () => area.replaceChildren(start)),
-    );
-    area.replaceChildren(confirmRow);
-  });
-  area.append(start);
+  area.append(startButton());
   return area;
 }
 
-function showSummary(items, data, db) {
+function showSummary(items, data, db, pages = 1) {
   const exp = readExp();
   const result = evaluate(items, db, { exp, baseline: data.wornEquipment?.[characterName()] });
   const box = newBox();
-  summaryLines(result, exp).forEach(line => {
+  summaryLines(result, exp, pages).forEach(line => {
     const row = document.createElement('div');
     row.textContent = line;
     box.append(row);
@@ -210,22 +227,29 @@ function showSummary(items, data, db) {
   if (result.suggest.length) box.append(batchControls('建議的', result.suggest.map(item => ({ no: item.no, price: parsePrice(item.price) }))));
   if (result.unknown.length) {
     box.append(batchControls('還沒蒐集的', result.unknownItems));
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = '複製 check 指令（貼進遊戲巨集用）';
-    button.addEventListener('click', async event => {
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.textContent = '複製 check 指令（貼進遊戲巨集用）';
+    copy.addEventListener('click', async event => {
       event.stopPropagation();
       try {
         await navigator.clipboard.writeText(checkCommand(result.unknown));
-        button.textContent = `已複製 ${result.unknown.length} 個 check`;
+        copy.textContent = `已複製 ${result.unknown.length} 個 check`;
       } catch {
-        button.textContent = '複製失敗';
+        copy.textContent = '複製失敗';
       }
     });
-    box.append(button);
+    box.append(copy);
   }
   place(box);
+  return box;
 }
+// 同一次 list 的好幾頁累計在一起（編號是接著數的）：list 的第一頁有「商人現在有賣以下貨物」開頭就重新開始，沒有開頭的頁
+// 併進目前這一次；超過 SESSION_MS 沒新的頁也重新開始。每一頁的摘要是累計的，新的出現時舊的那塊拿掉，這樣批次按鈕只有最新的一組
+const LIST_HEADER = /商人現在有賣以下貨物/;
+const SESSION_MS = 10 * 60 * 1000;
+let session = { items: new Map(), pages: 0, at: 0, box: null };
+
 async function flush() {
   const text = buffer;
   lastAnchor = lastNode;
@@ -249,7 +273,15 @@ async function flush() {
       showRecorded(blocks, before, db, data);
     }
     const items = parseList(text);
-    if (items.length) showSummary(items, data, db);
+    if (items.length) {
+      const now = Date.now();
+      if (LIST_HEADER.test(text) || now - session.at > SESSION_MS) session = { items: new Map(), pages: 0, at: now, box: null };
+      items.forEach(item => session.items.set(item.no, item));
+      session.pages += 1;
+      session.at = now;
+      session.box?.remove();
+      session.box = showSummary([...session.items.values()].sort((a, b) => a.no - b.no), data, db, session.pages);
+    }
   } catch {
     // 擴充功能重新載入後留在頁面上的舊程式連不上儲存：不再收集，新程式會接手
     observer.disconnect();

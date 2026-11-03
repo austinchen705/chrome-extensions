@@ -357,3 +357,74 @@ ui('the suggestion looks only at required exp: stats in the database do not matt
     page.close();
   }
 });
+
+const PAGE_ONE = [
+  '商人現在有賣以下貨物：',
+  ' 1 甲劍                  價格：10S       2 乙劍                  價格：10S     ',
+  '== 未完繼續 52% == (ENTER 繼續下一頁，q 離開，b 前一頁)',
+].join('\n');
+const PAGE_TWO = [
+  ' 3 丙劍                  價格：10S       4 丁劍                  價格：10S     ',
+].join('\n');
+
+ui('two list pages are totalled: one summary, one batch covering both pages', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    const sent = [];
+    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
+    page.output(`<span id="p1">${PAGE_ONE}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    assert.match(shopBox(page).textContent, /這頁 2 件/);
+    page.output(`<span id="p2">${PAGE_TWO}</span>`);
+    assert.ok(await waitFor(() => /累計 2 頁 4 件/.test(shopBox(page)?.textContent ?? ''), 2000));
+    assert.equal(page.w.document.querySelectorAll('[data-catworld-shop]').length, 1, 'the older summary is replaced, so only one set of buttons is left');
+    assert.equal(shopBox(page).previousElementSibling.id, 'p2', 'the totalled summary sits under the newest page');
+    assert.match(shopBox(page).textContent, /還沒蒐集（4）：1 2 3 4/);
+    buttonOf(page, '批次 check 還沒蒐集的').click();
+    buttonOf(page, '確認送出').click();
+    assert.deepEqual(sent, ['check 1;check 2;check 3;check 4']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a list that starts again with its header starts a new total', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.output(`<span>${PAGE_ONE}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    page.output(`<span>${PAGE_TWO}</span>`);
+    assert.ok(await waitFor(() => /累計 2 頁/.test(shopBox(page)?.textContent ?? ''), 2000));
+    page.output(`<span>${PAGE_ONE}</span>`);
+    const newest = () => [...page.w.document.querySelectorAll('[data-catworld-shop]')].pop();
+    assert.ok(await waitFor(() => /這頁 2 件/.test(newest()?.textContent ?? ''), 2000), 'back to a single page, nothing carried over');
+    assert.equal(page.w.document.querySelectorAll('[data-catworld-shop]').length, 2, 'the previous total stays where it was printed, the new list gets its own');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a batch bigger than the limit goes out in parts, the next part starting after the last sent number', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    const sent = [];
+    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
+    const many = Array.from({ length: 45 }, (_, i) => ` ${i + 1} 未知裝備${i + 1}          價格：10S`).join('\n');
+    page.output(`<span>${many}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    buttonOf(page, '批次 check 還沒蒐集的').click();
+    buttonOf(page, '確認送出').click();
+    assert.equal(sent[0].split(';').length, 40);
+    const next = buttonOf(page, '批次 check 還沒蒐集的 下一批');
+    assert.match(next.textContent, /下一批 5 個/);
+    next.click();
+    buttonOf(page, '確認送出').click();
+    assert.equal(sent[1], 'check 41;check 42;check 43;check 44;check 45', 'the first 40 are not sent again');
+    assert.match(shopBox(page).textContent, /全部送完了/);
+  } finally {
+    page.close();
+  }
+});
