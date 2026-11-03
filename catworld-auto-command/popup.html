@@ -228,6 +228,9 @@
     <label for="shopMinPrice">沒資料的商品，價格低於這個（單位 S）的不列入批次 check</label>
     <input id="shopMinPrice" type="number" min="0" step="0.5">
     <p class="hint tight">預設 5S。便宜的多半是食物、藥草這類非裝備，check 要錢又沒用；填 0 就全部都 check。只影響「還沒蒐集的」批次，已經有資料、推薦的裝備不受影響。</p>
+    <label for="shopBuyNames">快速購買的商品名稱（list 裡出現就多一個「買」按鈕）</label>
+    <input id="shopBuyNames" type="text" autocomplete="off" placeholder="無名物品、無名藥草、不知名藥草">
+    <p class="hint tight">用「、」、逗號或分號分隔，名稱要和 list 裡一樣。按了就直接送出 buy 編號（遊戲的 buy 不能帶數量，旁邊的數量是重複送幾次，最多 20），不再確認，所以名稱請填準。留空＝不出現購買鈕。</p>
     <div id="shopInfo" class="hint tight">尚無紀錄</div>
     <button id="shopCopy">複製（可貼進試算表）</button>
     <button id="shopClear">清除</button>

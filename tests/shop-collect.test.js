@@ -545,3 +545,101 @@ ui('a minimum price of 0 checks everything, and items cheaper than the default a
     page.close();
   }
 });
+
+const BUY_LIST = [
+  '商人現在有賣以下貨物：',
+  ' 4 烈火棍                價格：1G40S     5 不知名藥草            價格：2S     ',
+  ' 23 包子                 價格：30C      30 無名物品              價格：3S     ',
+  '== 未完繼續 52% ==',
+].join('\n');
+const buyButtons = page => [...shopBox(page).querySelectorAll('button')].filter(button => button.textContent.startsWith('買 '));
+
+ui('a listed item named in the buy list gets a buy button that sends buy <number> at once, no confirmation', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    const sent = [];
+    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
+    page.output(`<span>${BUY_LIST}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    assert.deepEqual(buyButtons(page).map(button => button.textContent), ['買 5 不知名藥草（2S）', '買 30 無名物品（3S）'], 'default names: not 包子, not 烈火棍');
+    buyButtons(page)[0].click();
+    assert.deepEqual(sent, ['buy 5'], 'one click, one buy, no confirmation step');
+    assert.match(shopBox(page).textContent, /已送出 1 次 buy 5/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('the quantity box repeats buy that many times, kept between 1 and the limit', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    const sent = [];
+    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
+    page.output(`<span>${BUY_LIST}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    const quantity = shopBox(page).querySelector('input[type=number]');
+    quantity.value = '3';
+    buyButtons(page)[0].click();
+    quantity.value = '99';
+    buyButtons(page)[0].click();
+    quantity.value = '0';
+    buyButtons(page)[0].click();
+    assert.equal(sent[0], 'buy 5;buy 5;buy 5');
+    assert.equal(sent[1].split(';').length, 20, 'capped at 20');
+    assert.equal(sent[2], 'buy 5', 'less than 1 counts as 1');
+  } finally {
+    page.close();
+  }
+});
+
+ui('the buy list comes from the setting: custom names, and an empty setting shows no buy buttons', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.store.shopBuyNames = '包子，烈火棍';
+    page.output(`<span>${BUY_LIST}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    assert.deepEqual(buyButtons(page).map(button => button.textContent), ['買 4 烈火棍（1G40S）', '買 23 包子（30C）']);
+  } finally {
+    page.close();
+  }
+  const none = await boot({ scale: SCALE });
+  try {
+    seed(none);
+    none.store.shopBuyNames = '';
+    none.output(`<span>${BUY_LIST}</span>`);
+    assert.ok(await waitFor(() => shopBox(none), 2000));
+    assert.equal(buyButtons(none).length, 0);
+    assert.doesNotMatch(shopBox(none).textContent, /快速購買/);
+  } finally {
+    none.close();
+  }
+});
+
+ui('the buy button says so when there is nothing to send with', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.w.CatworldShopCollect.setSender(null);
+    page.output(`<span>${BUY_LIST}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    buyButtons(page)[0].click();
+    assert.match(shopBox(page).textContent, /送不出去/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('buy names can be separated by commas, semicolons or spaces, and a missing setting means the default', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const { buyNames } = page.w.CatworldShopCollect;
+    assert.deepEqual(Array.from(buyNames('包子;狗肉；藥草、水, 酒 米')), ['包子', '狗肉', '藥草', '水', '酒', '米']);
+    assert.deepEqual(Array.from(buyNames('')), []);
+    assert.deepEqual(Array.from(buyNames(undefined)), ['無名物品', '無名藥草', '不知名藥草']);
+  } finally {
+    page.close();
+  }
+});

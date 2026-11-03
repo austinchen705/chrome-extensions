@@ -13,6 +13,12 @@ const DB_KEY = 'shopItems';
 const MIN_PRICE_KEY = 'shopMinPrice';
 const DEFAULT_MIN_SILVER = 5;
 const normalizeMinSilver = value => (Number.isFinite(value) && value >= 0 ? value : DEFAULT_MIN_SILVER);
+// 快速購買：list 裡名稱和設定一樣的商品（用、或逗號分隔）旁邊多一個「買」按鈕，點了就送 buy 編號（遊戲的 buy 不能帶數量，
+// 數量是重複送幾次，最多 BUY_MAX）。名稱清單存 chrome.storage.local.shopBuyNames（字串），缺值用預設
+const BUY_NAMES_KEY = 'shopBuyNames';
+const DEFAULT_BUY_NAMES = '無名物品、無名藥草、不知名藥草';
+const BUY_MAX = 20;
+const buyNames = value => String(typeof value === 'string' ? value : DEFAULT_BUY_NAMES).split(/[、,，;；\s]+/).filter(Boolean);
 const SETTLE_MS = 600;
 const ARM_MS = 3000;
 const SUGGEST_MAX = 12;
@@ -114,7 +120,7 @@ function summaryLines(result, exp, pages = 1, minSilver = 0) {
 let sender = null;
 const setSender = fn => { sender = typeof fn === 'function' ? fn : null; };
 
-globalThis.CatworldShopCollect = { setSender, BATCH_MAX, MIN_PRICE_KEY, DEFAULT_MIN_SILVER, normalizeMinSilver, parsePrice, formatMoney, checkCost, parseList, entryFrom, rows, evaluate, checkCommand, summaryLines, DB_KEY };
+globalThis.CatworldShopCollect = { setSender, BATCH_MAX, BUY_MAX, BUY_NAMES_KEY, DEFAULT_BUY_NAMES, buyNames, MIN_PRICE_KEY, DEFAULT_MIN_SILVER, normalizeMinSilver, parsePrice, formatMoney, checkCost, parseList, entryFrom, rows, evaluate, checkCommand, summaryLines, DB_KEY };
 
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs || !globalThis.CatworldZapEquipment) return;
@@ -228,6 +234,35 @@ function batchControls(label, list) {
   return area;
 }
 
+// 快速購買：點了就送出（不再確認，使用者要求「一按 buy」），按鈕上寫明編號、名稱、價格；遊戲的 buy 不能帶數量，
+// 數量欄是重複送幾次 buy 編號（1～BUY_MAX），用同一個 sender 交給巨集依序送
+function buyRows(matches) {
+  const area = document.createElement('div');
+  const title = document.createElement('div');
+  title.textContent = '快速購買（點了就送出 buy，不再確認；數量＝重複送幾次）：';
+  area.append(title);
+  matches.forEach(item => {
+    const row = document.createElement('div');
+    const count = document.createElement('input');
+    count.type = 'number';
+    count.min = '1';
+    count.max = String(BUY_MAX);
+    count.value = '1';
+    count.style.width = '3.5em';
+    ['mousedown', 'click', 'keydown', 'keyup', 'keypress'].forEach(type => count.addEventListener(type, event => event.stopPropagation()));
+    const status = document.createElement('span');
+    const buy = button(`買 ${item.no} ${item.name}（${item.price}）`, () => {
+      const times = Math.min(BUY_MAX, Math.max(1, Math.floor(Number(count.value)) || 1));
+      count.value = String(times);
+      const started = sender ? sender(Array(times).fill(`buy ${item.no}`).join(';')) : false;
+      status.textContent = started === false || !sender ? '　送不出去（找不到送指令的功能）' : `　已送出 ${times} 次 buy ${item.no}`;
+    });
+    row.append(buy, ' ×', count, status);
+    area.append(row);
+  });
+  return area;
+}
+
 function showSummary(items, data, db, pages = 1) {
   const exp = readExp();
   const minSilver = normalizeMinSilver(data.shopMinPrice);
@@ -256,6 +291,8 @@ function showSummary(items, data, db, pages = 1) {
     });
     box.append(copy);
   }
+  const matches = items.filter(item => buyNames(data[BUY_NAMES_KEY]).includes(item.name));
+  if (matches.length) box.append(buyRows(matches));
   place(box);
   return box;
 }
@@ -331,7 +368,7 @@ async function flush() {
   timer = null;
   armedUntil = 0;
   try {
-    const data = await chrome.storage.local.get([DB_KEY, MIN_PRICE_KEY, 'zapFeatures', 'wornEquipment', 'mainWeapon', 'equipmentKeep']);
+    const data = await chrome.storage.local.get([DB_KEY, MIN_PRICE_KEY, BUY_NAMES_KEY, 'zapFeatures', 'wornEquipment', 'mainWeapon', 'equipmentKeep']);
     if (data.zapFeatures?.shop !== true) return;
     let db = data[DB_KEY] || {};
     const at = text.search(CHECK_PHRASE);

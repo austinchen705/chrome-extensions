@@ -195,3 +195,36 @@ ui('a saved minimum price is shown when the settings page opens', async () => {
     page.close();
   }
 });
+
+ui('the shop buy names setting shows the default, saves what is typed and keeps an empty value', async () => {
+  const page = await boot();
+  try {
+    const { doc, store } = page;
+    const input = doc.getElementById('shopBuyNames');
+    assert.equal(input.value, '無名物品、無名藥草、不知名藥草');
+    input.value = ' 包子、狗肉 ';
+    input.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
+    assert.ok(await waitFor(() => store.shopBuyNames === '包子、狗肉'));
+    input.value = '';
+    input.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
+    assert.ok(await waitFor(() => store.shopBuyNames === ''), 'empty is a real value: no buy buttons');
+    await sleep(60);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a saved buy names setting, even an empty one, is shown when the settings page opens', async () => {
+  const empty = await boot({ shopBuyNames: '' });
+  try {
+    assert.equal(empty.doc.getElementById('shopBuyNames').value, '');
+  } finally {
+    empty.close();
+  }
+  const set = await boot({ shopBuyNames: '包子' });
+  try {
+    assert.equal(set.doc.getElementById('shopBuyNames').value, '包子');
+  } finally {
+    set.close();
+  }
+});
