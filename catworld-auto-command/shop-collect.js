@@ -1,8 +1,9 @@
 // 商人裝備資料庫：玩家在商人面前自己打 list 與 check N（check 要付錢，工具絕不代送），這裡只記錄與比對。
 // check 的輸出和鑑定後的裝備同一種「此物名曰」區塊，解析共用 zap-equipment.js；每件裝備以名稱為鍵存進
 // chrome.storage.local.shopItems（{ 名稱: { name, category, kind, primary, attrs, needExp, seen } }，不分店、同名後讀的覆蓋）。
-// 打 list 時：用目前經驗與「讀取目前穿著」的基準比對資料庫，在 list 那一頁的輸出下面插一塊摘要
-// （比現在好的編號、還沒蒐集的編號與可複製的 check 指令）。整個功能（蒐集、回報、摘要）由設定頁「輔助功能」的「裝備資料庫」開關
+// 資料庫裡可靠的是「類別」與「佩帶經驗」（等級）；同名裝備的傷害、屬性不一定一樣，所以 list 的推薦只看等級：
+// 打 list 時，用目前經驗與「讀取目前穿著」的基準，在 list 那一頁的輸出下面插一塊摘要——穿得了、而且佩帶經驗比現在穿的同類別高的
+// 列為「建議 check」，還沒蒐集的列為「還沒蒐集」（先蒐集才有等級可比），兩者都有批次 check 按鈕；check 之後再用那件實際的數值和身上的比。整個功能（蒐集、回報、摘要）由設定頁「輔助功能」的「裝備資料庫」開關
 // （chrome.storage.local.zapFeatures.shop）控制，缺值＝關閉。
 (() => {
 if (globalThis.CatworldShopCollect) return;
@@ -10,7 +11,7 @@ if (globalThis.CatworldShopCollect) return;
 const DB_KEY = 'shopItems';
 const SETTLE_MS = 600;
 const ARM_MS = 3000;
-const BETTER_MAX = 12;
+const SUGGEST_MAX = 12;
 const UNKNOWN_MAX = 40;
 // 一次批次 check 最多幾個（每個都要付錢，一次不要放太多；沒蒐集的比這個多就分幾次按）
 const BATCH_MAX = 40;
@@ -54,11 +55,11 @@ function rows(db) {
     .map(item => [item.name, item.category, item.primary ?? '', item.needExp ?? '', (item.attrs || []).map(attr => `${attr.name}${attr.value >= 0 ? '+' : ''}${attr.value}`).join(' ')]);
 }
 
-// 把 list 這一頁的項目逐一和資料庫比：沒蒐集過的放 unknown；蒐集過的用 compareEquipment 比（同類別、和現在穿的最弱的比），
-// 還穿不了的只計數，比現在好（含屬性達門檻）的放 better，沒有基準可比的只計數
-function evaluate(items, db, { exp, baseline, mainWeapon, keep } = {}) {
-  const E = globalThis.CatworldZapEquipment;
-  const out = { total: items.length, known: 0, better: [], unknown: [], unknownPrices: [], unknownItems: [], tooHigh: 0, noBaseline: 0 };
+// 把 list 這一頁的項目逐一和資料庫比：沒蒐集過的放 unknown；蒐集過的只看佩帶經驗（等級）：
+// 經驗不夠穿的只計數；穿得了的和「現在穿的同類別裡佩帶經驗最低的那件」（最該換掉的）比，要求經驗更高的放 suggest（建議 check），
+// 不比它高的只計數；同類別沒有穿著資料可比的只計數。傷害、屬性不拿來判斷（同名裝備的數值可能不同）
+function evaluate(items, db, { exp, baseline } = {}) {
+  const out = { total: items.length, known: 0, suggest: [], unknown: [], unknownPrices: [], unknownItems: [], tooHigh: 0, notHigher: 0, noBaseline: 0 };
   items.forEach(item => {
     const entry = db?.[item.name];
     if (!entry) {
@@ -69,11 +70,14 @@ function evaluate(items, db, { exp, baseline, mainWeapon, keep } = {}) {
       return;
     }
     out.known += 1;
-    const result = E.compareEquipment(entry, baseline?.[entry.category], { mainWeapon, exp, keep });
-    if (result.blocked) out.tooHigh += 1;
-    else if (result.verdict === 'better' || result.verdict === 'keep') out.better.push({ ...item, reasons: result.reasons.slice(0, 3).join('，') });
-    else if (result.verdict === 'none') out.noBaseline += 1;
+    const level = entry.needExp ?? 0;
+    if (Number.isFinite(exp) && level > exp) { out.tooHigh += 1; return; }
+    const worn = (baseline?.[entry.category] ?? []).slice().sort((a, b) => (a.needExp ?? 0) - (b.needExp ?? 0))[0];
+    if (!worn) out.noBaseline += 1;
+    else if (level > (worn.needExp ?? 0)) out.suggest.push({ ...item, level, against: worn.name, wornLevel: worn.needExp ?? 0 });
+    else out.notHigher += 1;
   });
+  out.suggest.sort((a, b) => b.level - a.level || a.no - b.no);
   return out;
 }
 
@@ -81,11 +85,12 @@ const checkCommand = numbers => numbers.map(no => `check ${no}`).join(';');
 
 function summaryLines(result, exp) {
   const lines = [`【裝備資料庫】經驗 ${Number.isFinite(exp) ? exp : '讀不到'}　這頁 ${result.total} 件，已蒐集 ${result.known} 件`];
-  if (result.better.length) {
-    const shown = result.better.slice(0, BETTER_MAX).map(item => `${item.no} ${item.name}${item.reasons ? `（${item.reasons}）` : ''}`);
-    lines.push(`比現在好：${shown.join('；')}${result.better.length > BETTER_MAX ? `…共 ${result.better.length} 件` : ''}`);
-  } else if (result.known) lines.push('比現在好：沒有');
+  if (result.suggest.length) {
+    const shown = result.suggest.slice(0, SUGGEST_MAX).map(item => `${item.no} ${item.name}（需經驗 ${item.level}，現穿 ${item.against} ${item.wornLevel}）`);
+    lines.push(`建議 check（穿得了、佩帶經驗比現在穿的高；實際數值 check 後才知道）：${shown.join('；')}${result.suggest.length > SUGGEST_MAX ? `…共 ${result.suggest.length} 件` : ''}`);
+  } else if (result.known) lines.push('建議 check：沒有');
   if (result.tooHigh) lines.push(`經驗還不夠穿：${result.tooHigh} 件`);
+  if (result.notHigher) lines.push(`佩帶經驗不比現在穿的高：${result.notHigher} 件`);
   if (result.noBaseline) lines.push(`沒有目前穿著的資料可比：${result.noBaseline} 件（先用面板的「讀取目前穿著」）`);
   if (result.unknown.length) {
     const cost = checkCost(result.unknownPrices);
@@ -131,11 +136,27 @@ function place(box) {
   box.scrollIntoView?.({ block: 'nearest' });
 }
 
-// check 之後在輸出下面回報有沒有記進資料庫：記了哪幾件、共幾件；這次 check 沒有裝備資料（沒記）也要說，不然看不出是沒記還是沒反應
-function showRecorded(blocks, before, after) {
+// 剛 check 到的這件和現在穿的同類別比（用這次的實際數值，不是資料庫裡同名的舊資料）
+function judge(block, data) {
+  const E = globalThis.CatworldZapEquipment;
+  const baseline = data.wornEquipment?.[characterName()]?.[block.category];
+  const result = E.compareEquipment(block, baseline, { mainWeapon: data.mainWeapon, exp: readExp(), keep: E.normalizeKeepRule(data.equipmentKeep) });
+  if (result.blocked) return `和現在穿的比：經驗還不夠穿（需要 ${block.needExp}）`;
+  if (result.verdict === 'none') return '和現在穿的比：沒有這個類別的穿著資料可比（先用面板的「讀取目前穿著」）';
+  return `和現在穿的 ${result.against} 比：${result.text}${result.reasons.length ? `（${result.reasons.slice(0, 3).join('，')}）` : ''}`;
+}
+const sameStats = (a, b) => a.primary === b.primary && JSON.stringify(a.attrs) === JSON.stringify(b.attrs);
+
+// check 之後在輸出下面回報：有沒有記進資料庫、和現在穿的比如何；同名裝備的數值和資料庫舊資料不同要提醒（同名不代表數值一樣）；
+// 這次 check 沒有裝備資料（沒記）也要說，不然看不出是沒記還是沒反應
+function showRecorded(blocks, before, after, data) {
   const box = newBox();
   const lines = blocks.length
-    ? blocks.map(block => `已記進裝備資料庫：${block.name}（${block.category}，${block.kind === 'weapon' ? '傷害' : '防禦'} ${block.primary ?? '?'}，佩帶經驗 ${block.needExp ?? '無'}）${before[block.name] ? '，更新舊資料' : ''}`)
+    ? blocks.flatMap(block => [
+      `已記進裝備資料庫：${block.name}（${block.category}，${block.kind === 'weapon' ? '傷害' : '防禦'} ${block.primary ?? '?'}，佩帶經驗 ${block.needExp ?? '無'}）${before[block.name] ? '，更新舊資料' : ''}`,
+      ...(before[block.name] && !sameStats(before[block.name], block) ? [`注意：同名裝備的數值和資料庫舊資料不同（傷害／防禦 ${before[block.name].primary ?? '?'} → ${block.primary ?? '?'}），已改成這次的`] : []),
+      judge(block, data),
+    ])
     : ['這次 check 的輸出裡沒有裝備資料（不是裝備，或格式讀不懂），沒有記錄'];
   if (blocks.length) lines.push(`資料庫共 ${Object.keys(after).length} 件`);
   lines.forEach(line => {
@@ -147,9 +168,9 @@ function showRecorded(blocks, before, after) {
 }
 
 // 「批次 check」：先顯示個數與預估費用，玩家按了確認才送（check 要付錢）；用注入的 sender（巨集）依序送，
-// 一次最多 BATCH_MAX 個（取這一頁沒蒐集的前幾個，要更多就再按一次）
-function batchControls(result) {
-  const batch = result.unknownItems.slice(0, BATCH_MAX);
+// 一次最多 BATCH_MAX 個（取這一頁的前幾個，要更多就再按一次）。list: [{ no, price }]
+function batchControls(label, list) {
+  const batch = list.slice(0, BATCH_MAX);
   const cost = checkCost(batch.map(item => item.price).filter(price => price !== null));
   const area = document.createElement('div');
   const stop = event => event.stopPropagation();
@@ -160,7 +181,7 @@ function batchControls(result) {
     node.addEventListener('click', event => { stop(event); onClick(); });
     return node;
   };
-  const start = button(`批次 check ${batch.length} 個（約 ${formatMoney(cost.low)}～${formatMoney(cost.high)}）`, () => {
+  const start = button(`批次 check ${label} ${batch.length} 個（約 ${formatMoney(cost.low)}～${formatMoney(cost.high)}）`, () => {
     const confirmRow = document.createElement('div');
     confirmRow.append(
       `將依序送出 ${batch.length} 個 check，預估約 ${formatMoney(cost.low)}～${formatMoney(cost.high)}，確認嗎？`,
@@ -177,22 +198,18 @@ function batchControls(result) {
 }
 
 function showSummary(items, data, db) {
-  const E = globalThis.CatworldZapEquipment;
   const exp = readExp();
-  const result = evaluate(items, db, {
-    exp,
-    baseline: data.wornEquipment?.[characterName()],
-    mainWeapon: data.mainWeapon,
-    keep: E.normalizeKeepRule(data.equipmentKeep),
-  });
+  const result = evaluate(items, db, { exp, baseline: data.wornEquipment?.[characterName()] });
   const box = newBox();
   summaryLines(result, exp).forEach(line => {
     const row = document.createElement('div');
     row.textContent = line;
     box.append(row);
   });
+  // 建議的要 check 才知道這一件實際的數值（check 之後會立刻和身上的比）；沒蒐集的 check 之後才進資料庫、有等級可比
+  if (result.suggest.length) box.append(batchControls('建議的', result.suggest.map(item => ({ no: item.no, price: parsePrice(item.price) }))));
   if (result.unknown.length) {
-    box.append(batchControls(result));
+    box.append(batchControls('還沒蒐集的', result.unknownItems));
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = '複製 check 指令（貼進遊戲巨集用）';
@@ -229,7 +246,7 @@ async function flush() {
         blocks.forEach(block => { db[block.name] = entryFrom(block, Date.now()); });
         await chrome.storage.local.set({ [DB_KEY]: db });
       }
-      showRecorded(blocks, before, db);
+      showRecorded(blocks, before, db, data);
     }
     const items = parseList(text);
     if (items.length) showSummary(items, data, db);

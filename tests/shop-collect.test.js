@@ -136,7 +136,7 @@ const SUMMARY_LIST = [
   '== 未完繼續 52% == (ENTER 繼續下一頁，q 離開，b 前一頁)',
 ].join('\n');
 
-ui('after a list page the summary says what is better than the worn gear, what cannot be worn yet, and what is still uncollected', async () => {
+ui('after a list page the summary suggests the wearable items with a higher required exp than what is worn, and counts the rest', async () => {
   const page = await boot({ scale: SCALE });
   try {
     seed(page);
@@ -145,7 +145,7 @@ ui('after a list page the summary says what is better than the worn gear, what c
     const text = shopBox(page).textContent;
     assert.match(text, /經驗 414748/);
     assert.match(text, /已蒐集 3 件/);
-    assert.match(text, /比現在好：4 烈火棍（傷害 \+10）/);
+    assert.match(text, /建議 check（穿得了、佩帶經驗比現在穿的高；實際數值 check 後才知道）：4 烈火棍（需經驗 100，現穿 舊棍 0）/);
     assert.match(text, /經驗還不夠穿：1 件/);
     assert.match(text, /沒有目前穿著的資料可比：1 件/);
     assert.match(text, /還沒蒐集（1）：2/);
@@ -200,6 +200,7 @@ ui('the feature is off by default and when its switch is off: nothing is recorde
   }
 });
 
+// 比現在好的那一個批次按鈕也在，但這些測試只看沒蒐集的那個
 const buttonOf = (page, prefix) => [...shopBox(page).querySelectorAll('button')].find(button => button.textContent.startsWith(prefix));
 
 ui('the batch button first shows the count and estimated cost, and sends nothing until confirmed', async () => {
@@ -210,15 +211,15 @@ ui('the batch button first shows the count and estimated cost, and sends nothing
     page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
     page.output(`<span>${SUMMARY_LIST}</span>`);
     assert.ok(await waitFor(() => shopBox(page), 2000));
-    const start = buttonOf(page, '批次 check');
-    assert.match(start.textContent, /批次 check 1 個（約 1S10C～1S16C）/);
+    const start = buttonOf(page, '批次 check 還沒蒐集的');
+    assert.match(start.textContent, /批次 check 還沒蒐集的 1 個（約 1S10C～1S16C）/);
     start.click();
     assert.match(shopBox(page).textContent, /將依序送出 1 個 check，預估約 1S10C～1S16C，確認嗎？/);
     assert.deepEqual(sent, [], 'nothing is sent before the confirmation');
     buttonOf(page, '取消').click();
     assert.deepEqual(sent, []);
-    assert.ok(buttonOf(page, '批次 check'), 'cancel brings the start button back');
-    buttonOf(page, '批次 check').click();
+    assert.ok(buttonOf(page, '批次 check 還沒蒐集的'), 'cancel brings the start button back');
+    buttonOf(page, '批次 check 還沒蒐集的').click();
     buttonOf(page, '確認送出').click();
     assert.deepEqual(sent, ['check 2']);
     assert.match(shopBox(page).textContent, /已開始送出 1 個 check/);
@@ -236,8 +237,8 @@ ui('a batch sends at most BATCH_MAX of the uncollected numbers, in list order', 
     const many = Array.from({ length: 45 }, (_, i) => ` ${i + 1} 未知裝備${i + 1}          價格：10S`).join('\n');
     page.output(`<span>${many}</span>`);
     assert.ok(await waitFor(() => shopBox(page), 2000));
-    const start = buttonOf(page, '批次 check');
-    assert.match(start.textContent, /批次 check 40 個/);
+    const start = buttonOf(page, '批次 check 還沒蒐集的');
+    assert.match(start.textContent, /批次 check 還沒蒐集的 40 個/);
     start.click();
     buttonOf(page, '確認送出').click();
     const numbers = sent[0].split(';').map(piece => Number(piece.replace('check ', '')));
@@ -256,7 +257,7 @@ ui('without a sender the confirmation says it could not send', async () => {
     page.w.CatworldShopCollect.setSender(null);
     page.output(`<span>${SUMMARY_LIST}</span>`);
     assert.ok(await waitFor(() => shopBox(page), 2000));
-    buttonOf(page, '批次 check').click();
+    buttonOf(page, '批次 check 還沒蒐集的').click();
     buttonOf(page, '確認送出').click();
     assert.match(shopBox(page).textContent, /送不出去/);
   } finally {
@@ -270,9 +271,88 @@ ui('content.js hands the batch to the macro runner so the commands really go out
     seed(page);
     page.output(`<span>${SUMMARY_LIST}</span>`);
     assert.ok(await waitFor(() => shopBox(page), 2000));
-    buttonOf(page, '批次 check').click();
+    buttonOf(page, '批次 check 還沒蒐集的').click();
     buttonOf(page, '確認送出').click();
     assert.ok(await waitFor(() => page.sent.includes('check 2'), 3000), 'the check command was typed into the game input');
+  } finally {
+    page.close();
+  }
+});
+
+ui('right after a check the item is compared with what is worn, using this check\'s own numbers', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.output(`<span>${checkOutput('烈火棍', '棍類武器', 60, 100)}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    assert.match(shopBox(page).textContent, /和現在穿的 舊棍 比：比現在好，建議留下（傷害 \+10）/);
+    page.output(`<span>${checkOutput('突襲盾', '盾類防具', 90, 99999999)}</span>`);
+    assert.ok(await waitFor(() => page.w.document.querySelectorAll('[data-catworld-shop]').length === 2, 2000));
+    assert.match(page.w.document.querySelectorAll('[data-catworld-shop]')[1].textContent, /經驗還不夠穿（需要 99999999）/);
+    page.output(`<span>${checkOutput('黃金鎖鍊', '鞭類武器', 47, 200000)}</span>`);
+    assert.ok(await waitFor(() => page.w.document.querySelectorAll('[data-catworld-shop]').length === 3, 2000));
+    assert.match(page.w.document.querySelectorAll('[data-catworld-shop]')[2].textContent, /沒有這個類別的穿著資料可比/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a same-name item whose numbers differ from the database is flagged and compared with its own numbers', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.output(`<span>${checkOutput('烈火棍', '棍類武器', 52, 100)}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    const text = shopBox(page).textContent;
+    assert.match(text, /注意：同名裝備的數值和資料庫舊資料不同（傷害／防禦 60 → 52），已改成這次的/);
+    assert.match(text, /和現在穿的 舊棍 比.*（傷害 \+2）/, 'judged with 52, not the 60 stored before');
+    assert.equal(page.store.shopItems['烈火棍'].primary, 52);
+  } finally {
+    page.close();
+  }
+});
+
+ui('the list summary also offers a batch check for the suggested ones', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    const sent = [];
+    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
+    page.output(`<span>${SUMMARY_LIST}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    const start = [...shopBox(page).querySelectorAll('button')].find(button => button.textContent.startsWith('批次 check 建議的'));
+    assert.match(start.textContent, /批次 check 建議的 1 個（約 7S～7S35C）/, '烈火棍 1G40S: 5% is 7S, up to 7S35C');
+    start.click();
+    [...shopBox(page).querySelectorAll('button')].find(button => button.textContent === '確認送出').click();
+    assert.deepEqual(sent, ['check 4']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('the suggestion looks only at required exp: stats in the database do not matter, items not above what is worn are only counted, highest level first', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.w.document.title = '測試 - CatWorld';
+    page.w.document.body.insertAdjacentHTML('beforeend', '<div id="exp">414748</div>');
+    const item = (name, needExp, primary) => ({ name, category: '劍類武器', kind: 'weapon', primary, attrs: [], needExp, seen: 1 });
+    Object.assign(page.store, {
+      zapFeatures: { shop: true },
+      shopItems: { 低劍: item('低劍', 1000, 999), 中劍: item('中劍', 50000, 1), 高劍: item('高劍', 300000, 1), 超高劍: item('超高劍', 900000, 999) },
+      wornEquipment: { 測試: { 劍類武器: [{ name: '現劍', primary: 10, attrs: [], needExp: 20000, readAt: 1 }, { name: '舊劍', primary: 5, attrs: [], needExp: 8000, readAt: 1 }] } },
+    });
+    const list = [
+      ' 1 低劍                  價格：1S       2 中劍                  價格：2S     ',
+      ' 3 高劍                  價格：3S       4 超高劍                價格：4S     ',
+      '== 未完繼續 52% ==',
+    ].join('\n');
+    page.output(`<span>${list}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    const text = shopBox(page).textContent;
+    assert.match(text, /3 高劍（需經驗 300000，現穿 舊劍 8000）；2 中劍（需經驗 50000，現穿 舊劍 8000）/, 'compared with the lowest worn one, highest level first; its stat 999 is not what ranks 低劍');
+    assert.doesNotMatch(text, /1 低劍（/, '低劍 requires 1000, not above the worn 舊劍');
+    assert.match(text, /佩帶經驗不比現在穿的高：1 件/);
+    assert.match(text, /經驗還不夠穿：1 件/);
   } finally {
     page.close();
   }
