@@ -163,7 +163,7 @@
 
 ## 地圖怪物蒐集
 
-- `map-collect.js`（自成一體，manifest 與 popup 備援注入都要載入，順序在 `macro-resize.js` 後）每 2 秒掃遊戲地圖視窗 `#map_wrapper`：房間是 `<a id="m-區域-房間代號">`，有怪的房間 `title` 是逗號分隔的怪物英文 ID（遊戲自己填，玩家走過才有）。合併進 `chrome.storage.local.mapMonsters`（鍵 `區域代號/房間代號`，`{ area, room, areaName, mobs, seen }`）：怪物 ID 取聯集、只增不減，區域名稱只有該區域地圖正在顯示（`#m-區域` 沒有 `.invisible`）時才讀得到、讀到才更新。連不上儲存（孤兒程式）就停掉計時器。設定頁「地圖怪物蒐集」只顯示筆數、複製 Tab 分隔文字、清除；不含怪物中文名與強度，併進共用表的格式還沒定。測試在 `tests/map-collect.test.js`。
+- `map-collect.js`（manifest 與 popup 備援注入都要載入，要在 `zap-mobs.js` 之後，用它的 `parseMobLines`、`textFromAdded`）監聽 `#content` 新增的文字，進房間時遊戲印的怪物行（`※名稱(ID)`）記給「目前的房間」：地圖視窗 `#map_wrapper` 沒有「你在這裡」的樣式（`emap` 的輸出與地圖房間的 `title` 都沒有怪物資訊，`title` 通常是空的），但遊戲會把所在房間捲到 `#map_anchor`（和一格同大的空方塊）的位置，所以蓋住 anchor 中心點的那個顯示中（沒有 `.invisible`）的 `<a id="m-區域-房間代號">` 就是目前的房間（`currentRoom`）。怪物行出現後等 `SETTLE_MS` 才判斷房間（地圖捲動與印文字不是同一瞬間；這段時間內又走到別間會記錯房間，已知限制）。合併進 `chrome.storage.local.mapMonsters`（鍵 `區域代號/房間代號`，`{ area, room, areaName, mobs, seen }`，`mobs` 是 `名稱(ID)` 字串）：取聯集、只增不減，區域名稱讀地圖標題。連不上儲存（孤兒程式）就停止監聽。設定頁「地圖怪物蒐集」只顯示筆數、複製 Tab 分隔文字、清除；不含強度與路線，併進共用表的格式還沒定。jsdom 算不出排版，測試用假的 `getBoundingClientRect` 擺房間與 anchor，真實頁面的置中行為只能手動驗證。測試在 `tests/map-collect.test.js`。
 
 ## 數值區塊
 

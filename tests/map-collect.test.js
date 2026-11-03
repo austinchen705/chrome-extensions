@@ -1,60 +1,85 @@
-// 地圖怪物蒐集：掃 #map_wrapper 的 title、合併進儲存（只增不減）。純函式用 jsdom 文件測；整個 content script 載入時也要真的存進 storage。需要 jsdom
+// 地圖怪物蒐集：進房間時遊戲印的怪物行，記給「蓋住 #map_anchor 中心點的房間」，只增不減。jsdom 算不出排版，
+// 所以房間與 anchor 的位置用假的 getBoundingClientRect 擺。需要 jsdom
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { ui, boot, waitFor } = require('./helpers/game-page');
 
-const MAP = `<div id="map_table"><span id="map_header">地圖 (<span data-default-grid="□">長安</span>)</span><div id="map_wrapper">
-<div id="m-snow"><a id="m-snow-0q" class="B5" title="mahaha,liquor">□</a><a id="m-snow-0r" title="">□</a><a id="m-snow-0u" title=" biglp ">廟</a></div>
-<div class="invisible" id="m-godforest"><a id="m-godforest-w6" title="kulama,evo">□</a><a id="m-godforest-w0">□</a></div></div></div>`;
 const load = name => fs.readFileSync(path.join(__dirname, '..', 'catworld-auto-command', name), 'utf8');
+const MAP = `<div id="map_table"><span id="map_header">地圖 (<span data-default-grid="□">武當派</span>)</span><div id="map_wrapper">
+<div id="m-wudon"><a id="m-wudon-2h">□</a><a id="m-wudon-2i">□</a></div>
+<div class="invisible" id="m-godforest"><a id="m-godforest-w6">□</a></div></div><div id="map_anchor"></div></div>`;
+const rect = (left, top) => ({ left, top, right: left + 30, bottom: top + 30, width: 30, height: 30 });
 
-ui('scan reads rooms that have monsters and the area name of the visible area only', async () => {
+// 2h 在 x=0、2i 在 x=30；隱藏區域 godforest 的 w6 也擺在 2i 的位置；anchor 預設在 x=30（中心 45,15 蓋在 2i）
+function setup(page, anchorLeft = 30) {
+  const doc = page.w.document;
+  doc.body.insertAdjacentHTML('beforeend', MAP);
+  const at = { 'm-wudon-2h': rect(0, 0), 'm-wudon-2i': rect(30, 0), 'm-godforest-w6': rect(30, 0) };
+  Object.entries(at).forEach(([id, r]) => { doc.getElementById(id).getBoundingClientRect = () => r; });
+  doc.getElementById('map_anchor').getBoundingClientRect = () => rect(anchorLeft, 0);
+}
+const saved = async page => (await page.w.chrome.storage.local.get('mapMonsters')).mapMonsters;
+
+ui('currentRoom is the visible room under the anchor center, or null', async () => {
   const page = await boot();
   try {
-    page.w.document.body.insertAdjacentHTML('beforeend', MAP);
-    page.w.eval(load('map-collect.js'));
-    const found = page.w.CatworldMapCollect.scan(page.w.document);
-    assert.equal(found.length, 3);
-    const by = key => found.find(item => item.key === key);
-    assert.equal(by('snow/0q').mobs.join(), 'mahaha,liquor');
-    assert.equal(by('snow/0q').areaName, '長安');
-    assert.equal(by('snow/0u').mobs.join(), 'biglp', 'spaces around an id are trimmed');
-    assert.equal(by('godforest/w6').areaName, '', 'a hidden area has no name to read');
+    setup(page);
+    const spot = page.w.CatworldMapCollect.currentRoom(page.w.document);
+    assert.equal(spot.key, 'wudon/2i', 'the hidden godforest room at the same spot is ignored');
+    assert.equal(spot.areaName, '武當派');
+    page.w.document.getElementById('map_anchor').getBoundingClientRect = () => rect(500, 500);
+    assert.equal(page.w.CatworldMapCollect.currentRoom(page.w.document), null);
   } finally {
     page.close();
   }
 });
 
-ui('merge only adds: ids are unioned and an empty scan never erases', async () => {
+ui('merge only adds: monsters are unioned and nothing new means no write', async () => {
   const page = await boot();
   try {
-    page.w.eval(load('map-collect.js'));
     const { merge } = page.w.CatworldMapCollect;
-    const first = merge({}, [{ key: 'snow/0q', area: 'snow', room: '0q', mobs: ['a', 'b'], areaName: '長安' }], 1);
+    const spot = { key: 'wudon/2i', area: 'wudon', room: '2i', areaName: '武當派' };
+    const first = merge({}, spot, ['地痞(dipi)'], 1);
     assert.equal(first.changed, true);
-    const same = merge(first.store, [{ key: 'snow/0q', area: 'snow', room: '0q', mobs: ['b'], areaName: '' }], 2);
-    assert.equal(same.changed, false, 'nothing new, nothing written');
-    const more = merge(first.store, [{ key: 'snow/0q', area: 'snow', room: '0q', mobs: ['c'], areaName: '' }], 3);
-    assert.equal(more.store['snow/0q'].mobs.join(), 'a,b,c');
-    assert.equal(more.store['snow/0q'].areaName, '長安', 'a missing area name keeps the old one');
-    assert.equal(merge(first.store, [], 4).changed, false);
+    assert.equal(merge(first.store, spot, ['地痞(dipi)'], 2).changed, false);
+    const more = merge(first.store, { ...spot, areaName: '' }, ['流氓(liumang)'], 3);
+    assert.equal(more.store['wudon/2i'].mobs.join(), '地痞(dipi),流氓(liumang)');
+    assert.equal(more.store['wudon/2i'].areaName, '武當派', 'a missing area name keeps the old one');
   } finally {
     page.close();
   }
 });
 
-ui('the content script saves the rooms it finds to storage', async () => {
+ui('monster lines printed in a room are saved for the room under the anchor', async () => {
   const page = await boot({ scale: 10 });
   try {
-    page.w.document.body.insertAdjacentHTML('beforeend', MAP);
-    // 地圖在腳本載入之後才出現的頁面：重新載入一次模組（旗標已存在時要跳過，所以先清掉）
-    delete page.w.CatworldMapCollect;
-    page.w.eval(load('map-collect.js'));
-    assert.ok(await waitFor(async () => (await page.w.chrome.storage.local.get('mapMonsters')).mapMonsters?.['snow/0q'], 2000));
-    const saved = (await page.w.chrome.storage.local.get('mapMonsters')).mapMonsters;
-    assert.equal(saved['godforest/w6'].mobs.join(), 'kulama,evo');
+    setup(page);
+    page.output('<span>※</span><span>地痞(dipi)</span> <span>&lt;戰鬥中&gt;</span>\n<span>※</span><span>流氓(liumang)</span>\n<span>你看到一個房間。</span>');
+    assert.ok(await waitFor(async () => (await saved(page))?.['wudon/2i'], 2000), 'saved under the room at the anchor');
+    const room = (await saved(page))['wudon/2i'];
+    assert.deepEqual([...room.mobs].sort(), ['地痞(dipi)', '流氓(liumang)']);
+    assert.equal(room.areaName, '武當派');
+  } finally {
+    page.close();
+  }
+});
+
+ui('text without monster lines saves nothing, and walking on records the next room', async () => {
+  const page = await boot({ scale: 10 });
+  try {
+    setup(page);
+    page.output('<span>你走了一步。</span>');
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(await saved(page), undefined);
+    page.output('<span>※地痞(dipi)</span>');
+    assert.ok(await waitFor(async () => (await saved(page))?.['wudon/2i'], 2000));
+    page.w.document.getElementById('map_anchor').getBoundingClientRect = () => rect(0, 0);
+    page.output('<span>※高手(gaoshou)</span>');
+    assert.ok(await waitFor(async () => (await saved(page))?.['wudon/2h'], 2000));
+    assert.equal((await saved(page))['wudon/2h'].mobs.join(), '高手(gaoshou)');
+    assert.equal((await saved(page))['wudon/2i'].mobs.join(), '地痞(dipi)');
   } finally {
     page.close();
   }
