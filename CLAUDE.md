@@ -167,7 +167,7 @@
 
 ## 在線獎勵
 
-- `content.js` 的 `watchReward` 由 `captchaObserver` 在每一批新增文字（驗證碼分支之前）呼叫：看到「在線獎勵： N分鐘後可領取」（自己打 `sc` 的輸出）就用 `setTimeout` 排 N+1 分鐘後 `sendCommand('reward')`；`rewardTimer` 有值就忽略新的（等待與重試期間都算）。**不走送出佇列**：佇列只在 `active()` 時送，閒置時會卡住；`sendCommand` 自己會擋驗證碼辨識中與因驗證停止，送不出去隔 `REWARD_RETRY_MS` 再試、最多 `REWARD_TRIES` 次。開關是 `chrome.storage.local.autoReward`（缺值＝開，設定頁「在線獎勵自動領取」，`storage.onChanged` 即時生效、關掉會取消等待中的）；`retire()` 會取消。領獎出現的驗證碼由既有的自動辨識處理。計時只存在頁面裡，重新整理就沒了。測試在 `tests/online-reward.test.js`。
+- `content.js` 的 `watchReward` 由 `captchaObserver` 在每一批新增文字（驗證碼分支之前）呼叫：看到「在線獎勵： N分鐘後可領取」（自己打 `sc` 的輸出）就用 `setTimeout` 排 N+1 分鐘後 `sendCommand('reward')`；`rewardTimer` 有值就忽略新的（等待與重試期間都算）。**不走送出佇列**：佇列只在 `active()` 時送，閒置時會卡住；`sendCommand` 自己會擋驗證碼辨識中與因驗證停止，送不出去隔 `REWARD_RETRY_MS` 再試、最多 `REWARD_TRIES` 次。開關是 `chrome.storage.local.autoReward`（缺值＝開，設定頁「在線獎勵自動領取」，`storage.onChanged` 即時生效、關掉會取消等待中的）；`retire()` 會取消。面板「獎勵」那一行（`rewardView`、`rewardSummary`，每秒隨 `renderPanel` 更新，沒有排計時就隱藏）顯示倒數與重試狀態。領獎出現的驗證碼由既有的自動辨識處理。計時只存在頁面裡，重新整理就沒了。測試在 `tests/online-reward.test.js`。
 
 ## 數值區塊
 

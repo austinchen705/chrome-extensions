@@ -51,3 +51,18 @@ ui('other text does nothing, and turning the switch off cancels a pending one', 
     page.close();
   }
 });
+
+ui('the panel shows the countdown while it waits and hides the line once reward was sent', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const line = () => page.hosts()[0]?.shadowRoot.querySelector('.reward-line');
+    assert.equal(line().hidden, true, 'no countdown line before anything is scheduled');
+    page.output('<span>在線獎勵： 3分鐘後可領取</span>');
+    assert.ok(await waitFor(() => line().hidden === false, 2000));
+    assert.match(line().querySelector('.reward-text').textContent, /在線獎勵 [34]:\d\d 後自動領取/);
+    assert.ok(await waitFor(() => rewards(page) === 1, 2000));
+    assert.ok(await waitFor(() => line().hidden === true, 2000));
+  } finally {
+    page.close();
+  }
+});

@@ -62,26 +62,41 @@ const REWARD_RETRY_MS = 10000;
 const REWARD_TRIES = 3;
 let autoReward = true;
 let rewardTimer = null;
+// 面板「獎勵」那一行的資料：at＝預定送出的時間，retry＝正在第幾次重試（兩者都沒有就不顯示）
+let rewardView = null;
 function cancelReward() {
   clearTimeout(rewardTimer);
   rewardTimer = null;
+  rewardView = null;
 }
 function watchReward(text) {
   if (!autoReward || rewardTimer) return;
   const match = REWARD_PATTERN.exec(text);
   if (!match) return;
-  rewardTimer = setTimeout(() => sendReward(1), (Number(match[1]) + 1) * 60 * 1000);
+  const wait = (Number(match[1]) + 1) * 60 * 1000;
+  rewardTimer = setTimeout(() => sendReward(1), wait);
+  rewardView = { at: Date.now() + wait };
+  renderPanel();
 }
 function sendReward(attempt) {
   rewardTimer = null;
+  rewardView = null;
   if (retired) return;
   const result = sendCommand('reward');
-  if (result.ok) return;
-  if (attempt >= REWARD_TRIES) {
-    console.info('[catworld] 在線獎勵：reward 送不出去，放棄', result.error);
-    return;
+  if (!result.ok) {
+    if (attempt >= REWARD_TRIES) console.info('[catworld] 在線獎勵：reward 送不出去，放棄', result.error);
+    else {
+      rewardTimer = setTimeout(() => sendReward(attempt + 1), REWARD_RETRY_MS);
+      rewardView = { retry: attempt + 1 };
+    }
   }
-  rewardTimer = setTimeout(() => sendReward(attempt + 1), REWARD_RETRY_MS);
+  renderPanel();
+}
+function rewardSummary() {
+  if (!rewardView) return '';
+  if (rewardView.retry) return `reward 送不出去，重試中（第 ${rewardView.retry} 次）`;
+  const seconds = Math.max(0, Math.ceil((rewardView.at - Date.now()) / 1000));
+  return `在線獎勵 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} 後自動領取`;
 }
 // 提示要在行首才算：收集表裡 259 筆真正的提示都在行首，「> 請輸入上面的數字」是有人把提示文字當指令送進遊戲的回聲，不是遊戲出的題
 const captchaPattern = /(?:^|\n)[ \t]*請輸入上(?:方|面)的數字/g;
@@ -857,6 +872,7 @@ function initPanel() {
           <span class="mini"><button class="tstart">開始</button><button class="tstop">停止</button></span></div>`).join('\n        ')}
         <div class="line macro-line"><span class="t">巨集</span><span class="s macro-text"></span>
           <span class="mini"><button class="mexport" title="把遊戲的巨集和備註複製成一段文字">匯出</button><button class="mimport" title="貼上匯出的文字，整份取代遊戲的巨集和備註">匯入</button><button class="mstop">停止</button></span></div>
+        <div class="line reward-line" hidden><span class="t">獎勵</span><span class="s reward-text"></span></div>
         <div class="line macro-import" hidden><span class="t"></span><span class="s"><textarea class="macro-import-text" placeholder="貼上匯出的巨集文字"></textarea><span class="mini"><button class="macro-import-check">檢查</button><button class="macro-import-cancel">取消</button><button class="macro-restore" title="把匯入前自動留的備份寫回去" disabled>還原上一份</button></span></span></div>
         <div class="line macro-confirm" hidden><span class="t"></span><span class="s"><div class="macro-confirm-msg"></div><span class="mini"><button class="macro-confirm-ok">確認取代</button><button class="macro-confirm-cancel">取消</button></span></span></div>
         <div class="line macro-io" hidden><span class="t"></span><span class="s"><div class="macro-io-msg"></div><textarea class="macro-io-text" readonly hidden></textarea></span></div>
@@ -872,6 +888,7 @@ function initPanel() {
     })),
     start: $('.start'), stop: $('.stop'),
     macroText: $('.macro-text'), mstop: $('.mstop'),
+    rewardLine: $('.reward-line'), rewardText: $('.reward-text'),
     confirm: $('.confirm'),
   };
   // 「數值」區塊放在面板最上方；壞了不能牽連後面開始／停止按鈕的綁定
@@ -1183,6 +1200,12 @@ function renderPanel() {
     panel.replace();
   }
   panel.macroText.classList.toggle('alert', Boolean(macro?.alert));
+  const rewardText = rewardSummary();
+  if (panel.rewardText.textContent !== rewardText) {
+    panel.rewardText.textContent = rewardText;
+    panel.rewardLine.hidden = !rewardText;
+    panel.replace();
+  }
   panel.mstop.disabled = !macroRuns.size;
   panel.avoidMap();
   panel.timerText.classList.toggle('alert', captchaStopped);
