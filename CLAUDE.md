@@ -183,6 +183,12 @@
 - 出現 `價格：` 的 list 輸出由 `parseList` 解析（一行兩項，名稱沒有空白，`[百勝刀]` 的方括號保留），在 list 那一頁（最後新增的節點）後面插一個 `data-catworld-shop` 的摘要方塊（`evaluate`＋`summaryLines`）：用目前經驗（`#exp`）與 `wornEquipment[角色]` 的基準（見上一條）比等級；資料庫沒有的列為「還沒蒐集」，批次 check 按鈕送它們（沒有複製指令的按鈕，已拿掉）。摘要與蒐集同一個開關；「批次 check」按鈕（`batchControls`）先顯示個數與預估費用，玩家按「確認送出」才呼叫 `sender`（`content.js` 啟動時用 `setSender` 注入 `startMacro(text, 'shop')`，所以遵守指令間隔、驗證碼偵測、`cancelMacros` 停止），一次最多 `BATCH_MAX` 個；**check 要付錢，沒有玩家按確認絕不能呼叫 sender**。遊戲一般的指令列不收分號，`checkCommand` 的 `;` 串只有交給巨集執行器（`sender`）才送得出去；自己插入的節點要從觀察器排除（`isOwn`），否則會無限循環。連不上儲存（孤兒程式）就停止觀察。
 - 摘要的「還沒蒐集」下面有 check 預估費用（`parsePrice` 讀 `1G40S`／`16S50C`／`30C`，1G＝100S、1S＝100C；`checkCost`：下限是價格 5% 的總和、上限再多 5%，因為實測 30C→1C、2S→10C、19S→1S、1G40S→7S、某 86S 的→4S50C，大致 5% 但有幾筆多一點、進位規則不明，只能當範圍，改估法要先有新的實測）。設定頁「裝備資料庫（商人 check）」只顯示件數、複製 Tab 分隔文字（名稱、類別、主要數值、佩帶經驗、屬性）、清除；併進共用表的格式還沒定。非裝備的商品（食物、藥草）check 後不會有區塊，會一直留在「還沒蒐集」，目前沒有略過機制。測試在 `tests/shop-collect.test.js`。
 
+## 內建資料（地圖怪物、商人裝備）
+
+- `docs/data/map-monsters.tsv`、`shop-items.tsv` 是來源，由 `tools/gen-map-data.js`、`tools/gen-shop-data.js` 產生 `catworld-auto-command/map-data.js`（`globalThis.CatworldMapData`）與 `shop-data.js`（`CatworldShopData`），**不要手改產生的檔案**；產生腳本在筆數異常少（< 50）或格式不對時失敗、不覆寫。兩個檔案都要加進 manifest 與 popup 備援注入的 `files`（各排在 `map-collect.js`、`shop-collect.js` 之前）與 popup.html。
+- 內建資料**只在讀取時**和個人資料合併（`CatworldMapCollect.withBuiltin`、`CatworldShopCollect.withBuiltin`，個人優先／取聯集），**絕不寫回 `chrome.storage.local`**（寫回會讓「清除」清不乾淨、內建資料更新後被舊的蓋住）：讀 `mapMonsters` 的地方（地圖下拉選單、`zap-panel.js` 的怪物提示）與商人 `flush` 裡交給 `showSummary` 的 `db` 都要包 `withBuiltin`，寫入與 `showRecorded`、設定頁的列數與複製仍只用個人的那份。商人內建資料只有類別與佩帶經驗可靠，list 的建議只看這兩個（同名裝備數值可能不同）。
+- 測試底座 `boot()` 預設**不載入**這兩個資料檔（其他測試要自己決定房間與商品），`boot({ builtin: true })` 才載入；`tests/builtin-data.test.js` 比對產生的檔案與 TSV 一致。
+
 ## 數值區塊
 
 - 面板最上方的「數值」區塊由兩個模組組成：`stats-view.js`（不碰 DOM，`rows(readings, exp)` 決定每列顯示什麼）與 `stats-block.js`（畫面，`attach(root)` 回傳 `render(readings, exp)`）。兩個都要加進 manifest 的 content script 與 popup 備援注入清單，`stats-view.js` 在 `stats-block.js` 之前、都在 `content.js` 之前；`content.js` 建立區塊要包 try/catch，壞了不能牽連後面按鈕的綁定。

@@ -14,7 +14,7 @@
 
 **同名裝備的主要數值與屬性不一定相同**，所以這份資料可靠的是「類別」和「佩帶經驗」；傷害與屬性只是蒐集當下那一次 check 到的值，不要當成標準值。
 
-資料只是備份，extension 目前沒有匯入功能，commit 進來不會自動出現在別人的 extension 裡。
+這份資料已經內建進 extension（`catworld-auto-command/shop-data.js`，由 `node tools/gen-shop-data.js` 產生），更新 extension 就會用到；改了這個檔要重新產生並升版本。
 
 ## map-monsters.tsv
 
@@ -30,4 +30,4 @@
 - 只收帶括號 ID 的怪物；別的玩家的英文 ID（舊版誤記的）已經濾掉。
 - 紀錄只增不減：房間裡的怪會移動，所以只代表「曾經在這間看過」，不保證現在還在。
 - 只涵蓋作者走過的區域，不是完整清單。
-- 資料只是備份與分享用，extension 目前沒有匯入功能，commit 進來不會自動出現在別人的 extension 裡。
+- 這份資料已經內建進 extension（`catworld-auto-command/map-data.js`，由 `node tools/gen-map-data.js` 產生），更新 extension 就會用到；改了這個檔要重新產生並升版本。

@@ -751,3 +751,29 @@ ui('a page made only of skipped items shows one short note and no check buttons;
     none.close();
   }
 });
+
+ui('the built-in merchant items count as collected, the player check wins over them, and nothing is written back', async () => {
+  const page = await boot({ scale: SCALE, builtin: true });
+  try {
+    page.w.document.title = '測試 - CatWorld';
+    page.w.document.body.insertAdjacentHTML('beforeend', '<div id="exp">414748</div>');
+    const built = page.w.CatworldShopCollect.builtinDb();
+    assert.ok(Object.keys(built).length > 200, 'the TSV was generated into shop-data.js');
+    assert.equal(built['大砍刀'].needExp, 100000);
+    assert.equal(built['大砍刀'].kind, 'weapon');
+    Object.assign(page.store, {
+      zapFeatures: { shop: true },
+      wornEquipment: { 測試: { 刀類武器: [{ name: '舊刀', primary: 10, attrs: [], needExp: 0, readAt: 1 }] } },
+    });
+    const list = ['商人現在有賣以下貨物：', ' 1 大砍刀                價格：30S', '== 未完繼續 52% =='].join('\n');
+    page.output(`<span>${list}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    assert.match(shopBox(page).textContent, /已蒐集 1 件/);
+    assert.match(shopBox(page).textContent, /建議 check[^：]*：1 大砍刀（需經驗 100000，現穿 舊刀 0）/, 'collected only from the built-in data');
+    assert.equal(page.store.shopItems, undefined, 'the built-in data is not copied into the player storage');
+    const merged = page.w.CatworldShopCollect.withBuiltin({ 大砍刀: { name: '大砍刀', category: '刀類武器', kind: 'weapon', primary: 1, attrs: [], needExp: 0, seen: 1 } });
+    assert.equal(merged['大砍刀'].needExp, 0, 'the player check overrides the built-in entry');
+  } finally {
+    page.close();
+  }
+});

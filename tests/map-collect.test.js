@@ -160,3 +160,27 @@ ui('the dropdown follows the visible area, re-marks after the game redraws the m
     page.close();
   }
 });
+
+ui('the built-in map monsters are merged with the player records at read time: they show up without any collected data, the player data adds to them, and nothing is written back', async () => {
+  const page = await boot({ scale: 10, builtin: true });
+  try {
+    const { withBuiltin, builtinStore } = page.w.CatworldMapCollect;
+    const built = builtinStore();
+    assert.ok(Object.keys(built).length > 300, 'the TSV was generated into map-data.js');
+    assert.ok(built['wudon/2c'].mobs.some(mob => mob.includes('宋青書')), 'a real built-in room');
+    const own = { 'wudon/2c': { area: 'wudon', room: '2c', areaName: '', mobs: ['新怪(newmob)'], seen: 1 }, 'x/1': { area: 'x', room: '1', areaName: 'X', mobs: ['獨家(only)'], seen: 1 } };
+    const merged = withBuiltin(own);
+    assert.ok(merged['wudon/2c'].mobs.includes('新怪(newmob)') && merged['wudon/2c'].mobs.some(mob => mob.includes('宋青書')), 'same room: union of both');
+    assert.equal(merged['wudon/2c'].areaName, '武當派', 'the area name falls back to the built-in one');
+    assert.deepEqual(merged['x/1'].mobs, ['獨家(only)'], 'rooms only the player has are kept');
+    assert.deepEqual(own['wudon/2c'].mobs, ['新怪(newmob)'], 'the input is not changed');
+    assert.equal(Object.keys(withBuiltin({})).length, Object.keys(built).length);
+    setup(page);
+    assert.ok(await waitFor(() => page.w.document.querySelector('#map_header #catworld-mark-select option:nth-child(3)'), 2000), 'the dropdown has options with nothing collected');
+    const values = [...page.w.document.getElementById('catworld-mark-select').options].map(option => option.value);
+    assert.ok(values.some(value => value.includes('宋青書')), 'the visible area (wudon) lists the built-in mobs');
+    assert.equal(await saved(page), undefined, 'nothing was written to storage');
+  } finally {
+    page.close();
+  }
+});

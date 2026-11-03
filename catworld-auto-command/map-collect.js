@@ -40,6 +40,25 @@ function merge(store, spot, mobs, now) {
 // 怪物一律是「名稱(ID)」。舊版（讀地圖房間 title）記下的是房間裡的玩家，只有英文 ID、沒有括號，不能當怪物複製出去
 const isMob = text => /\(.+\)$/.test(text);
 
+// 內建的地圖怪物（map-data.js，由 tools/gen-map-data.js 從 docs/data/map-monsters.tsv 產生）和個人蒐集的紀錄取聯集；
+// 只在讀取時合併、不寫回儲存，所以個人的「清除」清不掉內建資料，內建資料更新（升版本）後馬上生效
+let builtinCache = null;
+function builtinStore() {
+  if (builtinCache) return builtinCache;
+  builtinCache = {};
+  (globalThis.CatworldMapData || []).forEach(([area, areaName, room, mobs]) => { builtinCache[`${area}/${room}`] = { area, room, areaName, mobs }; });
+  return builtinCache;
+}
+function withBuiltin(store) {
+  const base = builtinStore();
+  const out = { ...base };
+  Object.entries(store || {}).forEach(([key, row]) => {
+    const built = base[key];
+    out[key] = built ? { ...row, areaName: row.areaName || built.areaName, mobs: [...new Set([...built.mobs, ...(row.mobs || [])])] } : row;
+  });
+  return out;
+}
+
 // 設定頁顯示與複製用：濾掉不是怪物的項目、沒怪的房間不列，依區域與房間排序
 function rows(store) {
   return Object.values(store || {})
@@ -93,7 +112,7 @@ function markRooms(doc, places) {
   return count;
 }
 
-globalThis.CatworldMapCollect = { currentRoom, merge, rows, isMob, locate, whereIs, markRooms, clearMarks, STORAGE_KEY };
+globalThis.CatworldMapCollect = { currentRoom, merge, withBuiltin, builtinStore, rows, isMob, locate, whereIs, markRooms, clearMarks, STORAGE_KEY };
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs) return;
 
@@ -162,7 +181,7 @@ async function refreshMarkUi() {
   if (!header) return;
   let store;
   try {
-    store = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY] || {};
+    store = withBuiltin((await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY]);
   } catch {
     clearInterval(markTimer);
     return;

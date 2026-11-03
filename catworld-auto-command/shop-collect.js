@@ -64,6 +64,19 @@ const entryFrom = (block, now) => ({
   name: block.name, category: block.category, kind: block.kind, primary: block.primary, attrs: block.attrs, needExp: block.needExp, seen: now,
 });
 
+// 內建的商人裝備（shop-data.js，由 tools/gen-shop-data.js 從 docs/data/shop-items.tsv 產生）和個人 check 的紀錄合併，個人的優先；
+// 只在讀取時合併、不寫回儲存。內建資料只有類別與佩帶經驗可靠（同名裝備的傷害、屬性不一定相同），list 的建議只看這兩個
+let builtinCache = null;
+function builtinDb() {
+  if (builtinCache) return builtinCache;
+  builtinCache = {};
+  (globalThis.CatworldShopData || []).forEach(([name, category, primary, needExp, attrs]) => {
+    builtinCache[name] = { name, category, kind: category.endsWith('武器') ? 'weapon' : 'armor', primary, attrs: attrs.map(([attr, value]) => ({ name: attr, value })), needExp, builtin: true };
+  });
+  return builtinCache;
+}
+const withBuiltin = db => ({ ...builtinDb(), ...(db || {}) });
+
 // 設定頁顯示與複製用：依類別與名稱排序，每列是 [名稱, 類別, 主要數值, 佩帶經驗, 屬性]
 function rows(db) {
   return Object.values(db || {})
@@ -130,7 +143,7 @@ function summaryLines(result, exp, pages = 1, minSilver = 0) {
 let sender = null;
 const setSender = fn => { sender = typeof fn === 'function' ? fn : null; };
 
-globalThis.CatworldShopCollect = { setSender, BATCH_MAX, BUY_MAX, BUY_NAMES_KEY, DEFAULT_BUY_NAMES, buyNames, SKIP_NAMES_KEY, DEFAULT_SKIP_NAMES, skipNames, MIN_PRICE_KEY, DEFAULT_MIN_SILVER, normalizeMinSilver, parsePrice, formatMoney, checkCost, parseList, entryFrom, rows, evaluate, checkCommand, summaryLines, DB_KEY };
+globalThis.CatworldShopCollect = { setSender, BATCH_MAX, BUY_MAX, BUY_NAMES_KEY, DEFAULT_BUY_NAMES, buyNames, SKIP_NAMES_KEY, DEFAULT_SKIP_NAMES, skipNames, MIN_PRICE_KEY, DEFAULT_MIN_SILVER, normalizeMinSilver, parsePrice, formatMoney, checkCost, parseList, entryFrom, withBuiltin, builtinDb, rows, evaluate, checkCommand, summaryLines, DB_KEY };
 
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs || !globalThis.CatworldZapEquipment) return;
@@ -407,7 +420,7 @@ async function flush() {
       session.pages += 1;
       session.at = now;
       session.box?.remove();
-      session.box = showSummary([...session.items.values()].sort((a, b) => a.no - b.no), data, db, session.pages);
+      session.box = showSummary([...session.items.values()].sort((a, b) => a.no - b.no), data, withBuiltin(db), session.pages);
     }
   } catch {
     // 擴充功能重新載入後留在頁面上的舊程式連不上儲存：不再收集，新程式會接手

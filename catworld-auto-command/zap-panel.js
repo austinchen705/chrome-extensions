@@ -174,7 +174,9 @@ function attach(root, { readExp, startSteps }) {
   };
 
   let thresholds = Z.normalizeThresholds(undefined);
-  let mapStore = {};
+  // 內建的地圖怪物（map-data.js）與個人蒐集的合併；沒載入 map-collect.js 時只用個人的
+  const withBuiltinMap = store => globalThis.CatworldMapCollect?.withBuiltin?.(store) ?? store ?? {};
+  let mapStore = withBuiltinMap({});
   let mainWeapon = '';
   // 使用者補的路線（怪物名稱 → 指令）：存本機，浮層也套用（但只有清單能編輯）
   let customRoutes = {};
@@ -192,7 +194,7 @@ function attach(root, { readExp, startSteps }) {
   const validWeapon = value => (ZI.WEAPON_TYPES.includes(value) ? value : '');
   const refresh = () => { if (!box.hidden) runQuery(); };
   chrome.storage.local.get([THRESHOLDS_KEY, WEAPON_KEY, ROUTES_KEY, MAP_KEY]).then(data => {
-    mapStore = data[MAP_KEY] ?? {};
+    mapStore = withBuiltinMap(data[MAP_KEY]);
     customRoutes = Z.parseCustomRoutes(JSON.stringify(data[ROUTES_KEY] ?? {})).routes ?? {};
     thresholds = Z.normalizeThresholds(data[THRESHOLDS_KEY]);
     mainWeapon = validWeapon(data[WEAPON_KEY]);
@@ -200,7 +202,7 @@ function attach(root, { readExp, startSteps }) {
   chrome.storage.onChanged?.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes[WEAPON_KEY]) mainWeapon = validWeapon(changes[WEAPON_KEY].newValue);
-    if (changes[MAP_KEY]) mapStore = changes[MAP_KEY].newValue ?? {};
+    if (changes[MAP_KEY]) mapStore = withBuiltinMap(changes[MAP_KEY].newValue);
     if (changes[ROUTES_KEY]) customRoutes = Z.parseCustomRoutes(JSON.stringify(changes[ROUTES_KEY].newValue ?? {})).routes ?? {};
     // 別的分頁（或「立即更新」）抓到新的共用路線：清單開著就重查一次（共用層是 background 套在查詢回覆上的）
     if (changes.sharedCache) refresh();

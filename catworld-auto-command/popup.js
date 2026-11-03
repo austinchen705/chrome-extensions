@@ -101,7 +101,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'zap-mobs.js', 'map-collect.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -342,7 +342,8 @@ const mapRows = CatworldMapCollect.rows;
 async function showMapCollect() {
   const rows = mapRows((await chrome.storage.local.get(MAP_KEY))[MAP_KEY]);
   const mobs = new Set(rows.flatMap(row => row.mobs));
-  $('mapCollectInfo').textContent = rows.length ? `已記下 ${rows.length} 個房間、${mobs.size} 種怪物` : '尚無紀錄';
+  const builtin = Object.keys(CatworldMapCollect.builtinStore()).length;
+  $('mapCollectInfo').textContent = `內建 ${builtin} 個房間；` + (rows.length ? `你自己記下 ${rows.length} 個房間、${mobs.size} 種怪物` : '你自己還沒有紀錄');
 }
 function mapMessage(text, level) { $('mapCollectMsg').textContent = text; markLevel($('mapCollectMsg'), level); }
 $('mapCollectCopy').addEventListener('click', async () => {
@@ -364,7 +365,8 @@ chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' &
 const SHOP_KEY = CatworldShopCollect.DB_KEY;
 async function showShopCollect() {
   const rows = CatworldShopCollect.rows((await chrome.storage.local.get(SHOP_KEY))[SHOP_KEY]);
-  $('shopInfo').textContent = rows.length ? `已記下 ${rows.length} 件裝備` : '尚無紀錄';
+  const builtin = Object.keys(CatworldShopCollect.builtinDb()).length;
+  $('shopInfo').textContent = `內建 ${builtin} 件；` + (rows.length ? `你自己 check 記下 ${rows.length} 件` : '你自己還沒有紀錄');
 }
 function shopMessage(text, level) { $('shopMsg').textContent = text; markLevel($('shopMsg'), level); }
 $('shopCopy').addEventListener('click', async () => {
