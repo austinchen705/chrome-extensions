@@ -151,7 +151,7 @@ ui('after a list page the summary says what is better than the worn gear, what c
     assert.match(text, /還沒蒐集（1）：2/);
     assert.match(text, /全部 check 預估約 1S10C～1S16C/, '虹色項鍊 22S: 5% is 1S10C, up to 1S16C');
     assert.equal(shopBox(page).previousElementSibling.id, 'listpage', 'inserted right under the list page');
-    assert.ok([...shopBox(page).querySelectorAll('button')].some(button => button.textContent === '複製 check 指令'));
+    assert.ok([...shopBox(page).querySelectorAll('button')].some(button => button.textContent.startsWith('複製 check 指令')));
     await sleep(200);
     assert.equal(page.w.document.querySelectorAll('[data-catworld-shop]').length, 1, 'its own output does not trigger another summary');
   } finally {
@@ -167,7 +167,7 @@ ui('the copy button puts the check commands of the uncollected numbers on the cl
     Object.defineProperty(page.w.navigator, 'clipboard', { value: { writeText: async text => { copied = text; } }, configurable: true });
     page.output(`<span>${LIST_PAGE}</span>`);
     assert.ok(await waitFor(() => shopBox(page), 2000));
-    [...shopBox(page).querySelectorAll('button')].find(button => button.textContent === '複製 check 指令').click();
+    [...shopBox(page).querySelectorAll('button')].find(button => button.textContent.startsWith('複製 check 指令')).click();
     assert.ok(await waitFor(() => copied !== null, 2000));
     assert.equal(copied, 'check 2;check 3;check 14;check 24');
   } finally {
@@ -197,5 +197,83 @@ ui('the feature is off by default and when its switch is off: nothing is recorde
     assert.equal(off.store.shopItems['虹色項鍊'], undefined);
   } finally {
     off.close();
+  }
+});
+
+const buttonOf = (page, prefix) => [...shopBox(page).querySelectorAll('button')].find(button => button.textContent.startsWith(prefix));
+
+ui('the batch button first shows the count and estimated cost, and sends nothing until confirmed', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    const sent = [];
+    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
+    page.output(`<span>${SUMMARY_LIST}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    const start = buttonOf(page, '批次 check');
+    assert.match(start.textContent, /批次 check 1 個（約 1S10C～1S16C）/);
+    start.click();
+    assert.match(shopBox(page).textContent, /將依序送出 1 個 check，預估約 1S10C～1S16C，確認嗎？/);
+    assert.deepEqual(sent, [], 'nothing is sent before the confirmation');
+    buttonOf(page, '取消').click();
+    assert.deepEqual(sent, []);
+    assert.ok(buttonOf(page, '批次 check'), 'cancel brings the start button back');
+    buttonOf(page, '批次 check').click();
+    buttonOf(page, '確認送出').click();
+    assert.deepEqual(sent, ['check 2']);
+    assert.match(shopBox(page).textContent, /已開始送出 1 個 check/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a batch sends at most BATCH_MAX of the uncollected numbers, in list order', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    const sent = [];
+    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
+    const many = Array.from({ length: 45 }, (_, i) => ` ${i + 1} 未知裝備${i + 1}          價格：10S`).join('\n');
+    page.output(`<span>${many}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    const start = buttonOf(page, '批次 check');
+    assert.match(start.textContent, /批次 check 40 個/);
+    start.click();
+    buttonOf(page, '確認送出').click();
+    const numbers = sent[0].split(';').map(piece => Number(piece.replace('check ', '')));
+    assert.equal(numbers.length, 40);
+    assert.equal(numbers[0], 1);
+    assert.equal(numbers[39], 40);
+  } finally {
+    page.close();
+  }
+});
+
+ui('without a sender the confirmation says it could not send', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.w.CatworldShopCollect.setSender(null);
+    page.output(`<span>${SUMMARY_LIST}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    buttonOf(page, '批次 check').click();
+    buttonOf(page, '確認送出').click();
+    assert.match(shopBox(page).textContent, /送不出去/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('content.js hands the batch to the macro runner so the commands really go out', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.output(`<span>${SUMMARY_LIST}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    buttonOf(page, '批次 check').click();
+    buttonOf(page, '確認送出').click();
+    assert.ok(await waitFor(() => page.sent.includes('check 2'), 3000), 'the check command was typed into the game input');
+  } finally {
+    page.close();
   }
 });

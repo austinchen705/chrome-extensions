@@ -1268,6 +1268,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// 裝備資料庫的「批次 check」：玩家在 list 摘要按了確認之後，shop-collect.js 才會呼叫這個，交給巨集執行器依序送出
+globalThis.CatworldShopCollect?.setSender?.(text => startMacro(text, 'shop'));
+
 // popup 改了「一直響到確認」開關，不用重新整理遊戲頁就生效
 chrome.storage.onChanged?.addListener((changes, area) => {
   if (area === 'local' && changes.persistentAlert) persistentAlert = changes.persistentAlert.newValue === true;

@@ -12,6 +12,8 @@ const SETTLE_MS = 600;
 const ARM_MS = 3000;
 const BETTER_MAX = 12;
 const UNKNOWN_MAX = 40;
+// 一次批次 check 最多幾個（每個都要付錢，一次不要放太多；沒蒐集的比這個多就分幾次按）
+const BATCH_MAX = 40;
 const CHECK_PHRASE = /你付了一筆錢給商人/;
 // 「 1 黃金鎖鍊              價格：60S       2 虹色項鍊 …」一行兩項；名稱沒有空白
 const LIST_ITEM = /(\d{1,3})\s+(\S+?)\s+價格\s*[：:]\s*(\S+)/g;
@@ -56,12 +58,13 @@ function rows(db) {
 // 還穿不了的只計數，比現在好（含屬性達門檻）的放 better，沒有基準可比的只計數
 function evaluate(items, db, { exp, baseline, mainWeapon, keep } = {}) {
   const E = globalThis.CatworldZapEquipment;
-  const out = { total: items.length, known: 0, better: [], unknown: [], unknownPrices: [], tooHigh: 0, noBaseline: 0 };
+  const out = { total: items.length, known: 0, better: [], unknown: [], unknownPrices: [], unknownItems: [], tooHigh: 0, noBaseline: 0 };
   items.forEach(item => {
     const entry = db?.[item.name];
     if (!entry) {
       out.unknown.push(item.no);
       const price = parsePrice(item.price);
+      out.unknownItems.push({ no: item.no, price });
       if (price !== null) out.unknownPrices.push(price);
       return;
     }
@@ -93,7 +96,11 @@ function summaryLines(result, exp) {
   return lines;
 }
 
-globalThis.CatworldShopCollect = { parsePrice, formatMoney, checkCost, parseList, entryFrom, rows, evaluate, checkCommand, summaryLines, DB_KEY };
+// 批次 check 的送出由 content.js 注入（交給巨集執行器依序送，遵守指令間隔、驗證碼偵測與停止）；沒注入就送不出去
+let sender = null;
+const setSender = fn => { sender = typeof fn === 'function' ? fn : null; };
+
+globalThis.CatworldShopCollect = { setSender, BATCH_MAX, parsePrice, formatMoney, checkCost, parseList, entryFrom, rows, evaluate, checkCommand, summaryLines, DB_KEY };
 
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs || !globalThis.CatworldZapEquipment) return;
@@ -139,6 +146,36 @@ function showRecorded(blocks, before, after) {
   place(box);
 }
 
+// 「批次 check」：先顯示個數與預估費用，玩家按了確認才送（check 要付錢）；用注入的 sender（巨集）依序送，
+// 一次最多 BATCH_MAX 個（取這一頁沒蒐集的前幾個，要更多就再按一次）
+function batchControls(result) {
+  const batch = result.unknownItems.slice(0, BATCH_MAX);
+  const cost = checkCost(batch.map(item => item.price).filter(price => price !== null));
+  const area = document.createElement('div');
+  const stop = event => event.stopPropagation();
+  const button = (text, onClick) => {
+    const node = document.createElement('button');
+    node.type = 'button';
+    node.textContent = text;
+    node.addEventListener('click', event => { stop(event); onClick(); });
+    return node;
+  };
+  const start = button(`批次 check ${batch.length} 個（約 ${formatMoney(cost.low)}～${formatMoney(cost.high)}）`, () => {
+    const confirmRow = document.createElement('div');
+    confirmRow.append(
+      `將依序送出 ${batch.length} 個 check，預估約 ${formatMoney(cost.low)}～${formatMoney(cost.high)}，確認嗎？`,
+      button('確認送出', () => {
+        const started = sender ? sender(checkCommand(batch.map(item => item.no))) : false;
+        confirmRow.replaceChildren(started === false || !sender ? '送不出去（找不到送指令的功能，或指令格式錯誤）' : `已開始送出 ${batch.length} 個 check，要中止請按面板巨集那一列的「停止」`);
+      }),
+      button('取消', () => area.replaceChildren(start)),
+    );
+    area.replaceChildren(confirmRow);
+  });
+  area.append(start);
+  return area;
+}
+
 function showSummary(items, data, db) {
   const E = globalThis.CatworldZapEquipment;
   const exp = readExp();
@@ -155,9 +192,10 @@ function showSummary(items, data, db) {
     box.append(row);
   });
   if (result.unknown.length) {
+    box.append(batchControls(result));
     const button = document.createElement('button');
     button.type = 'button';
-    button.textContent = '複製 check 指令';
+    button.textContent = '複製 check 指令（貼進遊戲巨集用）';
     button.addEventListener('click', async event => {
       event.stopPropagation();
       try {
