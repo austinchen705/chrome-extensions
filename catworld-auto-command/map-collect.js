@@ -149,6 +149,14 @@ function ensureSelect(header) {
   header.append(select);
   return select;
 }
+// 標題是置中的（區域名稱會變長變短），選單只佔「區域名稱右邊剩下的空間」，不蓋到標題；量不到（版面還沒算出來）退回標題列的 30%。
+// 不去撐大地圖視窗：#map_anchor 是以 400 寬的視窗置中寫死的位置（left 186px），視窗寬度一變，目前房間就不在 anchor 下面了
+function fitSelect(header, select) {
+  const name = header.querySelector('[data-default-grid]');
+  const bar = header.getBoundingClientRect();
+  const room = name ? bar.right - name.getBoundingClientRect().right - 28 - 4 : 0;
+  select.style.width = room > 40 ? `${Math.min(room, bar.width * 0.45)}px` : '30%';
+}
 async function refreshMarkUi() {
   const header = document.getElementById('map_header');
   if (!header) return;
@@ -164,6 +172,7 @@ async function refreshMarkUi() {
   const mobs = [...new Set(rows(store).filter(row => row.area === area).flatMap(row => row.mobs))].sort((a, b) => a.localeCompare(b));
   const select = ensureSelect(header);
   select.style.display = mobs.length ? '' : 'none';
+  fitSelect(header, select);
   if (!mobs.includes(markedMob)) markedMob = '';
   const signature = `${area}|${mobs.join('\n')}`;
   if (signature !== lastSignature) {
