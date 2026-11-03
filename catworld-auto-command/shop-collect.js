@@ -2,7 +2,8 @@
 // check 的輸出和鑑定後的裝備同一種「此物名曰」區塊，解析共用 zap-equipment.js；每件裝備以名稱為鍵存進
 // chrome.storage.local.shopItems（{ 名稱: { name, category, kind, primary, attrs, needExp, seen } }，不分店、同名後讀的覆蓋）。
 // 打 list 時：用目前經驗與「讀取目前穿著」的基準比對資料庫，在 list 那一頁的輸出下面插一塊摘要
-// （比現在好的編號、還沒蒐集的編號與可複製的 check 指令）；摘要受「無名物品鑑定提示與裝備比較」開關控制，蒐集不受影響。
+// （比現在好的編號、還沒蒐集的編號與可複製的 check 指令）。整個功能（蒐集、回報、摘要）由設定頁「輔助功能」的「裝備資料庫」開關
+// （chrome.storage.local.zapFeatures.shop）控制，缺值＝關閉。
 (() => {
 if (globalThis.CatworldShopCollect) return;
 
@@ -111,6 +112,33 @@ let timer = null;
 let armedUntil = 0;
 let lastAnchor = null;
 
+function newBox() {
+  const box = document.createElement('div');
+  box.setAttribute(OWN, '');
+  Object.assign(box.style, { border: '1px dashed #bbbbbb', padding: '4px 8px', margin: '4px 0', whiteSpace: 'pre-wrap' });
+  return box;
+}
+function place(box) {
+  if (lastAnchor?.isConnected) lastAnchor.after(box);
+  else content.append(box);
+  box.scrollIntoView?.({ block: 'nearest' });
+}
+
+// check 之後在輸出下面回報有沒有記進資料庫：記了哪幾件、共幾件；這次 check 沒有裝備資料（沒記）也要說，不然看不出是沒記還是沒反應
+function showRecorded(blocks, before, after) {
+  const box = newBox();
+  const lines = blocks.length
+    ? blocks.map(block => `已記進裝備資料庫：${block.name}（${block.category}，${block.kind === 'weapon' ? '傷害' : '防禦'} ${block.primary ?? '?'}，佩帶經驗 ${block.needExp ?? '無'}）${before[block.name] ? '，更新舊資料' : ''}`)
+    : ['這次 check 的輸出裡沒有裝備資料（不是裝備，或格式讀不懂），沒有記錄'];
+  if (blocks.length) lines.push(`資料庫共 ${Object.keys(after).length} 件`);
+  lines.forEach(line => {
+    const row = document.createElement('div');
+    row.textContent = line;
+    box.append(row);
+  });
+  place(box);
+}
+
 function showSummary(items, data, db) {
   const E = globalThis.CatworldZapEquipment;
   const exp = readExp();
@@ -120,9 +148,7 @@ function showSummary(items, data, db) {
     mainWeapon: data.mainWeapon,
     keep: E.normalizeKeepRule(data.equipmentKeep),
   });
-  const box = document.createElement('div');
-  box.setAttribute(OWN, '');
-  Object.assign(box.style, { border: '1px dashed #bbbbbb', padding: '4px 8px', margin: '4px 0', whiteSpace: 'pre-wrap' });
+  const box = newBox();
   summaryLines(result, exp).forEach(line => {
     const row = document.createElement('div');
     row.textContent = line;
@@ -143,9 +169,7 @@ function showSummary(items, data, db) {
     });
     box.append(button);
   }
-  if (lastAnchor?.isConnected) lastAnchor.after(box);
-  else content.append(box);
-  box.scrollIntoView?.({ block: 'nearest' });
+  place(box);
 }
 async function flush() {
   const text = buffer;
@@ -156,18 +180,21 @@ async function flush() {
   armedUntil = 0;
   try {
     const data = await chrome.storage.local.get([DB_KEY, 'zapFeatures', 'wornEquipment', 'mainWeapon', 'equipmentKeep']);
+    if (data.zapFeatures?.shop !== true) return;
     let db = data[DB_KEY] || {};
     const at = text.search(CHECK_PHRASE);
     if (at >= 0) {
       const blocks = globalThis.CatworldZapEquipment.parseEquipmentBlocks(text.slice(at));
+      const before = db;
       if (blocks.length) {
         db = { ...db };
         blocks.forEach(block => { db[block.name] = entryFrom(block, Date.now()); });
         await chrome.storage.local.set({ [DB_KEY]: db });
       }
+      showRecorded(blocks, before, db);
     }
     const items = parseList(text);
-    if (items.length && data.zapFeatures?.items === true) showSummary(items, data, db);
+    if (items.length) showSummary(items, data, db);
   } catch {
     // 擴充功能重新載入後留在頁面上的舊程式連不上儲存：不再收集，新程式會接手
     observer.disconnect();

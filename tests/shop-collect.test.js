@@ -21,6 +21,7 @@ const checkOutput = (name, category, primary, needExp) => [
 
 const SCALE = 10;
 const shopBox = page => page.w.document.querySelector('[data-catworld-shop]');
+const enable = page => { page.store.zapFeatures = { shop: true }; };
 
 ui('parseList reads two items per line, price included, bracketed names kept', async () => {
   const page = await boot({ scale: SCALE });
@@ -59,6 +60,7 @@ ui('prices read as G/S/C and format back, and the check cost is a 5% range', asy
 
 ui('a check output after paying the merchant is saved by item name, and the same name is overwritten', async () => {
   const page = await boot({ scale: SCALE });
+  enable(page);
   try {
     page.output(`<span>${checkOutput('黃金鎖鍊', '鞭類武器', 47, 200000)}</span>`);
     assert.ok(await waitFor(() => page.store.shopItems?.['黃金鎖鍊'], 2000));
@@ -66,9 +68,25 @@ ui('a check output after paying the merchant is saved by item name, and the same
     assert.equal(saved.category, '鞭類武器');
     assert.equal(saved.primary, 47);
     assert.equal(saved.needExp, 200000);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    assert.match(shopBox(page).textContent, /已記進裝備資料庫：黃金鎖鍊（鞭類武器，傷害 47，佩帶經驗 200000）/);
+    assert.match(shopBox(page).textContent, /資料庫共 1 件/);
     page.output(`<span>${checkOutput('黃金鎖鍊', '鞭類武器', 50, 200000)}</span>`);
     assert.ok(await waitFor(() => page.store.shopItems['黃金鎖鍊'].primary === 50, 2000));
     assert.equal(Object.keys(page.store.shopItems).length, 1);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a merchant check with no equipment data says nothing was recorded', async () => {
+  const page = await boot({ scale: SCALE });
+  enable(page);
+  try {
+    page.output('<span>你付了一筆錢給商人，得到了以下資料：\n這是一個包子。\n</span>');
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    assert.match(shopBox(page).textContent, /沒有裝備資料.*沒有記錄/);
+    assert.equal(page.store.shopItems, undefined);
   } finally {
     page.close();
   }
@@ -87,6 +105,7 @@ ui('an equipment block that did not come from a merchant check is not recorded',
 
 ui('a check output split over several batches is still recorded', async () => {
   const page = await boot({ scale: SCALE });
+  enable(page);
   try {
     const lines = checkOutput('烈火棍', '棍類武器', 60, 100).split('\n');
     lines.forEach(line => page.output(`<span>${line}\n</span>`));
@@ -102,7 +121,7 @@ function seed(page) {
   page.w.document.body.insertAdjacentHTML('beforeend', '<div id="exp">414748</div>');
   const item = (name, category, kind, primary, needExp) => ({ name, category, kind, primary, attrs: [], needExp, seen: 1 });
   Object.assign(page.store, {
-    zapFeatures: { items: true },
+    zapFeatures: { shop: true },
     shopItems: {
       烈火棍: item('烈火棍', '棍類武器', 'weapon', 60, 100),
       黃金鎖鍊: item('黃金鎖鍊', '鞭類武器', 'weapon', 47, 200000),
@@ -156,17 +175,27 @@ ui('the copy button puts the check commands of the uncollected numbers on the cl
   }
 });
 
-ui('without the equipment feature switch the list gets no summary, but check results are still recorded', async () => {
-  const page = await boot({ scale: SCALE });
+ui('the feature is off by default and when its switch is off: nothing is recorded and nothing is added to the output', async () => {
+  const fresh = await boot({ scale: SCALE });
   try {
-    seed(page);
-    page.store.zapFeatures = { items: false };
-    page.output(`<span>${SUMMARY_LIST}</span>`);
-    await sleep(200);
-    assert.equal(shopBox(page), null);
-    page.output(`<span>${checkOutput('虹色項鍊', '項鍊類防具', 5, 10)}</span>`);
-    assert.ok(await waitFor(() => page.store.shopItems['虹色項鍊'], 2000));
+    fresh.output(`<span>${checkOutput('黃金鎖鍊', '鞭類武器', 47, 200000)}</span>`);
+    fresh.output(`<span>${SUMMARY_LIST}</span>`);
+    await sleep(300);
+    assert.equal(fresh.store.shopItems, undefined, 'no switch value means off');
+    assert.equal(shopBox(fresh), null);
   } finally {
-    page.close();
+    fresh.close();
+  }
+  const off = await boot({ scale: SCALE });
+  try {
+    seed(off);
+    off.store.zapFeatures = { shop: false, items: true };
+    off.output(`<span>${SUMMARY_LIST}</span>`);
+    off.output(`<span>${checkOutput('虹色項鍊', '項鍊類防具', 5, 10)}</span>`);
+    await sleep(300);
+    assert.equal(shopBox(off), null);
+    assert.equal(off.store.shopItems['虹色項鍊'], undefined);
+  } finally {
+    off.close();
   }
 });

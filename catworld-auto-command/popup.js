@@ -198,8 +198,8 @@ try {
   console.error('[catworld] 驗證碼樣本收集區塊初始化失敗', error.name);
 }
 
-// 三組輔助功能的開關（預設關閉）：存成一個物件，遊戲頁的面板監聽 storage 變化，馬上生效
-const FEATURE_BOXES = { mobs: 'featureMobs', items: 'featureItems', riddles: 'featureRiddles' };
+// 輔助功能的開關（預設關閉）：存成一個物件，遊戲頁的面板監聽 storage 變化，馬上生效
+const FEATURE_BOXES = { mobs: 'featureMobs', items: 'featureItems', riddles: 'featureRiddles', shop: 'featureShop' };
 Object.values(FEATURE_BOXES).forEach(id => $(id).addEventListener('change', () => {
   chrome.storage.local.set({ zapFeatures: Object.fromEntries(Object.entries(FEATURE_BOXES).map(([key, box]) => [key, $(box).checked])) });
 }));
