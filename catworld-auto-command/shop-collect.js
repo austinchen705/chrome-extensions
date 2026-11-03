@@ -290,19 +290,6 @@ function showSummary(items, data, db, pages = 1) {
   if (result.suggest.length) box.append(batchControls('建議的', result.suggest.map(item => ({ no: item.no, name: item.name, price: parsePrice(item.price) }))));
   if (result.unknownItems.length) {
     box.append(batchControls('還沒蒐集的', result.unknownItems));
-    const copy = document.createElement('button');
-    copy.type = 'button';
-    copy.textContent = '複製 check 指令（貼進遊戲巨集用）';
-    copy.addEventListener('click', async event => {
-      event.stopPropagation();
-      try {
-        await navigator.clipboard.writeText(checkCommand(result.unknownItems.map(item => item.no)));
-        copy.textContent = `已複製 ${result.unknownItems.length} 個 check`;
-      } catch {
-        copy.textContent = '複製失敗';
-      }
-    });
-    box.append(copy);
   }
   const matches = items.filter(item => buyNames(data[BUY_NAMES_KEY]).includes(item.name));
   if (matches.length) box.append(buyAll(matches));

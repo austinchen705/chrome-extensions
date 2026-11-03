@@ -151,25 +151,9 @@ ui('after a list page the summary suggests the wearable items with a higher requ
     assert.match(text, /還沒蒐集（1）：2/);
     assert.match(text, /批次 check 預估約 1S10C～1S16C/, '虹色項鍊 22S: 5% is 1S10C, up to 1S16C');
     assert.equal(shopBox(page).previousElementSibling.id, 'listpage', 'inserted right under the list page');
-    assert.ok([...shopBox(page).querySelectorAll('button')].some(button => button.textContent.startsWith('複製 check 指令')));
+    assert.equal([...shopBox(page).querySelectorAll('button')].some(button => button.textContent.startsWith('複製')), false, 'there is no copy button any more');
     await sleep(200);
     assert.equal(page.w.document.querySelectorAll('[data-catworld-shop]').length, 1, 'its own output does not trigger another summary');
-  } finally {
-    page.close();
-  }
-});
-
-ui('the copy button puts the check commands of the uncollected numbers on the clipboard', async () => {
-  const page = await boot({ scale: SCALE });
-  try {
-    seed(page);
-    let copied = null;
-    Object.defineProperty(page.w.navigator, 'clipboard', { value: { writeText: async text => { copied = text; } }, configurable: true });
-    page.output(`<span>${LIST_PAGE}</span>`);
-    assert.ok(await waitFor(() => shopBox(page), 2000));
-    [...shopBox(page).querySelectorAll('button')].find(button => button.textContent.startsWith('複製 check 指令')).click();
-    assert.ok(await waitFor(() => copied !== null, 2000));
-    assert.equal(copied, 'check 2;check 3;check 14;check 24');
   } finally {
     page.close();
   }
@@ -503,15 +487,13 @@ ui('checks typed by hand, outside a batch, still get their own line each', async
   }
 });
 
-ui('uncollected items cheaper than the minimum price stay out of the batch, the cost estimate and the copied command, and the summary says so', async () => {
+ui('uncollected items cheaper than the minimum price stay out of the batch and the cost estimate, and the summary says so', async () => {
   const page = await boot({ scale: SCALE });
   try {
     seed(page);
     page.store.shopMinPrice = 5;
     const sent = [];
     page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
-    let copied = null;
-    Object.defineProperty(page.w.navigator, 'clipboard', { value: { writeText: async text => { copied = text; } }, configurable: true });
     const list = [
       ' 1 包子                  價格：30C       2 不知名藥草            價格：2S     ',
       ' 3 好劍                  價格：10S',
@@ -527,9 +509,6 @@ ui('uncollected items cheaper than the minimum price stay out of the batch, the 
     buttonOf(page, '批次 check 還沒蒐集的').click();
     buttonOf(page, '確認送出').click();
     assert.deepEqual(sent, ['check 3']);
-    [...shopBox(page).querySelectorAll('button')].find(button => button.textContent.startsWith('複製 check 指令')).click();
-    assert.ok(await waitFor(() => copied !== null, 2000));
-    assert.equal(copied, 'check 3');
   } finally {
     page.close();
   }
