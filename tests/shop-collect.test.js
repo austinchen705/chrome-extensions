@@ -439,7 +439,8 @@ ui('during a confirmed batch each check is recorded quietly, then one digest lis
   const page = await boot({ scale: SCALE });
   try {
     seed(page);
-    page.w.CatworldShopCollect.setSender(() => true);
+    const sent = [];
+    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
     page.output(`<span>${batchList(['新棍A', '新棍B', '新盾'])}</span>`);
     assert.ok(await waitFor(() => shopBox(page), 2000));
     buttonOf(page, '批次 check 還沒蒐集的').click();
@@ -455,11 +456,16 @@ ui('during a confirmed batch each check is recorded quietly, then one digest lis
     const text = boxes()[1].textContent;
     assert.match(text, /【批次 check 彙整】送出 3 個，收到 3 個回應/);
     assert.match(text, /值得換（1）：/);
-    assert.match(text, /1 新棍A　10S/);
+    assert.match(text, /買 1 新棍A（10S）/);
     assert.match(text, /和現在穿的 舊棍 比：比現在好，建議留下（傷害 \+10）/);
     assert.doesNotMatch(text, /新棍B/, 'the ones that are not better are only counted');
     assert.match(text, /其他：經驗還不夠穿 1 件、不比現在好 1 件/);
     assert.doesNotMatch(text, /沒收到回應/);
+    const buy = [...boxes()[1].querySelectorAll('button')].find(button => button.textContent.startsWith('買 1 新棍A'));
+    buy.click();
+    assert.deepEqual(sent.slice(-1), ['buy 1'], 'one click buys it by its list number, no confirmation');
+    assert.match(boxes()[1].textContent, /已送出 buy 1/);
+    assert.equal([...boxes()[1].querySelectorAll('button')].filter(button => button.textContent.startsWith('買 ')).length, 1, 'only the recommended one has a buy button');
   } finally {
     page.close();
   }
@@ -645,6 +651,43 @@ ui('buy names can be separated by commas, semicolons or spaces, and a missing se
     assert.deepEqual(Array.from(buyNames('包子;狗肉；藥草、水, 酒 米')), ['包子', '狗肉', '藥草', '水', '酒', '米']);
     assert.deepEqual(Array.from(buyNames('')), []);
     assert.deepEqual(Array.from(buyNames(undefined)), ['無名物品', '無名藥草', '不知名藥草']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a hand-typed check that is better than the worn one also gets a buy button, using the number from the list', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    const sent = [];
+    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
+    page.output(`<span>${SUMMARY_LIST}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    page.output(`<span>${checkOutput('烈火棍', '棍類武器', 60, 100)}</span>`);
+    assert.ok(await waitFor(() => page.w.document.querySelectorAll('[data-catworld-shop]').length === 2, 2000));
+    const recorded = [...page.w.document.querySelectorAll('[data-catworld-shop]')].find(box => /已記進裝備資料庫/.test(box.textContent));
+    const buy = [...recorded.querySelectorAll('button')].find(button => button.textContent.startsWith('買 4 烈火棍（1G40S）'));
+    buy.click();
+    assert.deepEqual(sent, ['buy 4']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a hand-typed check that is not better, or whose number is not known from a list, gets no buy button', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.output(`<span>${checkOutput('烈火棍', '棍類武器', 60, 100)}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    assert.equal([...shopBox(page).querySelectorAll('button')].length, 0, 'better, but no list was shown so there is no number to buy with');
+    page.output(`<span>${SUMMARY_LIST}</span>`);
+    await sleep(150);
+    page.output(`<span>${checkOutput('烈火棍', '棍類武器', 40, 100)}</span>`);
+    assert.ok(await waitFor(() => page.w.document.querySelectorAll('[data-catworld-shop]').length >= 3, 2000));
+    const last = [...page.w.document.querySelectorAll('[data-catworld-shop]')].filter(box => /已記進裝備資料庫/.test(box.textContent)).pop();
+    assert.equal([...last.querySelectorAll('button')].length, 0, 'worse than what is worn');
   } finally {
     page.close();
   }

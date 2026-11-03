@@ -166,6 +166,24 @@ function classify(block, data) {
 const judge = (block, data) => classify(block, data).text;
 const sameStats = (a, b) => a.primary === b.primary && JSON.stringify(a.attrs) === JSON.stringify(b.attrs);
 
+// 「買 編號 名稱（價格）」：點了直接送 buy 編號（和快速購買一樣不再確認，使用者要求「點了 buy 編號」）；
+// 用在批次彙整與手動 check 的「值得換」，編號從 list 對回來
+function buyOne(item) {
+  const row = document.createElement('div');
+  const status = document.createElement('span');
+  const label = `買 ${item.no} ${item.name}${item.price != null ? `（${formatMoney(item.price)}）` : ''}`;
+  row.append(button(label, () => {
+    const started = sender ? sender(`buy ${item.no}`) : false;
+    status.textContent = started === false || !sender ? '　送不出去（找不到送指令的功能）' : `　已送出 buy ${item.no}`;
+  }), status);
+  return row;
+}
+// 目前累計的 list 裡這個名稱的編號與價格（沒有就 undefined）
+function listed(name) {
+  const item = [...session.items.values()].find(entry => entry.name === name);
+  return item && { no: item.no, name, price: parsePrice(item.price) };
+}
+
 // check 之後在輸出下面回報：有沒有記進資料庫、和現在穿的比如何；同名裝備的數值和資料庫舊資料不同要提醒（同名不代表數值一樣）；
 // 這次 check 沒有裝備資料（沒記）也要說，不然看不出是沒記還是沒反應
 function showRecorded(blocks, before, after, data) {
@@ -182,6 +200,11 @@ function showRecorded(blocks, before, after, data) {
     const row = document.createElement('div');
     row.textContent = line;
     box.append(row);
+  });
+  // 比現在好、而且 list 裡找得到編號的，附一顆買的按鈕
+  blocks.filter(block => classify(block, data).kind === 'good').forEach(block => {
+    const item = listed(block.name);
+    if (item) box.append(buyOne(item));
   });
   place(box);
 }
@@ -314,10 +337,8 @@ function finishBatch() {
   batchRun = null;
   const box = newBox();
   const lines = [`【批次 check 彙整】送出 ${run.expected} 個，收到 ${run.received} 個回應（實際數值都已記進資料庫）`];
-  if (run.good.length) {
-    lines.push(`值得換（${run.good.length}）：`);
-    run.good.forEach(item => lines.push(`　${item.no ?? '?'} ${item.name}${item.price != null ? `　${formatMoney(item.price)}` : ''}　${item.text}`));
-  } else lines.push('沒有比現在好的');
+  if (run.good.length) lines.push(`值得換（${run.good.length}）：`);
+  else lines.push('沒有比現在好的');
   const others = [
     run.blocked && `經驗還不夠穿 ${run.blocked} 件`,
     run.nobase && `沒有穿著資料可比 ${run.nobase} 件`,
@@ -326,11 +347,19 @@ function finishBatch() {
   ].filter(Boolean);
   if (others.length) lines.push(`其他：${others.join('、')}`);
   if (run.received < run.expected) lines.push(`沒收到回應：${run.expected - run.received} 個（被中止、錢不夠、或不在商人面前？）`);
-  lines.forEach(line => {
+  const addLine = line => {
     const row = document.createElement('div');
     row.textContent = line;
     box.append(row);
+  };
+  addLine(lines[0]);
+  addLine(lines[1]);
+  // 值得換的每件：有編號就一顆「買 編號」按鈕（點了直接送 buy），底下一行比較結果
+  run.good.forEach(item => {
+    if (item.no !== undefined) box.append(buyOne(item));
+    addLine(`　${item.no === undefined ? `${item.name}　` : ''}${item.text}`);
   });
+  lines.slice(2).forEach(addLine);
   place(box);
 }
 // 一次 flush 收到的 check：記進彙整；全部到齊就印出，否則等 BATCH_QUIET_MS（逾時印目前收到的）
