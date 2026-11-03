@@ -139,10 +139,10 @@ function ensureSelect(header) {
   select = document.createElement('select');
   select.id = SELECT_ID;
   select.title = '把這個區域蒐集到的怪標在地圖上';
-  // 配色跟地圖視窗一致：透明底、沿用標題列的文字色、同樣的虛線框；colorScheme 讓展開的選項清單也是深色
+  // 淺灰底深色字：遊戲視窗的文字色跟著色彩主題走、常常偏淺，沿用它在視窗底色上不夠清楚；colorScheme 讓展開的選項清單也是淺底深字
   Object.assign(select.style, {
     position: 'absolute', right: '4px', top: '5px', height: '22px', maxWidth: '45%', fontSize: '12px',
-    background: 'transparent', color: 'inherit', fontFamily: 'inherit', border: '1px dashed #BBBBBB', borderRadius: '0', colorScheme: 'dark',
+    background: '#d8d8d8', color: '#1a1a1a', fontFamily: 'inherit', border: '1px solid #888888', borderRadius: '0', colorScheme: 'light',
   });
   ['mousedown', 'click', 'keydown', 'keyup', 'keypress'].forEach(type => select.addEventListener(type, event => event.stopPropagation()));
   select.addEventListener('change', () => { markedMob = select.value; lastSignature = ''; refreshMarkUi(); });
