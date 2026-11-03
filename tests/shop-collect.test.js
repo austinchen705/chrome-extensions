@@ -35,6 +35,28 @@ ui('parseList reads two items per line, price included, bracketed names kept', a
   }
 });
 
+ui('prices read as G/S/C and format back, and the check cost is a 5% range', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const { parsePrice, formatMoney, checkCost } = page.w.CatworldShopCollect;
+    assert.equal(parsePrice('1G40S'), 14000);
+    assert.equal(parsePrice('16S50C'), 1650);
+    assert.equal(parsePrice('30C'), 30);
+    assert.equal(parsePrice('2G4S'), 20400);
+    assert.equal(parsePrice('價格'), null);
+    assert.equal(parsePrice(''), null);
+    assert.equal(formatMoney(14000), '1G40S');
+    assert.equal(formatMoney(450), '4S50C');
+    assert.equal(formatMoney(30), '30C');
+    assert.equal(formatMoney(0), '0C');
+    const cost = checkCost([14000, 1900]);
+    assert.equal(cost.low, 795, '5% of 15900');
+    assert.equal(cost.high, 835, 'up to 5% more');
+  } finally {
+    page.close();
+  }
+});
+
 ui('a check output after paying the merchant is saved by item name, and the same name is overwritten', async () => {
   const page = await boot({ scale: SCALE });
   try {
@@ -108,6 +130,7 @@ ui('after a list page the summary says what is better than the worn gear, what c
     assert.match(text, /經驗還不夠穿：1 件/);
     assert.match(text, /沒有目前穿著的資料可比：1 件/);
     assert.match(text, /還沒蒐集（1）：2/);
+    assert.match(text, /全部 check 預估約 1S10C～1S16C/, '虹色項鍊 22S: 5% is 1S10C, up to 1S16C');
     assert.equal(shopBox(page).previousElementSibling.id, 'listpage', 'inserted right under the list page');
     assert.ok([...shopBox(page).querySelectorAll('button')].some(button => button.textContent === '複製 check 指令'));
     await sleep(200);

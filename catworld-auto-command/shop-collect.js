@@ -15,6 +15,27 @@ const CHECK_PHRASE = /你付了一筆錢給商人/;
 // 「 1 黃金鎖鍊              價格：60S       2 虹色項鍊 …」一行兩項；名稱沒有空白
 const LIST_ITEM = /(\d{1,3})\s+(\S+?)\s+價格\s*[：:]\s*(\S+)/g;
 
+// 價格寫法是「1G40S」「16S50C」「30C」：1G＝100S、1S＝100C。讀不懂回 null
+function parsePrice(text) {
+  const match = /^(?:(\d+)G)?(?:(\d+)S)?(?:(\d+)C)?$/i.exec(String(text ?? '').trim());
+  if (!match || !match[0]) return null;
+  return Number(match[1] || 0) * 10000 + Number(match[2] || 0) * 100 + Number(match[3] || 0);
+}
+function formatMoney(coppers) {
+  const gold = Math.floor(coppers / 10000);
+  const silver = Math.floor((coppers % 10000) / 100);
+  const copper = coppers % 100;
+  return [gold && `${gold}G`, silver && `${silver}S`, copper && `${copper}C`].filter(Boolean).join('') || '0C';
+}
+// check 的費用只有幾筆實測：約是價格的 5%，有幾筆比 5% 多一點（最多約再多 5%），所以預估寫成一個範圍；
+// 不是準確值（進位規則不明），小額與 2G 以上還沒有實測
+const CHECK_RATE = 0.05;
+const CHECK_SLACK = 1.05;
+function checkCost(prices) {
+  const base = prices.reduce((sum, price) => sum + price * CHECK_RATE, 0);
+  return { low: Math.floor(base), high: Math.ceil(base * CHECK_SLACK) };
+}
+
 function parseList(text) {
   return [...String(text ?? '').matchAll(LIST_ITEM)].map(match => ({ no: Number(match[1]), name: match[2], price: match[3] }));
 }
@@ -34,10 +55,15 @@ function rows(db) {
 // 還穿不了的只計數，比現在好（含屬性達門檻）的放 better，沒有基準可比的只計數
 function evaluate(items, db, { exp, baseline, mainWeapon, keep } = {}) {
   const E = globalThis.CatworldZapEquipment;
-  const out = { total: items.length, known: 0, better: [], unknown: [], tooHigh: 0, noBaseline: 0 };
+  const out = { total: items.length, known: 0, better: [], unknown: [], unknownPrices: [], tooHigh: 0, noBaseline: 0 };
   items.forEach(item => {
     const entry = db?.[item.name];
-    if (!entry) { out.unknown.push(item.no); return; }
+    if (!entry) {
+      out.unknown.push(item.no);
+      const price = parsePrice(item.price);
+      if (price !== null) out.unknownPrices.push(price);
+      return;
+    }
     out.known += 1;
     const result = E.compareEquipment(entry, baseline?.[entry.category], { mainWeapon, exp, keep });
     if (result.blocked) out.tooHigh += 1;
@@ -57,11 +83,16 @@ function summaryLines(result, exp) {
   } else if (result.known) lines.push('比現在好：沒有');
   if (result.tooHigh) lines.push(`經驗還不夠穿：${result.tooHigh} 件`);
   if (result.noBaseline) lines.push(`沒有目前穿著的資料可比：${result.noBaseline} 件（先用面板的「讀取目前穿著」）`);
-  if (result.unknown.length) lines.push(`還沒蒐集（${result.unknown.length}）：${result.unknown.slice(0, UNKNOWN_MAX).join(' ')}${result.unknown.length > UNKNOWN_MAX ? ' …' : ''}`);
+  if (result.unknown.length) {
+    const cost = checkCost(result.unknownPrices);
+    const unpriced = result.unknown.length - result.unknownPrices.length;
+    lines.push(`還沒蒐集（${result.unknown.length}）：${result.unknown.slice(0, UNKNOWN_MAX).join(' ')}${result.unknown.length > UNKNOWN_MAX ? ' …' : ''}`);
+    lines.push(`全部 check 預估約 ${formatMoney(cost.low)}～${formatMoney(cost.high)}（價格的 5% 上下，不是準確值${unpriced ? `；${unpriced} 件讀不到價格沒算` : ''}）`);
+  }
   return lines;
 }
 
-globalThis.CatworldShopCollect = { parseList, entryFrom, rows, evaluate, checkCommand, summaryLines, DB_KEY };
+globalThis.CatworldShopCollect = { parsePrice, formatMoney, checkCost, parseList, entryFrom, rows, evaluate, checkCommand, summaryLines, DB_KEY };
 
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs || !globalThis.CatworldZapEquipment) return;
