@@ -98,7 +98,31 @@ function parseLayout(text) {
   }));
 }
 
-globalThis.CatworldMapCollect = { currentRoom, merge, rows, isMob, locate, whereIs, snapshotLayouts, parseLayout, STORAGE_KEY, LAYOUT_KEY };
+// 在遊戲的地圖視窗直接標出房間（places 是 locate 的結果）：房間格加 inline 樣式（比遊戲樣式表優先）與記號屬性，
+// 回傳標到幾間（該區域的地圖沒載入、找不到房間格就不計）。每次先清掉上一次的標記，同時只標一隻怪
+const MARK_ATTR = 'data-catworld-mark';
+function clearMarks(doc) {
+  doc.querySelectorAll(`[${MARK_ATTR}]`).forEach(node => {
+    node.style.removeProperty('background-color');
+    node.style.removeProperty('color');
+    node.removeAttribute(MARK_ATTR);
+  });
+}
+function markRooms(doc, places) {
+  clearMarks(doc);
+  let count = 0;
+  places.forEach(({ area, rooms }) => rooms.forEach(room => {
+    const node = doc.getElementById(`m-${area}-${room}`);
+    if (!node) return;
+    node.style.setProperty('background-color', '#e5484d', 'important');
+    node.style.setProperty('color', '#fff', 'important');
+    node.setAttribute(MARK_ATTR, '');
+    count++;
+  }));
+  return count;
+}
+
+globalThis.CatworldMapCollect = { currentRoom, merge, rows, isMob, locate, whereIs, snapshotLayouts, parseLayout, markRooms, clearMarks, STORAGE_KEY, LAYOUT_KEY };
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs) return;
 

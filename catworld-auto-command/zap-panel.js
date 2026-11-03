@@ -115,7 +115,24 @@ function candidateNode(item, showName, onWalk, editor) {
     gradeTag(grade), ' ', showName ? mob.name : '', showName ? el('br') : '',
     el('span', { className: 'meta', textContent: Z.metaText({ mob, q, idOnly }) }));
   if (onWalk) node.append(routeBlock(item, onWalk, editor));
+  const mark = editor?.mark && markButton(mob.name, editor.mark);
+  if (mark) node.append(mark);
   return node;
+}
+
+// 「標在地圖」：把這隻怪蒐集到的房間標在遊戲的地圖視窗上（同時只標一隻，再按一次取消）；沒蒐集到就沒有按鈕
+function markButton(name, mark) {
+  if (!mark.has(name)) return null;
+  const label = key => (mark.active(key) ? '取消標記' : '標在地圖');
+  const button = el('button', { className: 'zap-edit zap-mark', textContent: label(name) });
+  button.dataset.name = name;
+  button.addEventListener('click', event => {
+    event.stopPropagation();
+    const count = mark.toggle(name);
+    button.getRootNode().querySelectorAll('.zap-mark').forEach(other => { other.textContent = label(other.dataset.name); });
+    if (count === 0) button.textContent = '地圖上找不到';
+  });
+  return el('div', { className: 'zap-route' }, button);
 }
 
 // 路線那一行：有路線就顯示路線與「走過去」；清單裡另有「編輯」（沒有路線的怪是「補路線」）。儲存後就地重畫
@@ -210,8 +227,26 @@ function attach(root, { readExp, startSteps }) {
   let mainWeapon = '';
   // 使用者補的路線（怪物名稱 → 指令）：存本機，浮層也套用（但只有清單能編輯）
   let customRoutes = {};
+  // 目前標在地圖視窗上的怪（完整名稱），空字串＝沒有標
+  let markedName = '';
   const editor = {
     custom: () => customRoutes,
+    mark: {
+      has: name => (globalThis.CatworldMapCollect?.locate(mapStore, name).length ?? 0) > 0,
+      active: name => markedName === name,
+      // 回傳標到幾間（0＝地圖視窗裡找不到這些房間），取消標記回 -1
+      toggle(name) {
+        const MC = globalThis.CatworldMapCollect;
+        if (markedName === name) {
+          MC.clearMarks(document);
+          markedName = '';
+          return -1;
+        }
+        const count = MC.markRooms(document, MC.locate(mapStore, name));
+        markedName = count ? name : '';
+        return count;
+      },
+    },
     async save(name, command) {
       customRoutes = Z.setCustomRoute(customRoutes, name, command);
       try {
@@ -465,6 +500,8 @@ function attach(root, { readExp, startSteps }) {
     enabled.items = next.items === true;
     row.hidden = !enabled.mobs;
     if (!enabled.mobs) {
+      globalThis.CatworldMapCollect?.clearMarks(document);
+      markedName = '';
       box.hidden = true;
       say('');
       clearSection('mobs');
