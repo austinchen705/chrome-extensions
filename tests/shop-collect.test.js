@@ -692,3 +692,16 @@ ui('a hand-typed check that is not better, or whose number is not known from a l
     page.close();
   }
 });
+
+ui('a list with no item named in the buy list shows no buy button and no quick-buy section', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.output(`<span>${LIST_PAGE}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    assert.doesNotMatch(shopBox(page).textContent, /快速購買|買全部符合的/);
+    assert.equal([...shopBox(page).querySelectorAll('button')].some(button => button.textContent.startsWith('買')), false);
+  } finally {
+    page.close();
+  }
+});
