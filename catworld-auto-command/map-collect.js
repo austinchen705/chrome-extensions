@@ -168,4 +168,56 @@ const observer = new MutationObserver(records => {
 });
 observer.observe(content, { subtree: true, childList: true, characterData: true });
 setTimeout(saveLayouts, 3000);
+
+// 地圖視窗標題列的「標記怪物」下拉選單：列出目前顯示的區域蒐集到的怪，選一隻就把它蒐集到的房間標紅，選第一項取消。
+// 標題列是遊戲的拖曳把手（#map_header：cursor move、絕對定位、寬度整列），所以選單用絕對定位靠右，事件不傳給遊戲
+// （否則按下去變成拖曳、click 會把游標搶回輸入框）。區域切換、遊戲重畫地圖、蒐集到新怪都靠定時重讀儲存處理，
+// 每次都重新標一遍（重畫掉的標記會補回來）；這個區域沒蒐集到任何怪就把選單藏起來
+const SELECT_ID = 'catworld-mark-select';
+const MARK_TICK_MS = 1500;
+let markedMob = '';
+let lastSignature = '';
+function ensureSelect(header) {
+  let select = header.querySelector(`#${SELECT_ID}`);
+  if (select) return select;
+  select = document.createElement('select');
+  select.id = SELECT_ID;
+  select.title = '把這個區域蒐集到的怪標在地圖上';
+  Object.assign(select.style, { position: 'absolute', right: '4px', top: '5px', height: '22px', maxWidth: '45%', fontSize: '12px' });
+  ['mousedown', 'click', 'keydown', 'keyup', 'keypress'].forEach(type => select.addEventListener(type, event => event.stopPropagation()));
+  select.addEventListener('change', () => { markedMob = select.value; lastSignature = ''; refreshMarkUi(); });
+  header.append(select);
+  return select;
+}
+async function refreshMarkUi() {
+  const header = document.getElementById('map_header');
+  if (!header) return;
+  let store;
+  try {
+    store = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY] || {};
+  } catch {
+    clearInterval(markTimer);
+    return;
+  }
+  const visible = document.querySelector('#map_wrapper > div[id^="m-"]:not(.invisible)');
+  const area = visible ? visible.id.slice(2) : '';
+  const mobs = [...new Set(rows(store).filter(row => row.area === area).flatMap(row => row.mobs))].sort((a, b) => a.localeCompare(b));
+  const select = ensureSelect(header);
+  select.style.display = mobs.length ? '' : 'none';
+  if (!mobs.includes(markedMob)) markedMob = '';
+  const signature = `${area}|${mobs.join('\n')}`;
+  if (signature !== lastSignature) {
+    lastSignature = signature;
+    select.replaceChildren(...['', ...mobs].map(name => {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = name || '標記怪物…';
+      return option;
+    }));
+  }
+  select.value = markedMob;
+  if (markedMob) markRooms(document, locate(store, markedMob).filter(place => place.area === area));
+  else clearMarks(document);
+}
+const markTimer = setInterval(refreshMarkUi, MARK_TICK_MS);
 })();

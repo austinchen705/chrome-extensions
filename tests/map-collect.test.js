@@ -147,3 +147,61 @@ ui('the layouts are saved when monster lines arrive and only the changed areas a
     page.close();
   }
 });
+
+const pick = (page, value) => {
+  const select = page.w.document.getElementById('catworld-mark-select');
+  select.value = value;
+  select.dispatchEvent(new page.w.Event('change', { bubbles: true }));
+};
+const marked = page => [...page.w.document.querySelectorAll('[data-catworld-mark]')].map(node => node.id);
+const MOBS = {
+  'wudon/2h': { area: 'wudon', room: '2h', areaName: '武當派', mobs: ['地痞(dipi)'], seen: 1 },
+  'wudon/2i': { area: 'wudon', room: '2i', areaName: '武當派', mobs: ['地痞(dipi)', '高手(gaoshou)'], seen: 1 },
+  'godforest/w6': { area: 'godforest', room: 'w6', areaName: '天之叢林', mobs: ['老道(laodao)'], seen: 1 },
+};
+
+ui('the map header dropdown lists the mobs collected in the visible area and marks their rooms in red, and the first option clears it', async () => {
+  const page = await boot({ scale: 10 });
+  try {
+    setup(page);
+    await page.w.chrome.storage.local.set({ mapMonsters: MOBS });
+    assert.ok(await waitFor(() => page.w.document.querySelector('#map_header #catworld-mark-select option:nth-child(3)'), 2000));
+    const select = page.w.document.getElementById('catworld-mark-select');
+    assert.deepEqual([...select.options].map(option => option.value), ['', '地痞(dipi)', '高手(gaoshou)'], 'only the visible area (wudon) is listed, not the hidden godforest');
+    pick(page, '地痞(dipi)');
+    assert.ok(await waitFor(() => marked(page).length === 2, 2000));
+    assert.deepEqual(marked(page), ['m-wudon-2h', 'm-wudon-2i']);
+    assert.equal(page.w.document.getElementById('m-wudon-2h').style.backgroundColor, 'rgb(229, 72, 77)');
+    pick(page, '高手(gaoshou)');
+    assert.ok(await waitFor(() => marked(page).join() === 'm-wudon-2i', 2000), 'only one mob is marked at a time');
+    pick(page, '');
+    assert.ok(await waitFor(() => marked(page).length === 0, 2000));
+    assert.equal(page.w.document.getElementById('m-wudon-2i').style.backgroundColor, '');
+  } finally {
+    page.close();
+  }
+});
+
+ui('the dropdown follows the visible area, re-marks after the game redraws the map, and hides when the area has no collected mobs', async () => {
+  const page = await boot({ scale: 10 });
+  try {
+    setup(page);
+    await page.w.chrome.storage.local.set({ mapMonsters: MOBS });
+    assert.ok(await waitFor(() => page.w.document.getElementById('catworld-mark-select'), 2000));
+    assert.ok(await waitFor(() => page.w.document.getElementById('catworld-mark-select').options.length === 3, 2000));
+    pick(page, '地痞(dipi)');
+    assert.ok(await waitFor(() => marked(page).length === 2, 2000));
+    const doc = page.w.document;
+    doc.getElementById('m-wudon-2h').removeAttribute('data-catworld-mark');
+    doc.getElementById('m-wudon-2h').style.removeProperty('background-color');
+    assert.ok(await waitFor(() => marked(page).includes('m-wudon-2h'), 2000), 'a redrawn room is marked again');
+    doc.getElementById('m-wudon').classList.add('invisible');
+    doc.getElementById('m-godforest').classList.remove('invisible');
+    assert.ok(await waitFor(() => [...doc.getElementById('catworld-mark-select').options].map(option => option.value).join() === ',老道(laodao)', 2000));
+    assert.deepEqual(marked(page), [], 'the old marking is dropped when the mob is not in the new area');
+    doc.getElementById('m-godforest').classList.add('invisible');
+    assert.ok(await waitFor(() => doc.getElementById('catworld-mark-select').style.display === 'none', 2000));
+  } finally {
+    page.close();
+  }
+});

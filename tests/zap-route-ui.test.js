@@ -343,35 +343,3 @@ ui('the hint draws the area mini map with the rooms the mob was collected in mar
   assert.match(dom.shadow.textContent, /蒐集到：終南山 c1；武當派 2c/, 'the text line still lists every area');
 });
 
-ui('the list button marks the collected rooms on the game map window, one mob at a time, and a second click clears them', async () => {
-  const store = { mapMonsters: {
-    'wudon/2c': { area: 'wudon', room: '2c', areaName: '武當派', mobs: ['華山弟子(a)'], seen: 1 },
-    'godforest/w6': { area: 'godforest', room: 'w6', areaName: '天之叢林', mobs: ['華山弟子(a)'], seen: 1 },
-  } };
-  const dom = boot({ items: [mobWith(null)], store });
-  dom.w.document.body.insertAdjacentHTML('beforeend', '<div id="map_wrapper"><div id="m-wudon"><a id="m-wudon-2c">□</a><a id="m-wudon-2d">□</a></div></div>');
-  assert.ok(await waitFor(() => dom.shadow.querySelector('.zap-mark')));
-  const button = dom.shadow.querySelector('.zap-mark');
-  assert.equal(button.textContent, '標在地圖');
-  button.click();
-  const marked = () => [...dom.w.document.querySelectorAll('[data-catworld-mark]')].map(node => node.id);
-  assert.deepEqual(marked(), ['m-wudon-2c'], 'rooms in areas that are not loaded are skipped, other rooms untouched');
-  assert.equal(dom.w.document.getElementById('m-wudon-2c').style.backgroundColor, 'rgb(229, 72, 77)');
-  assert.equal(button.textContent, '取消標記');
-  button.click();
-  assert.deepEqual(marked(), []);
-  assert.equal(dom.w.document.getElementById('m-wudon-2c').style.backgroundColor, '');
-  assert.equal(button.textContent, '標在地圖');
-});
-
-ui('the mark button is absent for a mob that was never collected, and says so when its rooms are not on the map window', async () => {
-  const none = boot({ items: [mobWith(null)] });
-  assert.ok(await waitFor(() => none.shadow.querySelector('.zap-item')));
-  assert.equal(none.shadow.querySelector('.zap-mark'), null);
-  const store = { mapMonsters: { 'godforest/w6': { area: 'godforest', room: 'w6', areaName: '天之叢林', mobs: ['華山弟子(a)'], seen: 1 } } };
-  const absent = boot({ items: [mobWith(null)], store });
-  assert.ok(await waitFor(() => absent.shadow.querySelector('.zap-mark')));
-  absent.shadow.querySelector('.zap-mark').click();
-  assert.equal(absent.shadow.querySelector('.zap-mark').textContent, '地圖上找不到');
-  assert.equal(absent.w.document.querySelectorAll('[data-catworld-mark]').length, 0);
-});
