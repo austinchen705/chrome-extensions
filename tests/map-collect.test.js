@@ -84,3 +84,21 @@ ui('text without monster lines saves nothing, and walking on records the next ro
     page.close();
   }
 });
+
+ui('rows keeps only name(ID) monsters, drops rooms left empty, and sorts', async () => {
+  const page = await boot();
+  try {
+    const store = {
+      'snow/0q': { area: 'snow', room: '0q', areaName: '長安', mobs: ['mahaha', 'abau'], seen: 1 },
+      'snow/0u': { area: 'snow', room: '0u', areaName: '長安', mobs: ['biglp', '腳伕(liu)'], seen: 1 },
+      'emei/06': { area: 'emei', room: '06', areaName: '峨嵋派', mobs: ['靜虛師太(Jing Shiu)'], seen: 1 },
+    };
+    const rows = page.w.CatworldMapCollect.rows(store);
+    assert.equal(rows.length, 2, 'the room with only player ids is gone');
+    assert.equal(rows[0].room, '06');
+    assert.equal(rows[1].mobs.join(), '腳伕(liu)');
+    assert.equal(page.w.CatworldMapCollect.rows(undefined).length, 0);
+  } finally {
+    page.close();
+  }
+});

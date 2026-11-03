@@ -37,7 +37,18 @@ function merge(store, spot, mobs, now) {
   return { store: { ...store, [spot.key]: { area: spot.area, room: spot.room, areaName, mobs: all, seen: now } }, changed: true };
 }
 
-globalThis.CatworldMapCollect = { currentRoom, merge, STORAGE_KEY };
+// 怪物一律是「名稱(ID)」。舊版（讀地圖房間 title）記下的是房間裡的玩家，只有英文 ID、沒有括號，不能當怪物複製出去
+const isMob = text => /\(.+\)$/.test(text);
+
+// 設定頁顯示與複製用：濾掉不是怪物的項目、沒怪的房間不列，依區域與房間排序
+function rows(store) {
+  return Object.values(store || {})
+    .map(row => ({ ...row, mobs: (row.mobs || []).filter(isMob) }))
+    .filter(row => row.mobs.length)
+    .sort((a, b) => `${a.area}/${a.room}`.localeCompare(`${b.area}/${b.room}`));
+}
+
+globalThis.CatworldMapCollect = { currentRoom, merge, rows, isMob, STORAGE_KEY };
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs) return;
 
@@ -62,7 +73,7 @@ const observer = new MutationObserver(records => {
   const text = CatworldZapMobs.textFromAdded(records.flatMap(record => (record.type === 'characterData'
     ? [record.target.textContent || '']
     : Array.from(record.addedNodes, node => node.textContent || ''))));
-  const found = CatworldZapMobs.parseMobLines(text);
+  const found = CatworldZapMobs.parseMobLines(text).filter(mob => isMob(mob.name));
   if (!found.length) return;
   found.forEach(mob => pending.add(mob.name));
   if (!timer) timer = setTimeout(flush, SETTLE_MS);

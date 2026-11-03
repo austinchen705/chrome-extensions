@@ -315,7 +315,7 @@ showExtraSites();
 // 主要武器類型：存起來，遊戲頁的面板監聽 storage 變化，馬上生效。不合法的值當成未設定
 // 地圖怪物蒐集：紀錄由遊戲頁的 map-collect.js 寫進 storage，這裡只顯示筆數、複製成 Tab 分隔文字、清除
 const MAP_KEY = 'mapMonsters';
-const mapRows = store => Object.values(store || {}).sort((a, b) => (a.area + '/' + a.room).localeCompare(b.area + '/' + b.room));
+const mapRows = CatworldMapCollect.rows;
 async function showMapCollect() {
   const rows = mapRows((await chrome.storage.local.get(MAP_KEY))[MAP_KEY]);
   const mobs = new Set(rows.flatMap(row => row.mobs));
