@@ -13,8 +13,8 @@ const DB_KEY = 'shopItems';
 const MIN_PRICE_KEY = 'shopMinPrice';
 const DEFAULT_MIN_SILVER = 5;
 const normalizeMinSilver = value => (Number.isFinite(value) && value >= 0 ? value : DEFAULT_MIN_SILVER);
-// 快速購買：list 裡名稱和設定一樣的商品（用、或逗號分隔）旁邊多一個「買」按鈕，點了就送 buy 編號（遊戲的 buy 不能帶數量，
-// 數量是重複送幾次，最多 BUY_MAX）。名稱清單存 chrome.storage.local.shopBuyNames（字串），缺值用預設
+// 快速購買：list 裡名稱和設定一樣的商品（用、逗號或分號分隔）全部一鍵買（遊戲的 buy 不能帶數量，每個編號 buy 一次）。
+// 名稱清單存 chrome.storage.local.shopBuyNames（字串），缺值用預設；一次最多 BUY_MAX 個編號
 const BUY_NAMES_KEY = 'shopBuyNames';
 const DEFAULT_BUY_NAMES = '無名物品、無名藥草、不知名藥草';
 const BUY_MAX = 20;
@@ -234,32 +234,22 @@ function batchControls(label, list) {
   return area;
 }
 
-// 快速購買：點了就送出（不再確認，使用者要求「一按 buy」），按鈕上寫明編號、名稱、價格；遊戲的 buy 不能帶數量，
-// 數量欄是重複送幾次 buy 編號（1～BUY_MAX），用同一個 sender 交給巨集依序送
-function buyRows(matches) {
+// 快速購買：list 裡名稱符合的商品全部一次買（每個編號 buy 一次，用 ; 接起來交給同一個 sender 依序送），
+// 一顆按鈕、點了就送出、不再確認（使用者明確要求「一按 buy」、不要輸入數量）。一次最多 BUY_MAX 個編號，多的再按一次前先重新 list
+function buyAll(matches) {
+  const batch = matches.slice(0, BUY_MAX);
+  const prices = batch.map(item => parsePrice(item.price)).filter(price => price !== null);
+  const total = prices.reduce((sum, price) => sum + price, 0);
   const area = document.createElement('div');
-  const title = document.createElement('div');
-  title.textContent = '快速購買（點了就送出 buy，不再確認；數量＝重複送幾次）：';
-  area.append(title);
-  matches.forEach(item => {
-    const row = document.createElement('div');
-    const count = document.createElement('input');
-    count.type = 'number';
-    count.min = '1';
-    count.max = String(BUY_MAX);
-    count.value = '1';
-    count.style.width = '3.5em';
-    ['mousedown', 'click', 'keydown', 'keyup', 'keypress'].forEach(type => count.addEventListener(type, event => event.stopPropagation()));
-    const status = document.createElement('span');
-    const buy = button(`買 ${item.no} ${item.name}（${item.price}）`, () => {
-      const times = Math.min(BUY_MAX, Math.max(1, Math.floor(Number(count.value)) || 1));
-      count.value = String(times);
-      const started = sender ? sender(Array(times).fill(`buy ${item.no}`).join(';')) : false;
-      status.textContent = started === false || !sender ? '　送不出去（找不到送指令的功能）' : `　已送出 ${times} 次 buy ${item.no}`;
-    });
-    row.append(buy, ' ×', count, status);
-    area.append(row);
+  const names = batch.map(item => `${item.no} ${item.name}`).join('、');
+  const status = document.createElement('span');
+  const buy = button(`買全部符合的 ${batch.length} 件（約 ${formatMoney(total)}）`, () => {
+    const started = sender ? sender(batch.map(item => `buy ${item.no}`).join(';')) : false;
+    status.textContent = started === false || !sender ? '　送不出去（找不到送指令的功能）' : `　已送出 ${batch.length} 個 buy`;
   });
+  const note = document.createElement('div');
+  note.textContent = `快速購買（點了就送出 buy，不再確認）：${names}${matches.length > BUY_MAX ? `；還有 ${matches.length - BUY_MAX} 件超過一次 ${BUY_MAX} 個的上限，沒包含在內` : ''}`;
+  area.append(note, buy, status);
   return area;
 }
 
@@ -292,7 +282,7 @@ function showSummary(items, data, db, pages = 1) {
     box.append(copy);
   }
   const matches = items.filter(item => buyNames(data[BUY_NAMES_KEY]).includes(item.name));
-  if (matches.length) box.append(buyRows(matches));
+  if (matches.length) box.append(buyAll(matches));
   place(box);
   return box;
 }

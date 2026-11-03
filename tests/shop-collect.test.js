@@ -552,9 +552,9 @@ const BUY_LIST = [
   ' 23 包子                 價格：30C      30 無名物品              價格：3S     ',
   '== 未完繼續 52% ==',
 ].join('\n');
-const buyButtons = page => [...shopBox(page).querySelectorAll('button')].filter(button => button.textContent.startsWith('買 '));
+const buyButton = page => [...shopBox(page).querySelectorAll('button')].find(button => button.textContent.startsWith('買全部符合的'));
 
-ui('a listed item named in the buy list gets a buy button that sends buy <number> at once, no confirmation', async () => {
+ui('the buy button takes every listed item named in the buy list in one click, no quantity box and no confirmation', async () => {
   const page = await boot({ scale: SCALE });
   try {
     seed(page);
@@ -562,46 +562,29 @@ ui('a listed item named in the buy list gets a buy button that sends buy <number
     page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
     page.output(`<span>${BUY_LIST}</span>`);
     assert.ok(await waitFor(() => shopBox(page), 2000));
-    assert.deepEqual(buyButtons(page).map(button => button.textContent), ['買 5 不知名藥草（2S）', '買 30 無名物品（3S）'], 'default names: not 包子, not 烈火棍');
-    buyButtons(page)[0].click();
-    assert.deepEqual(sent, ['buy 5'], 'one click, one buy, no confirmation step');
-    assert.match(shopBox(page).textContent, /已送出 1 次 buy 5/);
+    assert.equal(shopBox(page).querySelector('input[type=number]'), null, 'no quantity to type');
+    assert.match(buyButton(page).textContent, /買全部符合的 2 件（約 5S）/, '不知名藥草 2S + 無名物品 3S; 包子 and 烈火棍 are not in the default names');
+    assert.match(shopBox(page).textContent, /快速購買（點了就送出 buy，不再確認）：5 不知名藥草、30 無名物品/);
+    buyButton(page).click();
+    assert.deepEqual(sent, ['buy 5;buy 30'], 'one click, every match once, no confirmation step');
+    assert.match(shopBox(page).textContent, /已送出 2 個 buy/);
   } finally {
     page.close();
   }
 });
 
-ui('the quantity box repeats buy that many times, kept between 1 and the limit', async () => {
-  const page = await boot({ scale: SCALE });
-  try {
-    seed(page);
-    const sent = [];
-    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
-    page.output(`<span>${BUY_LIST}</span>`);
-    assert.ok(await waitFor(() => shopBox(page), 2000));
-    const quantity = shopBox(page).querySelector('input[type=number]');
-    quantity.value = '3';
-    buyButtons(page)[0].click();
-    quantity.value = '99';
-    buyButtons(page)[0].click();
-    quantity.value = '0';
-    buyButtons(page)[0].click();
-    assert.equal(sent[0], 'buy 5;buy 5;buy 5');
-    assert.equal(sent[1].split(';').length, 20, 'capped at 20');
-    assert.equal(sent[2], 'buy 5', 'less than 1 counts as 1');
-  } finally {
-    page.close();
-  }
-});
-
-ui('the buy list comes from the setting: custom names, and an empty setting shows no buy buttons', async () => {
+ui('the buy list comes from the setting: custom names, and an empty setting shows no buy button', async () => {
   const page = await boot({ scale: SCALE });
   try {
     seed(page);
     page.store.shopBuyNames = '包子，烈火棍';
+    const sent = [];
+    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
     page.output(`<span>${BUY_LIST}</span>`);
     assert.ok(await waitFor(() => shopBox(page), 2000));
-    assert.deepEqual(buyButtons(page).map(button => button.textContent), ['買 4 烈火棍（1G40S）', '買 23 包子（30C）']);
+    assert.match(buyButton(page).textContent, /買全部符合的 2 件/);
+    buyButton(page).click();
+    assert.deepEqual(sent, ['buy 4;buy 23']);
   } finally {
     page.close();
   }
@@ -611,10 +594,33 @@ ui('the buy list comes from the setting: custom names, and an empty setting show
     none.store.shopBuyNames = '';
     none.output(`<span>${BUY_LIST}</span>`);
     assert.ok(await waitFor(() => shopBox(none), 2000));
-    assert.equal(buyButtons(none).length, 0);
+    assert.equal(buyButton(none), undefined);
     assert.doesNotMatch(shopBox(none).textContent, /快速購買/);
   } finally {
     none.close();
+  }
+});
+
+ui('matches from every accumulated list page are bought together, and more than the limit is cut with a note', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    const sent = [];
+    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
+    page.store.shopBuyNames = '藥';
+    const rows = (from, to) => Array.from({ length: to - from + 1 }, (_, i) => ` ${from + i} 藥          價格：2S`).join('\n');
+    page.output(`<span>商人現在有賣以下貨物：\n${rows(1, 15)}\n== 未完繼續 ==</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    page.output(`<span>${rows(16, 25)}</span>`);
+    assert.ok(await waitFor(() => /累計 2 頁/.test(shopBox(page)?.textContent ?? ''), 2000));
+    assert.match(buyButton(page).textContent, /買全部符合的 20 件/);
+    assert.match(shopBox(page).textContent, /還有 5 件超過一次 20 個的上限/);
+    buyButton(page).click();
+    assert.equal(sent[0].split(';').length, 20);
+    assert.equal(sent[0].split(';')[0], 'buy 1');
+    assert.equal(sent[0].split(';')[19], 'buy 20');
+  } finally {
+    page.close();
   }
 });
 
@@ -625,7 +631,7 @@ ui('the buy button says so when there is nothing to send with', async () => {
     page.w.CatworldShopCollect.setSender(null);
     page.output(`<span>${BUY_LIST}</span>`);
     assert.ok(await waitFor(() => shopBox(page), 2000));
-    buyButtons(page)[0].click();
+    buyButton(page).click();
     assert.match(shopBox(page).textContent, /送不出去/);
   } finally {
     page.close();
