@@ -197,6 +197,7 @@
 ## 設定頁
 
 - 面板的 ⚙ 由 `background.js` 把 `popup.html?tab=<遊戲分頁 id>` 開成分頁並記在 `storage.session`，再按一次關閉；`popup.js` 看到 `?tab=` 就控制那個遊戲分頁（`getTab`）並加上 `body.page` 樣式。popup 與設定頁是同一份 HTML/JS，改一份兩邊都會變。設定頁開在背景分頁時，自己的 `setInterval(refreshLive, 1000)` 會被 Chrome 降頻，所以遊戲頁的 `renderPanel` 在「定時開關、任一組觸發開關、巨集有沒有在跑」變了時會送 `STATE_CHANGED`（只送給擴充功能的頁面），設定頁收到（且來自它控制的那個遊戲分頁）就立刻 `refreshLive()`；定時那一頁的狀態文字平常只在按自己的按鈕時改，`refreshLive` 在開始／停止翻轉時才跟著改（不蓋掉錯誤訊息）。
+- 設定頁的項目多，全部用摺疊收起來：下方十個設定區塊、定時分頁的固定／隨機指令、各組的「命中後隨機延遲」與「安全機制」都是帶 `id` 的 `<details class="fold">`（預設收起；`id` 是記住展開狀態的鍵，新增區塊一定要帶）；展開狀態存在 `chrome.storage.local.popupFolds`（`{ id: 是否展開 }`，`toggle` 事件不冒泡，所以在 document 用捕獲階段聽，每次存全部）。固定／隨機指令的標題由 `updateItemSummary` 寫成「固定指令（N 項）：指令…」。觸發規則卡片（`ruleCard`、`keywordCard`）收成標頭加一行摘要，其餘欄位放在 `.rule-body`（`foldRule`）：**`#rules-<組>` 的子節點必須仍然是卡片本身，`readSettings` 靠 `data-f` 在卡片裡找欄位，收起來的欄位照樣會被讀與存**；沒填內容的規則（`isBlank`）與按「＋」新增的規則直接展開。測試在 `tests/settings-fold-ui.test.js`。
 - 設定頁沒有儲存鈕，每改一個欄位就存進 storage（`root.addEventListener('change', save)`）；遊戲頁的 `settings` 與 `group.config` 只在載入時讀一次，所以面板的「開始」（定時、各組觸發）按下去要先重新讀 storage 再開始，不然跑的是改之前的舊設定（測試 `tests/panel-start-fresh-settings.test.js`）。
 
 ## 說明文件

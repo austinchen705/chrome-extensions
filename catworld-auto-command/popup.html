@@ -77,6 +77,13 @@
     .extra-name { flex:1; min-width:0; overflow-wrap:anywhere; }
     .extra-state { white-space:nowrap; }
     .extra-item button { font-size:12px; padding:2px 8px; }
+    /* 摺疊：設定項目一多就很長，預設收起，標題列寫出重點；展開狀態記在 storage（popupFolds） */
+    details.fold { border:1px solid #ddd; border-radius:9px; padding:0 10px; margin-top:10px; }
+    details.fold[open] { padding-bottom:10px; }
+    details.fold > summary { cursor:pointer; padding:8px 0; font-size:13px; font-weight:600; color:#222; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .rule-summary { font-size:12px; color:#555; margin-top:4px; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .rule-summary[hidden], .rule-body[hidden] { display:none; }
+    .fold-toggle { padding:2px 6px; }
   </style>
 </head>
 <body>
@@ -88,18 +95,22 @@
   <div data-pane="timer">
     <div class="status" id="status">狀態：讀取中…</div>
     <div class="status" id="countdown">下一輪：—</div>
-    <label>固定指令（每一項各自計時，到時間就送出）</label>
-    <div class="ritem rhead"><span>指令</span><span>最短（秒）</span><span>最長（秒）</span><span></span></div>
-    <div id="fixedItems"></div>
-    <button id="addFixed" class="add-item" type="button">＋ 新增固定指令</button>
-    <p class="hint tight">每一項開始時先送一次，之後在自己的秒數範圍內隨機等一段時間再送，彼此不等；要依序送好幾個指令就用 ; 接起來（例如 ps;px）。</p>
+    <details class="fold" id="fold-fixed">
+      <summary id="summaryFixed">固定指令</summary>
+      <div class="ritem rhead"><span>指令</span><span>最短（秒）</span><span>最長（秒）</span><span></span></div>
+      <div id="fixedItems"></div>
+      <button id="addFixed" class="add-item" type="button">＋ 新增固定指令</button>
+      <p class="hint tight">固定指令：每一項各自計時，到時間就送出。每一項開始時先送一次，之後在自己的秒數範圍內隨機等一段時間再送，彼此不等；要依序送好幾個指令就用 ; 接起來（例如 ps;px）。</p>
+    </details>
     <label>指令間隔（毫秒）</label>
     <input id="commandDelayMs" type="number" min="0" value="500">
-    <label>隨機指令（先隨機挑一個，等它自己的時間才送出）</label>
-    <div class="ritem rhead"><span>指令</span><span>最短（秒）</span><span>最長（秒）</span><span></span></div>
-    <div id="randomItems"></div>
-    <button id="addRandom" class="add-item" type="button">＋ 新增隨機指令</button>
-    <p class="hint tight">每個指令被挑中的機率一樣；秒數只決定「挑中它之後要等多久」，到時間才送出，送出後再挑下一個。</p>
+    <details class="fold" id="fold-random">
+      <summary id="summaryRandom">隨機指令</summary>
+      <div class="ritem rhead"><span>指令</span><span>最短（秒）</span><span>最長（秒）</span><span></span></div>
+      <div id="randomItems"></div>
+      <button id="addRandom" class="add-item" type="button">＋ 新增隨機指令</button>
+      <p class="hint tight">隨機指令：先隨機挑一個，等它自己的時間才送出。每個指令被挑中的機率一樣；秒數只決定「挑中它之後要等多久」，到時間才送出，送出後再挑下一個。</p>
+    </details>
     <div class="buttons">
       <button id="start">開始</button><button id="stop">停止</button>
     </div>
@@ -121,14 +132,15 @@
       </div>
       <p class="hint">數值規則：精氣神等數值達到門檻就送指令。關鍵字規則：遊戲輸出區<b>新出現</b>的文字含有關鍵字（不分大小寫）就送指令；不看開始前的舊紀錄，也不看以 &gt; 開頭的指令回聲，冷卻期間出現的不會補送。<b>其他玩家說的話也可能含有關鍵字</b>，請用不容易被別人說出的詞；安全機制沒勾選時，冷卻是唯一的頻率限制。</p>
 
-      <div class="delaybox">
+      <details class="delaybox fold" id="fold-delay-__G__">
+        <summary>命中後隨機延遲</summary>
         <label for="delayMax-__G__">命中後隨機延遲（最多幾秒，預設 5，填 0 = 不延遲）</label>
         <input id="delayMax-__G__" type="number" min="0" step="0.5" value="5">
         <p class="hint tight">規則命中後不會馬上送出，會在 0～這個秒數之間隨機等一段時間再送，等待中會顯示倒數。冷卻從實際送出的時間起算。數值規則與關鍵字規則都適用。</p>
-      </div>
+      </details>
 
-      <div class="safety">
-        <h4>安全機制（預設全部關閉，要用再勾選）</h4>
+      <details class="safety fold" id="fold-safety-__G__">
+        <summary>安全機制（預設全部關閉，要用再勾選）</summary>
         <p class="hint tight">目的：避免指令沒效果時一直重複送。<b>全部關閉時，條件持續成立就每隔冷卻時間重送一次，不會自己停</b>（冷卻最少 1 秒）。</p>
         <label class="check"><input id="limitFires-__G__" type="checkbox"> 限制每條規則的觸發次數</label>
         <div class="row">
@@ -146,7 +158,7 @@
         <p class="hint tight">超過只是延後，不停用規則。</p>
         <label class="check"><input id="requireNormal-__G__" type="checkbox" checked> 角色狀態不是「正常」時不觸發（昏迷、死亡等）</label>
         <p class="hint tight">每條規則的冷卻（最少 1 秒）與「回復緩衝」在規則裡設定。</p>
-      </div>
+      </details>
 
       <div class="buttons">
         <button id="tstart-__G__" class="tstart-btn">開始觸發</button><button id="tstop-__G__" class="tstop-btn">停止觸發</button>
@@ -154,37 +166,42 @@
       <div class="hint">按開始時如果門檻已經達成，會立刻命中一次（再依上面的延遲設定送出）；之後要等數值回升到「回復條件」之上才會再次觸發。修改規則後要重新按「開始觸發」才會套用。驗證碼停止、重新整理遊戲頁、按停止，觸發都會一併停止。</div>
   </template>
 
-  <div class="alertbox">
-    <div class="hint tight"><b>輔助功能（預設全部關閉）</b>，勾了遊戲頁面板才會出現對應的列，改了馬上生效：</div>
+  <details class="alertbox fold" id="sec-features">
+    <summary>輔助功能（預設全部關閉）</summary>
+    <div class="hint tight">勾了遊戲頁面板才會出現對應的列，改了馬上生效：</div>
     <label class="check"><input id="featureMobs" type="checkbox"> 怪物查詢（適合的怪、怪物出現提示、走過去）</label>
     <label class="check"><input id="featureItems" type="checkbox"> 無名物品鑑定提示與裝備比較</label>
     <label class="check"><input id="featureRiddles" type="checkbox"> 解謎清單</label>
-  </div>
-  <div class="alertbox">
+  </details>
+  <details class="alertbox fold" id="sec-alert">
+    <summary>警報提示音</summary>
     <label class="check"><input id="persistentAlert" type="checkbox"> 警報提示音一直響，按「確認」才停</label>
     <p class="hint tight">預設關閉＝原本的行為：每 10 秒響一次、最多 5 分鐘，回到遊戲頁點一下、按鍵或按「開始」就停。開啟後不會自己停，要按遊戲頁面板標題列（或系統通知上）的「確認」才會停，標題也會一直閃。</p>
-  </div>
-  <div class="alertbox">
+  </details>
+  <details class="alertbox fold" id="sec-reward">
+    <summary>在線獎勵</summary>
     <label class="check"><input id="autoReward" type="checkbox"> 在線獎勵自動領取</label>
     <p class="hint tight">預設開啟。打 sc 後看到「在線獎勵： N分鐘後可領取」，就在 N+1 分鐘後自動送出 reward（驗證碼照常自動辨識）；已經在等的時候再打 sc 不會重複排，重新整理遊戲頁會取消。</p>
-  </div>
-  <div class="alertbox">
+  </details>
+  <details class="alertbox fold" id="sec-grade">
+    <summary>怪物分級</summary>
     <div class="row">
       <div><label for="zapGreenMax">怪物分級：綠上限 q</label><input id="zapGreenMax" type="number" min="1.01" step="0.1"></div>
       <div><label for="zapYellowMax">黃上限 q</label><input id="zapYellowMax" type="number" min="1.01" step="0.1"></div>
     </div>
     <p class="hint tight">q = 怪物強度×2 ÷ 目前經驗。q ≤ 1 白（打了沒潛能）；q ≤ 綠上限 綠；q ≤ 黃上限 黃；更高紅。遊戲沒有公開門檻，請對照遊戲裡的顏色調整。</p>
-  </div>
-  <div class="alertbox">
+  </details>
+  <details class="alertbox fold" id="sec-weapon">
+    <summary>主要武器與裝備比較</summary>
     <label for="mainWeapon">主要武器類型</label>
     <select id="mainWeapon"></select>
     <p class="hint tight">用來判斷鑑定後的鑄模與材料是否適合你；未設定時只依等級建議（LV1～2 賣掉、LV3 以上留著）。</p>
     <label class="check"><input id="keepEnabled" type="checkbox"> 附屬能力達到門檻就建議留下</label>
     <div class="row"><div><label for="keepMin">門檻（屬性數值）</label><input id="keepMin" type="number" min="1" step="1"></div></div>
     <p class="hint tight">預設關閉。開啟後，鑑定出的裝備只要有一條屬性的數值達到門檻（例如 +10 攻擊），就算傷害／防禦比現在穿的差、沒有基準或還不能穿，都標「屬性達門檻，建議留下」並排在最上面；重量、硬度、潛能、損修不算。</p>
-  </div>
-  <div class="alertbox">
-    <b>共用資料（Google 試算表）</b>
+  </details>
+  <details class="alertbox fold" id="sec-shared">
+    <summary>共用資料（Google 試算表）</summary>
     <div id="sharedOff" class="hint tight msg-warn" hidden>怪物查詢與解謎都關著，不會抓取共用資料（上面是上次抓到的結果）。</div>
     <label for="sharedMobUrl">怪物路線分頁的 CSV 連結</label>
     <input id="sharedMobUrl" type="text" autocomplete="off" placeholder="https://docs.google.com/spreadsheets/…output=csv">
@@ -196,26 +213,26 @@
     <div id="sharedRiddleDetail" class="hint tight detail" hidden></div>
     <button id="sharedRefresh">立即更新</button>
     <p class="hint tight">大家共同維護的路線：優先順序是個人 &gt; 共用 &gt; 內建。連結只存在這台瀏覽器的本機，不會匯出。</p>
-  </div>
-  <div class="alertbox">
-    <b>地圖怪物蒐集</b>
+  </details>
+  <details class="alertbox fold" id="sec-map">
+    <summary>地圖怪物蒐集</summary>
     <div id="mapCollectInfo" class="hint tight">尚無紀錄</div>
     <button id="mapCollectCopy">複製（可貼進試算表）</button>
     <button id="mapCollectClear">清除</button>
     <div id="mapCollectMsg" class="hint tight"></div>
     <p class="hint tight">遊戲頁的地圖視窗開著時，走進房間、輸出區印出怪物行（※名稱(ID)），就會記給你所在的房間（只增不減，重新整理遊戲頁也不會丟）：手動走一輪就蒐集得到。複製出來每列一個房間，Tab 分隔：區域代號、區域名稱、房間代號、怪物（名稱(ID)，逗號分隔）。只存在這台瀏覽器的本機。</p>
-  </div>
-  <div class="alertbox">
-    <b>額外的遊戲網址（臨時）</b>
+  </details>
+  <details class="alertbox fold" id="sec-extra">
+    <summary>額外的遊戲網址（臨時）</summary>
     <p class="hint tight">讓面板也出現在別的網站上，例如 ngrok 的臨時網址。貼上網址按「新增」，Chrome 會問你要不要讓這個 extension 存取那個網站，按「允許」才會生效；用完按「移除」。新增或移除後，要到那個網站的分頁重新整理。只存在這台瀏覽器的本機，不會匯出。</p>
     <label for="extraUrl">網址（整個網站都會算，port 會被忽略）</label>
     <input id="extraUrl" type="text" autocomplete="off" placeholder="https://xxxx.ngrok-free.app">
     <button id="extraAdd" type="button">新增</button>
     <div id="extraMessage" class="hint tight"></div>
     <div id="extraList"></div>
-  </div>
-  <div class="alertbox">
-    <b>手機通知（LINE）</b>
+  </details>
+  <details class="alertbox fold" id="sec-line">
+    <summary>手機通知（LINE）</summary>
     <label for="lineToken">Channel access token</label>
     <input id="lineToken" type="password" autocomplete="off">
     <label for="lineUserId">User ID</label>
@@ -229,14 +246,14 @@
     <button id="lineTest">發送測試訊息</button>
     <div id="lineResult" class="hint tight">尚未發送</div>
     <p class="hint tight">只存在這台瀏覽器的本機，不會同步或匯出。請用自己的 LINE 官方帳號（Messaging API）的 token 與你的 userId。</p>
-  </div>
-  <div class="alertbox">
-    <b>驗證碼樣本收集</b>
+  </details>
+  <details class="alertbox fold" id="sec-captcha">
+    <summary>驗證碼樣本收集</summary>
     <label for="captchaSampleUrl">Google Apps Script 網頁應用程式的網址（空白＝不收集）</label>
     <input id="captchaSampleUrl" type="text" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec">
     <div id="captchaSampleResult" class="hint tight">尚未送出</div>
     <p class="hint tight">每次驗證碼自動辨識結束（通過、送 3 次都沒回應、讀不出數字）就把那張圖的 HTML 與結果送到這個網址，用來補字形庫。安裝時帶入的是作者的收集表；不想分享就清空（清空後不會再帶入），要收進自己的試算表見 README。HTML 可能含圖前幾行的遊戲輸出，例如狀態卡裡的角色名。網址只存在這台瀏覽器的本機，不會匯出。</p>
-  </div>
+  </details>
   <button id="test">測試送出 ps</button>
   <button id="beep">測試提示音</button>
   <button id="skills">悟招清單（新分頁開啟）</button>

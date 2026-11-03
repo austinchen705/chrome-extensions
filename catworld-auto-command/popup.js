@@ -26,7 +26,11 @@ function itemRow(item, placeholder) {
   const max = element('input', { type: 'number', min: 1, value: item.maxSeconds, title: '最長秒數' });
   const remove = element('button', { type: 'button', className: 'x', textContent: '✕', title: '刪除這個指令' });
   const row = element('div', { className: 'ritem' }, field('command', command), field('min', min), field('max', max), remove);
-  remove.addEventListener('click', () => row.remove());
+  remove.addEventListener('click', () => {
+    const list = row.parentElement;
+    row.remove();
+    updateItemSummary(list.id);
+  });
   return row;
 }
 
@@ -34,6 +38,15 @@ const ITEM_LISTS = { fixedItems: { add: 'addFixed', placeholder: '例：ps;px' }
 
 function renderItems(id, items) {
   $(id).replaceChildren(...items.map(item => itemRow(item, ITEM_LISTS[id].placeholder)));
+  updateItemSummary(id);
+}
+
+// 摺疊起來也看得出設了什麼：標題寫項數與各指令
+const ITEM_TITLES = { fixedItems: ['summaryFixed', '固定指令'], randomItems: ['summaryRandom', '隨機指令'] };
+function updateItemSummary(id) {
+  const [summaryId, title] = ITEM_TITLES[id];
+  const commands = readItems(id).map(item => item.command);
+  $(summaryId).textContent = commands.length ? `${title}（${commands.length} 項）：${commands.join('、')}` : `${title}（無）`;
 }
 
 function readItems(id) {
@@ -47,6 +60,7 @@ Object.entries(ITEM_LISTS).forEach(([id, { add, placeholder }]) => {
   $(add).addEventListener('click', () => {
     $(id).append(itemRow({ command: '', minSeconds: CatworldTimer.DEFAULT_MIN, maxSeconds: CatworldTimer.DEFAULT_MAX }, placeholder));
   });
+  $(id).addEventListener('input', () => updateItemSummary(id));
 });
 
 function readSettings() {
@@ -127,6 +141,12 @@ $('test').addEventListener('click', async () => {
 $('persistentAlert').addEventListener('change', () => {
   chrome.storage.local.set({ persistentAlert: $('persistentAlert').checked });
 });
+// 摺疊區塊（details）的展開狀態：toggle 事件不冒泡，用捕獲階段聽；每次存目前全部的狀態
+document.addEventListener('toggle', event => {
+  if (event.target.tagName !== 'DETAILS' || !event.target.id) return;
+  const folds = Object.fromEntries([...document.querySelectorAll('details[id]')].map(box => [box.id, box.open]));
+  chrome.storage.local.set({ popupFolds: folds });
+}, true);
 $('autoReward').addEventListener('change', () => {
   chrome.storage.local.set({ autoReward: $('autoReward').checked });
 });
@@ -464,7 +484,37 @@ function createTriggerPane(group) {
   const priorityField = rule => element('label', { className: 'check', title: '命中時這條規則的指令最優先送出，連已經排隊、正在 @等待 的其他指令都先暫停，送完才接著做' },
     field('priority', element('input', { type: 'checkbox', checked: rule.priority === true })), '最優先（其他指令先暫停）');
 
-  function ruleCard(rule) {
+  // 規則卡片預設收起：標頭（啟用、狀態、刪除）與一行摘要常駐，其餘欄位放進 body，點「展開」或摘要才看到。
+  // 還沒填內容的規則（剛新增、預設空白規則）直接展開。describe 回傳摘要文字，欄位一改就更新
+  function foldRule(card, head, body, describe, open) {
+    const toggle = element('button', { type: 'button', className: 'linkbtn fold-toggle' });
+    const summary = element('div', { className: 'rule-summary' });
+    const sync = () => {
+      const isOpen = card.classList.contains('open');
+      body.hidden = !isOpen;
+      summary.hidden = isOpen;
+      toggle.textContent = isOpen ? '▾ 收起' : '▸ 展開';
+    };
+    const flip = () => { card.classList.toggle('open'); sync(); };
+    toggle.addEventListener('click', flip);
+    summary.addEventListener('click', flip);
+    const refresh = () => { summary.textContent = describe(); };
+    card.addEventListener('input', refresh);
+    card.addEventListener('change', refresh);
+    head.insertBefore(toggle, head.lastChild);
+    card.classList.toggle('open', open);
+    card.insertBefore(summary, body);
+    sync();
+    refresh();
+  }
+  const commandText = (card, commands) => {
+    const text = commands.value.split('\n').map(x => x.trim()).filter(Boolean).join(' ; ');
+    if (text) return text;
+    return card.querySelector('[data-f="stopGroup"]')?.checked ? '停止這組觸發' : '（尚未填指令）';
+  };
+  const isBlank = rule => !(rule.commands || []).length && !rule.pattern && rule.stopGroup !== true;
+
+  function ruleCard(rule, open = isBlank(rule)) {
     const stat = field('stat', element('select', { title: '項目' }, ...STAT_NAMES.map(name => element('option', { value: name, textContent: name, selected: name === rule.stat }))));
     const op = field('op', element('select', { title: '方向：≤ 目前值小於等於門檻就觸發，≥ 目前值大於等於門檻就觸發' },
       element('option', { value: 'le', textContent: '≤', selected: rule.op !== 'ge' }),
@@ -482,14 +532,16 @@ function createTriggerPane(group) {
     const remove = element('button', { type: 'button', className: 'x', textContent: '✕', title: '刪除這條規則' });
     const rearm = element('p', { className: 'rearm' });
 
-    const card = element('div', { className: 'rule' },
-      element('div', { className: 'rule-head' }, enabled, element('span', { className: 'grow' }, pill), again, remove),
+    const head = element('div', { className: 'rule-head' }, enabled, element('span', { className: 'grow' }, pill), again, remove);
+    const body = element('div', { className: 'rule-body' },
       element('div', { className: 'cond' }, stat, op, value, unit),
       element('label', { textContent: '送出的指令（一行一個，依序送出）' }), commands,
       element('div', { className: 'row' },
         element('div', {}, element('label', { textContent: '冷卻（秒，最少 1）' }), cooldown),
         element('div', {}, element('label', { textContent: '回復緩衝（％）' }), buffer)),
       rearm, stopGroupField(rule), priorityField(rule));
+    const card = element('div', { className: 'rule' }, head, body);
+    foldRule(card, head, body, () => `${stat.value} ${op.value === 'ge' ? '≥' : '≤'} ${value.value}${unit.value === 'pct' ? '％' : ''}　→　${commandText(card, commands)}`, open);
 
     const updateRearm = () => {
       const text = Engine.rearmText({ op: op.value, unit: unit.value, value: Number(value.value) || 0, buffer: Number(buffer.value) || 0 });
@@ -503,7 +555,7 @@ function createTriggerPane(group) {
   }
 
   // 關鍵字規則：遊戲輸出區新出現的文字含關鍵字就送出指令
-  function keywordCard(rule) {
+  function keywordCard(rule, open = isBlank(rule)) {
     const enabled = field('enabled', element('input', { type: 'checkbox', checked: rule.enabled !== false, title: '啟用這條規則' }));
     const pill = field('pill', element('span', { className: 'pill', hidden: true }));
     const again = field('again', element('button', { type: 'button', className: 'linkbtn', textContent: '重新啟用', hidden: true }));
@@ -511,11 +563,13 @@ function createTriggerPane(group) {
     const pattern = field('pattern', element('input', { type: 'text', value: rule.pattern || '', placeholder: '例：你覺得口渴', title: '新出現的遊戲文字含這段字就觸發（不分大小寫）' }));
     const commands = field('commands', element('textarea', { value: (rule.commands || []).join('\n'), placeholder: '例：drink' }));
     const cooldown = field('cooldown', element('input', { type: 'number', min: Engine.MIN_COOLDOWN_SEC, value: rule.cooldown ?? D.cooldown }));
-    const card = element('div', { className: 'rule' },
-      element('div', { className: 'rule-head' }, enabled, element('span', { className: 'kind', textContent: '關鍵字' }), element('span', { className: 'grow' }, pill), again, remove),
+    const head = element('div', { className: 'rule-head' }, enabled, element('span', { className: 'kind', textContent: '關鍵字' }), element('span', { className: 'grow' }, pill), again, remove);
+    const body = element('div', { className: 'rule-body' },
       element('label', { textContent: '關鍵字（遊戲新出現的文字含有就觸發，不分大小寫）' }), pattern,
       element('label', { textContent: '送出的指令（一行一個，依序送出）' }), commands,
       element('label', { textContent: '冷卻（秒，最少 1）' }), cooldown, stopGroupField(rule), priorityField(rule));
+    const card = element('div', { className: 'rule' }, head, body);
+    foldRule(card, head, body, () => `「${pattern.value.trim() || '（尚未填關鍵字）'}」　→　${commandText(card, commands)}`, open);
     card.dataset.kind = 'keyword';
     wireRuleControls(card, remove, again);
     return card;
@@ -590,8 +644,8 @@ function createTriggerPane(group) {
   }
 
   root.querySelector('.safety').addEventListener('change', syncLimitInputs);
-  $g('addRule').addEventListener('click', () => { $g('rules').append(ruleCard(BLANK_RULE)); save(); });
-  $g('addKeyword').addEventListener('click', () => { $g('rules').append(keywordCard({ enabled: true, pattern: '', commands: [], cooldown: D.cooldown })); save(); });
+  $g('addRule').addEventListener('click', () => { $g('rules').append(ruleCard(BLANK_RULE, true)); save(); });
+  $g('addKeyword').addEventListener('click', () => { $g('rules').append(keywordCard({ enabled: true, pattern: '', commands: [], cooldown: D.cooldown }, true)); save(); });
   root.addEventListener('change', save);
 
   $g('tstart').addEventListener('click', async () => {
@@ -676,7 +730,11 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 });
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward']);
+  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', 'popupFolds']);
+  Object.entries(data.popupFolds || {}).forEach(([id, open]) => {
+    const box = document.getElementById(id);
+    if (box?.tagName === 'DETAILS') box.open = open === true;
+  });
   Object.entries(FEATURE_BOXES).forEach(([key, id]) => { $(id).checked = data.zapFeatures?.[key] === true; });
   $('persistentAlert').checked = data.persistentAlert === true;
   $('autoReward').checked = data.autoReward !== false;
