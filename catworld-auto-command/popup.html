@@ -231,6 +231,9 @@
     <label for="shopBuyNames">快速購買的商品名稱（list 裡出現就多一顆「買全部符合的」按鈕）</label>
     <input id="shopBuyNames" type="text" autocomplete="off" placeholder="無名物品、無名藥草、不知名藥草">
     <p class="hint tight">用「、」、逗號或分號分隔，名稱要和 list 裡一樣。list 裡符合的商品，每個編號各 buy 一次（遊戲的 buy 不能帶數量），一顆按鈕全部送出，最多一次 20 個，不再確認，所以名稱請填準。留空＝不出現購買鈕。</p>
+    <label for="shopSkipNames">不 check 的商品名稱（名稱含這些字就略過）</label>
+    <input id="shopSkipNames" type="text" autocomplete="off" placeholder="赤兔馬、白馬、烏黑駒、自由行走的花的赤兔馬">
+    <p class="hint tight">用「、」、逗號或分號分隔；名稱只要<b>含有</b>其中一個詞就不 check（例如填「赤兔馬」連「自由行走的花的赤兔馬」也會略過）。略過的不進批次 check、不算沒蒐集，摘要會註明略過幾件。留空＝都不略過。</p>
     <div id="shopInfo" class="hint tight">尚無紀錄</div>
     <button id="shopCopy">複製（可貼進試算表）</button>
     <button id="shopClear">清除</button>

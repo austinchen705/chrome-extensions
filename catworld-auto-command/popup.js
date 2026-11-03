@@ -378,6 +378,11 @@ $('shopClear').addEventListener('click', async () => {
   await chrome.storage.local.remove(SHOP_KEY);
   shopMessage('已清除');
 });
+// 不 check 的名稱清單：存字串（空的也是有效值＝都不略過），缺值用預設
+$('shopSkipNames').value = CatworldShopCollect.DEFAULT_SKIP_NAMES;
+$('shopSkipNames').addEventListener('change', () => {
+  chrome.storage.local.set({ [CatworldShopCollect.SKIP_NAMES_KEY]: $('shopSkipNames').value.trim() });
+});
 // 快速購買的名稱清單：存字串（空的也是有效值＝不出現購買鈕），缺值用預設
 $('shopBuyNames').value = CatworldShopCollect.DEFAULT_BUY_NAMES;
 $('shopBuyNames').addEventListener('change', () => {
@@ -769,7 +774,8 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 });
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY]);
+  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY]);
+  $('shopSkipNames').value = typeof data[CatworldShopCollect.SKIP_NAMES_KEY] === 'string' ? data[CatworldShopCollect.SKIP_NAMES_KEY] : CatworldShopCollect.DEFAULT_SKIP_NAMES;
   $('shopBuyNames').value = typeof data[CatworldShopCollect.BUY_NAMES_KEY] === 'string' ? data[CatworldShopCollect.BUY_NAMES_KEY] : CatworldShopCollect.DEFAULT_BUY_NAMES;
   shopMinSilver = CatworldShopCollect.normalizeMinSilver(data[CatworldShopCollect.MIN_PRICE_KEY]);
   $('shopMinPrice').value = shopMinSilver;

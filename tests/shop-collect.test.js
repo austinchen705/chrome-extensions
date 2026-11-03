@@ -684,3 +684,70 @@ ui('a list with no item named in the buy list shows no buy button and no quick-b
     page.close();
   }
 });
+
+const HORSE_LIST = [
+  '商人現在有賣以下貨物：',
+  ' 1 赤兔馬                價格：30G       2 白馬                  價格：20G     ',
+  ' 3 烏黑駒                價格：25G       4 自由行走的花的赤兔馬  價格：40G     ',
+  ' 5 好劍                  價格：10S       6 好槍                  價格：12S     ',
+  '== 未完繼續 52% ==',
+].join('\n');
+
+ui('horses in the skip list are not checked, not counted as uncollected, and the summary says how many were skipped', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    const sent = [];
+    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
+    page.output(`<span>${HORSE_LIST}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    const text = shopBox(page).textContent;
+    assert.match(text, /這頁 2 件，已蒐集 0 件/, 'only the sword and the spear count');
+    assert.match(text, /略過 4 件（名稱含「不 check 名單」裡的字，例如馬；設定頁可調）/);
+    assert.match(text, /還沒蒐集（2）：5 6/);
+    buttonOf(page, '批次 check 還沒蒐集的').click();
+    buttonOf(page, '確認送出').click();
+    assert.deepEqual(sent, ['check 5;check 6'], 'no horse number is ever sent');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a name is skipped when it contains a skip word, so the flower horse goes with just the plain horse word', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.store.shopSkipNames = '赤兔馬';
+    page.output(`<span>${HORSE_LIST}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    assert.match(shopBox(page).textContent, /略過 2 件/, '赤兔馬 and 自由行走的花的赤兔馬 only');
+    assert.match(shopBox(page).textContent, /還沒蒐集（4）：2 3 5 6/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a page made only of skipped items shows one short note and no check buttons; an empty skip list skips nothing', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    const only = ['商人現在有賣以下貨物：', ' 1 赤兔馬                價格：30G       2 白馬                  價格：20G     ', '== 未完繼續 52% =='].join('\n');
+    page.output(`<span>${only}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    assert.match(shopBox(page).textContent, /這頁 2 件都在「不 check 名單」裡（例如馬），略過/);
+    assert.equal(shopBox(page).querySelectorAll('button').length, 0);
+  } finally {
+    page.close();
+  }
+  const none = await boot({ scale: SCALE });
+  try {
+    seed(none);
+    none.store.shopSkipNames = '';
+    none.output(`<span>${HORSE_LIST}</span>`);
+    assert.ok(await waitFor(() => shopBox(none), 2000));
+    assert.doesNotMatch(shopBox(none).textContent, /略過/);
+    assert.match(shopBox(none).textContent, /還沒蒐集（6）：1 2 3 4 5 6/);
+  } finally {
+    none.close();
+  }
+});

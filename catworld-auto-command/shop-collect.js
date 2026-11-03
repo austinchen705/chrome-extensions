@@ -18,7 +18,13 @@ const normalizeMinSilver = value => (Number.isFinite(value) && value >= 0 ? valu
 const BUY_NAMES_KEY = 'shopBuyNames';
 const DEFAULT_BUY_NAMES = '無名物品、無名藥草、不知名藥草';
 const BUY_MAX = 20;
-const buyNames = value => String(typeof value === 'string' ? value : DEFAULT_BUY_NAMES).split(/[、,，;；\s]+/).filter(Boolean);
+const parseNames = (value, fallback) => String(typeof value === 'string' ? value : fallback).split(/[、,，;；\s]+/).filter(Boolean);
+const buyNames = value => parseNames(value, DEFAULT_BUY_NAMES);
+// 不 check 名單：名稱「含有」其中任何一個詞的商品（例如馬：赤兔馬、白馬、烏黑駒，含「自由行走的花的赤兔馬」）不進批次 check、
+// 也不算沒蒐集或這一頁的件數，只在摘要註明略過幾件。存 chrome.storage.local.shopSkipNames（字串，空字串＝都不略過），缺值用預設
+const SKIP_NAMES_KEY = 'shopSkipNames';
+const DEFAULT_SKIP_NAMES = '赤兔馬、白馬、烏黑駒、自由行走的花的赤兔馬';
+const skipNames = value => parseNames(value, DEFAULT_SKIP_NAMES);
 const SETTLE_MS = 600;
 const ARM_MS = 3000;
 const SUGGEST_MAX = 12;
@@ -68,14 +74,16 @@ function rows(db) {
 // 把 list 這一頁的項目逐一和資料庫比：沒蒐集過的放 unknown；蒐集過的只看佩帶經驗（等級）：
 // 經驗不夠穿的只計數；穿得了的和「現在穿的同類別裡佩帶經驗最低的那件」（最該換掉的）比，要求經驗更高的放 suggest（建議 check），
 // 不比它高的只計數；同類別沒有穿著資料可比的只計數。傷害、屬性不拿來判斷（同名裝備的數值可能不同）
-function evaluate(items, db, { exp, baseline, minPrice = 0 } = {}) {
-  const out = { total: items.length, known: 0, suggest: [], unknown: [], unknownPrices: [], unknownItems: [], cheap: 0, tooHigh: 0, notHigher: 0, noBaseline: 0 };
+function evaluate(items, db, { exp, baseline, minPrice = 0, skip = [] } = {}) {
+  const out = { total: 0, skipped: 0, known: 0, suggest: [], unknown: [], unknownPrices: [], unknownItems: [], cheap: 0, tooHigh: 0, notHigher: 0, noBaseline: 0 };
   items.forEach(item => {
+    if (skip.some(word => item.name.includes(word))) { out.skipped += 1; return; }
+    out.total += 1;
     const entry = db?.[item.name];
     if (!entry) {
       out.unknown.push(item.no);
       const price = parsePrice(item.price);
-      // 價格低於門檻的只算在 unknown（還是沒蒐集），不進批次、費用預估與複製的指令；讀不到價格的照樣 check
+      // 價格低於門檻的只算在 unknown（還是沒蒐集），不進批次與費用預估；讀不到價格的照樣 check
       if (price !== null && price < minPrice) { out.cheap += 1; return; }
       out.unknownItems.push({ no: item.no, name: item.name, price });
       if (price !== null) out.unknownPrices.push(price);
@@ -96,7 +104,9 @@ function evaluate(items, db, { exp, baseline, minPrice = 0 } = {}) {
 const checkCommand = numbers => numbers.map(no => `check ${no}`).join(';');
 
 function summaryLines(result, exp, pages = 1, minSilver = 0) {
+  if (!result.total) return result.skipped ? [`【裝備資料庫】這頁 ${result.skipped} 件都在「不 check 名單」裡（例如馬），略過`] : [];
   const lines = [`【裝備資料庫】經驗 ${Number.isFinite(exp) ? exp : '讀不到'}　${pages > 1 ? `累計 ${pages} 頁` : '這頁'} ${result.total} 件，已蒐集 ${result.known} 件`];
+  if (result.skipped) lines.push(`略過 ${result.skipped} 件（名稱含「不 check 名單」裡的字，例如馬；設定頁可調）`);
   if (result.suggest.length) {
     const shown = result.suggest.slice(0, SUGGEST_MAX).map(item => `${item.no} ${item.name}（需經驗 ${item.level}，現穿 ${item.against} ${item.wornLevel}）`);
     lines.push(`建議 check（穿得了、佩帶經驗比現在穿的高；實際數值 check 後才知道）：${shown.join('；')}${result.suggest.length > SUGGEST_MAX ? `…共 ${result.suggest.length} 件` : ''}`);
@@ -120,7 +130,7 @@ function summaryLines(result, exp, pages = 1, minSilver = 0) {
 let sender = null;
 const setSender = fn => { sender = typeof fn === 'function' ? fn : null; };
 
-globalThis.CatworldShopCollect = { setSender, BATCH_MAX, BUY_MAX, BUY_NAMES_KEY, DEFAULT_BUY_NAMES, buyNames, MIN_PRICE_KEY, DEFAULT_MIN_SILVER, normalizeMinSilver, parsePrice, formatMoney, checkCost, parseList, entryFrom, rows, evaluate, checkCommand, summaryLines, DB_KEY };
+globalThis.CatworldShopCollect = { setSender, BATCH_MAX, BUY_MAX, BUY_NAMES_KEY, DEFAULT_BUY_NAMES, buyNames, SKIP_NAMES_KEY, DEFAULT_SKIP_NAMES, skipNames, MIN_PRICE_KEY, DEFAULT_MIN_SILVER, normalizeMinSilver, parsePrice, formatMoney, checkCost, parseList, entryFrom, rows, evaluate, checkCommand, summaryLines, DB_KEY };
 
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs || !globalThis.CatworldZapEquipment) return;
@@ -279,7 +289,7 @@ function buyAll(matches) {
 function showSummary(items, data, db, pages = 1) {
   const exp = readExp();
   const minSilver = normalizeMinSilver(data.shopMinPrice);
-  const result = evaluate(items, db, { exp, baseline: data.wornEquipment?.[characterName()], minPrice: minSilver * 100 });
+  const result = evaluate(items, db, { exp, baseline: data.wornEquipment?.[characterName()], minPrice: minSilver * 100, skip: skipNames(data[SKIP_NAMES_KEY]) });
   const box = newBox();
   summaryLines(result, exp, pages, minSilver).forEach(line => {
     const row = document.createElement('div');
@@ -374,7 +384,7 @@ async function flush() {
   timer = null;
   armedUntil = 0;
   try {
-    const data = await chrome.storage.local.get([DB_KEY, MIN_PRICE_KEY, BUY_NAMES_KEY, 'zapFeatures', 'wornEquipment', 'mainWeapon', 'equipmentKeep']);
+    const data = await chrome.storage.local.get([DB_KEY, MIN_PRICE_KEY, BUY_NAMES_KEY, SKIP_NAMES_KEY, 'zapFeatures', 'wornEquipment', 'mainWeapon', 'equipmentKeep']);
     if (data.zapFeatures?.shop !== true) return;
     let db = data[DB_KEY] || {};
     const at = text.search(CHECK_PHRASE);

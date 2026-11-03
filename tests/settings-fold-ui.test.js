@@ -228,3 +228,36 @@ ui('a saved buy names setting, even an empty one, is shown when the settings pag
     set.close();
   }
 });
+
+ui('the shop skip names setting shows the default horses, saves what is typed and keeps an empty value', async () => {
+  const page = await boot();
+  try {
+    const { doc, store } = page;
+    const input = doc.getElementById('shopSkipNames');
+    assert.equal(input.value, '赤兔馬、白馬、烏黑駒、自由行走的花的赤兔馬');
+    input.value = ' 馬 ';
+    input.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
+    assert.ok(await waitFor(() => store.shopSkipNames === '馬'));
+    input.value = '';
+    input.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
+    assert.ok(await waitFor(() => store.shopSkipNames === ''));
+    await sleep(60);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a saved skip names setting, even an empty one, is shown when the settings page opens', async () => {
+  const empty = await boot({ shopSkipNames: '' });
+  try {
+    assert.equal(empty.doc.getElementById('shopSkipNames').value, '');
+  } finally {
+    empty.close();
+  }
+  const set = await boot({ shopSkipNames: '馬' });
+  try {
+    assert.equal(set.doc.getElementById('shopSkipNames').value, '馬');
+  } finally {
+    set.close();
+  }
+});
