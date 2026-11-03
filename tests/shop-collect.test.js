@@ -428,3 +428,71 @@ ui('a batch bigger than the limit goes out in parts, the next part starting afte
     page.close();
   }
 });
+
+const batchList = names => [
+  '商人現在有賣以下貨物：',
+  ...names.map((name, i) => ` ${i + 1} ${name}          價格：10S`),
+  '== 未完繼續 52% ==',
+].join('\n');
+
+ui('during a confirmed batch each check is recorded quietly, then one digest lists only the recommended ones', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.w.CatworldShopCollect.setSender(() => true);
+    page.output(`<span>${batchList(['新棍A', '新棍B', '新盾'])}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    buttonOf(page, '批次 check 還沒蒐集的').click();
+    buttonOf(page, '確認送出').click();
+    const boxes = () => [...page.w.document.querySelectorAll('[data-catworld-shop]')];
+    page.output(`<span>${checkOutput('新棍A', '棍類武器', 60, 100)}</span>`);
+    await sleep(150);
+    assert.equal(boxes().length, 1, 'no per-check box while the batch is running');
+    assert.ok(page.store.shopItems['新棍A'], 'but it is still recorded');
+    page.output(`<span>${checkOutput('新棍B', '棍類武器', 40, 100)}</span>`);
+    page.output(`<span>${checkOutput('新盾', '盾類防具', 90, 99999999)}</span>`);
+    assert.ok(await waitFor(() => boxes().length === 2, 2000), 'the digest appears once all three answered');
+    const text = boxes()[1].textContent;
+    assert.match(text, /【批次 check 彙整】送出 3 個，收到 3 個回應/);
+    assert.match(text, /值得換（1）：/);
+    assert.match(text, /1 新棍A　10S/);
+    assert.match(text, /和現在穿的 舊棍 比：比現在好，建議留下（傷害 \+10）/);
+    assert.doesNotMatch(text, /新棍B/, 'the ones that are not better are only counted');
+    assert.match(text, /其他：經驗還不夠穿 1 件、不比現在好 1 件/);
+    assert.doesNotMatch(text, /沒收到回應/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a digest is printed after the quiet time even if some answers never came', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.w.CatworldShopCollect.setSender(() => true);
+    page.output(`<span>${batchList(['新棍A', '新棍B'])}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    buttonOf(page, '批次 check 還沒蒐集的').click();
+    buttonOf(page, '確認送出').click();
+    page.output(`<span>${checkOutput('新棍A', '棍類武器', 60, 100)}</span>`);
+    assert.ok(await waitFor(() => page.w.document.querySelectorAll('[data-catworld-shop]').length === 2, 6000), 'the digest comes after the quiet time');
+    const text = page.w.document.querySelectorAll('[data-catworld-shop]')[1].textContent;
+    assert.match(text, /收到 1 個回應/);
+    assert.match(text, /沒收到回應：1 個/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('checks typed by hand, outside a batch, still get their own line each', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.output(`<span>${checkOutput('新棍A', '棍類武器', 60, 100)}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    assert.match(shopBox(page).textContent, /已記進裝備資料庫：新棍A/);
+    assert.doesNotMatch(shopBox(page).textContent, /批次 check 彙整/);
+  } finally {
+    page.close();
+  }
+});

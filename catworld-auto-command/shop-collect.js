@@ -65,7 +65,7 @@ function evaluate(items, db, { exp, baseline } = {}) {
     if (!entry) {
       out.unknown.push(item.no);
       const price = parsePrice(item.price);
-      out.unknownItems.push({ no: item.no, price });
+      out.unknownItems.push({ no: item.no, name: item.name, price });
       if (price !== null) out.unknownPrices.push(price);
       return;
     }
@@ -137,14 +137,18 @@ function place(box) {
 }
 
 // 剛 check 到的這件和現在穿的同類別比（用這次的實際數值，不是資料庫裡同名的舊資料）
-function judge(block, data) {
+// kind：good（比現在好或屬性達門檻）、blocked（經驗不夠穿）、nobase（沒有同類別穿著資料）、other（不比現在好）
+function classify(block, data) {
   const E = globalThis.CatworldZapEquipment;
   const baseline = data.wornEquipment?.[characterName()]?.[block.category];
   const result = E.compareEquipment(block, baseline, { mainWeapon: data.mainWeapon, exp: readExp(), keep: E.normalizeKeepRule(data.equipmentKeep) });
-  if (result.blocked) return `和現在穿的比：經驗還不夠穿（需要 ${block.needExp}）`;
-  if (result.verdict === 'none') return '和現在穿的比：沒有這個類別的穿著資料可比（先用面板的「讀取目前穿著」）';
-  return `和現在穿的 ${result.against} 比：${result.text}${result.reasons.length ? `（${result.reasons.slice(0, 3).join('，')}）` : ''}`;
+  const reasons = result.reasons.slice(0, 3).join('，');
+  if (result.blocked) return { kind: 'blocked', text: `和現在穿的比：經驗還不夠穿（需要 ${block.needExp}）`, reasons };
+  if (result.verdict === 'none') return { kind: 'nobase', text: '和現在穿的比：沒有這個類別的穿著資料可比（先用面板的「讀取目前穿著」）', reasons };
+  const good = result.verdict === 'better' || result.verdict === 'keep';
+  return { kind: good ? 'good' : 'other', text: `和現在穿的 ${result.against} 比：${result.text}${reasons ? `（${reasons}）` : ''}`, reasons, against: result.against };
 }
+const judge = (block, data) => classify(block, data).text;
 const sameStats = (a, b) => a.primary === b.primary && JSON.stringify(a.attrs) === JSON.stringify(b.attrs);
 
 // check 之後在輸出下面回報：有沒有記進資料庫、和現在穿的比如何；同名裝備的數值和資料庫舊資料不同要提醒（同名不代表數值一樣）；
@@ -194,6 +198,7 @@ function batchControls(label, list) {
             confirmRow.replaceChildren('送不出去（找不到送指令的功能，或指令格式錯誤）');
             return;
           }
+          beginBatch(batch);
           offset += batch.length;
           area.replaceChildren(`已開始送出 ${batch.length} 個 check，要中止請按面板巨集那一列的「停止」`);
           if (offset < list.length) {
@@ -224,7 +229,7 @@ function showSummary(items, data, db, pages = 1) {
     box.append(row);
   });
   // 建議的要 check 才知道這一件實際的數值（check 之後會立刻和身上的比）；沒蒐集的 check 之後才進資料庫、有等級可比
-  if (result.suggest.length) box.append(batchControls('建議的', result.suggest.map(item => ({ no: item.no, price: parsePrice(item.price) }))));
+  if (result.suggest.length) box.append(batchControls('建議的', result.suggest.map(item => ({ no: item.no, name: item.name, price: parsePrice(item.price) }))));
   if (result.unknown.length) {
     box.append(batchControls('還沒蒐集的', result.unknownItems));
     const copy = document.createElement('button');
@@ -250,6 +255,64 @@ const LIST_HEADER = /商人現在有賣以下貨物/;
 const SESSION_MS = 10 * 60 * 1000;
 let session = { items: new Map(), pages: 0, at: 0, box: null };
 
+// 批次 check 彙整：玩家按了確認送出之後（beginBatch），收到的 check 結果照常記進資料庫，但不再一條一條回報，
+// 全部收到（或 BATCH_QUIET_MS 沒有新的回應）才印一塊彙整，只列推薦的（比現在好或屬性達門檻），其他只計件數
+const BATCH_QUIET_MS = 20000;
+let batchRun = null;
+function beginBatch(batch) {
+  // 上一批還沒收完就又送下一批：併成同一份彙整（不要把前一批提早結束），期待的個數與名稱表接上去
+  if (batchRun) {
+    batchRun.expected += batch.length;
+    batch.forEach(item => batchRun.byName.set(item.name, item));
+    clearTimeout(batchRun.timer);
+    batchRun.timer = setTimeout(finishBatch, BATCH_QUIET_MS);
+    return;
+  }
+  batchRun = { expected: batch.length, received: 0, byName: new Map(batch.map(item => [item.name, item])), good: [], blocked: 0, nobase: 0, other: 0, notEquipment: 0, timer: null };
+}
+function finishBatch() {
+  const run = batchRun;
+  if (!run) return;
+  clearTimeout(run.timer);
+  batchRun = null;
+  const box = newBox();
+  const lines = [`【批次 check 彙整】送出 ${run.expected} 個，收到 ${run.received} 個回應（實際數值都已記進資料庫）`];
+  if (run.good.length) {
+    lines.push(`值得換（${run.good.length}）：`);
+    run.good.forEach(item => lines.push(`　${item.no ?? '?'} ${item.name}${item.price != null ? `　${formatMoney(item.price)}` : ''}　${item.text}`));
+  } else lines.push('沒有比現在好的');
+  const others = [
+    run.blocked && `經驗還不夠穿 ${run.blocked} 件`,
+    run.nobase && `沒有穿著資料可比 ${run.nobase} 件`,
+    run.other && `不比現在好 ${run.other} 件`,
+    run.notEquipment && `不是裝備 ${run.notEquipment} 件`,
+  ].filter(Boolean);
+  if (others.length) lines.push(`其他：${others.join('、')}`);
+  if (run.received < run.expected) lines.push(`沒收到回應：${run.expected - run.received} 個（被中止、錢不夠、或不在商人面前？）`);
+  lines.forEach(line => {
+    const row = document.createElement('div');
+    row.textContent = line;
+    box.append(row);
+  });
+  place(box);
+}
+// 一次 flush 收到的 check：記進彙整；全部到齊就印出，否則等 BATCH_QUIET_MS（逾時印目前收到的）
+function collectBatch(count, blocks, data) {
+  const run = batchRun;
+  run.received += count;
+  run.notEquipment += Math.max(0, count - blocks.length);
+  blocks.forEach(block => {
+    const result = classify(block, data);
+    if (result.kind === 'good') {
+      const listed = run.byName.get(block.name);
+      run.good.push({ no: listed?.no, name: block.name, price: listed?.price, text: result.text });
+    } else run[result.kind] += 1;
+  });
+  clearTimeout(run.timer);
+  if (run.received >= run.expected) finishBatch();
+  else run.timer = setTimeout(finishBatch, BATCH_QUIET_MS);
+}
+
 async function flush() {
   const text = buffer;
   lastAnchor = lastNode;
@@ -270,7 +333,8 @@ async function flush() {
         blocks.forEach(block => { db[block.name] = entryFrom(block, Date.now()); });
         await chrome.storage.local.set({ [DB_KEY]: db });
       }
-      showRecorded(blocks, before, db, data);
+      if (batchRun) collectBatch((text.match(new RegExp(CHECK_PHRASE.source, 'g')) || []).length, blocks, data);
+      else showRecorded(blocks, before, db, data);
     }
     const items = parseList(text);
     if (items.length) {
