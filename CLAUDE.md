@@ -169,6 +169,12 @@
 
 - `content.js` 的 `watchReward` 由 `captchaObserver` 在每一批新增文字（驗證碼分支之前）呼叫：看到「在線獎勵： N分鐘後可領取」（自己打 `sc` 的輸出）就用 `setTimeout` 排 N+1 分鐘後 `sendCommand('reward')`；`rewardTimer` 有值就忽略新的（等待與重試期間都算）。**不走送出佇列**：佇列只在 `active()` 時送，閒置時會卡住；`sendCommand` 自己會擋驗證碼辨識中與因驗證停止，送不出去隔 `REWARD_RETRY_MS` 再試、最多 `REWARD_TRIES` 次。開關是 `chrome.storage.local.autoReward`（缺值＝開，設定頁「在線獎勵自動領取」，`storage.onChanged` 即時生效、關掉會取消等待中的）；`retire()` 會取消。面板「獎勵」那一行（`rewardView`、`rewardSummary`，每秒隨 `renderPanel` 更新，沒有排計時就隱藏）顯示倒數與重試狀態。領獎出現的驗證碼由既有的自動辨識處理。計時只存在頁面裡，重新整理就沒了。測試在 `tests/online-reward.test.js`。
 
+## 商人裝備資料庫
+
+- `shop-collect.js`（和 `map-collect.js` 一樣自成一體：純函式匯出加遊戲頁的觀察器；manifest 與 popup 備援注入都要載入，在 `zap-equipment.js` 之後；popup.html 也載入它來取 `rows`）：**check 要付錢，只由玩家自己打，工具絕不代送**。觀察 `#content` 新增文字：出現「你付了一筆錢給商人」就把之後 `ARM_MS` 內的新文字都接上去（輸出可能分批），靜止 `SETTLE_MS` 後用 `zap-equipment.js` 的 `parseEquipmentBlocks`（check 輸出和鑑定後的裝備同一種「此物名曰」區塊）解析，以名稱為鍵存進 `chrome.storage.local.shopItems`（不分店、同名後讀的覆蓋；沒有那句話的「此物名曰」區塊不記，避免把自己穿的、鑑定出來的裝備當成商品）。
+- 出現 `價格：` 的 list 輸出由 `parseList` 解析（一行兩項，名稱沒有空白，`[百勝刀]` 的方括號保留），在 list 那一頁（最後新增的節點）後面插一個 `data-catworld-shop` 的摘要方塊（`evaluate`＋`summaryLines`）：用 `compareEquipment`、目前經驗（`#exp`）、`wornEquipment[角色]` 的基準、`mainWeapon`、`equipmentKeep` 比對；比現在好或屬性達門檻的列編號與理由，經驗不夠的與沒有基準的只計數，資料庫沒有的列為「還沒蒐集」並提供複製 `check N;check M` 的按鈕。**摘要只在 `zapFeatures.items` 開著時插入，蒐集不受開關影響**；自己插入的節點要從觀察器排除（`isOwn`），否則會無限循環。連不上儲存（孤兒程式）就停止觀察。
+- 設定頁「裝備資料庫（商人 check）」只顯示件數、複製 Tab 分隔文字（名稱、類別、主要數值、佩帶經驗、屬性）、清除；併進共用表的格式還沒定。非裝備的商品（食物、藥草）check 後不會有區塊，會一直留在「還沒蒐集」，目前沒有略過機制。測試在 `tests/shop-collect.test.js`。
+
 ## 數值區塊
 
 - 面板最上方的「數值」區塊由兩個模組組成：`stats-view.js`（不碰 DOM，`rows(readings, exp)` 決定每列顯示什麼）與 `stats-block.js`（畫面，`attach(root)` 回傳 `render(readings, exp)`）。兩個都要加進 manifest 的 content script 與 popup 備援注入清單，`stats-view.js` 在 `stats-block.js` 之前、都在 `content.js` 之前；`content.js` 建立區塊要包 try/catch，壞了不能牽連後面按鈕的綁定。

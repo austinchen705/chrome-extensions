@@ -101,7 +101,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'zap-mobs.js', 'map-collect.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'zap-panel.js', 'zap-riddle-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'zap-mobs.js', 'map-collect.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -359,6 +359,27 @@ $('mapCollectClear').addEventListener('click', async () => {
 });
 showMapCollect();
 chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[MAP_KEY]) showMapCollect(); });
+
+// 裝備資料庫：紀錄由遊戲頁的 shop-collect.js 寫進 storage，這裡只顯示件數、複製成 Tab 分隔文字、清除
+const SHOP_KEY = CatworldShopCollect.DB_KEY;
+async function showShopCollect() {
+  const rows = CatworldShopCollect.rows((await chrome.storage.local.get(SHOP_KEY))[SHOP_KEY]);
+  $('shopInfo').textContent = rows.length ? `已記下 ${rows.length} 件裝備` : '尚無紀錄';
+}
+function shopMessage(text, level) { $('shopMsg').textContent = text; markLevel($('shopMsg'), level); }
+$('shopCopy').addEventListener('click', async () => {
+  const rows = CatworldShopCollect.rows((await chrome.storage.local.get(SHOP_KEY))[SHOP_KEY]);
+  if (!rows.length) { shopMessage('還沒有紀錄', 'warn'); return; }
+  try { await navigator.clipboard.writeText(rows.map(row => row.join('\t')).join('\n')); shopMessage(`已複製 ${rows.length} 列（名稱、類別、主要數值、佩帶經驗、屬性）`); }
+  catch (e) { shopMessage(`複製失敗：${e.message}`, 'error'); }
+});
+$('shopClear').addEventListener('click', async () => {
+  if (!confirm('清除所有已蒐集的裝備資料？清掉就回不來了。')) return;
+  await chrome.storage.local.remove(SHOP_KEY);
+  shopMessage('已清除');
+});
+showShopCollect();
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[SHOP_KEY]) showShopCollect(); });
 
 const weaponValue = value => (CatworldZapItems.WEAPON_TYPES.includes(value) ? value : '');
 $('mainWeapon').replaceChildren(...['', ...CatworldZapItems.WEAPON_TYPES].map(type => element('option', { value: type, textContent: type || '未設定' })));
