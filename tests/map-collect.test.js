@@ -103,51 +103,6 @@ ui('rows keeps only name(ID) monsters, drops rooms left empty, and sorts', async
   }
 });
 
-const LAYOUT_MAP = `<div id="map_table"><span id="map_header">地圖 (<span data-default-grid="□">武當派</span>)</span><div id="map_wrapper">
-<div id="m-wudon">　　<a id="m-wudon-r0">□</a>─<a id="m-wudon-r1">★</a>
-　　│
-　　<a id="m-wudon-2h">驛</a>
-</div><div class="invisible" id="m-oldtomb-pond"><a id="m-oldtomb-pond-p1">□</a>
-</div></div><div id="map_anchor"></div></div>`;
-
-ui('snapshotLayouts keeps the text of every loaded area with rooms as markers, and parseLayout turns it back into cells', async () => {
-  const page = await boot();
-  try {
-    page.w.document.body.insertAdjacentHTML('beforeend', LAYOUT_MAP);
-    const { snapshotLayouts, parseLayout } = page.w.CatworldMapCollect;
-    const layouts = snapshotLayouts(page.w.document);
-    assert.deepEqual(Object.keys(layouts).sort(), ['oldtomb-pond', 'wudon'], 'hidden areas are saved too');
-    assert.equal(layouts.wudon, '　　⟦r0|□⟧─⟦r1|★⟧\n　　│\n　　⟦2h|驛⟧');
-    const lines = parseLayout(layouts.wudon);
-    assert.equal(lines.length, 3);
-    assert.deepEqual(lines[0].map(cell => cell.ch).join(''), '　　□─★');
-    assert.equal(lines[0][2].room, 'r0');
-    assert.equal(lines[0][3].room, undefined, 'a connector is not a room');
-    assert.equal(lines[2][2].ch, '驛', 'a landmark keeps its symbol');
-  } finally {
-    page.close();
-  }
-});
-
-ui('the layouts are saved when monster lines arrive and only the changed areas are written again', async () => {
-  const page = await boot({ scale: 10 });
-  try {
-    setup(page);
-    page.output('<span>※地痞(dipi)</span>');
-    assert.ok(await waitFor(async () => (await page.w.chrome.storage.local.get('mapLayouts')).mapLayouts?.wudon, 2000));
-    const first = (await page.w.chrome.storage.local.get('mapLayouts')).mapLayouts;
-    assert.match(first.wudon, /⟦2h\|□⟧⟦2i\|□⟧/);
-    let writes = 0;
-    const set = page.w.chrome.storage.local.set;
-    page.w.chrome.storage.local.set = async values => { if ('mapLayouts' in values) writes += 1; return set(values); };
-    page.output('<span>※高手(gaoshou)</span>');
-    assert.ok(await waitFor(async () => (await saved(page))?.['wudon/2i']?.mobs.length === 2, 2000));
-    assert.equal(writes, 0, 'an unchanged layout is not written again');
-  } finally {
-    page.close();
-  }
-});
-
 const pick = (page, value) => {
   const select = page.w.document.getElementById('catworld-mark-select');
   select.value = value;

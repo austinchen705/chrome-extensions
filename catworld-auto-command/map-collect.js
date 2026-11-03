@@ -69,35 +69,6 @@ function whereIs(store, name, perArea = 6) {
     .join('；');
 }
 
-// 小地圖用的版面：地圖視窗每個區域是 #map_wrapper 底下的 <div id="m-區域">，裡面是文字加房間 <a id="m-區域-房間">。
-// 存成純文字，房間寫成 ⟦房間代號|符號⟧（符號是 □、★、驛、藥…），其餘照原樣（─│╱╲↑↓ 與全形空白），顯示時再還原成方格
-const LAYOUT_KEY = 'mapLayouts';
-const LAYOUT_MAX = 20000;
-function snapshotLayouts(doc) {
-  const out = {};
-  doc.querySelectorAll('#map_wrapper > div[id^="m-"]').forEach(div => {
-    const area = div.id.slice(2);
-    const prefix = `m-${area}-`;
-    let text = '';
-    div.childNodes.forEach(node => {
-      if (node.nodeType === 3) text += node.textContent;
-      else if (node.nodeName === 'A' && node.id.startsWith(prefix)) text += `⟦${node.id.slice(prefix.length)}|${node.textContent}⟧`;
-      else text += node.textContent || '';
-    });
-    text = text.replace(/\s+$/, '');
-    if (text && text.length <= LAYOUT_MAX) out[area] = text;
-  });
-  return out;
-}
-
-// 版面文字 → 每行一個格子陣列：{ ch } 或 { ch, room }（房間）
-function parseLayout(text) {
-  return String(text ?? '').split('\n').map(line => line.split(/(⟦[^⟧]*⟧)/).flatMap(part => {
-    const room = /^⟦([^|⟧]*)\|([^⟧]*)⟧$/.exec(part);
-    return room ? [{ ch: room[2] || '□', room: room[1] }] : Array.from(part, ch => ({ ch }));
-  }));
-}
-
 // 在遊戲的地圖視窗直接標出房間（places 是 locate 的結果）：房間格加 inline 樣式（比遊戲樣式表優先）與記號屬性，
 // 回傳標到幾間（該區域的地圖沒載入、找不到房間格就不計）。每次先清掉上一次的標記，同時只標一隻怪
 const MARK_ATTR = 'data-catworld-mark';
@@ -122,30 +93,16 @@ function markRooms(doc, places) {
   return count;
 }
 
-globalThis.CatworldMapCollect = { currentRoom, merge, rows, isMob, locate, whereIs, snapshotLayouts, parseLayout, markRooms, clearMarks, STORAGE_KEY, LAYOUT_KEY };
+globalThis.CatworldMapCollect = { currentRoom, merge, rows, isMob, locate, whereIs, markRooms, clearMarks, STORAGE_KEY };
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs) return;
 
 let pending = new Set();
 let timer = null;
-// 地圖版面（小地圖用）：目前載入的區域有變才寫
-async function saveLayouts() {
-  try {
-    const found = snapshotLayouts(document);
-    if (!Object.keys(found).length) return;
-    const data = await chrome.storage.local.get(LAYOUT_KEY);
-    const old = data[LAYOUT_KEY] || {};
-    if (Object.keys(found).every(area => old[area] === found[area])) return;
-    await chrome.storage.local.set({ [LAYOUT_KEY]: { ...old, ...found } });
-  } catch {
-    // 連不上儲存的舊程式：flush 那邊會處理
-  }
-}
 async function flush() {
   const mobs = [...pending];
   pending = new Set();
   timer = null;
-  saveLayouts();
   const spot = currentRoom(document);
   if (!spot || !mobs.length) return;
   try {
@@ -167,7 +124,6 @@ const observer = new MutationObserver(records => {
   if (!timer) timer = setTimeout(flush, SETTLE_MS);
 });
 observer.observe(content, { subtree: true, childList: true, characterData: true });
-setTimeout(saveLayouts, 3000);
 
 // 地圖視窗標題列的「標記怪物」下拉選單：列出目前顯示的區域蒐集到的怪，選一隻就把它蒐集到的房間標紅，選第一項取消。
 // 標題列是遊戲的拖曳把手（#map_header：cursor move、絕對定位、寬度整列），所以選單用絕對定位靠右，事件不傳給遊戲
