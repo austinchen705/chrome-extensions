@@ -149,7 +149,7 @@ ui('after a list page the summary suggests the wearable items with a higher requ
     assert.match(text, /經驗還不夠穿：1 件/);
     assert.match(text, /沒有目前穿著的資料可比：1 件/);
     assert.match(text, /還沒蒐集（1）：2/);
-    assert.match(text, /全部 check 預估約 1S10C～1S16C/, '虹色項鍊 22S: 5% is 1S10C, up to 1S16C');
+    assert.match(text, /批次 check 預估約 1S10C～1S16C/, '虹色項鍊 22S: 5% is 1S10C, up to 1S16C');
     assert.equal(shopBox(page).previousElementSibling.id, 'listpage', 'inserted right under the list page');
     assert.ok([...shopBox(page).querySelectorAll('button')].some(button => button.textContent.startsWith('複製 check 指令')));
     await sleep(200);
@@ -492,6 +492,55 @@ ui('checks typed by hand, outside a batch, still get their own line each', async
     assert.ok(await waitFor(() => shopBox(page), 2000));
     assert.match(shopBox(page).textContent, /已記進裝備資料庫：新棍A/);
     assert.doesNotMatch(shopBox(page).textContent, /批次 check 彙整/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('uncollected items cheaper than the minimum price stay out of the batch, the cost estimate and the copied command, and the summary says so', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.store.shopMinPrice = 5;
+    const sent = [];
+    page.w.CatworldShopCollect.setSender(text => { sent.push(text); return true; });
+    let copied = null;
+    Object.defineProperty(page.w.navigator, 'clipboard', { value: { writeText: async text => { copied = text; } }, configurable: true });
+    const list = [
+      ' 1 包子                  價格：30C       2 不知名藥草            價格：2S     ',
+      ' 3 好劍                  價格：10S',
+      '== 未完繼續 52% ==',
+    ].join('\n');
+    page.output(`<span>${list}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    const text = shopBox(page).textContent;
+    assert.match(text, /還沒蒐集（3）：1 2 3/, 'all uncollected are still listed, cheap ones included');
+    assert.match(text, /其中 2 件價格低於 5S，不列入批次 check/);
+    assert.match(text, /批次 check 預估約 50C～53C/, '10S only: 5%');
+    assert.match(buttonOf(page, '批次 check 還沒蒐集的').textContent, /批次 check 還沒蒐集的 1 個/);
+    buttonOf(page, '批次 check 還沒蒐集的').click();
+    buttonOf(page, '確認送出').click();
+    assert.deepEqual(sent, ['check 3']);
+    [...shopBox(page).querySelectorAll('button')].find(button => button.textContent.startsWith('複製 check 指令')).click();
+    assert.ok(await waitFor(() => copied !== null, 2000));
+    assert.equal(copied, 'check 3');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a minimum price of 0 checks everything, and items cheaper than the default are filtered when the setting is absent', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const { evaluate } = page.w.CatworldShopCollect;
+    const items = [{ no: 1, name: '包子', price: '30C' }, { no: 2, name: '好劍', price: '10S' }];
+    assert.equal(evaluate(items, {}, { minPrice: 0 }).unknownItems.length, 2);
+    assert.equal(evaluate(items, {}, { minPrice: 500 }).unknownItems.length, 1);
+    assert.equal(evaluate(items, {}, { minPrice: 500 }).cheap, 1);
+    assert.equal(page.w.CatworldShopCollect.normalizeMinSilver(undefined), 5);
+    assert.equal(page.w.CatworldShopCollect.normalizeMinSilver(-1), 5);
+    assert.equal(page.w.CatworldShopCollect.normalizeMinSilver(0), 0);
+    assert.equal(page.w.CatworldShopCollect.normalizeMinSilver(2.5), 2.5);
   } finally {
     page.close();
   }

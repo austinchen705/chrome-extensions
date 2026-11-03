@@ -9,6 +9,10 @@
 if (globalThis.CatworldShopCollect) return;
 
 const DB_KEY = 'shopItems';
+// 沒資料的商品，價格低於這個（單位 S）的不列入批次 check（食物、藥草之類便宜的非裝備，check 要錢又沒用）；0＝都 check
+const MIN_PRICE_KEY = 'shopMinPrice';
+const DEFAULT_MIN_SILVER = 5;
+const normalizeMinSilver = value => (Number.isFinite(value) && value >= 0 ? value : DEFAULT_MIN_SILVER);
 const SETTLE_MS = 600;
 const ARM_MS = 3000;
 const SUGGEST_MAX = 12;
@@ -58,13 +62,15 @@ function rows(db) {
 // 把 list 這一頁的項目逐一和資料庫比：沒蒐集過的放 unknown；蒐集過的只看佩帶經驗（等級）：
 // 經驗不夠穿的只計數；穿得了的和「現在穿的同類別裡佩帶經驗最低的那件」（最該換掉的）比，要求經驗更高的放 suggest（建議 check），
 // 不比它高的只計數；同類別沒有穿著資料可比的只計數。傷害、屬性不拿來判斷（同名裝備的數值可能不同）
-function evaluate(items, db, { exp, baseline } = {}) {
-  const out = { total: items.length, known: 0, suggest: [], unknown: [], unknownPrices: [], unknownItems: [], tooHigh: 0, notHigher: 0, noBaseline: 0 };
+function evaluate(items, db, { exp, baseline, minPrice = 0 } = {}) {
+  const out = { total: items.length, known: 0, suggest: [], unknown: [], unknownPrices: [], unknownItems: [], cheap: 0, tooHigh: 0, notHigher: 0, noBaseline: 0 };
   items.forEach(item => {
     const entry = db?.[item.name];
     if (!entry) {
       out.unknown.push(item.no);
       const price = parsePrice(item.price);
+      // 價格低於門檻的只算在 unknown（還是沒蒐集），不進批次、費用預估與複製的指令；讀不到價格的照樣 check
+      if (price !== null && price < minPrice) { out.cheap += 1; return; }
       out.unknownItems.push({ no: item.no, name: item.name, price });
       if (price !== null) out.unknownPrices.push(price);
       return;
@@ -83,7 +89,7 @@ function evaluate(items, db, { exp, baseline } = {}) {
 
 const checkCommand = numbers => numbers.map(no => `check ${no}`).join(';');
 
-function summaryLines(result, exp, pages = 1) {
+function summaryLines(result, exp, pages = 1, minSilver = 0) {
   const lines = [`【裝備資料庫】經驗 ${Number.isFinite(exp) ? exp : '讀不到'}　${pages > 1 ? `累計 ${pages} 頁` : '這頁'} ${result.total} 件，已蒐集 ${result.known} 件`];
   if (result.suggest.length) {
     const shown = result.suggest.slice(0, SUGGEST_MAX).map(item => `${item.no} ${item.name}（需經驗 ${item.level}，現穿 ${item.against} ${item.wornLevel}）`);
@@ -93,10 +99,13 @@ function summaryLines(result, exp, pages = 1) {
   if (result.notHigher) lines.push(`佩帶經驗不比現在穿的高：${result.notHigher} 件`);
   if (result.noBaseline) lines.push(`沒有目前穿著的資料可比：${result.noBaseline} 件（先用面板的「讀取目前穿著」）`);
   if (result.unknown.length) {
-    const cost = checkCost(result.unknownPrices);
-    const unpriced = result.unknown.length - result.unknownPrices.length;
     lines.push(`還沒蒐集（${result.unknown.length}）：${result.unknown.slice(0, UNKNOWN_MAX).join(' ')}${result.unknown.length > UNKNOWN_MAX ? ' …' : ''}`);
-    lines.push(`全部 check 預估約 ${formatMoney(cost.low)}～${formatMoney(cost.high)}（價格的 5% 上下，不是準確值${unpriced ? `；${unpriced} 件讀不到價格沒算` : ''}）`);
+    if (result.cheap) lines.push(`其中 ${result.cheap} 件價格低於 ${minSilver}S，不列入批次 check（設定頁可調）`);
+    if (result.unknownItems.length) {
+      const cost = checkCost(result.unknownPrices);
+      const unpriced = result.unknownItems.length - result.unknownPrices.length;
+      lines.push(`批次 check 預估約 ${formatMoney(cost.low)}～${formatMoney(cost.high)}（價格的 5% 上下，不是準確值${unpriced ? `；${unpriced} 件讀不到價格沒算` : ''}）`);
+    }
   }
   return lines;
 }
@@ -105,7 +114,7 @@ function summaryLines(result, exp, pages = 1) {
 let sender = null;
 const setSender = fn => { sender = typeof fn === 'function' ? fn : null; };
 
-globalThis.CatworldShopCollect = { setSender, BATCH_MAX, parsePrice, formatMoney, checkCost, parseList, entryFrom, rows, evaluate, checkCommand, summaryLines, DB_KEY };
+globalThis.CatworldShopCollect = { setSender, BATCH_MAX, MIN_PRICE_KEY, DEFAULT_MIN_SILVER, normalizeMinSilver, parsePrice, formatMoney, checkCost, parseList, entryFrom, rows, evaluate, checkCommand, summaryLines, DB_KEY };
 
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs || !globalThis.CatworldZapEquipment) return;
@@ -221,16 +230,17 @@ function batchControls(label, list) {
 
 function showSummary(items, data, db, pages = 1) {
   const exp = readExp();
-  const result = evaluate(items, db, { exp, baseline: data.wornEquipment?.[characterName()] });
+  const minSilver = normalizeMinSilver(data.shopMinPrice);
+  const result = evaluate(items, db, { exp, baseline: data.wornEquipment?.[characterName()], minPrice: minSilver * 100 });
   const box = newBox();
-  summaryLines(result, exp, pages).forEach(line => {
+  summaryLines(result, exp, pages, minSilver).forEach(line => {
     const row = document.createElement('div');
     row.textContent = line;
     box.append(row);
   });
   // 建議的要 check 才知道這一件實際的數值（check 之後會立刻和身上的比）；沒蒐集的 check 之後才進資料庫、有等級可比
   if (result.suggest.length) box.append(batchControls('建議的', result.suggest.map(item => ({ no: item.no, name: item.name, price: parsePrice(item.price) }))));
-  if (result.unknown.length) {
+  if (result.unknownItems.length) {
     box.append(batchControls('還沒蒐集的', result.unknownItems));
     const copy = document.createElement('button');
     copy.type = 'button';
@@ -238,8 +248,8 @@ function showSummary(items, data, db, pages = 1) {
     copy.addEventListener('click', async event => {
       event.stopPropagation();
       try {
-        await navigator.clipboard.writeText(checkCommand(result.unknown));
-        copy.textContent = `已複製 ${result.unknown.length} 個 check`;
+        await navigator.clipboard.writeText(checkCommand(result.unknownItems.map(item => item.no)));
+        copy.textContent = `已複製 ${result.unknownItems.length} 個 check`;
       } catch {
         copy.textContent = '複製失敗';
       }
@@ -321,7 +331,7 @@ async function flush() {
   timer = null;
   armedUntil = 0;
   try {
-    const data = await chrome.storage.local.get([DB_KEY, 'zapFeatures', 'wornEquipment', 'mainWeapon', 'equipmentKeep']);
+    const data = await chrome.storage.local.get([DB_KEY, MIN_PRICE_KEY, 'zapFeatures', 'wornEquipment', 'mainWeapon', 'equipmentKeep']);
     if (data.zapFeatures?.shop !== true) return;
     let db = data[DB_KEY] || {};
     const at = text.search(CHECK_PHRASE);

@@ -378,6 +378,19 @@ $('shopClear').addEventListener('click', async () => {
   await chrome.storage.local.remove(SHOP_KEY);
   shopMessage('已清除');
 });
+// 批次 check 的最低價格（S）：負數、不是數字就不存，欄位還原
+let shopMinSilver = CatworldShopCollect.DEFAULT_MIN_SILVER;
+$('shopMinPrice').value = shopMinSilver;
+$('shopMinPrice').addEventListener('change', () => {
+  const raw = $('shopMinPrice').value.trim() === '' ? NaN : Number($('shopMinPrice').value);
+  if (!(Number.isFinite(raw) && raw >= 0)) {
+    $('shopMinPrice').value = shopMinSilver;
+    setStatus('最低價格需為 0 以上的數字', 'error');
+    return;
+  }
+  shopMinSilver = raw;
+  chrome.storage.local.set({ [CatworldShopCollect.MIN_PRICE_KEY]: raw });
+});
 showShopCollect();
 chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[SHOP_KEY]) showShopCollect(); });
 
@@ -751,7 +764,9 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 });
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', 'popupFolds']);
+  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY]);
+  shopMinSilver = CatworldShopCollect.normalizeMinSilver(data[CatworldShopCollect.MIN_PRICE_KEY]);
+  $('shopMinPrice').value = shopMinSilver;
   Object.entries(data.popupFolds || {}).forEach(([id, open]) => {
     const box = document.getElementById(id);
     if (box?.tagName === 'DETAILS') box.open = open === true;

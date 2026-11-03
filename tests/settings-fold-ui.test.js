@@ -167,3 +167,31 @@ ui('the open state of a block is remembered and restored', async () => {
     page.close();
   }
 });
+
+ui('the shop minimum price setting shows the default, saves a valid value and refuses a bad one', async () => {
+  const page = await boot();
+  try {
+    const { doc, store } = page;
+    const input = doc.getElementById('shopMinPrice');
+    assert.equal(input.value, '5', 'default 5S');
+    input.value = '3.5';
+    input.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
+    assert.ok(await waitFor(() => store.shopMinPrice === 3.5));
+    input.value = '-1';
+    input.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
+    assert.equal(input.value, '3.5', 'a bad value is put back');
+    assert.equal(store.shopMinPrice, 3.5);
+    await sleep(60);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a saved minimum price is shown when the settings page opens', async () => {
+  const page = await boot({ shopMinPrice: 0 });
+  try {
+    assert.equal(page.doc.getElementById('shopMinPrice').value, '0');
+  } finally {
+    page.close();
+  }
+});

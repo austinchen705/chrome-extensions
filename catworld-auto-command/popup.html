@@ -225,6 +225,9 @@
   <details class="alertbox fold" id="sec-shop">
     <summary>裝備資料庫（商人 check）</summary>
     <label class="check"><input id="featureShop" type="checkbox"> 啟用裝備資料庫（預設關閉，勾了馬上生效）</label>
+    <label for="shopMinPrice">沒資料的商品，價格低於這個（單位 S）的不列入批次 check</label>
+    <input id="shopMinPrice" type="number" min="0" step="0.5">
+    <p class="hint tight">預設 5S。便宜的多半是食物、藥草這類非裝備，check 要錢又沒用；填 0 就全部都 check。只影響「還沒蒐集的」批次，已經有資料、推薦的裝備不受影響。</p>
     <div id="shopInfo" class="hint tight">尚無紀錄</div>
     <button id="shopCopy">複製（可貼進試算表）</button>
     <button id="shopClear">清除</button>
