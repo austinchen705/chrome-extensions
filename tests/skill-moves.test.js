@@ -31,7 +31,7 @@ test('parseLearned reads the skill lines under the header and nothing else', () 
   assert.deepEqual(S.parseLearned('   全真劍法          :  5 招\n'), [], 'no header, no list');
   assert.deepEqual(S.parseLearned(''), []);
   assert.deepEqual(S.parseLearned(null), []);
-  assert.deepEqual(S.parseLearned(`${CAREERS}\n 別的一段:\n   六脈神劍 : 9 招\n`).map(item => item.name), ['全真劍法', '雪山劍法'], 'stops at the next paragraph');
+  assert.deepEqual(S.parseLearned('你所領悟的招式數目為:   全真劍法          :  5 招   雪山劍法          :  5 招'), [{ name: '全真劍法', count: 5 }, { name: '雪山劍法', count: 5 }], 'works when the lines come with no line breaks');
 });
 
 test('lookup returns only the skills asked for, by exact name', () => {

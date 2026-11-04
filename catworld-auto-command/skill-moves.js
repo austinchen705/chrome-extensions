@@ -5,21 +5,15 @@
 // 招式列表開關（chrome.storage.local.zapFeatures.skills）控制，缺值＝關閉。
 (() => {
 const HEADER = /你所領悟的招式數目為/;
-// 「  全真劍法          :  5 招」
-const LEARNED_LINE = /^\s*([^\s:：]+)\s*[:：]\s*(\d+)\s*招/;
+// 「  全真劍法          :  5 招」；輸出被拆成節點時行與行可能沒有換行，所以不靠行首，直接在標題之後找「名稱 : N 招」
+const LEARNED = /([^\s:：]+)\s*[:：]\s*(\d+)\s*招/g;
 
-// 輸出文字 → [{ name, count }]；只看「你所領悟的招式數目為」之後連續的招數行
+// 輸出文字 → [{ name, count }]；只看「你所領悟的招式數目為」之後的文字
 function parseLearned(text) {
-  const lines = String(text ?? '').normalize('NFKC').split(/\r?\n/);
-  const start = lines.findIndex(line => HEADER.test(line));
-  if (start < 0) return [];
-  const out = [];
-  for (const line of lines.slice(start + 1)) {
-    const match = LEARNED_LINE.exec(line);
-    if (match) out.push({ name: match[1], count: Number(match[2]) });
-    else if (out.length && line.trim()) break;
-  }
-  return out;
+  const all = String(text ?? '').normalize('NFKC');
+  const header = HEADER.exec(all);
+  if (!header) return [];
+  return [...all.slice(header.index + header[0].length).matchAll(LEARNED)].map(match => ({ name: match[1], count: Number(match[2]) }));
 }
 
 // background 用：只回被問到的武功（名稱完全相同），免得把整份資料送過去
@@ -133,6 +127,7 @@ async function flush() {
   if (!learned.length) return;
   try {
     const data = await chrome.storage.local.get('zapFeatures');
+    console.log('[catworld] 招式列表：偵測到招式數目的輸出', learned, data.zapFeatures?.skills === true ? '' : '（設定頁「輔助功能」的「招式列表」沒勾，所以不顯示）');
     if (data.zapFeatures?.skills !== true) return;
     let reply;
     try {

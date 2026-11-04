@@ -78,7 +78,7 @@
 
 ## 招式列表
 
-- `skill-moves.js`（manifest 與 popup 備援注入的 `files` 都要載入，在 `content.js` 之前；也在 background 的 `importScripts`）：純函式 `parseLearned`（只讀「你所領悟的招式數目為」之後連續的「名稱 : N 招」行，文字要有換行）、`lookup(data, names)`（background 用，只回被問到的武功）、`describe`、`moveText`；加上遊戲頁的觀察器：標題出現後 `ARM_MS` 內的新文字都接上去（輸出可能分批），靜止 `SETTLE_MS` 後解析，向 background 送 `SKILL_MOVES`（`{ names }`）拿資料，在最後一個新增節點後面插一塊 `data-catworld-skills`（自己插入的節點要從觀察器排除）。查詢失敗要把原因顯示在方塊裡。
+- `skill-moves.js`（manifest 與 popup 備援注入的 `files` 都要載入，在 `content.js` 之前；也在 background 的 `importScripts`）：純函式 `parseLearned`（只讀「你所領悟的招式數目為」之後的「名稱 : N 招」，不靠行首，所以輸出沒有換行也讀得到）、`lookup(data, names)`（background 用，只回被問到的武功）、`describe`、`moveText`；加上遊戲頁的觀察器：標題出現後 `ARM_MS` 內的新文字都接上去（輸出可能分批），靜止 `SETTLE_MS` 後解析，向 background 送 `SKILL_MOVES`（`{ names }`）拿資料，在最後一個新增節點後面插一塊 `data-catworld-skills`（自己插入的節點要從觀察器排除）。偵測到標題時一定印一行 `[catworld] 招式列表：偵測到…` 到 console（沒勾開關時會寫明），方便分辨是沒偵測到還是沒開。查詢失敗要把原因顯示在方塊裡。
 - 開關是 `chrome.storage.local.zapFeatures.skills`（缺值＝關閉，設定頁 `featureSkills`，和其他輔助功能同一個 `FEATURE_BOXES`），flush 時才讀。`skills-data.js`（約 170 KB）只在 background 載入、不隨每個遊戲分頁載入。已悟 N 招＝資料裡 `moves` 的前 N 招（和 `skills.js` 的「30 × 已悟招數」門檻解讀一致），下一招的門檻取 `levels[N]`。傷害分級的顏色在 `TIERS`，傷害類型欄混著說明時只留第一句。
 - 測試：`tests/skill-moves.test.js`（純函式用真實資料；遊戲頁用整個 content script 在 jsdom 裡跑、假 background 用 `lookup` 回真實資料）。**真實的 careers 輸出文字（節點與換行的切法）只用使用者貼的樣本驗證**。
 
