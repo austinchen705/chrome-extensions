@@ -19,6 +19,7 @@ const TICKS_PER_SEC = 1000 / TICK_MS;
 const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
 const NO_TARGET = /你要對誰施展這個招式/;
 const KNOCKED_OUT = '昏迷不醒';
+const NO_MEDICINE_WINDOW_TICKS = 10 * TICKS_PER_SEC; // 吃藥指令真的送出後，這麼久內出現沒藥關鍵字才算
 
 // 設定頁的欄位（也決定預設值與檢查）：type 是 text、number 或 select
 const FIELDS = [
@@ -27,10 +28,10 @@ const FIELDS = [
   { key: 'eatCommand', label: '吃藥指令（可多個，用 ; 分隔）', type: 'text', default: '' },
   { key: 'noMedicineKeyword', label: '沒藥時遊戲回的字（吃藥模式）', type: 'text', default: '' },
   { key: 'homeCommand', label: '回家指令', type: 'text', default: '' },
-  { key: 'restBelow', label: '自己回：氣低於幾 % 就休息', type: 'number', default: 50, min: 1, max: 99 },
+  { key: 'restBelow', label: '自己回：氣低於幾 % 就休息', type: 'number', default: 50, min: 2, max: 99 },
   { key: 'restResume', label: '自己回：氣回到幾 % 才繼續', type: 'number', default: 80, min: 1, max: 100 },
   { key: 'restCommand', label: '自己回：休息時送的指令（可空）', type: 'text', default: '' },
-  { key: 'dangerBelow', label: '自己回：戰鬥中氣低於幾 % 就回家停止', type: 'number', default: 20, min: 1, max: 99 },
+  { key: 'dangerBelow', label: '自己回：戰鬥中氣低於幾 % 就回家停止（要小於「氣低於幾 % 就休息」，否則自動改小）', type: 'number', default: 20, min: 1, max: 99 },
   { key: 'afterKillCommand', label: '怪倒下後送的指令（可多個，用 ; 分隔）', type: 'text', default: 'gc' },
   { key: 'specialCommand', label: '特攻指令（可空，可以是你的別名）', type: 'text', default: '' },
   { key: 'specialIntervalSec', label: '特攻最小間隔（秒）', type: 'number', default: 10, min: 1, max: 600 },
@@ -56,6 +57,8 @@ function normalizeSettings(raw) {
       out[field.key] = typeof value === 'string' ? value.trim() : field.default;
     }
   });
+  // 危險線要比休息線低，不然休息時永遠碰不到危險線
+  if (out.dangerBelow >= out.restBelow) out.dangerBelow = Math.min(FIELDS.find(field => field.key === 'dangerBelow').default, out.restBelow - 1);
   return out;
 }
 
@@ -86,6 +89,7 @@ function create(deps) {
     unwatch?.();
     unwatch = null;
     was?.fight?.resolve('stopped');
+    was?.wake?.();
     note = reason + skippedNote(was?.skipped ?? []);
     deps.dropQueue();
     if (alert && was) deps.alert(reason);
@@ -150,6 +154,7 @@ function create(deps) {
       // ID 會被放進 fight 指令，和 finger 一樣只收普通英數
       const target = mine.find(mob => SAFE_ID.test(mob.id));
       if (!target) { state.skipped.push({ key: here, why: '怪的 ID 不能用' }); doneWith(here); return; }
+      if (!(await restGate(token))) return;
       const outcome = await fightOne(token, target);
       if (state !== token || outcome === 'stopped') return;
       if (state.settings.afterKillCommand) deps.send(state.settings.afterKillCommand);
@@ -180,6 +185,11 @@ function create(deps) {
   // 遊戲新增的輸出（content.js 以 deps.watch 餵進來）：只在打的時候看。拒戰句→改送 kill；結束句（怪死、昏迷）→這一隻打完；
   // 「你要對誰施展這個招式」→這場不再送特攻。忙碌拒絕句不用處理：被拒的特攻不重排，等下一次間隔
   function onText(text) {
+    const eating = state?.eating;
+    if (eating?.sent && state.ticks <= eating.until && state.settings.noMedicineKeyword) {
+      eating.buffer = (eating.buffer + text).slice(-500);
+      if (eating.buffer.includes(state.settings.noMedicineKeyword)) { goHomeAndStop('沒藥了'); return; }
+    }
     const fight = state?.fight;
     if (!fight) return;
     fight.buffer = (fight.buffer + text).slice(-500);
@@ -215,23 +225,71 @@ function create(deps) {
     }).catch(() => { if (state === token) finish('看房間時出錯，已停止', { alert: true }); });
   }
 
+  // 送吃藥指令，並開始聽「沒藥」關鍵字
+  // 窗口從指令真的送出才開始算（佇列可能塞住），不然慢送出時遊戲的回應會落在窗口外
+  function eat() {
+    state.lastEat = state.ticks;
+    const eating = { sent: false, until: 0, buffer: '' };
+    state.eating = eating;
+    deps.send(state.settings.eatCommand, () => {
+      if (state?.eating !== eating) return;
+      eating.sent = true;
+      eating.until = state.ticks + NO_MEDICINE_WINDOW_TICKS;
+    });
+  }
+  // 吃藥後遊戲回「沒藥」：回家（停止後才送，不會被取消）、停止、警報
+  function goHomeAndStop(reason) {
+    const home = state.settings.homeCommand;
+    finish(`${reason}，${home ? '已回家並' : ''}停止`, { alert: true });
+    if (home) deps.sendAfterStop(home);
+  }
+  // 自己回模式：低於「開始休息 %」就閒置，等回到「繼續 %」；閒置時隔 5 秒送一次休息指令
+  function restStep(percent) {
+    const settings = state.settings;
+    state.restPercent = percent;
+    if (!state.resting && percent < settings.restBelow) state.resting = true;
+    else if (state.resting && percent >= settings.restResume) {
+      state.resting = false;
+      state.wake?.();
+    }
+    // 看房間（l、finger 在等回應）時不送，免得休息指令的輸出混進回應；走路時與 restGate 等待時才送
+    if (state.resting && settings.restCommand && (state.phase !== 'look' || state.gate) && state.ticks - state.lastRest >= EAT_GAP_TICKS) {
+      state.lastRest = state.ticks;
+      deps.send(settings.restCommand);
+    }
+  }
+  // 走路與看房間時每秒補氣：讀不到氣就停（不能在不知道氣的情況下亂走）
+  function vitals() {
+    const percent = deps.kee();
+    if (!Number.isFinite(percent)) { finish('讀不到氣，已停止', { alert: true }); return; }
+    if (state.settings.healMode === 'rest') { restStep(percent); return; }
+    if (percent < state.settings.eatBelow && state.ticks - state.lastEat >= EAT_GAP_TICKS) eat();
+  }
+  // 打下一隻之前：自己回模式氣太低就在這裡等到回復（打完這一隻再休息）
+  async function restGate(token) {
+    if (state.settings.healMode === 'rest') {
+      const percent = deps.kee();
+      if (Number.isFinite(percent)) restStep(percent);
+    }
+    state.gate = state.resting;
+    while (state.resting) {
+      await new Promise(resolve => { state.wake = resolve; });
+      if (state !== token) return false;
+    }
+    state.gate = false;
+    return true;
+  }
+
   // 戰鬥中補氣（每秒看一次）：吃藥模式低於門檻就送吃藥指令（至少間隔 5 秒）；自己回模式戰鬥中沒辦法閒置，掉到危險線就回家、停止、警報
   function healInFight() {
     const settings = state.settings;
     const percent = deps.kee();
-    if (!Number.isFinite(percent)) return;
+    if (!Number.isFinite(percent)) { finish('讀不到氣，已停止', { alert: true }); return; }
     if (settings.healMode === 'rest') {
-      if (percent < settings.dangerBelow) {
-        const home = settings.homeCommand;
-        finish(`戰鬥中氣只剩 ${Math.round(percent)}%（低於 ${settings.dangerBelow}%），${home ? '已回家並' : ''}停止`, { alert: true });
-        if (home) deps.sendAfterStop(home);
-      }
+      if (percent < settings.dangerBelow) goHomeAndStop(`戰鬥中氣只剩 ${Math.round(percent)}%（低於 ${settings.dangerBelow}%）`);
       return;
     }
-    if (percent < settings.eatBelow && settings.eatCommand && state.ticks - state.lastEat >= EAT_GAP_TICKS) {
-      state.lastEat = state.ticks;
-      deps.send(settings.eatCommand);
-    }
+    if (percent < settings.eatBelow && settings.eatCommand && state.ticks - state.lastEat >= EAT_GAP_TICKS) eat();
   }
 
   function fightTick() {
@@ -281,6 +339,10 @@ function create(deps) {
     if (!state) return;
     state.ticks += 1;
     if (state.fight) { fightTick(); return; }
+    if ((state.ticks - 1) % TICKS_PER_SEC === 0) {
+      vitals();
+      if (!state) return;
+    }
     if (state.phase === 'look') return;
     const here = deps.room();
     state.waited += 1;
@@ -302,6 +364,12 @@ function create(deps) {
       return;
     }
     state.blind = 0;
+    // 每走下一步之前都再看一次氣（每秒一次的檢查可能晚一步）；休息中不走路
+    if (state.settings.healMode === 'rest') {
+      const percent = deps.kee();
+      if (Number.isFinite(percent)) restStep(percent);
+    }
+    if (state.resting) return;
     plan(here);
   }
 
@@ -324,13 +392,20 @@ function create(deps) {
       const store = await deps.readStore();
       const settings = await deps.settings();
       if (cancelled) return fail('已取消', false);
+      const missing = [];
+      if (settings.healMode === 'eat') {
+        if (!settings.eatCommand) missing.push('吃藥指令');
+        if (!settings.noMedicineKeyword) missing.push('沒藥關鍵字');
+      }
+      if (!settings.homeCommand) missing.push('回家指令');
+      if (missing.length) return fail(`請先到設定頁「地圖巡怪」填：${missing.join('、')}`);
       const places = target.mobs.flatMap(mob => Collect.locate(store, mob)).filter(place => place.area === target.area);
       const rooms = [...new Set(places.flatMap(place => place.rooms.map(room => `${place.area}/${room}`)))];
       const targets = new Set(rooms.filter(key => graph.rooms[key]));
       if (!targets.size) return fail('這個區域沒有蒐集到勾選的怪的房間（或那些房間不在地圖上）');
       state = {
         mobs: target.mobs, graph, targets, skipped: rooms.filter(key => !graph.rooms[key]).map(key => ({ key, why: '不在地圖上' })),
-        settings, ticks: 0, lastEat: -Infinity, fight: null,
+        settings, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
         skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [], phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       note = '';
@@ -361,6 +436,7 @@ function create(deps) {
   const summary = () => {
     if (!state) return { text: note || '未啟動', alert: noteAlert };
     const who = state.mobs.length === 1 ? state.mobs[0] : `${state.mobs.length} 種怪`;
+    if (state.resting) return { text: `${who}：休息中 ${Math.round(state.restPercent)}%→${state.settings.restResume}%${skippedNote(state.skipped)}`, alert: noteAlert };
     if (state.fight) return { text: `${who}：在 ${state.goal} 打 ${state.fight.mob.name}${skippedNote(state.skipped)}`, alert: noteAlert };
     if (state.phase === 'look') return { text: `${who}：到了 ${state.goal}，看房間…${skippedNote(state.skipped)}`, alert: noteAlert };
     return { text: `${who}：走向 ${state.goal ?? '…'}（目標剩 ${state.targets.size} 間）${skippedNote(state.skipped)}`, alert: noteAlert };

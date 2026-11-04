@@ -2,9 +2,16 @@
 // 房間的位置靠 #map_anchor 蓋住哪一格判斷（jsdom 算不出排版，所以假的 getBoundingClientRect 依「現在在哪」回傳）。
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { ui, boot, sleep, waitFor, fixture } = require('./helpers/game-page');
+const { ui, boot: bootPage, sleep, waitFor, fixture } = require('./helpers/game-page');
 
 const SCALE = 20;
+// 開始前必填的欄位（吃藥指令、沒藥關鍵字、回家指令）：各測試預設都填好，要測缺欄位的自己清掉
+const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall' };
+const boot = async options => {
+  const page = await bootPage(options);
+  page.store.mapHuntSettings = { ...REQUIRED };
+  return page;
+};
 const MOB = '測試怪(test mob)';
 const ROOM = id => `<a class="H7" id="m-t-${id}">□</a>`;
 // a─b─c─d 一排
@@ -20,6 +27,7 @@ const MOB_B = '另一隻怪(other mob)';
 function world(page, { at, moves = MOVES, reply = true, stuck = false, looks = {}, fingers = {}, silentLook = false, arrivals = {}, arrivalDelayMs = 0, lookDelayMs = 0, script = null } = {}) {
   const doc = page.w.document;
   doc.body.insertAdjacentHTML('beforeend', `<div id="map_table"><span id="map_header">地圖 (<span data-default-grid="□">測試區</span>)</span><div id="map_wrapper"><div id="m-t">${ROW}</div></div><div id="map_anchor"></div></div>`);
+  if (!doc.getElementById('kee')) setKee(page, 100); // 氣讀不到會停，預設滿的
   const state = { at, log: [] };
   const rect = (left, top) => ({ left, top, width: 20, height: 20, right: left + 20, bottom: top + 20 });
   doc.getElementById('map_anchor').getBoundingClientRect = () => rect(100, 100);
@@ -405,7 +413,7 @@ ui('hunt: an id on the whitelist is never asked about and does not count as some
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { npcWhitelist: 'smith、banker' };
+    page.store.mapHuntSettings = { ...REQUIRED, npcWhitelist: 'smith、banker' };
     const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE, PERSON('smith', '鑄造師')] } } });
     await pick(page, MOB);
     click(page, '.hstart');
@@ -482,7 +490,7 @@ ui('hunt: whitelist and learned NPCs match whatever the case, and a learned NPC 
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { npcWhitelist: 'Smith' };
+    page.store.mapHuntSettings = { ...REQUIRED, npcWhitelist: 'Smith' };
     page.store.mapHuntNpcs = ['banker'];
     const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE, PERSON('smith', '鑄造師'), PERSON('BANKER', '錢莊')] } } });
     await pick(page, MOB);
@@ -526,7 +534,12 @@ ui('hunt: stopping while an NPC is being remembered does not send another finger
 const FIGHT = 'fight test mob';
 const KO_LINE = '測試怪腳下一個不穩，跌在地上一動也不動了。';
 const mobsLines = count => Array.from({ length: count }, () => MOB_LINE);
-const setKee = (page, value, max = 100) => page.w.document.body.insertAdjacentHTML('beforeend', `<span id="kee">${value}</span><span id="eff_kee">${max}</span>`);
+const setKee = (page, value, max = 100) => {
+  const doc = page.w.document;
+  if (!doc.getElementById('kee')) doc.body.insertAdjacentHTML('beforeend', '<span id="kee"></span><span id="eff_kee"></span>');
+  doc.getElementById('kee').textContent = value;
+  doc.getElementById('eff_kee').textContent = max;
+};
 const hunting = async page => (await page.ask({ type: 'STATUS' })).hunt.on;
 const countOf = (game, command) => game.log.filter(item => item === command).length;
 const say = (page, text) => page.output(`<span>${text}\n</span>`);
@@ -569,7 +582,7 @@ ui('fight: the after-kill command can be several commands and is the one from th
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { afterKillCommand: 'get corpse;gc' };
+    page.store.mapHuntSettings = { ...REQUIRED, afterKillCommand: 'get corpse;gc' };
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } } });
     await pick(page, MOB);
     click(page, '.hstart');
@@ -584,7 +597,7 @@ ui('fight: no end sentence for a long time means an l: a monster that is knocked
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { fightTimeoutSec: 5 };
+    page.store.mapHuntSettings = { ...REQUIRED, fightTimeoutSec: 5 };
     const room = { lines: mobsLines(1) };
     const script = command => {
       if (command === FIGHT) { room.lines[0] = '  ※測試怪(test mob) <昏迷不醒> [fight][kill]'; return true; }
@@ -604,7 +617,7 @@ ui('fight: a monster still in <戰鬥中> after the wait keeps the fight going',
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { fightTimeoutSec: 5 };
+    page.store.mapHuntSettings = { ...REQUIRED, fightTimeoutSec: 5 };
     const room = { lines: ['  ※測試怪(test mob) <戰鬥中> [fight][kill]'] };
     const script = command => command === FIGHT;
     const game = world(page, { at: 'a', looks: { c: room }, script });
@@ -643,7 +656,7 @@ ui('fight: the special attack repeats while the monster lives, a busy refusal is
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { specialCommand: 'pt', specialIntervalSec: 1 };
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'pt', specialIntervalSec: 1 };
     const script = command => {
       if (command === FIGHT) return true;
       if (command === 'pt') { say(page, '( 你上一個動作還沒有完成，不能施用外功。 )'); return true; }
@@ -667,7 +680,7 @@ ui('fight: "who do you want to use this on" stops the special attack for that fi
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { specialCommand: 'pt', specialIntervalSec: 1 };
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'pt', specialIntervalSec: 1 };
     const script = command => {
       if (command === FIGHT) return true;
       if (command === 'pt') { say(page, '你要對誰施展這個招式?'); return true; }
@@ -690,12 +703,12 @@ ui('fight: in eat mode the eat command is sent when the qi is low, not more ofte
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { eatBelow: 50, eatCommand: 'eat pill' };
+    page.store.mapHuntSettings = { ...REQUIRED, eatBelow: 50, eatCommand: 'eat pill' };
     setKee(page, 30);
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: command => command === FIGHT });
     await pick(page, MOB);
     click(page, '.hstart');
-    assert.ok(await waitFor(() => countOf(game, 'eat pill') >= 1, 3000));
+    assert.ok(await waitFor(() => countOf(game, 'eat pill') >= 1 && game.log.includes(FIGHT), 3000));
     await sleep(120);
     assert.equal(countOf(game, 'eat pill'), 1, 'not again before the 5 seconds (scaled) are over');
     say(page, '測試怪死了。');
@@ -709,9 +722,14 @@ ui('fight: in rest mode a qi below the danger line goes home, stops the hunt and
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { healMode: 'rest', dangerBelow: 20, homeCommand: 'recall' };
-    setKee(page, 10);
-    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: command => command === FIGHT });
+    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', dangerBelow: 20, homeCommand: 'recall' };
+    setKee(page, 60);
+    const script = command => {
+      if (command !== FIGHT) return false;
+      setKee(page, 10);
+      return true;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => game.log.includes('recall'), 4000), huntText(page));
@@ -767,8 +785,8 @@ ui('fight: in rest mode a qi between the danger line and the resume line does no
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { healMode: 'rest', dangerBelow: 20, restResume: 80, homeCommand: 'recall' };
-    setKee(page, 50);
+    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', dangerBelow: 20, restResume: 80, homeCommand: 'recall' };
+    setKee(page, 55);
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } } });
     await pick(page, MOB);
     click(page, '.hstart');
@@ -784,12 +802,12 @@ ui('fight: in eat mode the eat command is sent again once the 5 seconds are over
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { eatBelow: 50, eatCommand: 'eat pill' };
+    page.store.mapHuntSettings = { ...REQUIRED, eatBelow: 50, eatCommand: 'eat pill' };
     setKee(page, 30);
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: command => command === FIGHT });
     await pick(page, MOB);
     click(page, '.hstart');
-    assert.ok(await waitFor(() => countOf(game, 'eat pill') >= 2, 3000), 'the second one follows the gap');
+    assert.ok(await waitFor(() => countOf(game, 'eat pill') >= 2 && game.log.includes(FIGHT), 3000), 'the second one follows the gap');
     say(page, '測試怪死了。');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
   } finally {
@@ -801,7 +819,7 @@ ui('fight: after the wait, a monster that was told kill is sent kill again, not 
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { fightTimeoutSec: 5 };
+    page.store.mapHuntSettings = { ...REQUIRED, fightTimeoutSec: 5 };
     const script = command => {
       if (command === FIGHT) { say(page, '看起來測試怪並不想跟你較量。'); return true; }
       return command === 'kill test mob';
@@ -821,7 +839,7 @@ ui('fight: a refusal that follows a special attack with no target does not end t
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { specialCommand: 'pt', specialIntervalSec: 1 };
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'pt', specialIntervalSec: 1 };
     let asked = 0;
     const script = command => {
       if (command === FIGHT) return true;
@@ -862,4 +880,260 @@ ui('fight: a knocked-out monster is not a target, and a room with only knocked-o
   } finally {
     page.close();
   }
+});
+
+// ---- 票 06：補氣、必填欄位、氣讀不到 ----
+ui('heal: eat mode without the eat command, the no-medicine keyword and the home command cannot start, and the panel says which', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = {};
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /吃藥指令、沒藥關鍵字、回家指令/.test(huntText(page)), 3000), huntText(page));
+    assert.equal(await hunting(page), false);
+    await sleep(200);
+    assert.deepEqual(game.log, [], 'nothing was sent');
+  } finally {
+    page.close();
+  }
+});
+
+ui('heal: rest mode only needs the home command', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { healMode: 'rest' };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /填：回家指令/.test(huntText(page)), 3000), huntText(page));
+    assert.equal(/吃藥指令|沒藥關鍵字/.test(huntText(page)), false);
+    page.store.mapHuntSettings = { healMode: 'rest', homeCommand: 'recall' };
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.equal(game.log[0], 'e', 'it walks: nothing makes it rest or eat');
+  } finally {
+    page.close();
+  }
+});
+
+ui('heal: in eat mode a low qi while walking sends the eat command before the next step, and not again within 5 seconds', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    setKee(page, 30);
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => game.log.length >= 1, 3000));
+    assert.equal(game.log[0], 'eat pill', 'eaten before the first step');
+    await sleep(100);
+    assert.equal(countOf(game, 'eat pill'), 1, 'not queued again within the 5 seconds (scaled)');
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('heal: when the game says there is no medicine, it goes home, stops and raises one alert', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    setKee(page, 30);
+    const script = command => {
+      if (command === 'eat pill') { say(page, '你身上沒有藥可以吃了。'); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => game.log.includes('recall'), 4000), game.log.join(','));
+    assert.equal(await hunting(page), false);
+    assert.equal(alerts(page).length, 1);
+    const count = game.log.length;
+    await sleep(300);
+    assert.equal(game.log.length, count, 'nothing is sent after going home');
+  } finally {
+    page.close();
+  }
+});
+
+ui('heal: in rest mode a qi below the rest line waits in place (sending the rest command every 5 seconds) until the qi is back to the resume line', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', restBelow: 50, restResume: 80, restCommand: 'dazuo' };
+    setKee(page, 30);
+    const times = [];
+    const script = command => {
+      if (command === 'dazuo') times.push(Date.now());
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, 'dazuo') >= 3, 3000), 'the rest command repeats');
+    assert.ok(times[1] - times[0] >= 200 && times[2] - times[1] >= 200, `5 seconds (scaled to 250 ms) apart: ${times[1] - times[0]}, ${times[2] - times[1]}`);
+    assert.ok(/休息中 30%→80%/.test(huntText(page)), huntText(page));
+    assert.equal(game.log.some(command => command === 'e'), false, 'no step while resting');
+    setKee(page, 70);
+    await sleep(150);
+    assert.equal(game.log.some(command => command === 'e'), false, 'still resting below the resume line');
+    setKee(page, 90);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.ok(game.log.includes('e'));
+  } finally {
+    page.close();
+  }
+});
+
+ui('heal: in rest mode the monster being fought is finished, then it rests before the next one', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', restBelow: 50, restResume: 80, dangerBelow: 20 };
+    setKee(page, 60);
+    const room = { lines: mobsLines(2) };
+    const script = command => {
+      if (command === FIGHT) { if (countOf(game, FIGHT) === 1) setKee(page, 30); say(page, '測試怪死了。'); return true; }
+      if (command === 'gc') { room.lines.shift(); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: room }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, FIGHT) === 1 && game.log.at(-1) === 'l', 4000), game.log.join(','));
+    await sleep(300);
+    assert.equal(countOf(game, FIGHT), 1, 'waits for the qi before the second one');
+    assert.ok(/休息中/.test(huntText(page)), huntText(page));
+    setKee(page, 90);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.equal(countOf(game, FIGHT), 2);
+  } finally {
+    page.close();
+  }
+});
+
+ui('heal: a qi that cannot be read stops the hunt with an alert before any step', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } } });
+    page.w.document.getElementById('kee').remove();
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(message => /讀不到氣/.test(message.reason)), 3000));
+    assert.equal(await hunting(page), false);
+    assert.deepEqual(game.log, []);
+  } finally {
+    page.close();
+  }
+});
+
+ui('heal: a qi that stops being readable in the middle of a fight stops the hunt with an alert', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const script = command => {
+      if (command !== FIGHT) return false;
+      page.w.document.getElementById('kee').remove();
+      return true;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(message => /讀不到氣/.test(message.reason)), 4000));
+    assert.equal(await hunting(page), false);
+    assert.equal(game.log.includes('recall'), false, 'no home command: the qi is simply unknown');
+  } finally {
+    page.close();
+  }
+});
+
+ui('heal: the qi dropping while walking makes it rest after that step, and it goes on when the qi is back', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', restBelow: 50, restResume: 80, dangerBelow: 20 };
+    setKee(page, 60);
+    const script = command => {
+      if (command === 'e' && countOf(game, 'e') === 1) setKee(page, 30);
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /休息中/.test(huntText(page)), 3000), huntText(page));
+    await sleep(300);
+    assert.equal(countOf(game, 'e'), 1, 'the step that was under way finishes, no further step while resting');
+    setKee(page, 90);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.equal(countOf(game, 'e'), 2);
+  } finally {
+    page.close();
+  }
+});
+
+ui('heal: stopping while it waits for the qi between two monsters sends nothing more, even when the qi comes back', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', restBelow: 50, restResume: 80, dangerBelow: 20 };
+    setKee(page, 60);
+    const room = { lines: mobsLines(2) };
+    const script = command => {
+      if (command === FIGHT) { setKee(page, 30); say(page, '測試怪死了。'); return true; }
+      if (command === 'gc') { room.lines.shift(); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: room }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /休息中/.test(huntText(page)), 4000), huntText(page));
+    click(page, '.hstop');
+    const count = game.log.length;
+    setKee(page, 95);
+    await sleep(400);
+    assert.equal(game.log.length, count, 'the stopped hunt does not wake up');
+    assert.equal(await hunting(page), false);
+  } finally {
+    page.close();
+  }
+});
+
+ui('heal: a no-medicine sentence long after the eat command went out is not taken as the answer', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    setKee(page, 30);
+    const script = command => {
+      if (command === 'eat pill') { setKee(page, 100); return true; }
+      return command === FIGHT;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    const keepAlive = page.w.setInterval(() => say(page, '…'), 100);
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => game.log.includes('eat pill') && game.log.includes(FIGHT), 3000));
+    await sleep(800); // 10 秒縮小 20 倍 = 500 毫秒
+    say(page, '你身上沒有藥了。');
+    await sleep(200);
+    assert.equal(game.log.includes('recall'), false);
+    assert.equal(await hunting(page), true, 'still fighting');
+    page.w.clearInterval(keepAlive);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('heal: a danger line at or above the rest line is brought below it', async () => {
+  require('../catworld-auto-command/map-hunt.js');
+  const normalized = globalThis.CatworldMapHunt.normalizeSettings({ restBelow: 30, dangerBelow: 40 });
+  assert.equal(normalized.restBelow, 30);
+  assert.equal(normalized.dangerBelow, 20, 'the default 20 is already below 30');
+  assert.equal(globalThis.CatworldMapHunt.normalizeSettings({ restBelow: 10, dangerBelow: 40 }).dangerBelow, 9);
+  assert.equal(globalThis.CatworldMapHunt.normalizeSettings({ restBelow: 2, dangerBelow: 50 }).dangerBelow, 1);
 });

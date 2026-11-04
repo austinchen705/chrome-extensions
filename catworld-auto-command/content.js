@@ -492,9 +492,12 @@ function enqueue(command, source = 'timer', run = null, onSent = null) {
 
 // 定時、隨機、觸發的指令入口：單一指令照舊直接排進佇列；含 ; 或 @等待 的交給巨集執行器拆開依序送，
 // 並記下是誰啟動的（owner），停止那個功能時才能只取消它自己的巨集
-function queueCommand(command, owner) {
-  if (CatworldMacro.isSequence(command)) startMacro(command, owner);
-  else enqueue(command, owner);
+// onSent：指令真的送出時呼叫（巨集沒有單一的送出時刻，開始時就呼叫）
+function queueCommand(command, owner, onSent = null) {
+  if (CatworldMacro.isSequence(command)) {
+    startMacro(command, owner);
+    onSent?.();
+  } else enqueue(command, owner, null, onSent);
 }
 
 function dropQueue(source) {
@@ -863,7 +866,7 @@ hunt = CatworldMapHunt.create({
     const stat = readStat('氣');
     return stat && stat.max > 0 ? (stat.value / stat.max) * 100 : NaN;
   },
-  send: command => { queueCommand(command, 'hunt'); return true; },
+  send: (command, onSent) => { queueCommand(command, 'hunt', onSent); return true; },
   // 停止後才送的回家指令：用巨集（執行中算 active()，佇列才送得出去），owner 不是 hunt，所以停止巡怪時不會被一起取消
   sendAfterStop: command => startMacro(command, 'hunt-home'),
   dropQueue: () => { dropQueue('hunt'); cancelMacros('hunt'); },
