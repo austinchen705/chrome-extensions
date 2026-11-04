@@ -6,7 +6,7 @@ const { ui, boot: bootPage, sleep, waitFor, fixture } = require('./helpers/game-
 
 const SCALE = 20;
 // 開始前必填的欄位（吃藥指令、沒藥關鍵字、回家指令）：各測試預設都填好，要測缺欄位的自己清掉
-const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off' };
+const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0 };
 const boot = async options => {
   const page = await bootPage(options);
   page.store.mapHuntSettings = { ...REQUIRED };
@@ -1711,5 +1711,102 @@ ui('fight: the finishing kill does not send the special attack, and a knocked-ou
     await page.ask({ type: 'STOP' });
   } finally {
     page.close();
+  }
+});
+
+// ---- 負重：打完怪看 i，超過就執行使用者自己寫的整理指令 ----
+const loadScript = (page, state, extra = () => false) => command => {
+  if (command === 'i') { say(page, `你身上帶著下列這些東西( 載重 ${state.load}% ):\n    布條(cloth piece)`); return true; }
+  return extra(command);
+};
+const loadPage = async (settings = {}) => {
+  const page = await boot({ scale: SCALE });
+  page.store.mapMonsters = mobsAt('c');
+  page.store.mapHuntSettings = { ...REQUIRED, loadMaxPercent: 90, ...settings };
+  return page;
+};
+
+ui('load: after a fight it looks at i, and under the limit nothing else happens', async () => {
+  const page = await loadPage({ unloadCommand: 'sell;back' });
+  try {
+    const state = { load: 40 };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: loadScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'l', 'i']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('load: over the limit it runs the macro the user wrote, then checks again before going on', async () => {
+  const page = await loadPage({ unloadCommand: 'sell;back' });
+  try {
+    const state = { load: 95 };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(2) } }, script: loadScript(page, state, command => { if (command === 'sell') state.load = 20; return false; }) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'l', FIGHT, 'gc', 'l', 'i', 'sell', 'back', 'i'], 'both monsters of the room are fought first, then i, then the macro, then i again');
+    assert.equal(countOf(game, 'sell'), 1, 'the macro runs once, because the second look says it worked');
+  } finally {
+    page.close();
+  }
+});
+
+ui('load: over the limit with no macro written stops with an alert that says what to set', async () => {
+  const page = await loadPage();
+  try {
+    const state = { load: 95 };
+    world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: loadScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(message => /寫好「負重太高時執行的指令」/.test(message.reason)), 6000));
+    assert.equal(await hunting(page), false);
+  } finally {
+    page.close();
+  }
+});
+
+ui('load: a macro that does not bring the load down is run at most twice, then the hunt stops with an alert', async () => {
+  const page = await loadPage({ unloadCommand: 'sell' });
+  try {
+    const state = { load: 95 };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: loadScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(message => /還是 95%/.test(message.reason)), 8000));
+    assert.equal(countOf(game, 'sell'), 2);
+    assert.equal(await hunting(page), false);
+  } finally {
+    page.close();
+  }
+});
+
+ui('load: 0 means it never looks at i, and an i that cannot be read does not stop the hunt', async () => {
+  const off = await loadPage({ loadMaxPercent: 0 });
+  try {
+    const game = world(off, { at: 'a', looks: { c: { lines: mobsLines(1) } } });
+    await pick(off, MOB);
+    click(off, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(off)), 6000), huntText(off));
+    assert.equal(game.log.includes('i'), false);
+  } finally {
+    off.close();
+  }
+  const unreadable = await loadPage({ unloadCommand: 'sell' });
+  try {
+    const script = command => {
+      if (command === 'i') { say(unreadable, '你身上帶著一些東西。'); return true; }
+      return false;
+    };
+    const game = world(unreadable, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(unreadable, MOB);
+    click(unreadable, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(unreadable)), 6000), huntText(unreadable));
+    assert.equal(game.log.includes('sell'), false);
+  } finally {
+    unreadable.close();
   }
 });

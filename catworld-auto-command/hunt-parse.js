@@ -63,5 +63,12 @@ function parseLook(text) {
   return { exits: parseExits(out), monsters: lines.map(parseMonster).filter(Boolean), people: lines.map(parsePerson).filter(Boolean) };
 }
 
-globalThis.CatworldHuntParse = { parseTime, parseFinger, parseLook };
+// i：「你身上帶著下列這些東西( 載重 23% ):」→ 23；讀不到回 null
+const LOAD = /載重\s*(\d+(?:\.\d+)?)\s*[%％]/;
+function parseLoad(text) {
+  const match = LOAD.exec(String(text ?? '').normalize('NFKC'));
+  return match ? Number(match[1]) : null;
+}
+
+globalThis.CatworldHuntParse = { parseTime, parseFinger, parseLook, parseLoad };
 })();

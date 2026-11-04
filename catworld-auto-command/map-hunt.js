@@ -41,6 +41,8 @@ const FIELDS = [
   { key: 'restCommand', label: '自己回：休息時送的指令（可空）', type: 'text', default: '' },
   { key: 'dangerBelow', label: '自己回：戰鬥中氣低於幾 % 就回家停止（要小於「氣低於幾 % 就休息」，否則自動改小）', type: 'number', default: 20, min: 1, max: 99 },
   { key: 'learnExits', label: '自動學習出口（記下看到的出口與實際走到的房間；路線不通時才試出口）', type: 'select', options: [['off', '關'], ['on', '開']], default: 'off' },
+  { key: 'loadMaxPercent', label: '負重（i 的「載重」）超過幾 % 就先去整理（0＝不檢查）', type: 'number', default: 90, min: 0, max: 100 },
+  { key: 'unloadCommand', label: '負重太高時執行的指令／巨集（自己寫：回去、驗無名裝備與物品、留下好的、賣掉其餘的、回來；可用 ; 與 @等待）', type: 'text', default: '' },
   { key: 'afterKillCommand', label: '怪倒下後送的指令（可多個，用 ; 分隔）', type: 'text', default: 'gc' },
   { key: 'specialCommand', label: '特攻指令（可空，可以是你的別名）', type: 'text', default: '' },
   { key: 'specialIntervalSec', label: '特攻最小間隔（秒）', type: 'number', default: 10, min: 1, max: 600 },
@@ -195,6 +197,7 @@ function create(deps) {
         if (state !== token || outcome === 'stopped') return;
       }
       if (state.settings.afterKillCommand) deps.send(state.settings.afterKillCommand);
+      if (state.settings.loadMaxPercent > 0) state.loadDue = true;
       info = Parse.parseLook(await deps.ask('l', 'look'));
       if (state !== token) return;
       if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
@@ -487,6 +490,40 @@ function create(deps) {
     }
   }
 
+  // ---- 負重 ----
+  // 打完怪撿了東西，下一次規劃前先用 i 看負重（loadMaxPercent，0＝不檢查）；超過就執行使用者自己寫的整理指令（unloadCommand：
+  // 回去、驗無名裝備與物品、留下好的、賣掉其餘的、回來都在裡面），執行完再看一次，兩次都沒降下來就停止並警報；沒寫指令也停止並提醒去寫
+  function checkLoad(here) {
+    const token = state;
+    state.phase = 'look';
+    state.checkingLoad = true;
+    deps.notify();
+    deps.ask('i', 'inventory').then(text => {
+      if (state !== token) return;
+      state.checkingLoad = false;
+      const percent = Parse.parseLoad(text);
+      if (percent === null) { console.warn('[catworld] 巡怪：讀不到負重（i 的輸出沒有「載重 N%」），這次不檢查'); state.phase = 'plan'; deps.notify(); return; }
+      state.load = percent;
+      const settings = state.settings;
+      if (percent < settings.loadMaxPercent) { state.unloadTries = 0; state.phase = 'plan'; deps.notify(); return; }
+      if (!settings.unloadCommand) { finish(`負重 ${percent}% 已經超過 ${settings.loadMaxPercent}%，請先到設定頁「地圖巡怪」寫好「負重太高時執行的指令」（回去、驗無名裝備與物品、賣掉其餘的、回來的巨集）`, { alert: true }); return; }
+      if (state.unloadTries >= 2) { finish(`整理指令跑了兩次，負重還是 ${percent}%（要小於 ${settings.loadMaxPercent}%），已停止`, { alert: true }); return; }
+      state.unloadTries += 1;
+      state.unload = { sent: false, from: here };
+      state.phase = 'unload';
+      deps.notify();
+      if (!deps.send(settings.unloadCommand, () => { if (state?.unload) state.unload.sent = true; })) finish('指令送不出去，已停止', { alert: true });
+    }).catch(() => { if (state === token) finish('讀取負重時出錯，已停止', { alert: true }); });
+  }
+  // 整理指令（巨集）執行中：等它送完，再看一次負重確認有降下來
+  function unloadTick() {
+    if (!state.unload?.sent || deps.macroRunning()) return;
+    state.unload = null;
+    state.loadDue = true;
+    state.phase = 'plan';
+    deps.notify();
+  }
+
   // ---- 輪與輪之間 ----
   // 時間都用伺服器時間（毫秒）：deps.now()＋偏差。state.after 是「這一輪打下來的怪從什麼時候起重生」：
   // 等待之後開始的那一輪＝它等的那個重生本身（精確的整點，不能用算出來的時間，否則偏差差一點就會把同一個重生又算一次）；
@@ -566,6 +603,7 @@ function create(deps) {
   // 規劃下一步：到了目標就看房間；否則挑路線最短的目標，送出路線的第一個指令
   // 學習開著時分兩張圖：嚴格圖（已知出口的房間只走出口裡有的）優先；只有寬鬆圖（純地圖圖示）走得到時，圖示的猜測可能走不通
   function plan(here) {
+    if (state.loadDue) { state.loadDue = false; checkLoad(here); return; }
     if (state.targets.has(here)) { arrive(here); return; }
     const strictGraph = state.learn ? buildGraph(true) : state.graph;
     const looseGraph = state.learn ? buildGraph(false) : state.graph;
@@ -606,6 +644,7 @@ function create(deps) {
       if (!state) return;
     }
     if (state.phase === 'wait' || state.phase === 'standby') { waitTick(); return; }
+    if (state.phase === 'unload') { unloadTick(); return; }
     if (state.trial) { trialTick(); return; }
     if (state.phase === 'look') return;
     const here = deps.room();
@@ -687,7 +726,7 @@ function create(deps) {
       state = {
         round: 1, after: deps.now() + offset + settings.aheadSec * 1000, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
         mobs: target.mobs, graph, targets, skipped: [...baseSkipped],
-        settings, learn, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
+        settings, loadDue: false, load: null, unloadTries: 0, unload: null, checkingLoad: false, learn, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
         ...roundFields(), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       note = '';
@@ -720,6 +759,8 @@ function create(deps) {
     const who = state.mobs.length === 1 ? state.mobs[0] : `${state.mobs.length} 種怪`;
     if (state.resting) return { text: `${who}：休息中 ${Math.round(state.restPercent)}%→${state.settings.restResume}%${skippedNote(state.skipped)}`, alert: noteAlert };
     if (state.waiting) return { text: `${who}：等下一個重生 ${hhmm(state.waiting.spawn)}（第 ${state.waiting.rounds} 輪到過 ${state.waiting.visited} 間）${skippedNote(state.skipped)}`, alert: noteAlert };
+    if (state.phase === 'unload') return { text: `${who}：負重 ${state.load}%，執行整理指令中…${skippedNote(state.skipped)}`, alert: noteAlert };
+    if (state.checkingLoad) return { text: `${who}：看負重…${skippedNote(state.skipped)}`, alert: noteAlert };
     if (state.phase === 'standby') return { text: `${who}：等待指令送完，再校準伺服器時間…${skippedNote(state.skipped)}`, alert: noteAlert };
     if (state.calibrating) return { text: `${who}：校準伺服器時間…${skippedNote(state.skipped)}`, alert: noteAlert };
     if (state.trial) return { text: `${who}：在 ${state.trial.room} 試出口${skippedNote(state.skipped)}`, alert: noteAlert };

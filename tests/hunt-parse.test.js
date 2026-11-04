@@ -119,3 +119,12 @@ test('look: a player whose title or name contains the exits sentence does not cu
   assert.deepEqual([...info.exits], ['e']);
   assert.deepEqual(info.people.map(person => person.id), ['alpha', 'beta']);
 });
+
+test('parseLoad reads the load percentage from the first line of i, and nothing when it is not there', () => {
+  assert.equal(P.parseLoad(sample('inventory')), 23);
+  assert.equal(P.parseLoad('你身上帶著下列這些東西( 載重 95% ):'), 95);
+  assert.equal(P.parseLoad('你身上帶著下列這些東西( 載重 100％ ):'), 100, 'a full-width percent sign');
+  assert.equal(P.parseLoad('你身上沒有帶任何東西。'), null);
+  assert.equal(P.parseLoad(''), null);
+  assert.equal(P.parseLoad(undefined), null);
+});

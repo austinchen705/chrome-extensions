@@ -816,6 +816,7 @@ const ASK = {
   look: { pattern: /出口是/, quietMs: 400 },
   finger: { pattern: /權限等級|找不到/, quietMs: 250 },
   time: { pattern: /台北時間為/, quietMs: 250 },
+  inventory: { pattern: /載重\s*\d+/, quietMs: 400 },
 };
 const ASK_MAX_MS = 8000;
 const addedText = records => CatworldZapMobs.textFromAdded(records.flatMap(record => (record.type === 'characterData'
