@@ -20,6 +20,8 @@ const anyTriggerOn = () => groupList.some(group => group.on);
 // 遊戲巨集（含 @等待）正在執行的清單；執行中算「在跑」，驗證碼偵測與看門狗才會作用
 const macroRuns = new Set();
 let macroNote = null;
+// 地圖巡怪（map-hunt.js）：在 startMacro 之後建立；執行中算 active()
+let hunt = null;
 // 設定頁開在背景分頁時自己的每秒更新會被 Chrome 降頻，所以任何功能開始或停止（面板、置頂面板裡按的也算）就主動通知它
 let panelHost = null;
 // 擴充功能重新載入後留在頁面上的舊程式（chrome.runtime.id 失效）：停掉所有計時器與送出、拿掉面板與置頂視窗，
@@ -31,6 +33,7 @@ function retire() {
   running = false;
   clearTimers();
   groupList.forEach(group => stopTriggers(group, ''));
+  hunt?.stop('');
   cancelMacros();
   queue.length = 0;
   if (watchdogTimer) clearTimeout(watchdogTimer);
@@ -52,7 +55,7 @@ function notifyStateChanged() {
     // 擴充功能剛重新載入，這個頁面的連線已失效
   }
 }
-function active() { return running || anyTriggerOn() || macroRuns.size > 0; }
+function active() { return running || anyTriggerOn() || macroRuns.size > 0 || (hunt?.on() ?? false); }
 
 // 在線獎勵：看到「在線獎勵： N分鐘後可領取」（自己打 sc 的輸出）就排一個 N+1 分鐘後送 reward 的計時，已經排著的就不再排。
 // 閒置時也作用（不走送出佇列，佇列只在 active() 時送）；開關是設定頁的 autoReward（缺值＝開）。
@@ -713,6 +716,7 @@ function stopTriggers(group, note = '已停止') {
 // 驗證碼或送出失敗：定時與兩組觸發、巨集一起停
 function stopEverything(reason) {
   groupList.forEach(group => stopTriggers(group));
+  hunt?.stop(reason);
   cancelMacros();
   return stop(reason);
 }
@@ -780,6 +784,26 @@ function cancelMacros(owner) {
   if (owner === undefined) dropQueue('macro');
   pumpQueue();
 }
+
+// 蒐集到的怪物位置：內建加個人（只在讀取時合併）
+const mapStore = async () => CatworldMapCollect.withBuiltin((await chrome.storage.local.get('mapMonsters')).mapMonsters);
+// 地圖巡怪：目標是面板「選怪」勾選的怪（map-hunt-ui.js，依區域記在 mapHuntPicks）與地圖目前顯示的區域；指令走共用送出佇列（來源 hunt）
+hunt = CatworldMapHunt.create({
+  target: async () => {
+    const area = CatworldMapHuntUI.visibleArea(document);
+    const { mapHuntPicks } = await chrome.storage.local.get(CatworldMapHuntUI.PICKS_KEY);
+    // 儲存裡留著、但這個區域已經沒有蒐集到的怪（資料清掉了）不算
+    const here = CatworldMapHuntUI.mobsOfArea(await mapStore(), area);
+    return { area, mobs: CatworldMapHuntUI.pickedFor(mapHuntPicks, area).filter(mob => here.includes(mob)) };
+  },
+  room: () => CatworldMapCollect.currentRoom(document)?.key ?? null,
+  areaHtml: area => document.getElementById(`m-${area}`)?.innerHTML ?? '',
+  readStore: mapStore,
+  send: command => { enqueue(command, 'hunt'); return true; },
+  dropQueue: () => dropQueue('hunt'),
+  alert: reason => alertOnly(reason, '⚠ 巡怪已停止'),
+  notify: () => renderPanel(),
+});
 
 // 捕獲階段（比遊戲掛在 body 上的處理早）：條件和遊戲一樣，只在焦點在指令輸入框或 body 時處理；
 // 沒有等待的巨集、不是巨集的按鍵一律不碰，交給遊戲
@@ -857,6 +881,8 @@ function initPanel() {
       .macro-confirm-msg { font-size: 14px; color: #ffb347; margin-bottom: 4px; }
       .macro-import-text, .macro-io-text { width: 100%; height: 80px; box-sizing: border-box; margin-top: 4px; background: #1e1e20; color: #ddd;
         border: 1px solid #555; border-radius: 4px; font-size: 13px; }
+      .hunt-pick-list { max-height: 150px; overflow-y: auto; font-size: 14px; }
+      .hunt-pick-list label { display: block; cursor: pointer; }
       .collapsed .body { display: none; }
       /* 面板在置頂浮窗裡（宿主帶 data-pip）：拖曳與收合沒有意義（視窗可以自己縮放），而且收合過的面板在浮窗裡不能卡在收合 */
       :host([data-pip]) .toggle { display: none; }
@@ -872,6 +898,8 @@ function initPanel() {
           <span class="mini"><button class="tstart">開始</button><button class="tstop">停止</button></span></div>`).join('\n        ')}
         <div class="line macro-line"><span class="t">巨集</span><span class="s macro-text"></span>
           <span class="mini"><button class="mexport" title="把遊戲的巨集和備註複製成一段文字">匯出</button><button class="mimport" title="貼上匯出的文字，整份取代遊戲的巨集和備註">匯入</button><button class="mstop">停止</button></span></div>
+        <div class="line hunt-line"><span class="t">巡怪</span><span class="s hunt-text"></span>
+          <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hstop">停止</button></span></div>
         <div class="line reward-line" hidden><span class="t">獎勵</span><span class="s reward-text"></span></div>
         <div class="line macro-import" hidden><span class="t"></span><span class="s"><textarea class="macro-import-text" placeholder="貼上匯出的巨集文字"></textarea><span class="mini"><button class="macro-import-check">檢查</button><button class="macro-import-cancel">取消</button><button class="macro-restore" title="把匯入前自動留的備份寫回去" disabled>還原上一份</button></span></span></div>
         <div class="line macro-confirm" hidden><span class="t"></span><span class="s"><div class="macro-confirm-msg"></div><span class="mini"><button class="macro-confirm-ok">確認取代</button><button class="macro-confirm-cancel">取消</button></span></span></div>
@@ -888,6 +916,7 @@ function initPanel() {
     })),
     start: $('.start'), stop: $('.stop'),
     macroText: $('.macro-text'), mstop: $('.mstop'),
+    huntText: $('.hunt-text'), hstart: $('.hstart'), hstop: $('.hstop'),
     rewardLine: $('.reward-line'), rewardText: $('.reward-text'),
     confirm: $('.confirm'),
   };
@@ -989,6 +1018,23 @@ function initPanel() {
     row.stop.addEventListener('click', () => { if (group.on) stopTriggers(group); });
   });
   panel.mstop.addEventListener('click', () => { cancelMacros(); renderPanel(); });
+  // 「選怪」：勾選清單；壞了不能牽連後面按鈕的綁定
+  try {
+    CatworldMapHuntUI.attach(root, {
+      readStore: mapStore,
+      readPicks: async () => (await chrome.storage.local.get(CatworldMapHuntUI.PICKS_KEY))[CatworldMapHuntUI.PICKS_KEY],
+      writePicks: picks => chrome.storage.local.set({ [CatworldMapHuntUI.PICKS_KEY]: picks }),
+      relayout: () => panel.replace(),
+    });
+  } catch (error) {
+    console.error('[catworld] 選怪清單初始化失敗', error);
+  }
+  panel.hstart.addEventListener('click', async () => {
+    if (hunt.on()) return;
+    armDetection();
+    await hunt.start();
+  });
+  panel.hstop.addEventListener('click', () => hunt.stop());
   panel.confirm.addEventListener('click', confirmAlert);
   // ⚙：交給背景腳本在新分頁開啟設定頁，再按一次關閉
   $('.gear').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'TOGGLE_SETTINGS' }));
@@ -1206,12 +1252,20 @@ function renderPanel() {
     panel.rewardLine.hidden = !rewardText;
     panel.replace();
   }
+  const huntInfo = hunt.summary();
+  if (panel.huntText.textContent !== huntInfo.text) {
+    panel.huntText.textContent = huntInfo.text;
+    panel.replace();
+  }
+  panel.huntText.classList.toggle('alert', huntInfo.alert);
+  panel.hstart.disabled = hunt.on();
+  panel.hstop.disabled = !hunt.on();
   panel.mstop.disabled = !macroRuns.size;
   panel.avoidMap();
   panel.timerText.classList.toggle('alert', captchaStopped);
   panel.start.disabled = running;
   panel.stop.disabled = !running;
-  const stateKey = [running, ...groupList.map(group => group.on), macroRuns.size > 0].join();
+  const stateKey = [running, ...groupList.map(group => group.on), macroRuns.size > 0, hunt.on()].join();
   if (lastStateKey !== null && stateKey !== lastStateKey) notifyStateChanged();
   lastStateKey = stateKey;
 }
@@ -1255,6 +1309,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       nextRandomAt,
       nextRandomCommand,
       macros: macroRuns.size,
+      hunt: hunt.snapshot(),
       stats: readAllStats(),
       triggerGroups: Object.fromEntries(groupList.map(item => [item.id, { on: item.on, note: item.note, rules: item.on ? item.engine.snapshot().rules : [] }])),
     });

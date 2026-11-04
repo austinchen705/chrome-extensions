@@ -101,7 +101,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -770,13 +770,36 @@ async function refreshLive() {
   Object.values(panes).forEach(pane => pane.refresh(status));
 }
 
+// 地圖巡怪：欄位、預設值與檢查都由 map-hunt.js 的 FIELDS 決定；每改一個欄位就存整份（不合法的欄位退回預設並顯示回去）
+let huntSettings = CatworldMapHunt.normalizeSettings(null);
+const showHuntSettings = () => CatworldMapHunt.FIELDS.forEach(item => { $(`hunt-${item.key}`).value = huntSettings[item.key]; });
+CatworldMapHunt.FIELDS.forEach(item => {
+  const label = document.createElement('label');
+  label.htmlFor = `hunt-${item.key}`;
+  label.textContent = item.label;
+  const input = item.type === 'select' ? document.createElement('select') : document.createElement('input');
+  input.id = `hunt-${item.key}`;
+  if (item.type === 'select') item.options.forEach(([value, text]) => input.append(new Option(text, value)));
+  else if (item.type === 'number') Object.assign(input, { type: 'number', min: item.min, max: item.max, step: 1 });
+  else Object.assign(input, { type: 'text', autocomplete: 'off' });
+  input.addEventListener('change', () => {
+    huntSettings = CatworldMapHunt.normalizeSettings({ ...huntSettings, [item.key]: input.value });
+    showHuntSettings();
+    chrome.storage.local.set({ [CatworldMapHunt.SETTINGS_KEY]: huntSettings });
+  });
+  $('huntFields').append(label, input);
+});
+showHuntSettings();
+
 // 遊戲頁裡的狀態變了（面板、置頂面板按開始／停止）會通知這裡馬上更新；設定頁開在背景分頁時自己的每秒更新會被降頻，不通知就要切回來才會對
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message?.type === 'STATE_CHANGED' && (!pageTabId || sender.tab?.id === pageTabId)) refreshLive();
 });
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY]);
+  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
+  huntSettings = CatworldMapHunt.normalizeSettings(data[CatworldMapHunt.SETTINGS_KEY]);
+  showHuntSettings();
   $('shopSkipNames').value = typeof data[CatworldShopCollect.SKIP_NAMES_KEY] === 'string' ? data[CatworldShopCollect.SKIP_NAMES_KEY] : CatworldShopCollect.DEFAULT_SKIP_NAMES;
   $('shopBuyNames').value = typeof data[CatworldShopCollect.BUY_NAMES_KEY] === 'string' ? data[CatworldShopCollect.BUY_NAMES_KEY] : CatworldShopCollect.DEFAULT_BUY_NAMES;
   shopMinSilver = CatworldShopCollect.normalizeMinSilver(data[CatworldShopCollect.MIN_PRICE_KEY]);

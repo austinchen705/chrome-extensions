@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CatWorld Auto Command",
-  "version": "1.76.3",
+  "version": "1.77.0",
   "description": "Configurable commands with immediate stop on verification prompts.",
   "permissions": [
     "storage",
@@ -48,6 +48,8 @@
         "map-collect.js",
         "map-route.js",
         "hunt-parse.js",
+        "map-hunt.js",
+        "map-hunt-ui.js",
         "zap-items.js",
         "zap-riddles.js",
         "zap-equipment.js",
