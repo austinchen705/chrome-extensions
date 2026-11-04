@@ -194,6 +194,11 @@
 - 接線在 `content.js`：`hunt` 要在 `active()` 裡算（送出佇列與看門狗才會作用）、`stopEverything` 與 `retire` 都要停它、指令用 `queueCommand(命令, 'hunt')`（停止時 `dropQueue('hunt')` 加 `cancelMacros('hunt')`）、`STATUS` 回 `hunt`；面板「巡怪」列的錯誤用 `alert` 顏色。測試在 `tests/map-hunt.test.js`（整個 content script 在 jsdom，假地圖與假遊戲）與 `tests/map-hunt-settings-ui.test.js`；jsdom 算不出排版，真實的房間判斷（anchor 置中）只能在真實頁面驗證。
 - **改檔案行尾要小心**：`content.js`、`popup.js`、`popup.html`、`CLAUDE.md`、`README.md`、`CHANGELOG.md` 都是 CRLF，用 `sed -i` 或只比對 LF 的字串取代會把整個檔案轉成 LF（diff 變成上千行）；改完要看 `git diff --stat`，用 Node 取代時要先偵測並保留原本的行尾。
 
+## 聊天回覆
+
+- 規格與票在 `.scratch/chat-reply/`（不進 git）。`chat-reply.js`（純函式，manifest 與 popup 備援注入都要載入，在 `content.js` 之前）：`parseLine` 認三種私聊行——來訊 `[P]暱稱回答你：內容`、我的回覆 `[P]你告訴暱稱：…`（tell）與 `[P]你回答暱稱：…`（reply）；`>` 開頭的回聲與公開 `[P]你說道：` 不算。`createRecorder` 只處理已收到換行的完整行（輸出分批到、行會被切開），沒有換行的最後一行留到下一批（行被切開時不會記下半句）；每個暱稱記最後一句來訊，`PAIR_WINDOW_MS`（2 分鐘）內我回同一個暱稱就配成 `{ said, reply, at }`，回覆含分號的不收（會被當巨集；不安全的回覆不會吃掉待配對的來訊，之後乾淨的回覆仍配得上；空的來訊會清掉這個人之前那句）。回覆是打指令時的單行文字，不另外處理換行。`addPair` 同一組 said+reply 不重複、只留最新 `MAX_PAIRS`（500）筆。
+- `content.js` 的 `feedChat` 在 `captchaObserver` 的停止關鍵字之後呼叫（閒置時也記），寫 `chrome.storage.local.chatPairs`，寫入排成一條佇列（讀改寫不能交錯）、連不上儲存就當沒記到；沒有開關。測試在 `tests/chat-reply.test.js`。
+
 ## 在線獎勵
 
 - `content.js` 的 `watchReward` 由 `captchaObserver` 在每一批新增文字（驗證碼分支之前）呼叫：看到「在線獎勵： N分鐘後可領取」（自己打 `sc` 的輸出）就用 `setTimeout` 排 N+1 分鐘後 `sendCommand('reward')`；`rewardTimer` 有值就忽略新的（等待與重試期間都算）。**不走送出佇列**：佇列只在 `active()` 時送，閒置時會卡住；`sendCommand` 自己會擋驗證碼辨識中與因驗證停止，送不出去隔 `REWARD_RETRY_MS` 再試、最多 `REWARD_TRIES` 次。開關是 `chrome.storage.local.autoReward`（缺值＝開，設定頁「在線獎勵自動領取」，`storage.onChanged` 即時生效、關掉會取消等待中的）；`retire()` 會取消。面板「獎勵」那一行（`rewardView`、`rewardSummary`，每秒隨 `renderPanel` 更新，沒有排計時就隱藏）顯示倒數與重試狀態。領獎出現的驗證碼由既有的自動辨識處理。計時只存在頁面裡，重新整理就沒了。測試在 `tests/online-reward.test.js`。

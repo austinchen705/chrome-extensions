@@ -116,6 +116,19 @@ let lastStopKeywordAt = -Infinity;
 // 輸出常分批到、也會在行中間換行：和驗證碼偵測一樣把最近幾秒的新增文字接起來比對，比對時忽略空白與換行
 const stopKeywordWatcher = CatworldStopKeywords.createWatcher();
 const STOP_KEYWORD_COOLDOWN_MS = 10000;
+// 聊天回覆的資料集：別人對我說的話與我的回覆配成一筆筆存進 chatPairs（自己記錄、沒有開關）
+const chatRecorder = CatworldChatReply.createRecorder();
+let chatSave = Promise.resolve();
+function recordChat(pairs) {
+  if (!pairs.length) return;
+  chatSave = chatSave.then(async () => {
+    const stored = (await chrome.storage.local.get(CatworldChatReply.KEY))[CatworldChatReply.KEY];
+    let all = Array.isArray(stored) ? stored : [];
+    pairs.forEach(pair => { all = CatworldChatReply.addPair(all, pair); });
+    await chrome.storage.local.set({ [CatworldChatReply.KEY]: all });
+  }).catch(() => {}); // 連不上儲存（孤兒程式）就是沒記到
+}
+const feedChat = text => recordChat(chatRecorder.feed(text));
 let watchdogTimer = null;
 let lastCommand = '';
 // 驗證碼自動辨識（閒置時也作用，手動打 reward 領獎也會幫忙輸入）：偵測到圖或提示後暫停送出佇列，等圖印完（CAPTCHA_QUIET_MS 內沒有新輸出）
@@ -406,6 +419,7 @@ const captchaObserver = new MutationObserver(allRecords => {
     lastStopKeywordAt = Date.now();
     stopForKeyword(keywordHit);
   }
+  feedChat(addedText);
   // 自動辨識要原始 HTML（背景色 span 裡的亂碼文字也是方塊）：元素取 outerHTML，文字節點照 HTML 規則跳脫
   const addedHtml = records.map(record => (record.type === 'characterData'
     ? escapeHtml(record.target.textContent || '')
