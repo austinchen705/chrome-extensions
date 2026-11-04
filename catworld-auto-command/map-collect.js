@@ -1,7 +1,7 @@
 // 蒐集各個房間的怪物：玩家手動走，遊戲進房間時印出怪物行（「※名稱(ID)」，解析共用 zap-mobs.js 的 parseMobLines），
 // 這裡把這些怪記給「目前所在的房間」。遊戲的地圖視窗（#map_wrapper）會把玩家所在的房間捲到 #map_anchor（和一格同大的空方塊）的位置，
 // 所以蓋住 anchor 中心點的那個 <a id="m-區域-房間代號"> 就是目前的房間（房間格本身沒有任何「你在這裡」的樣式）。
-// 紀錄只增不減，存在 chrome.storage.local.mapMonsters，鍵是 `區域代號/房間代號`；區域名稱讀地圖標題（顯示中的那個區域）。
+// 手動蒐集只增不減（巡怪實際走進房間看過之後會修正，見 visit），存在 chrome.storage.local.mapMonsters，鍵是 `區域代號/房間代號`；區域名稱讀地圖標題（顯示中的那個區域）。
 // 怪物行出現後等 SETTLE_MS 再判斷房間：遊戲捲動地圖與印文字不是同一瞬間；這段時間內又走到別間的話會記錯房間（已知限制）。
 (() => {
 if (globalThis.CatworldMapCollect) return;
@@ -28,13 +28,52 @@ function currentRoom(doc) {
   return null;
 }
 
+// 一個房間的紀錄多兩個選填欄位（巡怪走進房間實際看過 l 之後才會有）：gone＝已不在這間的怪（內建資料裡有、但實際沒看到，
+// 讀取時扣掉）、miss＝連續幾次到訪沒看到（{ 怪: 次數 }）。玩家手動蒐集到的怪是親眼看到，會把它從 gone、miss 拿掉
+const withExtras = (row, gone, miss) => ({ ...row, ...(gone.length ? { gone } : {}), ...(Object.keys(miss).length ? { miss } : {}) });
+
 // 合併進已存的紀錄（回傳 { store, changed }，不改輸入）：怪物取聯集，區域名稱讀到才更新
 function merge(store, spot, mobs, now) {
   const old = store[spot.key];
   const all = [...new Set([...(old?.mobs || []), ...mobs])];
   const areaName = spot.areaName || old?.areaName || '';
-  if (old && old.mobs.length === all.length && old.areaName === areaName) return { store, changed: false };
-  return { store: { ...store, [spot.key]: { area: spot.area, room: spot.room, areaName, mobs: all, seen: now } }, changed: true };
+  const gone = (old?.gone || []).filter(mob => !mobs.includes(mob));
+  const miss = Object.fromEntries(Object.entries(old?.miss || {}).filter(([mob]) => !mobs.includes(mob)));
+  if (old && old.mobs.length === all.length && old.areaName === areaName
+    && gone.length === (old.gone || []).length && Object.keys(miss).length === Object.keys(old.miss || {}).length) return { store, changed: false };
+  return { store: { ...store, [spot.key]: withExtras({ area: spot.area, room: spot.room, areaName, mobs: all, seen: now }, gone, miss) }, changed: true };
+}
+
+// 巡怪走進房間、看過 l 之後修正位置（回傳 { store, changed, added, removed }，不改輸入）：
+// seen＝房間裡現在有的怪（名稱(ID)），picked＝巡怪勾選的怪。看到沒記過的就補上；勾選的怪記在這間卻沒看到，累計一次，
+// 連續 MISS_LIMIT 次到訪都沒看到就判定位置不對、從這間拿掉（內建資料裡的用 gone 扣掉，因為內建資料不寫回），之後再看到就恢復。
+// 只數勾選的怪：其他怪的位置沒有被這次巡怪驗證。路線是遊戲實際走到的房間，不會有蒐集時「地圖還沒捲動」的誤判
+const MISS_LIMIT = 3;
+function visit(store, spot, seen, picked, now) {
+  const old = store[spot.key];
+  const listed = withBuiltin(store)[spot.key]?.mobs || [];
+  const builtin = builtinStore()[spot.key]?.mobs || [];
+  let mobs = [...(old?.mobs || [])];
+  let gone = [...(old?.gone || [])];
+  const miss = { ...(old?.miss || {}) };
+  const added = [];
+  const removed = [];
+  seen.filter(isMob).forEach(mob => {
+    delete miss[mob];
+    if (gone.includes(mob)) gone = gone.filter(known => known !== mob);
+    else if (!listed.includes(mob)) { mobs.push(mob); added.push(mob); }
+  });
+  picked.filter(mob => listed.includes(mob) && !seen.includes(mob)).forEach(mob => {
+    const count = (miss[mob] || 0) + 1;
+    if (count < MISS_LIMIT) { miss[mob] = count; return; }
+    delete miss[mob];
+    mobs = mobs.filter(known => known !== mob);
+    if (builtin.includes(mob) && !gone.includes(mob)) gone.push(mob);
+    removed.push(mob);
+  });
+  const row = withExtras({ area: spot.area, room: spot.room, areaName: old?.areaName || '', mobs, seen: added.length ? now : (old?.seen ?? now) }, gone, miss);
+  if (JSON.stringify(row) === JSON.stringify(old ?? null) || (!old && !mobs.length && !gone.length && !Object.keys(miss).length)) return { store, changed: false, added, removed };
+  return { store: { ...store, [spot.key]: row }, changed: true, added, removed };
 }
 
 // 怪物一律是「名稱(ID)」。舊版（讀地圖房間 title）記下的是房間裡的玩家，只有英文 ID、沒有括號，不能當怪物複製出去
@@ -54,7 +93,9 @@ function withBuiltin(store) {
   const out = { ...base };
   Object.entries(store || {}).forEach(([key, row]) => {
     const built = base[key];
-    out[key] = built ? { ...row, areaName: row.areaName || built.areaName, mobs: [...new Set([...built.mobs, ...(row.mobs || [])])] } : row;
+    const gone = row.gone || [];
+    const all = built ? [...new Set([...built.mobs, ...(row.mobs || [])])] : (row.mobs || []);
+    out[key] = { ...row, areaName: row.areaName || built?.areaName || '', mobs: gone.length ? all.filter(mob => !gone.includes(mob)) : all };
   });
   return out;
 }
@@ -112,7 +153,7 @@ function markRooms(doc, places) {
   return count;
 }
 
-globalThis.CatworldMapCollect = { currentRoom, merge, withBuiltin, builtinStore, rows, isMob, locate, whereIs, markRooms, clearMarks, STORAGE_KEY };
+globalThis.CatworldMapCollect = { currentRoom, merge, visit, MISS_LIMIT, withBuiltin, builtinStore, rows, isMob, locate, whereIs, markRooms, clearMarks, STORAGE_KEY };
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs) return;
 

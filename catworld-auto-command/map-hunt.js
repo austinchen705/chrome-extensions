@@ -113,6 +113,9 @@ function create(deps) {
     return `（略過 ${list.length} 間：${list.slice(0, 3).map(item => `${item.key} ${item.why}`).join('、')}${list.length > 3 ? '…' : ''}）`;
   };
 
+  // 巡怪時修正了哪些怪的位置（learnVisit 的結果）：只在停止時提一句
+  const fixedNote = list => (list.length ? `（修正位置：${list.slice(0, 3).join('、')}${list.length > 3 ? '…' : ''}）` : '');
+
   const finish = (reason, { alert = false } = {}) => {
     noteAlert = alert;
     clearInterval(timer);
@@ -123,7 +126,7 @@ function create(deps) {
     unwatch = null;
     was?.fight?.resolve('stopped');
     was?.wake?.();
-    note = reason + skippedNote(was?.skipped ?? []);
+    note = reason + skippedNote(was?.skipped ?? []) + fixedNote(was?.fixed ?? []);
     deps.dropQueue();
     if (alert && was) deps.alert(reason);
     deps.notify();
@@ -147,6 +150,19 @@ function create(deps) {
     state.phase = 'plan';
   };
 
+  // 走進房間看過 l：房間裡有哪些怪就是這間的實際情形，交給 deps.learnVisit 修正蒐集到的位置（補上沒記過的、
+  // 勾選的怪連續幾次到訪都沒看到就拿掉），修正了就記進 state.fixed。存不進去不影響巡怪
+  async function learnPlaces(token, here, info) {
+    if (!deps.learnVisit) return;
+    try {
+      const result = await deps.learnVisit(here, info.monsters.map(mob => mob.full), token.mobs);
+      if (state !== token || !result) return;
+      [...(result.removed || []).map(mob => `${here} 沒有 ${mob}`), ...(result.added || []).map(mob => `${here} 有 ${mob}`)].forEach(text => state.fixed.push(text));
+    } catch {
+      // 讀寫儲存失敗（例如孤兒程式）：只是沒學到
+    }
+  }
+
   // 到了目標房間：送 l 看房間。沒有勾選的怪就直接換下一間（不必問人）；有別人就略過這間；沒見過的 ID 用 finger 分辨
   // 玩家與 NPC（NPC 記下來，下次不再問）；看不到房間（l 沒回應或讀不懂）當成走不過去；其餘進 fightRoom 打怪。
   // 每個 await 之後都要確認這一次巡怪還在（停止或重新開始後，舊的檢查不能再動新的狀態、也不能再送指令）
@@ -155,6 +171,8 @@ function create(deps) {
     if (state !== token) return;
     if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
     learnExits(here, info.exits);
+    await learnPlaces(token, here, info);
+    if (state !== token) return;
     if (!info.monsters.some(mob => token.mobs.includes(mob.full))) { state.skips = 0; doneWith(here, here); return; }
     const npcs = await deps.npcs();
     if (state !== token) return;
@@ -725,7 +743,7 @@ function create(deps) {
       const baseSkipped = rooms.filter(key => !graph.rooms[key]).map(key => ({ key, why: '不在地圖上' }));
       state = {
         round: 1, after: deps.now() + offset + settings.aheadSec * 1000, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
-        mobs: target.mobs, graph, targets, skipped: [...baseSkipped],
+        mobs: target.mobs, graph, targets, skipped: [...baseSkipped], fixed: [],
         settings, loadDue: false, load: null, unloadTries: 0, unload: null, checkingLoad: false, learn, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
         ...roundFields(), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };

@@ -1810,3 +1810,23 @@ ui('load: 0 means it never looks at i, and an i that cannot be read does not sto
     unreadable.close();
   }
 });
+
+ui('learn places: a chosen monster that is not in the room on three visits is dropped from it, and a monster seen there that was never recorded is added', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', looks: { c: { lines: [`  ※${MOB_B}`] } } });
+    await pick(page, MOB);
+    for (let visit = 1; visit <= 3; visit++) {
+      assert.deepEqual(page.store.mapMonsters['t/c'].mobs.includes(MOB), true, `still recorded before visit ${visit}`);
+      click(page, '.hstart');
+      assert.ok(await waitFor(() => /巡完了/.test(huntText(page)) && !panelRoot(page).querySelector('.hstart').disabled, 6000), huntText(page));
+      game.at = 'a';
+    }
+    assert.ok(await waitFor(() => !page.store.mapMonsters['t/c'].mobs.includes(MOB), 2000), 'dropped after the third visit');
+    assert.ok(page.store.mapMonsters['t/c'].mobs.includes(MOB_B), 'the monster that was there is learned');
+    assert.match(huntText(page), /修正位置/);
+  } finally {
+    page.close();
+  }
+});

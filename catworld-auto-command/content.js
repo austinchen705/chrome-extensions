@@ -874,6 +874,16 @@ hunt = CatworldMapHunt.create({
   room: () => CatworldMapCollect.currentRoom(document)?.key ?? null,
   areaHtml: area => document.getElementById(`m-${area}`)?.innerHTML ?? '',
   readStore: mapStore,
+  learnVisit: async (key, seen, picked) => {
+    const storageKey = CatworldMapCollect.STORAGE_KEY;
+    const at = key.indexOf('/');
+    const result = CatworldMapCollect.visit((await chrome.storage.local.get(storageKey))[storageKey] || {}, { key, area: key.slice(0, at), room: key.slice(at + 1) }, seen, picked, Date.now());
+    if (result.changed) {
+      await chrome.storage.local.set({ [storageKey]: result.store });
+      console.log('[catworld] 巡怪修正位置：', key, result.removed.length ? `移除 ${result.removed.join('、')}` : '', result.added.length ? `新增 ${result.added.join('、')}` : '');
+    }
+    return result;
+  },
   ask: askGame,
   npcs: huntNpcs,
   learnNpc: learnHuntNpc,
