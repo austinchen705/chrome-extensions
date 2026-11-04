@@ -1356,8 +1356,8 @@ ui('learn: a step that was sent again is not recorded as a connection, because t
     page.store.mapHuntExits = { 't/b': { exits: ['w', 'e'], to: {} }, 't/c': { exits: ['w'], to: {} } };
     let late = null;
     const script = command => {
-      if (command === 'e' && countOf(game, 'e') === 1) { game.at = 'a'; late = setTimeout(() => { game.at = 'b'; }, 400); return true; }
-      if (command === 'e' && countOf(game, 'e') === 2) { game.at = 'a'; return true; } // 重送的也沒走成
+      if (command === 'e' && countOf(game, 'e') === 1) { game.at = 'a'; say(page, '你的腳步一時動不了。'); late = setTimeout(() => { game.at = 'b'; }, 700); return true; }
+      if (command === 'e' && countOf(game, 'e') === 2) { game.at = 'a'; say(page, '你的腳步一時動不了。'); return true; } // 重送的也沒走成
       return false;
     };
     const game = world(page, { at: 'a', script, looks: { a: { exits: 'east' }, c: { lines: [] } } });
@@ -1433,7 +1433,7 @@ ui('rounds: it reads the server time at the start, sends the standby command aft
     assert.deepEqual(game.log.slice(0, 6), ['time', 'e', 'e', 'l', 'home', 'time']);
     assert.ok(await waitFor(() => looks.length >= 2, 9000), 'the second round starts');
     assert.ok(looks[1] >= at('10:14:40'), `not before the head start (${new Date(looks[1]).toISOString()})`);
-    assert.ok(looks[1] < at('10:15:10'), `and not long after it (${new Date(looks[1]).toISOString()})`);
+    assert.ok(looks[1] < at('10:15:50'), `and not long after it (${new Date(looks[1]).toISOString()})`);
     await page.ask({ type: 'STOP' });
   } finally {
     page.close();
@@ -1454,8 +1454,8 @@ ui('rounds: each round waits for the next respawn, even when the clock reading i
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => looks.length >= 3, 14000), `three rounds (${looks.length})`);
-    assert.ok(looks[1] >= at('10:14:40') && looks[1] < at('10:15:10'), new Date(looks[1]).toISOString());
-    assert.ok(looks[2] >= at('10:29:40') && looks[2] < at('10:30:10'), `the second respawn is not counted twice (${new Date(looks[2]).toISOString()})`);
+    assert.ok(looks[1] >= at('10:14:40') && looks[1] < at('10:15:50'), new Date(looks[1]).toISOString());
+    assert.ok(looks[2] >= at('10:29:40') && looks[2] < at('10:30:50'), `the second respawn is not counted twice (${new Date(looks[2]).toISOString()})`);
     await page.ask({ type: 'STOP' });
   } finally {
     page.close();

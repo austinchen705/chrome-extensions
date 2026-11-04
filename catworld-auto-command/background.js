@@ -1,5 +1,5 @@
 // content script 不能直接彈系統通知、也不能開分頁，由這裡代為處理
-importScripts('zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'shared-data.js', 'line-notify.js', 'game-urls.js');
+importScripts('zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'shared-data.js', 'line-notify.js', 'game-urls.js', 'skills-data.js', 'skill-moves.js');
 // 面板上的 ⚙：按一下在新分頁開啟設定頁（popup.html 當成分頁開，?tab= 帶遊戲分頁的 id），再按一次關閉並切回遊戲分頁。
 // 「遊戲分頁 → 設定分頁」的對應放在 storage.session，service worker 被收掉再醒來也還在
 const settingsKey = gameTabId => `settingsTab:${gameTabId}`;
@@ -292,6 +292,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'SHARED_REFRESH' && sender.id === chrome.runtime.id && sender.url?.startsWith(chrome.runtime.getURL(''))) {
     refreshSharedOnce(true).then(cache => sendResponse({ ok: true, cache }), error => sendResponse({ ok: false, error: error.message }));
     return true;
+  }
+  // 招式列表：只回被問到的武功（資料在 skills-data.js，不隨每個遊戲分頁載入）
+  if (message?.type === 'SKILL_MOVES' && Array.isArray(message.names)) {
+    sendResponse({ ok: true, skills: CatworldSkillMoves.lookup(SKILLS_DATA, message.names.filter(name => typeof name === 'string')) });
+    return;
   }
   if (!String(message?.type).startsWith('ZAP_')) return;
   if (message.type === 'ZAP_RIDDLE_SHARED') {
