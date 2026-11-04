@@ -115,7 +115,9 @@ function evaluate(items, db, { exp, baseline, minPrice = 0, skip = [], nonEquip 
     const level = entry.needExp ?? 0;
     if (Number.isFinite(exp) && level > exp) { out.tooHigh += 1; return; }
     const worn = (baseline?.[entry.category] ?? []).slice().sort((a, b) => (a.needExp ?? 0) - (b.needExp ?? 0))[0];
-    if (!worn) out.noBaseline += 1;
+    // 讀過目前穿著（baseline 有值）但這個類別身上沒穿：穿得了就直接建議；根本沒讀過穿著才算沒資料可比
+    if (!worn && baseline) out.suggest.push({ ...item, level, against: null, wornLevel: null });
+    else if (!worn) out.noBaseline += 1;
     else if (level > (worn.needExp ?? 0)) out.suggest.push({ ...item, level, against: worn.name, wornLevel: worn.needExp ?? 0 });
     else out.notHigher += 1;
   });
@@ -156,8 +158,8 @@ function summaryLines(result, exp, pages = 1, minSilver = 0) {
   if (result.skipped) lines.push(`略過 ${result.skipped} 件（名稱含「不 check 名單」裡的字，例如馬；設定頁可調）`);
   if (result.nonEquipment) lines.push(`略過 ${result.nonEquipment} 件已確認不是裝備的商品`);
   if (result.suggest.length) {
-    const shown = result.suggest.slice(0, SUGGEST_MAX).map(item => `${item.no} ${item.name}（需經驗 ${item.level}，現穿 ${item.against} ${item.wornLevel}）`);
-    lines.push(`建議 check（穿得了、佩帶經驗比現在穿的高；實際數值 check 後才知道）：${shown.join('；')}${result.suggest.length > SUGGEST_MAX ? `…共 ${result.suggest.length} 件` : ''}`);
+    const shown = result.suggest.slice(0, SUGGEST_MAX).map(item => `${item.no} ${item.name}（需經驗 ${item.level}，${item.against ? `現穿 ${item.against} ${item.wornLevel}` : '身上沒穿這類'}）`);
+    lines.push(`建議 check（穿得了、佩帶經驗比現在穿的高，或身上沒穿這個類別；實際數值 check 後才知道）：${shown.join('；')}${result.suggest.length > SUGGEST_MAX ? `…共 ${result.suggest.length} 件` : ''}`);
   } else if (result.known) lines.push('建議 check：沒有');
   if (result.tooHigh) lines.push(`經驗還不夠穿：${result.tooHigh} 件`);
   if (result.notHigher) lines.push(`佩帶經驗不比現在穿的高：${result.notHigher} 件`);
@@ -219,6 +221,8 @@ function classify(block, data) {
   const result = E.compareEquipment(block, baseline, { mainWeapon: data.mainWeapon, exp: readExp(), keep: E.normalizeKeepRule(data.equipmentKeep) });
   const reasons = result.reasons.slice(0, 3).join('，');
   if (result.blocked) return { kind: 'blocked', text: `和現在穿的比：經驗還不夠穿（需要 ${block.needExp}）`, reasons };
+  // 讀過目前穿著、但這個類別身上沒穿：穿得了就是值得換（沒東西可比），沒讀過穿著才是沒資料可比
+  if (result.verdict === 'none' && data.wornEquipment?.[characterName()]) return { kind: 'good', text: '身上沒穿這個類別的裝備，穿得了可以直接穿', reasons, against: null };
   if (result.verdict === 'none') return { kind: 'nobase', text: '和現在穿的比：沒有這個類別的穿著資料可比（先用面板的「讀取目前穿著」）', reasons };
   const good = result.verdict === 'better' || result.verdict === 'keep';
   return { kind: good ? 'good' : 'other', text: `和現在穿的 ${result.against} 比：${result.text}${reasons ? `（${reasons}）` : ''}`, reasons, against: result.against };
