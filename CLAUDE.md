@@ -196,8 +196,10 @@
 
 ## 聊天回覆
 
-- 規格與票在 `.scratch/chat-reply/`（不進 git）。`chat-reply.js`（純函式，manifest 與 popup 備援注入都要載入，在 `content.js` 之前）：`parseLine` 認三種私聊行——來訊 `[P]暱稱回答你：內容`、我的回覆 `[P]你告訴暱稱：…`（tell）與 `[P]你回答暱稱：…`（reply）；`>` 開頭的回聲與公開 `[P]你說道：` 不算。`createRecorder` 只處理已收到換行的完整行（輸出分批到、行會被切開），沒有換行的最後一行留到下一批（行被切開時不會記下半句）；每個暱稱記最後一句來訊，`PAIR_WINDOW_MS`（2 分鐘）內我回同一個暱稱就配成 `{ said, reply, at }`，回覆含分號的不收（會被當巨集；不安全的回覆不會吃掉待配對的來訊，之後乾淨的回覆仍配得上；空的來訊會清掉這個人之前那句）。回覆是打指令時的單行文字，不另外處理換行。`addPair` 同一組 said+reply 不重複、只留最新 `MAX_PAIRS`（500）筆。
-- `content.js` 的 `feedChat` 在 `captchaObserver` 的停止關鍵字之後呼叫（閒置時也記），寫 `chrome.storage.local.chatPairs`，寫入排成一條佇列（讀改寫不能交錯）、連不上儲存就當沒記到；沒有開關。測試在 `tests/chat-reply.test.js`。
+- 規格與票在 `.scratch/chat-reply/`（不進 git）。`chat-reply.js`（純函式，manifest 與 popup 備援注入都要載入，在 `content.js` 之前）：`parseLine` 認三種私聊行——來訊 `[P]暱稱回答你：內容`、我的回覆 `[P]你告訴暱稱：…`（tell）與 `[P]你回答暱稱：…`（reply）；`>` 開頭的回聲與公開 `[P]你說道：` 不算。`createRecorder` 只處理已收到換行的完整行（輸出分批到、行會被切開），沒有換行的最後一行留到下一批（行被切開時不會記下半句）；每個暱稱記最後一句來訊，`PAIR_WINDOW_MS`（2 分鐘）內我回同一個暱稱就配成 `{ said, reply, at }`，回覆含分號或 `@等待` 的不收（會被當巨集；不安全的回覆不會吃掉待配對的來訊，之後乾淨的回覆仍配得上；空的來訊會清掉這個人之前那句）。回覆是打指令時的單行文字，不另外處理換行。`addPair` 同一組 said+reply 不重複、只留最新 `MAX_PAIRS`（500）筆。
+- 自動回覆：設定 `chrome.storage.local.chatReply`＝`{ enabled, threshold }`（`normalizeSettings`：預設關、只有 `true` 才開、門檻預設 0.5 限制在 0.1～1），`content.js` 啟動時讀、`storage.onChanged` 即時生效。`createRecorder` 的 `onIncoming` 每收到一句非空的來訊就呼叫 `answerChat`：`worthAnswering`（至少兩個字、不是 `>` 回聲）→ `bestReply`（`similarity`＝去標點空白後相鄰兩字的 Dice 係數；只看回覆安全的資料，最高分達門檻才回，同分隨機）→ `replyDelayMs`（3～10 秒）後用 `startMacro('reply 文字', 'chat')` 送出（巨集在跑算 `active()`，閒置時也送得出去，停止一切與驗證碼會取消它）。回覆含 `;` 或 `@等待` 的資料一律不送。等待中的回覆記在 `chatTimers`，關掉開關、`stopEverything`（含驗證碼）、`retire` 都會取消；要在閒置時送得出去所以不走 `queueCommand`。
+
+- `content.js` 的 `feedChat` 在 `captchaObserver` 的停止關鍵字之後呼叫（閒置時也記），寫 `chrome.storage.local.chatPairs`，寫入排成一條佇列（讀改寫不能交錯）、連不上儲存就當沒記到；記錄一律進行，不受自動回覆的開關影響。測試在 `tests/chat-reply.test.js`。
 
 ## 在線獎勵
 

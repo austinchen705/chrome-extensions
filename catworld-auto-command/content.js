@@ -35,6 +35,7 @@ function retire() {
   groupList.forEach(group => stopTriggers(group, ''));
   hunt?.stop('');
   cancelMacros();
+  cancelChatReplies();
   queue.length = 0;
   if (watchdogTimer) clearTimeout(watchdogTimer);
   cancelReward();
@@ -116,9 +117,32 @@ let lastStopKeywordAt = -Infinity;
 // 輸出常分批到、也會在行中間換行：和驗證碼偵測一樣把最近幾秒的新增文字接起來比對，比對時忽略空白與換行
 const stopKeywordWatcher = CatworldStopKeywords.createWatcher();
 const STOP_KEYWORD_COOLDOWN_MS = 10000;
-// 聊天回覆的資料集：別人對我說的話與我的回覆配成一筆筆存進 chatPairs（自己記錄、沒有開關）
-const chatRecorder = CatworldChatReply.createRecorder();
+// 聊天回覆：別人對我說的話與我的回覆配成一筆筆存進 chatPairs（一律記錄，不受自動回覆開關影響）。
+// 自動回覆（設定 chatReply，預設關）：別人對我說的話和資料集裡某句夠相似，就隨機等幾秒後送 reply 加我以前的回覆；
+// 走 startMacro（巨集在跑算 active()，閒置時也送得出去）。等待中的回覆記在 chatTimers，關掉開關、停止一切（含驗證碼）、retire 都會取消
+const chatTimers = new Set();
+const cancelChatReplies = () => {
+  chatTimers.forEach(timer => clearTimeout(timer));
+  chatTimers.clear();
+};
+let chatReply = CatworldChatReply.normalizeSettings(undefined);
+const chatRecorder = CatworldChatReply.createRecorder({ onIncoming: answerChat });
 let chatSave = Promise.resolve();
+async function answerChat({ text }) {
+  if (!chatReply.enabled || !CatworldChatReply.worthAnswering(text)) return;
+  try {
+    const stored = (await chrome.storage.local.get(CatworldChatReply.KEY))[CatworldChatReply.KEY];
+    const hit = CatworldChatReply.bestReply(Array.isArray(stored) ? stored : [], text, chatReply.threshold);
+    if (!hit) return;
+    const timer = setTimeout(() => {
+      chatTimers.delete(timer);
+      startMacro(`reply ${hit.reply}`, 'chat');
+    }, CatworldChatReply.replyDelayMs());
+    chatTimers.add(timer);
+  } catch {
+    // 連不上儲存（孤兒程式）：這次不回
+  }
+}
 function recordChat(pairs) {
   if (!pairs.length) return;
   chatSave = chatSave.then(async () => {
@@ -755,6 +779,7 @@ function stopEverything(reason) {
   groupList.forEach(group => stopTriggers(group));
   hunt?.stop(reason);
   cancelMacros();
+  cancelChatReplies();
   return stop(reason);
 }
 
@@ -1456,14 +1481,19 @@ globalThis.CatworldShopCollect?.setSender?.(text => startMacro(text, 'shop'));
 chrome.storage.onChanged?.addListener((changes, area) => {
   if (area === 'local' && changes.persistentAlert) persistentAlert = changes.persistentAlert.newValue === true;
   if (area === 'local' && changes[CatworldStopKeywords.KEY]) stopKeywords = CatworldStopKeywords.normalize(changes[CatworldStopKeywords.KEY].newValue);
+  if (area === 'local' && changes[CatworldChatReply.SETTINGS_KEY]) {
+    chatReply = CatworldChatReply.normalizeSettings(changes[CatworldChatReply.SETTINGS_KEY].newValue);
+    if (!chatReply.enabled) cancelChatReplies();
+  }
   if (area === 'local' && changes.autoReward) {
     autoReward = changes.autoReward.newValue !== false;
     if (!autoReward) cancelReward();
   }
 });
 
-chrome.storage.local.get(['running', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert', 'autoReward', CatworldStopKeywords.KEY]).then(data => {
+chrome.storage.local.get(['running', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY]).then(data => {
   persistentAlert = data.persistentAlert === true;
+  chatReply = CatworldChatReply.normalizeSettings(data[CatworldChatReply.SETTINGS_KEY]);
   stopKeywords = CatworldStopKeywords.normalize(data[CatworldStopKeywords.KEY]);
   autoReward = data.autoReward !== false;
   if (data.settings) settings = { ...settings, ...data.settings };

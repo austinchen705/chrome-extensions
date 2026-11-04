@@ -6,6 +6,7 @@
 if (globalThis.CatworldChatReply) return;
 
 const KEY = 'chatPairs';
+const SETTINGS_KEY = 'chatReply';
 const MAX_PAIRS = 500;
 const PAIR_WINDOW_MS = 2 * 60 * 1000; // 來訊之後多久內的回覆才算「回這句」
 const INCOMING = /^\s*\[P\]\s*(.+?)回答你[：:]\s*(.*?)\s*$/;
@@ -20,17 +21,21 @@ function parseLine(line) {
   return incoming ? { kind: 'in', name: incoming[1], text: incoming[2] } : null;
 }
 
-// 回覆文字會被原樣送出或當成巨集：含分號（巨集分隔）的不收
-const safeReply = text => text.length > 0 && !text.includes(';') && !text.includes('；');
+// 回覆文字會被原樣送出或當成巨集：含分號（巨集分隔）或 @等待 的不收
+const safeReply = text => text.length > 0 && !text.includes(';') && !text.includes('；') && !text.includes('@等待');
 
-function createRecorder({ now = () => Date.now() } = {}) {
+// onIncoming（選填）：每收到一句別人對我說的話（非空）就呼叫一次，帶 { name, text }
+function createRecorder({ now = () => Date.now(), onIncoming = null } = {}) {
   let rest = '';
   const waiting = new Map(); // 暱稱 → { text, at }：這個人最後對我說的一句
   function handle(line, pairs) {
     const event = parseLine(line);
     if (!event) return;
     if (event.kind === 'in') {
-      if (event.text) waiting.set(event.name, { text: event.text, at: now() });
+      if (event.text) {
+        waiting.set(event.name, { text: event.text, at: now() });
+        onIncoming?.({ name: event.name, text: event.text });
+      }
       else waiting.delete(event.name); // 空的來訊蓋掉這個人之前那句，免得回覆配到更早的話
       return;
     }
@@ -58,5 +63,46 @@ function addPair(pairs, pair) {
   return [...pairs, pair].slice(-MAX_PAIRS);
 }
 
-globalThis.CatworldChatReply = { KEY, MAX_PAIRS, PAIR_WINDOW_MS, parseLine, createRecorder, addPair };
+// 自動回覆的設定（chrome.storage.local.chatReply）：預設關；門檻是相似度（0～1）要達到多少才回，預設 0.5，限制在 0.1～1
+function normalizeSettings(raw) {
+  const threshold = typeof raw?.threshold === 'number' && Number.isFinite(raw.threshold) ? Math.min(1, Math.max(0.1, raw.threshold)) : 0.5;
+  return { enabled: raw?.enabled === true, threshold };
+}
+
+// 字面相似度：兩段文字去掉標點與空白後，以相鄰兩字（bigram）算 Dice 係數（2×共同 ÷ 兩邊總數，0～1）；只有一個字就拿那一個字比
+const squash = text => String(text ?? '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+function bigrams(text) {
+  const chars = [...squash(text)];
+  return chars.length < 2 ? chars : chars.slice(1).map((char, index) => chars[index] + char);
+}
+function similarity(a, b) {
+  const left = bigrams(a);
+  const right = bigrams(b);
+  if (!left.length || !right.length) return 0;
+  const counts = new Map();
+  left.forEach(gram => counts.set(gram, (counts.get(gram) || 0) + 1));
+  let common = 0;
+  right.forEach(gram => {
+    const unused = counts.get(gram) || 0;
+    if (unused > 0) { common += 1; counts.set(gram, unused - 1); }
+  });
+  return (2 * common) / (left.length + right.length);
+}
+
+// 太短（不到兩個字）的來訊不回（自己指令的回聲在 parseLine 就濾掉了）
+const worthAnswering = text => [...String(text ?? '').trim()].length >= 2;
+
+// 資料集裡「對方說的話」和 said 最相似的那一筆的回覆（只看回覆安全的）；最高分不到門檻回 null，同分的隨機挑一個
+function bestReply(pairs, said, threshold, random = Math.random) {
+  const scored = pairs.filter(pair => safeReply(pair.reply)).map(pair => ({ pair, score: similarity(pair.said, said) }));
+  const best = Math.max(0, ...scored.map(item => item.score));
+  if (!scored.length || best < threshold) return null;
+  const top = scored.filter(item => item.score >= best - 1e-9);
+  return top[Math.floor(random() * top.length)].pair;
+}
+
+// 看到來訊到送出回覆之間隨機等 3～10 秒（毫秒）
+const replyDelayMs = (random = Math.random) => 3000 + Math.floor(random() * 7000);
+
+globalThis.CatworldChatReply = { KEY, SETTINGS_KEY, MAX_PAIRS, PAIR_WINDOW_MS, parseLine, createRecorder, addPair, normalizeSettings, similarity, worthAnswering, bestReply, replyDelayMs };
 })();
