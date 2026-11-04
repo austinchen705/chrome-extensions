@@ -33,12 +33,15 @@ function lookup(data, names) {
 
 // 傷害分級（顏色）：沒有傷害數字的（加內力、特效）另一色
 const TIERS = [
-  { min: 300, color: '#ff6b6b', label: '300 以上' },
-  { min: 200, color: '#ffb347', label: '200 以上' },
-  { min: 100, color: '#7bd88f', label: '100 以上' },
-  { min: 0, color: '#9aa5b1', label: '100 以下' },
+  { min: 300, color: '#ff6b6b', second: '#ffd166', label: '300 以上紅金' },
+  { min: 200, color: '#ffb347', second: '#ffe08a', label: '200 以上橘黃' },
+  { min: 100, color: '#7bd88f', second: '#a8e6cf', label: '100 以上綠' },
+  { min: 0, color: '#9aa5b1', second: '#c5ccd3', label: '其餘灰' },
 ];
 const FORCE_COLOR = '#6cc4ff';
+const FORCE_SECOND = '#a5d8ff';
+// 招式名兩個字一個顏色、輪流換（雁行斜擊＝雁行／斜擊），同一級有兩個色系；其他文字用第一個顏色
+const nameChunks = name => String(name ?? '').match(/[\s\S]{1,2}/g) ?? [];
 const tierOf = damage => TIERS.find(tier => damage >= tier.min) ?? TIERS.at(-1);
 // 傷害類型欄有時混著一長段說明（「傷勢。\n本來無效的一招…」），只留第一句
 const cleanType = text => String(text ?? '').split(/。|\\n|\n/)[0].trim();
@@ -55,6 +58,7 @@ function describe(skill, count) {
       force: move.extra?.force ?? null,
       effect: move.extra?.effect ?? null,
       color: hasDamage ? tierOf(move.damage).color : FORCE_COLOR,
+      second: hasDamage ? tierOf(move.damage).second : FORCE_SECOND,
     };
   });
   const next = skill.moves[count];
@@ -67,15 +71,17 @@ function describe(skill, count) {
   };
 }
 
-function moveText(move) {
-  const parts = [`${move.no}. ${move.name}`];
+// 招式名後面的數字部分（傷害、內力加成、特效）
+function moveDetail(move) {
+  const parts = [];
   if (move.damage !== null) parts.push(`傷害 ${move.damage}${move.type ? `（${move.type}）` : ''}`);
   if (move.force !== null) parts.push(`內力加成 ${move.force}`);
   if (move.effect) parts.push(`特效 ${move.effect}`);
-  return parts.join('　');
+  return parts.map(part => `　${part}`).join('');
 }
+const moveText = move => `${move.no}. ${move.name}${moveDetail(move)}`;
 
-globalThis.CatworldSkillMoves = { parseLearned, lookup, describe, moveText, tierOf, cleanType, TIERS, FORCE_COLOR };
+globalThis.CatworldSkillMoves = { parseLearned, lookup, describe, moveText, tierOf, cleanType, nameChunks, TIERS, FORCE_COLOR, FORCE_SECOND };
 
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.chrome?.runtime?.sendMessage || !globalThis.CatworldZapMobs) return;
@@ -98,11 +104,27 @@ function line(box, text, color, indent = false) {
   box.append(row);
 }
 
+// 一招一行：編號與後面的數字用第一個顏色，招式名兩個字一段、兩個顏色輪流
+function moveRow(box, move) {
+  const row = document.createElement('div');
+  row.style.paddingLeft = '1.5em';
+  row.style.color = move.color;
+  row.append(`${move.no}. `);
+  nameChunks(move.name).forEach((chunk, i) => {
+    const span = document.createElement('span');
+    span.textContent = chunk;
+    span.style.color = i % 2 ? move.second : move.color;
+    row.append(span);
+  });
+  row.append(moveDetail(move));
+  box.append(row);
+}
+
 function render(learned, reply) {
   const box = document.createElement('div');
   box.setAttribute(OWN, '');
   Object.assign(box.style, { border: '1px dashed #bbbbbb', padding: '4px 8px', margin: '4px 0', whiteSpace: 'pre-wrap' });
-  line(box, `招式列表（顏色＝傷害：${TIERS.map(tier => `${tier.label}`).join('、')}；藍＝加內力）`, '#9aa5b1');
+  line(box, `招式列表（顏色＝傷害：${TIERS.map(tier => tier.label).join('、')}；藍＝加內力；招式名兩個字換一個色）`, '#9aa5b1');
   if (!reply?.ok) {
     line(box, `查不到招式資料：${reply?.error ?? '沒有回應'}（extension 剛重新載入的話，請重新整理遊戲頁）`, '#ff8a7a');
   } else {
@@ -111,7 +133,7 @@ function render(learned, reply) {
       if (!skill) { line(box, `${name}：資料裡沒有這門武功`, '#9aa5b1'); return; }
       const info = describe(skill, count);
       line(box, `${name}　已悟 ${info.count}／${info.total} 招`);
-      info.moves.forEach(move => line(box, moveText(move), move.color, true));
+      info.moves.forEach(move => moveRow(box, move));
       if (info.next) line(box, `下一招 ${info.next.no}. ${info.next.name}：${name} ≥ ${info.next.self}、${info.next.forceName} ≥ ${info.next.force}`, '#9aa5b1', true);
     });
   }

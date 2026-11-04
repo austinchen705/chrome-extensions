@@ -59,6 +59,14 @@ test('describe lists the first N moves with a colour by damage, cleans the damag
   assert.equal(snow.moves[5].effect, 'SnowDamage');
 });
 
+test('nameChunks cuts a name into parts of two characters', () => {
+  assert.deepEqual(S.nameChunks('雁行斜擊'), ['雁行', '斜擊']);
+  assert.deepEqual(S.nameChunks('六脈神劍法'), ['六脈', '神劍', '法']);
+  assert.deepEqual(S.nameChunks('掌'), ['掌']);
+  assert.deepEqual(S.nameChunks(''), []);
+  assert.ok(S.TIERS.every(tier => tier.color !== tier.second), 'every level has two different colours');
+});
+
 test('describe copes with a count past the end, zero, and moves with no damage number', () => {
   const lastSkill = S.lookup(SKILLS_DATA, ['六脈神劍'])['六脈神劍'];
   const all = S.describe(lastSkill, 99);
@@ -97,6 +105,9 @@ ui('careers output gets a coloured list of the learned moves under it', async ()
     const rows = [...box(page).querySelectorAll('div')];
     const colourOf = needle => rows.find(row => row.textContent.includes(needle)).style.color;
     assert.notEqual(colourOf('雁行斜擊'), colourOf('三花聚頂'), 'different damage, different colour');
+    const parts = [...rows.find(row => row.textContent.includes('三花聚頂')).querySelectorAll('span')];
+    assert.deepEqual(parts.map(span => span.textContent), ['三花', '聚頂'], 'the name is cut into two-character parts');
+    assert.notEqual(parts[0].style.color, parts[1].style.color, 'and the parts take turns between two colours');
     assert.equal(page.w.document.querySelectorAll('[data-catworld-skills]').length, 1, 'inserted once, not once per batch');
   } finally {
     page.close();
