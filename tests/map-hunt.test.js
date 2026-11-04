@@ -559,20 +559,20 @@ ui('fight: three monsters with the same name are fought one at a time, each foll
   }
 });
 
-ui('fight: a monster that does not want to fight gets kill after the refusal, and the knocked-out sentence ends the fight too', async () => {
+ui('fight: a monster that does not want to fight gets kill after the refusal; when that only knocks it out it gets one more kill, and the corpse is taken only after the death sentence', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
     const script = (command, { say: tell }) => {
       if (command === FIGHT) { tell('看起來測試怪並不想跟你較量。'); return true; }
-      if (command === 'kill test mob') { tell(KO_LINE); return true; }
+      if (command === 'kill test mob') { tell(countOf(game, 'kill test mob') === 1 ? KO_LINE : '測試怪死了。'); return true; }
       return false;
     };
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kill test mob', 'gc', 'l']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kill test mob', 'kill test mob', 'gc', 'l']);
   } finally {
     page.close();
   }
@@ -593,7 +593,7 @@ ui('fight: the after-kill command can be several commands and is the one from th
   }
 });
 
-ui('fight: no end sentence for a long time means an l: a monster that is knocked out counts as over', async () => {
+ui('fight: no end sentence for a long time means an l: a monster that is knocked out gets a kill to finish it, then counts as over', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
@@ -601,13 +601,14 @@ ui('fight: no end sentence for a long time means an l: a monster that is knocked
     const room = { lines: mobsLines(1) };
     const script = command => {
       if (command === FIGHT) { room.lines[0] = '  ※測試怪(test mob) <昏迷不醒> [fight][kill]'; return true; }
+      if (command === 'kill test mob') { say(page, '測試怪死了。'); room.lines.splice(0, 1); return true; }
       return false;
     };
     const game = world(page, { at: 'a', looks: { c: room }, script });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'l', 'gc', 'l']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'l', 'kill test mob', 'gc', 'l']);
   } finally {
     page.close();
   }
@@ -1639,6 +1640,75 @@ ui('feature switch: switching it off stops a hunt that is running and closes the
     const count = game.log.length;
     await sleep(300);
     assert.equal(game.log.length, count, 'nothing more is sent');
+  } finally {
+    page.close();
+  }
+});
+
+ui('fight: a monster that is only knocked out is finished with kill before the corpse is taken; a monster that dies straight away gets no extra kill', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const room = { lines: mobsLines(2) };
+    let knocked = false;
+    const script = command => {
+      if (command === FIGHT) { say(page, knocked ? '測試怪死了。' : KO_LINE); knocked = true; return true; }
+      if (command === 'kill test mob') { say(page, '測試怪死了。'); return true; }
+      if (command === 'gc') { room.lines.shift(); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: room }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kill test mob', 'gc', 'l', FIGHT, 'gc', 'l'], 'knocked out: kill, then gc; the second one died at once: no kill');
+  } finally {
+    page.close();
+  }
+});
+
+ui('fight: with the finishing switched off a knocked-out monster goes straight to the after-kill command', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, finishKnockedOut: 'off' };
+    const script = command => {
+      if (command === FIGHT) { say(page, KO_LINE); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'l']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('fight: the finishing kill does not send the special attack, and a knocked-out sentence does not end it, only the death sentence does', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'pt', specialIntervalSec: 1 };
+    let kills = 0;
+    const script = command => {
+      if (command === FIGHT) { say(page, KO_LINE); return true; }
+      if (command === 'kill test mob') {
+        kills += 1;
+        setTimeout(() => say(page, kills === 1 ? KO_LINE : '測試怪死了。'), 0);
+        return true;
+      }
+      return command === 'pt';
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => game.log.includes('kill test mob'), 4000));
+    const ptBefore = countOf(game, 'pt');
+    await sleep(300);
+    assert.equal(countOf(game, 'pt'), ptBefore, 'no special attack while finishing');
+    await page.ask({ type: 'STOP' });
   } finally {
     page.close();
   }
