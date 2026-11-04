@@ -25,6 +25,14 @@ const buyNames = value => parseNames(value, DEFAULT_BUY_NAMES);
 const SKIP_NAMES_KEY = 'shopSkipNames';
 const DEFAULT_SKIP_NAMES = '赤兔馬、白馬、烏黑駒、自由行走的花的赤兔馬';
 const skipNames = value => parseNames(value, DEFAULT_SKIP_NAMES);
+// 已知不是裝備的商品（精確比對名稱）：不 check、不算沒蒐集。內建的是作者 check 過的雜物；另外 check 之後輸出裡沒有「此物名曰」
+// 裝備區塊的商品會自動記進 chrome.storage.local.shopNonEquip（名稱陣列），之後也一樣略過
+const NON_EQUIP_KEY = 'shopNonEquip';
+const BUILTIN_NON_EQUIPMENT = [
+  '破扇子', '破舊八卦鏡', '鑼', '假玉佩', '玉手鐲', '黑耀石球', '彈珠', '祖母綠', '奶茶兔吊飾', '粉兔兔吊飾',
+  '明朝古董木雕', '木如意', '三彩翠玉', '斷掉的玉釵', '銅燈', '馬蹄鐵', '唸珠', '象牙箸', '夜壺', '照妖鏡',
+];
+const nonEquipSet = learned => new Set([...BUILTIN_NON_EQUIPMENT, ...(Array.isArray(learned) ? learned.filter(name => typeof name === 'string') : [])]);
 const SETTLE_MS = 600;
 const ARM_MS = 3000;
 const SUGGEST_MAX = 12;
@@ -87,10 +95,11 @@ function rows(db) {
 // 把 list 這一頁的項目逐一和資料庫比：沒蒐集過的放 unknown；蒐集過的只看佩帶經驗（等級）：
 // 經驗不夠穿的只計數；穿得了的和「現在穿的同類別裡佩帶經驗最低的那件」（最該換掉的）比，要求經驗更高的放 suggest（建議 check），
 // 不比它高的只計數；同類別沒有穿著資料可比的只計數。傷害、屬性不拿來判斷（同名裝備的數值可能不同）
-function evaluate(items, db, { exp, baseline, minPrice = 0, skip = [] } = {}) {
-  const out = { total: 0, skipped: 0, known: 0, suggest: [], unknown: [], unknownPrices: [], unknownItems: [], cheap: 0, tooHigh: 0, notHigher: 0, noBaseline: 0 };
+function evaluate(items, db, { exp, baseline, minPrice = 0, skip = [], nonEquip = new Set() } = {}) {
+  const out = { total: 0, skipped: 0, nonEquipment: 0, known: 0, suggest: [], unknown: [], unknownPrices: [], unknownItems: [], cheap: 0, tooHigh: 0, notHigher: 0, noBaseline: 0 };
   items.forEach(item => {
     if (skip.some(word => item.name.includes(word))) { out.skipped += 1; return; }
+    if (nonEquip.has(item.name)) { out.nonEquipment += 1; return; }
     out.total += 1;
     const entry = db?.[item.name];
     if (!entry) {
@@ -114,12 +123,38 @@ function evaluate(items, db, { exp, baseline, minPrice = 0, skip = [] } = {}) {
   return out;
 }
 
+// check 的輸出沒有商品名稱，編號取自指令回聲（`> check 2` 單獨一行）：每個「你付了一筆錢給商人」往前找最近的回聲
+// （不能越過上一個回應；第一個找不到時用 priorNo，也就是這段文字之前最後一次回聲的編號）。這段回應裡沒有「此物名曰」就不是裝備。
+// 找不到編號的不回傳（寧可不學，也不要把裝備誤記成非裝備）
+const ECHO_LINE = /(?:^|\n|>)[ \t]*check[ \t]+(\d+)[ \t]*(?=\r?\n|$|你付了)/g;
+const lastEchoNo = text => {
+  const found = [...String(text ?? '').matchAll(ECHO_LINE)];
+  return found.length ? Number(found[found.length - 1][1]) : null;
+};
+function nonEquipmentNumbers(text, priorNo = null) {
+  const starts = [...text.matchAll(new RegExp(CHECK_PHRASE.source, 'g'))].map(match => match.index);
+  const echoes = [...text.matchAll(ECHO_LINE)].map(match => ({ at: match.index, no: Number(match[1]) }));
+  const out = [];
+  starts.forEach((start, i) => {
+    const previous = i > 0 ? starts[i - 1] : -1;
+    const echo = echoes.filter(item => item.at < start && item.at > previous).pop();
+    const no = echo ? echo.no : (i === 0 ? priorNo : null);
+    const segment = text.slice(start, i + 1 < starts.length ? starts[i + 1] : text.length);
+    if (no !== null && !/此物名曰/.test(segment)) out.push(no);
+  });
+  return out;
+}
+
 const checkCommand = numbers => numbers.map(no => `check ${no}`).join(';');
 
 function summaryLines(result, exp, pages = 1, minSilver = 0) {
-  if (!result.total) return result.skipped ? [`【裝備資料庫】這頁 ${result.skipped} 件都在「不 check 名單」裡（例如馬），略過`] : [];
+  if (!result.total) {
+    if (result.skipped) return [`【裝備資料庫】這頁 ${result.skipped} 件都在「不 check 名單」裡（例如馬），略過`];
+    return result.nonEquipment ? [`【裝備資料庫】這頁 ${result.nonEquipment} 件都已確認不是裝備，略過`] : [];
+  }
   const lines = [`【裝備資料庫】經驗 ${Number.isFinite(exp) ? exp : '讀不到'}　${pages > 1 ? `累計 ${pages} 頁` : '這頁'} ${result.total} 件，已蒐集 ${result.known} 件`];
   if (result.skipped) lines.push(`略過 ${result.skipped} 件（名稱含「不 check 名單」裡的字，例如馬；設定頁可調）`);
+  if (result.nonEquipment) lines.push(`略過 ${result.nonEquipment} 件已確認不是裝備的商品`);
   if (result.suggest.length) {
     const shown = result.suggest.slice(0, SUGGEST_MAX).map(item => `${item.no} ${item.name}（需經驗 ${item.level}，現穿 ${item.against} ${item.wornLevel}）`);
     lines.push(`建議 check（穿得了、佩帶經驗比現在穿的高；實際數值 check 後才知道）：${shown.join('；')}${result.suggest.length > SUGGEST_MAX ? `…共 ${result.suggest.length} 件` : ''}`);
@@ -143,7 +178,7 @@ function summaryLines(result, exp, pages = 1, minSilver = 0) {
 let sender = null;
 const setSender = fn => { sender = typeof fn === 'function' ? fn : null; };
 
-globalThis.CatworldShopCollect = { setSender, BATCH_MAX, BUY_MAX, BUY_NAMES_KEY, DEFAULT_BUY_NAMES, buyNames, SKIP_NAMES_KEY, DEFAULT_SKIP_NAMES, skipNames, MIN_PRICE_KEY, DEFAULT_MIN_SILVER, normalizeMinSilver, parsePrice, formatMoney, checkCost, parseList, entryFrom, withBuiltin, builtinDb, rows, evaluate, checkCommand, summaryLines, DB_KEY };
+globalThis.CatworldShopCollect = { setSender, BATCH_MAX, BUY_MAX, BUY_NAMES_KEY, DEFAULT_BUY_NAMES, buyNames, SKIP_NAMES_KEY, DEFAULT_SKIP_NAMES, skipNames, MIN_PRICE_KEY, DEFAULT_MIN_SILVER, normalizeMinSilver, parsePrice, formatMoney, checkCost, parseList, entryFrom, withBuiltin, builtinDb, rows, evaluate, checkCommand, summaryLines, DB_KEY, NON_EQUIP_KEY, BUILTIN_NON_EQUIPMENT, nonEquipSet, nonEquipmentNumbers };
 
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs || !globalThis.CatworldZapEquipment) return;
@@ -161,6 +196,8 @@ let lastNode = null;
 let timer = null;
 let armedUntil = 0;
 let lastAnchor = null;
+let lastEcho = null; // 最近一次看到的 check 指令回聲編號
+let priorEcho = null; // buffer 開始累積時，在那之前最後一次回聲的編號
 
 function newBox() {
   const box = document.createElement('div');
@@ -302,7 +339,7 @@ function buyAll(matches) {
 function showSummary(items, data, db, pages = 1) {
   const exp = readExp();
   const minSilver = normalizeMinSilver(data.shopMinPrice);
-  const result = evaluate(items, db, { exp, baseline: data.wornEquipment?.[characterName()], minPrice: minSilver * 100, skip: skipNames(data[SKIP_NAMES_KEY]) });
+  const result = evaluate(items, db, { exp, baseline: data.wornEquipment?.[characterName()], minPrice: minSilver * 100, skip: skipNames(data[SKIP_NAMES_KEY]), nonEquip: nonEquipSet(data[NON_EQUIP_KEY]) });
   const box = newBox();
   summaryLines(result, exp, pages, minSilver).forEach(line => {
     const row = document.createElement('div');
@@ -391,13 +428,14 @@ function collectBatch(count, blocks, data) {
 
 async function flush() {
   const text = buffer;
+  const echoBefore = priorEcho;
   lastAnchor = lastNode;
   buffer = '';
   lastNode = null;
   timer = null;
   armedUntil = 0;
   try {
-    const data = await chrome.storage.local.get([DB_KEY, MIN_PRICE_KEY, BUY_NAMES_KEY, SKIP_NAMES_KEY, 'zapFeatures', 'wornEquipment', 'mainWeapon', 'equipmentKeep']);
+    const data = await chrome.storage.local.get([DB_KEY, NON_EQUIP_KEY, MIN_PRICE_KEY, BUY_NAMES_KEY, SKIP_NAMES_KEY, 'zapFeatures', 'wornEquipment', 'mainWeapon', 'equipmentKeep']);
     if (data.zapFeatures?.shop !== true) return;
     let db = data[DB_KEY] || {};
     const at = text.search(CHECK_PHRASE);
@@ -408,6 +446,18 @@ async function flush() {
         db = { ...db };
         blocks.forEach(block => { db[block.name] = entryFrom(block, Date.now()); });
         await chrome.storage.local.set({ [DB_KEY]: db });
+      }
+      // 沒有裝備區塊的商品（食物、雜物…）記成非裝備，之後 list 不再列為沒蒐集；名稱靠編號從累計的 list 找，找不到就不學
+      const learned = new Set(Array.isArray(data[NON_EQUIP_KEY]) ? data[NON_EQUIP_KEY] : []);
+      const before0 = learned.size;
+      nonEquipmentNumbers(text, echoBefore).forEach(no => {
+        const name = session.items.get(no)?.name ?? [...(batchRun?.byName.values() ?? [])].find(item => item.no === no)?.name;
+        if (name && !blocks.some(block => block.name === name)) learned.add(name);
+      });
+      blocks.forEach(block => learned.delete(block.name));
+      if (learned.size !== before0 || blocks.some(block => (data[NON_EQUIP_KEY] || []).includes(block.name))) {
+        data[NON_EQUIP_KEY] = [...learned];
+        await chrome.storage.local.set({ [NON_EQUIP_KEY]: data[NON_EQUIP_KEY] });
       }
       if (batchRun) collectBatch((text.match(new RegExp(CHECK_PHRASE.source, 'g')) || []).length, blocks, data);
       else showRecorded(blocks, before, db, data);
@@ -434,9 +484,12 @@ const observer = new MutationObserver(records => {
     ? [record.target.textContent || '']
     : Array.from(record.addedNodes, node => (isOwn(node) ? '' : node.textContent || ''))));
   const text = CatworldZapMobs.textFromAdded(texts);
+  const prior = lastEcho;
+  lastEcho = lastEchoNo(text) ?? lastEcho;
   if (CHECK_PHRASE.test(text)) armedUntil = Date.now() + ARM_MS;
   // check 的輸出可能分成好幾批到，叫出來之後 ARM_MS 內的新文字都接上去
   if (!/價格\s*[：:]/.test(text) && Date.now() > armedUntil) return;
+  if (!buffer) priorEcho = prior;
   buffer += text;
   const added = mine.flatMap(record => Array.from(record.addedNodes)).filter(node => !isOwn(node));
   if (added.length) lastNode = added[added.length - 1];

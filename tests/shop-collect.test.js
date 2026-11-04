@@ -777,3 +777,54 @@ ui('the built-in merchant items count as collected, the player check wins over t
     page.close();
   }
 });
+
+ui('nonEquipmentNumbers reads the check number from the echo line and ignores equipment blocks', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const { nonEquipmentNumbers } = page.w.CatworldShopCollect;
+    const text = [
+      '你付了一筆錢給商人，得到了以下資料：', '有裂痕的鐵扇一把。', '',
+      '> check 2', checkOutput('烈火棍', '棍類武器', 60, 100), '',
+      '> check 3', '你付了一筆錢給商人，得到了以下資料：', '打更用的鑼。', '功能: 無。',
+    ].join('\n');
+    assert.deepEqual([...nonEquipmentNumbers(text, 1)], [1, 3], 'the first has no echo in the text, so the prior echo is used');
+    assert.deepEqual([...nonEquipmentNumbers(text, null)], [3], 'no number, no learning');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a check with no equipment block remembers the item as non-equipment and later lists skip it', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.output(`<span>${['商人現在有賣以下貨物：', ' 1 黃金鎖鍊              價格：60S      30 神秘小物              價格：50S     ', '== 未完繼續 52% =='].join('\n')}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    page.output('<span>> check 30\n</span>');
+    await sleep(50);
+    page.output('<span>你付了一筆錢給商人，得到了以下資料：\n普通的小東西，沒什麼好看的。\n功能: 無。\n</span>');
+    assert.ok(await waitFor(() => (page.store.shopNonEquip || []).includes('神秘小物'), 2000));
+    page.output(`<span>${['商人現在有賣以下貨物：', ' 1 黃金鎖鍊              價格：60S      30 神秘小物              價格：50S     ', '== 未完繼續 52% =='].join('\n')}</span>`);
+    const lastBox = () => [...page.w.document.querySelectorAll('[data-catworld-shop]')].pop();
+    assert.ok(await waitFor(() => /已確認不是裝備/.test(lastBox()?.textContent || ''), 2000));
+    assert.doesNotMatch(lastBox().textContent, /還沒蒐集（[^）]*）：[^\n]*30/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('the built-in non-equipment names are skipped without having been checked, and a real equipment block un-learns a name', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.store.shopNonEquip = ['烈火棍'];
+    page.output(`<span>${['商人現在有賣以下貨物：', ' 3 鑼                    價格：1G       4 烈火棍                價格：1G40S   ', '== 未完繼續 52% =='].join('\n')}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    assert.match(shopBox(page).textContent, /這頁 2 件都已確認不是裝備，略過/);
+    page.output('<span>> check 4\n</span>');
+    page.output(`<span>${checkOutput('烈火棍', '棍類武器', 60, 100)}\n</span>`);
+    assert.ok(await waitFor(() => !(page.store.shopNonEquip || []).includes('烈火棍'), 2000));
+  } finally {
+    page.close();
+  }
+});
