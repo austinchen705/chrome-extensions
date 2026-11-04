@@ -26,6 +26,8 @@
 //   1. 只看「新出現」的文字：按開始時不掃歷史，也不會一開始就觸發。
 //   2. 冷卻期間（waiting）出現的關鍵字直接丟掉，不補送：冷卻結束後沒有新的關鍵字文字就不會再觸發。
 //   3. 以 > 開頭的行是指令回聲（自己或使用者打的指令），整行略過。
+// 遊戲輸出常分成好幾批到（和驗證碼偵測一樣），關鍵字也可以是多行，所以每條規則看的是「最近 KEYWORD_WINDOW_MS 內、自己還沒用過的新文字」接在一起的結果：
+// 沒命中的文字留在視窗裡等下一批；命中後這條規則把到目前為止的文字都當成用過（同一段文字不會再觸發）；冷卻中（不是待命）的規則，那段時間來的文字也算用過，不補送。
 // 關鍵字規則沒有「有沒有效果」可判斷，limitIneffective 不適用；三道限制關閉時，冷卻（最少 1 秒）是唯一的頻率限制。
 // 規則的 stopGroup（命中送出後停止這一組）由呼叫端的 send 處理，引擎只把它帶在規則上；勾了 stopGroup 的規則可以不填指令
 //（只停止、不送任何指令），所以「指令為空」只在沒勾 stopGroup 時才算規則無效。
@@ -117,10 +119,16 @@ function hasActiveRules(raw) {
   return normalizeConfig(raw).rules.some(rule => rule.enabled);
 }
 
+const KEYWORD_WINDOW_MS = 5000;
+// 關鍵字可以有好幾行：顯示時換行與連續空白合成一個空格，太長截斷
+const keywordShown = pattern => {
+  const text = String(pattern ?? '').replace(/\s+/g, ' ').trim();
+  return text.length > 30 ? `${text.slice(0, 30)}…` : text;
+};
 const unitSuffix = rule => (rule.unit === 'pct' ? '％' : '');
 const isUpper = rule => rule.op === 'ge';
 const ruleLabel = rule => (rule.kind === 'keyword'
-  ? `關鍵字「${rule.pattern}」`
+  ? `關鍵字「${keywordShown(rule.pattern)}」`
   : `${rule.stat} ${isUpper(rule) ? '≥' : '≤'} ${rule.value}${unitSuffix(rule)}`);
 function rearmLevel(rule) {
   if (rule.unit === 'pct') return isUpper(rule) ? rule.value - rule.buffer : rule.value + rule.buffer;
@@ -134,7 +142,11 @@ const improved = (rule, current, from) => (isUpper(rule) ? current < from : curr
 // io: { now(), readStat(name) → { value, max } | null, isNormal() → true | false | null, send(commands, index), onDisable(index, label, reason), random?() }
 function createEngine(rawConfig, io) {
   const config = normalizeConfig(rawConfig);
+  // 關鍵字規則看的最近文字（每批一段，seq 遞增）；每條規則的 consumed 是它已經用過的最後一段
+  let seq = 0;
+  let recent = [];
   const runtime = config.rules.map(rule => ({
+    consumed: 0,
     phase: rule.enabled ? 'ready' : 'off',
     fires: [],
     fireValue: null,
@@ -222,12 +234,21 @@ function createEngine(rawConfig, io) {
     if (!lines.length) return;
     // 遊戲會把長句子在固定寬度硬斷行，所以比對時忽略換行與空白（關鍵字也一樣），跨行的句子才對得到
     const squash = value => value.toLowerCase().replace(/\s+/g, '');
-    const haystack = squash(lines.join(''));
+    seq += 1;
+    recent.push({ seq, at: now, text: squash(lines.join('')) });
+    recent = recent.filter(piece => now - piece.at <= KEYWORD_WINDOW_MS);
     releaseKeywordRules(now);
     config.rules.forEach((rule, index) => {
-      if (rule.kind !== 'keyword' || runtime[index].phase !== 'ready') return;
+      if (rule.kind !== 'keyword') return;
+      const state = runtime[index];
+      // 不是待命（冷卻中、停用）：這一批不能留到之後用
+      if (state.phase !== 'ready') { state.consumed = seq; return; }
       const needle = squash(rule.pattern);
-      if (needle && haystack.includes(needle)) fire(index, null, now);
+      if (!needle) return;
+      const joined = recent.filter(piece => piece.seq > state.consumed).map(piece => piece.text).join('');
+      if (!joined.includes(needle)) return;
+      state.consumed = seq;
+      fire(index, null, now);
     });
   }
 
@@ -274,7 +295,7 @@ function createEngine(rawConfig, io) {
   function rearm(index) {
     const state = runtime[index];
     if (!state || state.phase !== 'disabled') return;
-    Object.assign(state, { phase: 'ready', fires: [], fireValue: null, cooldownUntil: 0, pendingUntil: null, ineffective: 0, note: '' });
+    Object.assign(state, { phase: 'ready', fires: [], fireValue: null, cooldownUntil: 0, pendingUntil: null, ineffective: 0, note: '', consumed: seq });
     pending = pending.filter(item => item.index !== index);
   }
 

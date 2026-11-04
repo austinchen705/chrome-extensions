@@ -610,16 +610,17 @@ function createTriggerPane(group) {
     const pill = field('pill', element('span', { className: 'pill', hidden: true }));
     const again = field('again', element('button', { type: 'button', className: 'linkbtn', textContent: '重新啟用', hidden: true }));
     const remove = element('button', { type: 'button', className: 'x', textContent: '✕', title: '刪除這條規則' });
-    const pattern = field('pattern', element('input', { type: 'text', value: rule.pattern || '', placeholder: '例：你覺得口渴', title: '新出現的遊戲文字含這段字就觸發（不分大小寫）' }));
+    const pattern = field('pattern', element('textarea', { rows: 2, value: rule.pattern || '', placeholder: '例：你覺得口渴（可以貼多行）', title: '新出現的遊戲文字含這段字就觸發（不分大小寫；多行、換行與空白不影響比對）' }));
+    pattern.style.minHeight = '48px';
     const commands = field('commands', element('textarea', { value: (rule.commands || []).join('\n'), placeholder: '例：drink' }));
     const cooldown = field('cooldown', element('input', { type: 'number', min: Engine.MIN_COOLDOWN_SEC, value: rule.cooldown ?? D.cooldown }));
     const head = element('div', { className: 'rule-head' }, enabled, element('span', { className: 'kind', textContent: '關鍵字' }), element('span', { className: 'grow' }, pill), again, remove);
     const body = element('div', { className: 'rule-body' },
-      element('label', { textContent: '關鍵字（遊戲新出現的文字含有就觸發，不分大小寫）' }), pattern,
+      element('label', { textContent: '關鍵字（遊戲新出現的文字含有就觸發，不分大小寫；可以貼多行，換行與空白不影響比對，分批印出來的也看得到）' }), pattern,
       element('label', { textContent: '送出的指令（一行一個，依序送出）' }), commands,
       element('label', { textContent: '冷卻（秒，最少 1）' }), cooldown, stopGroupField(rule), priorityField(rule));
     const card = element('div', { className: 'rule' }, head, body);
-    foldRule(card, head, body, () => `「${pattern.value.trim() || '（尚未填關鍵字）'}」　→　${commandText(card, commands)}`, open);
+    foldRule(card, head, body, () => `「${pattern.value.replace(/\s+/g, ' ').trim() || '（尚未填關鍵字）'}」　→　${commandText(card, commands)}`, open);
     card.dataset.kind = 'keyword';
     wireRuleControls(card, remove, again);
     return card;
