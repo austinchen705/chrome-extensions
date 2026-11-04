@@ -19,7 +19,7 @@
 
 ## 停止關鍵字
 
-- `stop-keywords.js`（純函式，content script 與設定頁共用；manifest、popup.html、popup 備援注入都要載入，在 `content.js`／`popup.js` 之前）：`normalize`（缺值＝開、清單 `jrealm`；清單被清空就是真的沒有詞）、`list`（`、,，;；` 與換行分隔、去重、最多 `MAX_WORDS` 個、每個最多 `MAX_LENGTH` 字）、`find`（不分大小寫的子字串，比對時忽略所有空白與換行；以 `>` 開頭的行是自己指令的回聲，不算）、`createWatcher`（和驗證碼的 `artWatcher` 同一種處理：輸出分批到、詞在行中間換行，所以把最近 `WINDOW_MS`＝5 秒的新增文字接起來再比對，最多留 `MAX_CHARS`，命中後清空；`now` 可注入）。設定存在 `chrome.storage.local.stopKeywords`（`{ enabled, words }`，words 是字串），設定頁改了馬上生效（`storage.onChanged`）。
+- `stop-keywords.js`（純函式，content script 與設定頁共用；manifest、popup.html、popup 備援注入都要載入，在 `content.js`／`popup.js` 之前）：`normalize`（缺值＝開、清單 `jrealm`；清單被清空就是真的沒有詞）、`list`（`、` 或空行分隔，單純換行算同一個詞，所以多行的輸出可以整段貼成一個詞；逗號、分號不分隔，因為貼進來的輸出裡常有；去重、最多 `MAX_WORDS` 個、每個最多 `MAX_LENGTH` 字，不算空白）、`find`（不分大小寫的子字串，比對時忽略所有空白與換行；以 `>` 開頭的行是自己指令的回聲，不算）、`createWatcher`（和驗證碼的 `artWatcher` 同一種處理：輸出分批到、詞在行中間換行，所以把最近 `WINDOW_MS`＝5 秒的新增文字接起來再比對，最多留 `MAX_CHARS`，命中後清空；`now` 可注入）。設定存在 `chrome.storage.local.stopKeywords`（`{ enabled, words }`，words 是字串），設定頁的欄位是 `<textarea id="stopKeywordsList">`（`<input>` 會把貼上的換行吃掉）；改了馬上生效（`storage.onChanged`）。
 - `content.js` 的 `captchaObserver` 在 `watchReward` 之後、驗證碼分支與 `active()` 判斷**之前**檢查（所以閒置時也提醒）：一律先餵 `stopKeywordWatcher.feed`（閒置時也餵，視窗才接得起來），命中就 `stopForKeyword`＝`alertOnly`（響一次、不進 `ringing`）加 `stopEverything`；原因不含「驗證」，停了之後可以直接再按開始。`STOP_KEYWORD_COOLDOWN_MS`（10 秒）內同一批後續的命中不重複。測試在 `tests/stop-keywords.test.js`。
 
 ## 孤兒程式與重複面板

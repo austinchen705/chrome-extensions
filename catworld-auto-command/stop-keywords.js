@@ -1,24 +1,26 @@
 // 停止關鍵字：遊戲輸出（#content 裡新出現的文字）含有清單裡任何一個詞，就停掉所有功能並警報一次。
 // 純函式，不碰 DOM 與 chrome.*（content script 與設定頁共用）；設定存在 chrome.storage.local.stopKeywords：
-// { enabled, words }，words 是用「、」「,」「;」或換行分隔的字串。缺值＝開著、清單是 jrealm。
+// { enabled, words }，words 是用「、」或空行分隔的字串（一個詞可以有好幾行）。缺值＝開著、清單是 jrealm。
 // 遊戲輸出常分成好幾批到、也會在行中間換行，所以和驗證碼偵測（captcha-art.js 的 createWatcher）一樣，不能只看單一批：
 // createWatcher 把最近 WINDOW_MS 內的新增文字接在一起比對，而且比對時忽略所有空白與換行（詞跨行、跨批、中間夾換行都命中）。
 (() => {
 const KEY = 'stopKeywords';
 const DEFAULT_WORDS = 'jrealm';
 const MAX_WORDS = 50;
-const MAX_LENGTH = 100;
+const MAX_LENGTH = 300; // 一個詞最多幾個字（不算空白與換行）
 const WINDOW_MS = 5000; // 接在一起比對的時間範圍
 const MAX_CHARS = 4000; // 接在一起的最大字數（只留最後這麼多）
 
-// 詞的清單：去空白、去重（不分大小寫）、過長的丟掉、最多 MAX_WORDS 個
+// 詞的清單：「、」或空行分隔（逗號、分號不分隔：貼進來的輸出裡常有），一個詞可以有好幾行（單純換行算同一個詞，貼一段多行的輸出進來就是一個詞）；
+// 去頭尾空白、去重（不分大小寫、忽略空白）、過長的（不算空白）丟掉、最多 MAX_WORDS 個
 function list(words) {
   const seen = new Set();
   const out = [];
-  String(words ?? '').split(/[、,，;；\n]+/).forEach(raw => {
+  String(words ?? '').replace(/\r\n?/g, '\n').split(/、+|\n[ \t　]*\n/).forEach(raw => {
     const word = raw.trim();
-    if (!word || word.length > MAX_LENGTH || seen.has(word.toLowerCase()) || out.length >= MAX_WORDS) return;
-    seen.add(word.toLowerCase());
+    const key = word.toLowerCase().replace(/\s+/g, '');
+    if (!key || key.length > MAX_LENGTH || seen.has(key) || out.length >= MAX_WORDS) return;
+    seen.add(key);
     out.push(word);
   });
   return out;

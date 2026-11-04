@@ -182,8 +182,8 @@
   <details class="alertbox fold" id="sec-stopwords">
     <summary>停止關鍵字</summary>
     <label class="check"><input id="stopKeywordsOn" type="checkbox"> 遊戲輸出出現關鍵字就停止所有功能並警報</label>
-    <label for="stopKeywordsList">關鍵字（可填多個，用、分隔）</label>
-    <input id="stopKeywordsList" type="text">
+    <label for="stopKeywordsList">關鍵字（可填多個，用「、」或空行分隔；一個詞可以有好幾行，直接貼多行的輸出進來（逗號、分號不分隔））</label>
+    <textarea id="stopKeywordsList" rows="3"></textarea>
     <p class="hint tight">預設開啟，預設只有 jrealm。遊戲輸出（輸出區新出現的文字）含清單裡任何一個詞（不分大小寫）就停止定時、隨機、所有觸發、巨集、巡怪，響一次並跳通知；閒置時也會提醒。輸出分批到或詞中間換行也看得到（最近 5 秒的新增文字會接起來比對，忽略空白與換行）；自己打的指令的回聲（以 &gt; 開頭的行）不算；同一個命中 10 秒內不重複。清單清空就不會命中。</p>
   </details>
   <details class="alertbox fold" id="sec-reward">

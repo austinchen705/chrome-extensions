@@ -242,7 +242,8 @@ function stopForTakeover() {
 }
 // 輸出裡出現停止關鍵字：全部停下並提醒一次（原因不含「驗證」，之後可以直接再按開始）
 function stopForKeyword(word) {
-  const reason = `遊戲輸出出現關鍵字「${word}」，已全部停止`;
+  const shown = word.replace(/\s+/g, ' ');
+  const reason = `遊戲輸出出現關鍵字「${shown.length > 40 ? `${shown.slice(0, 40)}…` : shown}」，已全部停止`;
   alertOnly(reason, '⚠ 命中關鍵字');
   return stopEverything(reason);
 }

@@ -15,11 +15,38 @@ test('normalize: a missing setting means on with the default list, and a broken 
 });
 
 test('list: several separators, trimmed, no duplicates, no empty ones, bounded', () => {
-  assert.deepEqual(K.list('jrealm、 GM ,管理員;巫師\nJRealm'), ['jrealm', 'GM', '管理員', '巫師']);
+  assert.deepEqual(K.list('jrealm、 GM 、管理員\n\n巫師\n\nJRealm'), ['jrealm', 'GM', '管理員', '巫師']);
+  assert.deepEqual(K.list('a, b; c，d；e'), ['a, b; c，d；e'], 'commas and semicolons stay inside a word (pasted output has them)');
+  assert.deepEqual(K.list('第一行\n第二行\n\n別的詞'), ['第一行\n第二行', '別的詞'], 'a single line break stays inside one word, a blank line separates words');
+  assert.deepEqual(K.list('abc\ndef\n\na b\ncdef'), ['abc\ndef'], 'the same words with different spacing are one word');
   assert.deepEqual(K.list(''), []);
   assert.deepEqual(K.list(null), []);
   assert.deepEqual(K.list('a'.repeat(K.MAX_LENGTH + 1)), [], 'a word that is too long is dropped');
   assert.equal(K.list(Array.from({ length: 80 }, (_, i) => `w${i}`).join('、')).length, K.MAX_WORDS);
+});
+
+test('a pasted multi-line word hits the same text however the output is broken into lines', () => {
+  const pasted = '你看到一位使者\n正從遠方走來，\n身上寫著 JRealm。';
+  assert.equal(K.find('你看到一位使者正從遠方走來，身上寫著 jrealm。', pasted), pasted);
+  assert.equal(K.find('你看到一位使者 \n  正從遠方走來，身上\n寫著 JRealm。', pasted), pasted);
+  assert.equal(K.find('你看到一位使者走了。', pasted), null);
+  let clock = 0;
+  const watcher = K.createWatcher({ now: () => clock });
+  assert.equal(watcher.feed('你看到一位使者\n正從遠方', pasted), null);
+  clock += 500;
+  assert.equal(watcher.feed('走來，身上寫著 JRealm。', pasted), pasted, 'and across batches');
+});
+
+test('a two-line fight message pasted into the settings hits, whether the field kept the line break or flattened it', () => {
+  const output = '老虎用爪子往你的頸部一抓！\n結果只是勉強造成一處輕微傷口。';
+  assert.equal(K.find(output, output), output, 'pasted with the line break');
+  assert.equal(K.find(output, '老虎用爪子往你的頸部一抓！結果只是勉強造成一處輕微傷口。'), '老虎用爪子往你的頸部一抓！結果只是勉強造成一處輕微傷口。', 'a field that dropped the line break');
+  assert.equal(K.find('老虎用爪子往你的頸部一抓！\n你閃開了。', output), null, 'only the first line is not enough');
+  let clock = 0;
+  const watcher = K.createWatcher({ now: () => clock });
+  assert.equal(watcher.feed('老虎用爪子往你的頸部一抓！\n', output), null);
+  clock += 700;
+  assert.equal(watcher.feed('結果只是勉強造成一處輕微傷口。\n', output), output, 'the second line arrives in the next batch');
 });
 
 test('find: case-insensitive substring, first word of the list that hits, and typed-command echoes do not count', () => {
