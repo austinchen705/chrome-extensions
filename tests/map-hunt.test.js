@@ -1137,3 +1137,250 @@ ui('heal: a danger line at or above the rest line is brought below it', async ()
   assert.equal(globalThis.CatworldMapHunt.normalizeSettings({ restBelow: 10, dangerBelow: 40 }).dangerBelow, 9);
   assert.equal(globalThis.CatworldMapHunt.normalizeSettings({ restBelow: 2, dangerBelow: 50 }).dangerBelow, 1);
 });
+
+// ---- 票 07：自動學習出口 ----
+const LEARN = { learnExits: 'on' };
+const learnPage = async (rooms = ['c']) => {
+  const page = await boot({ scale: SCALE });
+  page.store.mapMonsters = mobsAt(...rooms);
+  page.store.mapHuntSettings = { ...REQUIRED, ...LEARN };
+  return page;
+};
+
+ui('learn: the exits of every room it looks at and the rooms the steps really led to are saved', async () => {
+  const page = await learnPage(['c']);
+  try {
+    const game = world(page, { at: 'a', looks: { a: { exits: 'east' }, b: { exits: 'west 和 east' }, c: { exits: 'west 和 east', lines: [] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['l', 'e', 'l', 'e', 'l']);
+    assert.deepEqual(JSON.parse(JSON.stringify(page.store.mapHuntExits['t/a'])), { exits: ['e'], to: { e: 't/b' } });
+    assert.deepEqual(JSON.parse(JSON.stringify(page.store.mapHuntExits['t/b'])), { exits: ['w', 'e'], to: { e: 't/c' } });
+    assert.deepEqual([...page.store.mapHuntExits['t/c'].exits], ['w', 'e']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('learn: a measured connection beats the map drawing, and an edge that is already measured is not looked at first', async () => {
+  const page = await learnPage(['d']);
+  try {
+    page.store.mapHuntExits = { 't/a': { exits: ['e', 'eu'], to: { eu: 't/d' } } };
+    const game = world(page, { at: 'a', moves: { ...MOVES, a: { e: 'b', eu: 'd' } }, looks: { d: { exits: 'west', lines: [] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['eu', 'l'], 'the one-step edge that the map does not even draw');
+  } finally {
+    page.close();
+  }
+});
+
+// b 的圖示出口 e 其實不通：真正的路是 u。b 的出口有 west、up、north
+const BAD_B = { moves: { ...MOVES, b: { w: 'a', u: 'c' } }, looks: { a: { exits: 'east' }, b: { exits: 'west, up 和 north' }, c: { exits: 'down', lines: [] } } };
+
+ui('learn: only the edge the route needs is tried, one untried exit at a time, and the other exits are left alone', async () => {
+  const page = await learnPage(['c']);
+  try {
+    const game = world(page, { at: 'a', ...BAD_B });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.deepEqual(game.log, ['l', 'e', 'l', 'w', 'e', 'u', 'l'], 'w is tried first (it only leads back to a), then u gets there; n is never touched');
+    assert.equal(page.store.mapHuntExits['t/b'].to.u, 't/c');
+    assert.equal(page.store.mapHuntExits['t/b'].to.w, 't/a');
+  } finally {
+    page.close();
+  }
+});
+
+ui('learn: nothing is tried while the qi is under the eat line', async () => {
+  const page = await learnPage(['c']);
+  try {
+    setKee(page, 60);
+    const script = command => {
+      if (command === 'l' && countOf(game, 'l') === 2) setKee(page, 30);
+      return false;
+    };
+    const game = world(page, { at: 'a', script, ...BAD_B });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => game.log.includes('eat pill'), 4000), game.log.join(','));
+    await sleep(400);
+    assert.equal(game.log.includes('w') || game.log.includes('u'), false, 'waits for the qi first');
+    setKee(page, 100);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.ok(game.log.includes('u'));
+  } finally {
+    page.close();
+  }
+});
+
+ui('learn: an exit that leads off the map is remembered as out, walked back with the opposite direction, and the target is given up when nothing else works', async () => {
+  const page = await learnPage(['c']);
+  try {
+    const game = world(page, { at: 'a', moves: { ...MOVES, b: { w: 'a', u: 'out1' }, out1: { d: 'b' } }, looks: { a: { exits: 'east' }, b: { exits: 'up' } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /試不出路/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['l', 'e', 'l', 'u', 'd']);
+    assert.equal(page.store.mapHuntExits['t/b'].to.u, 'out');
+  } finally {
+    page.close();
+  }
+});
+
+ui('learn: when the way back from outside the map is not known the hunt stops with an alert', async () => {
+  const page = await learnPage(['c']);
+  try {
+    const game = world(page, { at: 'a', moves: { ...MOVES, b: { w: 'a', enter: 'out1' } }, looks: { a: { exits: 'east' }, b: { exits: 'enter' } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(message => /不知道怎麼走回來/.test(message.reason)), 6000));
+    assert.equal(await hunting(page), false);
+    assert.equal(game.log.at(-1), 'enter');
+    const count = game.log.length;
+    await sleep(300);
+    assert.equal(game.log.length, count);
+  } finally {
+    page.close();
+  }
+});
+
+ui('learn: with the setting off nothing is saved and no extra l is sent', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l']);
+    assert.equal(page.store.mapHuntExits, undefined);
+  } finally {
+    page.close();
+  }
+});
+
+ui('learn: a "left the area" mark from an earlier run is forgotten at the start of the next one', async () => {
+  const page = await learnPage(['c']);
+  try {
+    page.store.mapHuntExits = { 't/a': { exits: ['e'], to: { e: 'out' } } };
+    const game = world(page, { at: 'a', looks: { b: { exits: 'west 和 east' }, c: { exits: 'west', lines: [] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'l', 'e', 'l'], 'the edge that was marked out is walked again');
+  } finally {
+    page.close();
+  }
+});
+
+ui('learn: saved data that is the wrong shape is ignored instead of breaking the hunt', async () => {
+  const page = await learnPage(['c']);
+  try {
+    page.store.mapHuntExits = { 't/a': 'x', 't/b': { exits: 'e', to: { e: 5 } }, 't/z': null };
+    world(page, { at: 'a', looks: { c: { lines: [] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+  } finally {
+    page.close();
+  }
+});
+
+ui('learn: saving merges into what is stored now, so rooms another tab learned meanwhile are kept', async () => {
+  const page = await learnPage(['c']);
+  try {
+    const script = command => {
+      if (command === 'e' && countOf(game, 'e') === 1) page.store.mapHuntExits = { ...page.store.mapHuntExits, 't/z': { exits: ['n'], to: { n: 't/y' } } };
+      return false;
+    };
+    const game = world(page, { at: 'a', script, looks: { c: { lines: [] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.ok(await waitFor(() => page.store.mapHuntExits?.['t/b'] && page.store.mapHuntExits['t/z'], 2000), 'both the new and the other tab\'s rooms are there');
+    assert.equal(page.store.mapHuntExits['t/z'].to.n, 't/y');
+  } finally {
+    page.close();
+  }
+});
+
+// 另一個區域的房間（地圖上有，但不是巡怪的區域）
+const addOtherArea = (page, game) => {
+  const doc = page.w.document;
+  doc.getElementById('map_wrapper').insertAdjacentHTML('beforeend', '<div id="m-u"><a class="H7" id="m-u-r1">□</a></div>');
+  doc.getElementById('m-u-r1').getBoundingClientRect = () => (game.at === 'r1' ? { left: 100, top: 100, width: 20, height: 20, right: 120, bottom: 120 } : { left: -1000, top: -1000, width: 20, height: 20, right: -980, bottom: -960 });
+};
+
+ui('learn: a normal step that ends in another area is remembered as out and walked back, and the way through is no longer used', async () => {
+  const page = await learnPage(['c']);
+  try {
+    const game = world(page, { at: 'a', moves: { ...MOVES, a: { e: 'r1' }, r1: { w: 'a' } }, looks: { a: { exits: 'east' } } });
+    addOtherArea(page, game);
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /沒有走得到/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['l', 'e', 'w']);
+    assert.equal(page.store.mapHuntExits['t/a'].to.e, 'out');
+  } finally {
+    page.close();
+  }
+});
+
+ui('learn: an exit that leads somewhere the map cannot read waits twice the usual time before it counts as outside, and a way back that does not work stops the hunt', async () => {
+  const page = await learnPage(['c']);
+  try {
+    const times = {};
+    const script = command => {
+      if (command === 'u' || command === 'd') times[command] = Date.now();
+      return false;
+    };
+    const game = world(page, { at: 'a', script, moves: { ...MOVES, b: { w: 'a', u: 'out1' } }, looks: { a: { exits: 'east' }, b: { exits: 'up' } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(message => /走不回來/.test(message.reason)), 6000));
+    assert.ok(times.d - times.u >= 400, `waited ${times.d - times.u} ms before deciding it was outside`);
+    assert.equal(await hunting(page), false);
+    assert.equal(game.log.at(-1), 'd');
+  } finally {
+    page.close();
+  }
+});
+
+ui('learn: a step that was sent again is not recorded as a connection, because the first one may only have been slow', async () => {
+  const page = await learnPage(['c']);
+  try {
+    page.store.mapHuntExits = { 't/b': { exits: ['w', 'e'], to: {} }, 't/c': { exits: ['w'], to: {} } };
+    let late = null;
+    const script = command => {
+      if (command === 'e' && countOf(game, 'e') === 1) { game.at = 'a'; late = setTimeout(() => { game.at = 'b'; }, 400); return true; }
+      if (command === 'e' && countOf(game, 'e') === 2) { game.at = 'a'; return true; } // 重送的也沒走成
+      return false;
+    };
+    const game = world(page, { at: 'a', script, looks: { a: { exits: 'east' }, c: { lines: [] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.ok(late !== null);
+    assert.deepEqual(Object.keys(page.store.mapHuntExits['t/a'].to), [], 'the late arrival at b is not written down as a step from a');
+  } finally {
+    page.close();
+  }
+});
+
+ui('learn: when the qi stays under the eat line it gives up on the target instead of waiting for ever', async () => {
+  const page = await learnPage(['c']);
+  try {
+    setKee(page, 30);
+    const game = world(page, { at: 'a', ...BAD_B });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /氣一直太低/.test(huntText(page)), 8000), huntText(page));
+    assert.equal(game.log.includes('w') || game.log.includes('u'), false, 'nothing was tried');
+  } finally {
+    page.close();
+  }
+});

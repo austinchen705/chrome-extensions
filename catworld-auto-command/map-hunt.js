@@ -8,6 +8,9 @@ if (globalThis.CatworldMapHunt) return;
 const SETTINGS_KEY = 'mapHuntSettings';
 // 自動學到的 NPC（finger 找不到的 ID，名稱陣列）；白名單是設定頁的 npcWhitelist（手動填）
 const NPCS_KEY = 'mapHuntNpcs';
+// 自動學習的出口與實測連線：{ "區域/房間": { exits: [指令…]|null, to: { 指令: "區域/房間" | "out" } } }，out＝走出這個區域（或到地圖上找不到的房間）
+const EXITS_KEY = 'mapHuntExits';
+const OPPOSITE = { n: 's', s: 'n', e: 'w', w: 'e', ne: 'sw', sw: 'ne', nw: 'se', se: 'nw', u: 'd', d: 'u', eu: 'wd', wd: 'eu', ed: 'wu', wu: 'ed', nu: 'sd', sd: 'nu', nd: 'su', su: 'nd' };
 const splitIds = text => String(text ?? '').split(/[、,，;；\s]+/).filter(Boolean);
 const TICK_MS = 200;
 const MOVE_TIMEOUT_TICKS = 25; // 5 秒
@@ -19,6 +22,7 @@ const TICKS_PER_SEC = 1000 / TICK_MS;
 const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
 const NO_TARGET = /你要對誰施展這個招式/;
 const KNOCKED_OUT = '昏迷不醒';
+const QI_WAIT_TICKS = 60 * TICKS_PER_SEC; // 試出口前等氣回復最多等這麼久，等不到就略過這個目標
 const NO_MEDICINE_WINDOW_TICKS = 10 * TICKS_PER_SEC; // 吃藥指令真的送出後，這麼久內出現沒藥關鍵字才算
 
 // 設定頁的欄位（也決定預設值與檢查）：type 是 text、number 或 select
@@ -32,6 +36,7 @@ const FIELDS = [
   { key: 'restResume', label: '自己回：氣回到幾 % 才繼續', type: 'number', default: 80, min: 1, max: 100 },
   { key: 'restCommand', label: '自己回：休息時送的指令（可空）', type: 'text', default: '' },
   { key: 'dangerBelow', label: '自己回：戰鬥中氣低於幾 % 就回家停止（要小於「氣低於幾 % 就休息」，否則自動改小）', type: 'number', default: 20, min: 1, max: 99 },
+  { key: 'learnExits', label: '自動學習出口（記下看到的出口與實際走到的房間；路線不通時才試出口）', type: 'select', options: [['off', '關'], ['on', '開']], default: 'off' },
   { key: 'afterKillCommand', label: '怪倒下後送的指令（可多個，用 ; 分隔）', type: 'text', default: 'gc' },
   { key: 'specialCommand', label: '特攻指令（可空，可以是你的別名）', type: 'text', default: '' },
   { key: 'specialIntervalSec', label: '特攻最小間隔（秒）', type: 'number', default: 10, min: 1, max: 600 },
@@ -60,6 +65,25 @@ function normalizeSettings(raw) {
   // 危險線要比休息線低，不然休息時永遠碰不到危險線
   if (out.dangerBelow >= out.restBelow) out.dangerBelow = Math.min(FIELDS.find(field => field.key === 'dangerBelow').default, out.restBelow - 1);
   return out;
+}
+
+// 讀回儲存的學習結果：形狀不對的丟掉
+function normalizeLearned(raw) {
+  const out = {};
+  Object.entries(raw && typeof raw === 'object' ? raw : {}).forEach(([key, room]) => {
+    const to = {};
+    Object.entries(room?.to && typeof room.to === 'object' ? room.to : {}).forEach(([cmd, dest]) => { if (typeof dest === 'string') to[cmd] = dest; });
+    out[key] = { exits: Array.isArray(room?.exits) ? room.exits.filter(cmd => typeof cmd === 'string') : null, to };
+  });
+  return out;
+}
+
+// out（走出本區）只在記下它的那一輪有效：誤判或有時失敗的門，下一輪重新來過
+function forgetOut(learned) {
+  Object.values(learned).forEach(room => {
+    Object.keys(room.to).forEach(cmd => { if (room.to[cmd] === 'out') delete room.to[cmd]; });
+  });
+  return learned;
 }
 
 function create(deps) {
@@ -121,6 +145,7 @@ function create(deps) {
     const info = Parse.parseLook(await deps.ask('l', 'look'));
     if (state !== token) return;
     if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
+    learnExits(here, info.exits);
     if (!info.monsters.some(mob => token.mobs.includes(mob.full))) { state.skips = 0; doneWith(here, here); return; }
     const npcs = await deps.npcs();
     if (state !== token) return;
@@ -316,19 +341,162 @@ function create(deps) {
     inspect(token, here).catch(() => { if (state === token) finish('看房間時出錯，已停止', { alert: true }); });
   }
 
+  // ---- 自動學習出口（設定 learnExits 開著才作用）----
+  // 存檔：重讀儲存、只把這一輪改過的房間合併進去（多個分頁同時巡怪不會互相蓋掉）；一個接一個排隊
+  const save = key => {
+    state.dirty.add(key);
+    const learned = state.learned;
+    const dirty = state.dirty;
+    state.saving = state.saving.then(async () => {
+      const keys = [...dirty];
+      dirty.clear();
+      const merged = normalizeLearned(await deps.exits());
+      keys.forEach(room => {
+        const mine = learned[room];
+        merged[room] = { exits: mine.exits ?? merged[room]?.exits ?? null, to: { ...merged[room]?.to, ...mine.to } };
+      });
+      await deps.saveExits(merged);
+    }).catch(() => {});
+  };
+  const learnedAt = key => (state.learned[key] ??= { exits: null, to: {} });
+  // 送指令；送不出去就停止並警報
+  function sendOrStop(command) {
+    if (deps.send(command)) return true;
+    finish('指令送不出去，已停止', { alert: true });
+    return false;
+  }
+  function learnExits(key, exits) {
+    if (!state.learn || !exits.length) return;
+    state.looked.add(key);
+    const room = learnedAt(key);
+    if (JSON.stringify(room.exits) === JSON.stringify(exits)) return;
+    room.exits = exits;
+    save(key);
+  }
+  function learnEdge(from, cmd, to) {
+    const room = learnedAt(from);
+    if (room.to[cmd] === to) return;
+    room.to[cmd] = to;
+    save(from);
+  }
+  // 路線用的圖：地圖圖示的邊，加上學到的。strict 時，已知出口的房間只留出口裡有的指令；實測的邊一律優先（覆蓋圖示、可以是圖示上沒有的 eu／ed），走出區域的邊拿掉
+  function buildGraph(strict) {
+    const rooms = {};
+    Object.entries(state.graph.rooms).forEach(([key, room]) => {
+      const learned = state.learned[key];
+      const exits = {};
+      Object.entries(room.exits).forEach(([cmd, to]) => {
+        if (learned?.to[cmd] === 'out') return;
+        if (strict && learned?.exits && !learned.exits.includes(cmd)) return;
+        exits[cmd] = to;
+      });
+      Object.entries(learned?.to ?? {}).forEach(([cmd, to]) => { if (to !== 'out' && state.graph.rooms[to]) exits[cmd] = to; });
+      rooms[key] = { ...room, exits };
+    });
+    return { rooms };
+  }
+  // 要走的邊還沒驗證、房間的出口也沒讀過：先 l 看一次（每個房間每次最多一次）
+  function learnHere(here) {
+    const token = state;
+    state.looked.add(here);
+    state.phase = 'look';
+    state.learning = true;
+    deps.notify();
+    deps.ask('l', 'look').then(text => {
+      if (state !== token) return;
+      state.learning = false;
+      learnExits(here, Parse.parseLook(text).exits);
+      state.phase = 'plan';
+      deps.notify();
+    }).catch(() => { if (state === token) finish('看房間時出錯，已停止', { alert: true }); });
+  }
+  // 路線需要的邊在這個房間的出口裡找不到：把沒試過的出口一個一個試（每個房間每個指令只試一次）
+  function startTrial(here) {
+    state.trial = { room: here, cmd: null, stage: 'pick', waited: 0 };
+    state.phase = 'trial';
+    deps.notify();
+  }
+  // 氣夠才試：吃藥模式看吃藥門檻，自己回模式看有沒有在休息
+  const enoughQi = () => (state.settings.healMode === 'rest' ? !state.resting : deps.kee() >= state.settings.eatBelow);
+  // 走到地圖外：記成 out，用反方向走回來（走回來之前也要氣夠）；不知道反方向就停止並警報。
+  // exploring 為真＝是試出口走出去的，走回來之後接著試下一個；否則走回來就結束
+  function backOut(room, cmd, { exploring }) {
+    learnEdge(room, cmd, 'out');
+    const back = OPPOSITE[cmd];
+    if (!back) { finish(`走到地圖外的房間，而且不知道怎麼走回來（${cmd}），已停止`, { alert: true }); return; }
+    state.trial = { room, cmd, back, stage: 'back-send', waited: 0, exploring };
+    state.phase = 'trial';
+    deps.notify();
+  }
+  function trialTick() {
+    const trial = state.trial;
+    const here = deps.room();
+    trial.waited += 1;
+    if (trial.stage === 'pick') {
+      if (!enoughQi()) {
+        if (trial.waited > QI_WAIT_TICKS) { state.trial = null; skipTarget(state.goal, '氣一直太低，沒辦法試出口'); }
+        return;
+      }
+      const learned = state.learned[trial.room];
+      const tried = (state.tried[trial.room] ??= new Set());
+      const cmd = (learned?.exits ?? []).find(exit => !tried.has(exit) && !learned.to[exit]);
+      if (!cmd) { state.trial = null; skipTarget(state.goal, '試不出路'); return; }
+      tried.add(cmd);
+      trial.cmd = cmd;
+      trial.stage = 'moving';
+      trial.waited = 0;
+      sendOrStop(cmd);
+    } else if (trial.stage === 'moving') {
+      if (here && here !== trial.room) {
+        if (!state.graph.rooms[here]) { backOut(trial.room, trial.cmd, { exploring: true }); return; }
+        learnEdge(trial.room, trial.cmd, here);
+        state.trial = null; // 不論是不是預期的那一間，都用學到的邊重算
+        state.phase = 'plan';
+      } else if (here === trial.room) {
+        if (trial.waited > MOVE_TIMEOUT_TICKS) { trial.stage = 'pick'; trial.waited = 0; } // 沒走成，換下一個
+      } else if (trial.waited > 2 * MOVE_TIMEOUT_TICKS) {
+        backOut(trial.room, trial.cmd, { exploring: true }); // 一直讀不到房間：多等一倍的時間才當成走進地圖上沒有的房間（地圖捲動可能慢）
+      }
+    } else if (trial.stage === 'back-send') {
+      if (!enoughQi()) return;
+      if (!sendOrStop(trial.back)) return;
+      trial.stage = 'back';
+      trial.waited = 0;
+    } else if (here === trial.room) {
+      if (trial.exploring) { trial.stage = 'pick'; trial.waited = 0; } else { state.trial = null; state.phase = 'plan'; }
+    } else if (trial.waited > MOVE_TIMEOUT_TICKS) {
+      finish('走到地圖外之後走不回來，已停止', { alert: true });
+    }
+  }
+
   // 規劃下一步：到了目標就看房間；否則挑路線最短的目標，送出路線的第一個指令
+  // 學習開著時分兩張圖：嚴格圖（已知出口的房間只走出口裡有的）優先；只有寬鬆圖（純地圖圖示）走得到時，圖示的猜測可能走不通
   function plan(here) {
     if (state.targets.has(here)) { arrive(here); return; }
+    const strictGraph = state.learn ? buildGraph(true) : state.graph;
+    const looseGraph = state.learn ? buildGraph(false) : state.graph;
+    if (state.learn && !looseGraph.rooms[here]) { finish('走到地圖外的房間，已停止', { alert: true }); return; }
     let best = null;
+    let guess = null;
     [...state.targets].forEach(key => {
-      const way = Route.route(state.graph, here, key);
-      if (!way) { state.targets.delete(key); state.skipped.push({ key, why: '走不到' }); return; }
-      if (!best || way.length < best.way.length) best = { key, way };
+      const way = Route.route(strictGraph, here, key);
+      const loose = way ?? Route.route(looseGraph, here, key);
+      if (!loose) { state.targets.delete(key); state.skipped.push({ key, why: '走不到' }); return; }
+      if (way) { if (!best || way.length < best.way.length) best = { key, way, graph: strictGraph }; }
+      else if (!guess || loose.length < guess.way.length) guess = { key, way: loose, graph: looseGraph };
     });
-    if (!best) { finish(state.handled ? `這一輪巡完了（到過 ${state.visited.length} 間）` : '沒有走得到的目標房間了'); return; }
-    state.goal = best.key;
-    state.expected = state.graph.rooms[here].exits[best.way[0]];
-    if (!deps.send(best.way[0])) { finish('指令送不出去，已停止', { alert: true }); return; }
+    const chosen = best ?? guess;
+    if (!chosen) { finish(state.handled ? `這一輪巡完了（到過 ${state.visited.length} 間）` : '沒有走得到的目標房間了'); return; }
+    const cmd = chosen.way[0];
+    state.goal = chosen.key;
+    state.expected = chosen.graph.rooms[here].exits[cmd];
+    if (state.learn) {
+      const learned = state.learned[here];
+      if (!state.looked.has(here) && !learned?.exits && !learned?.to[cmd]) { learnHere(here); return; }
+      if (strictGraph.rooms[here].exits[cmd] === undefined) { startTrial(here); return; }
+    }
+    if (!sendOrStop(cmd)) return;
+    state.cmd = cmd;
     state.phase = 'move';
     state.from = here;
     state.waited = 0;
@@ -343,12 +511,19 @@ function create(deps) {
       vitals();
       if (!state) return;
     }
+    if (state.trial) { trialTick(); return; }
     if (state.phase === 'look') return;
     const here = deps.room();
     state.waited += 1;
     if (state.phase === 'move') {
       if (here && here !== state.from) {
         state.phase = 'plan';
+        if (state.learn) {
+          // 走到地圖上沒有的區域：記下來、走回來；走到地圖上的房間：記下實測的連線
+          if (!state.graph.rooms[here]) { backOut(state.from, state.cmd, { exploring: false }); return; }
+          // 重送過的移動，第一次可能只是慢到：到的房間不一定是這一步的結果，不記
+          if (state.tries === 0) learnEdge(state.from, state.cmd, here);
+        }
         if (here === state.expected) { state.skips = 0; state.tries = 0; }
         // 走到的不是路線上的下一間：重算；同一個目標一直走錯（門把人送回去）就略過它，不然會在兩間之間來回
         else if ((state.wrong += 1) >= MAX_WRONG) { skipTarget(state.goal, '走錯房間'); return; }
@@ -399,13 +574,16 @@ function create(deps) {
       }
       if (!settings.homeCommand) missing.push('回家指令');
       if (missing.length) return fail(`請先到設定頁「地圖巡怪」填：${missing.join('、')}`);
+      const learn = settings.learnExits === 'on';
+      const learned = learn ? forgetOut(normalizeLearned(await deps.exits())) : {};
+      if (cancelled) return fail('已取消', false);
       const places = target.mobs.flatMap(mob => Collect.locate(store, mob)).filter(place => place.area === target.area);
       const rooms = [...new Set(places.flatMap(place => place.rooms.map(room => `${place.area}/${room}`)))];
       const targets = new Set(rooms.filter(key => graph.rooms[key]));
       if (!targets.size) return fail('這個區域沒有蒐集到勾選的怪的房間（或那些房間不在地圖上）');
       state = {
         mobs: target.mobs, graph, targets, skipped: rooms.filter(key => !graph.rooms[key]).map(key => ({ key, why: '不在地圖上' })),
-        settings, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
+        settings, learn, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
         skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [], phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       note = '';
@@ -437,6 +615,8 @@ function create(deps) {
     if (!state) return { text: note || '未啟動', alert: noteAlert };
     const who = state.mobs.length === 1 ? state.mobs[0] : `${state.mobs.length} 種怪`;
     if (state.resting) return { text: `${who}：休息中 ${Math.round(state.restPercent)}%→${state.settings.restResume}%${skippedNote(state.skipped)}`, alert: noteAlert };
+    if (state.trial) return { text: `${who}：在 ${state.trial.room} 試出口${skippedNote(state.skipped)}`, alert: noteAlert };
+    if (state.learning) return { text: `${who}：看 ${state.goal ?? '房間'} 的出口…${skippedNote(state.skipped)}`, alert: noteAlert };
     if (state.fight) return { text: `${who}：在 ${state.goal} 打 ${state.fight.mob.name}${skippedNote(state.skipped)}`, alert: noteAlert };
     if (state.phase === 'look') return { text: `${who}：到了 ${state.goal}，看房間…${skippedNote(state.skipped)}`, alert: noteAlert };
     return { text: `${who}：走向 ${state.goal ?? '…'}（目標剩 ${state.targets.size} 間）${skippedNote(state.skipped)}`, alert: noteAlert };
@@ -446,5 +626,5 @@ function create(deps) {
   return { start, stop, on, summary, snapshot };
 }
 
-globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, FIELDS, normalizeSettings, splitIds, create };
+globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, FIELDS, normalizeSettings, splitIds, create };
 })();

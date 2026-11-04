@@ -856,6 +856,8 @@ hunt = CatworldMapHunt.create({
   ask: askGame,
   npcs: huntNpcs,
   learnNpc: learnHuntNpc,
+  exits: async () => (await chrome.storage.local.get(CatworldMapHunt.EXITS_KEY))[CatworldMapHunt.EXITS_KEY] ?? {},
+  saveExits: learned => chrome.storage.local.set({ [CatworldMapHunt.EXITS_KEY]: learned }),
   settings: async () => CatworldMapHunt.normalizeSettings((await chrome.storage.local.get(CatworldMapHunt.SETTINGS_KEY))[CatworldMapHunt.SETTINGS_KEY]),
   watch: handler => {
     const observer = new MutationObserver(records => handler(addedText(records)));
