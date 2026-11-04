@@ -113,6 +113,8 @@ let persistentAlert = false;
 // 停止關鍵字（設定頁，缺值＝開、清單 jrealm）：遊戲輸出含清單裡的詞就停掉所有功能並警報；同一個命中後 STOP_KEYWORD_COOLDOWN_MS 內不重複
 let stopKeywords = CatworldStopKeywords.normalize(undefined);
 let lastStopKeywordAt = -Infinity;
+// 輸出常分批到、也會在行中間換行：和驗證碼偵測一樣把最近幾秒的新增文字接起來比對，比對時忽略空白與換行
+const stopKeywordWatcher = CatworldStopKeywords.createWatcher();
 const STOP_KEYWORD_COOLDOWN_MS = 10000;
 let watchdogTimer = null;
 let lastCommand = '';
@@ -398,8 +400,8 @@ const captchaObserver = new MutationObserver(allRecords => {
   const addedText = addedTexts.join('');
   watchReward(addedText);
   // 停止關鍵字閒置時也作用（只看新出現的、不是自己打的回聲）
-  const keywordHit = stopKeywords.enabled && Date.now() - lastStopKeywordAt > STOP_KEYWORD_COOLDOWN_MS ? CatworldStopKeywords.find(addedText, stopKeywords.words) : null;
-  if (keywordHit) {
+  const keywordHit = stopKeywords.enabled ? stopKeywordWatcher.feed(addedText, stopKeywords.words) : null;
+  if (keywordHit && Date.now() - lastStopKeywordAt > STOP_KEYWORD_COOLDOWN_MS) {
     lastStopKeywordAt = Date.now();
     stopForKeyword(keywordHit);
   }

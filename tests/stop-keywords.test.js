@@ -32,6 +32,36 @@ test('find: case-insensitive substring, first word of the list that hits, and ty
   assert.equal(K.find('', 'jrealm'), null);
 });
 
+test('find ignores spaces and line breaks, so a word broken across lines still hits', () => {
+  assert.equal(K.find('一個自稱 jre\nalm 的人', 'jrealm'), 'jrealm');
+  assert.equal(K.find('管 理\n員來了', '管理員'), '管理員');
+  assert.equal(K.find('gm 來了', 'GM 來了'), 'GM 來了', 'spaces inside the listed word do not matter either');
+  assert.equal(K.find('anything', '   、 '), null, 'a list of blanks never hits');
+});
+
+test('the watcher joins the text of the last few seconds, so a word split across batches hits once', () => {
+  let clock = 1000;
+  const watcher = K.createWatcher({ now: () => clock });
+  assert.equal(watcher.feed('一個自稱 jr', 'jrealm'), null);
+  clock += 800;
+  assert.equal(watcher.feed('ealm 的人出現了', 'jrealm'), 'jrealm');
+  clock += 100;
+  assert.equal(watcher.feed('他走開了', 'jrealm'), null, 'the same text does not hit again after a hit');
+});
+
+test('the watcher forgets text older than the window, ignores echoes, and keeps the first word of the list that hits', () => {
+  let clock = 0;
+  const watcher = K.createWatcher({ now: () => clock });
+  assert.equal(watcher.feed('jr', 'jrealm'), null);
+  clock += K.WINDOW_MS + 1;
+  assert.equal(watcher.feed('ealm', 'jrealm'), null, 'too late: the two halves are not one word');
+  clock += 10;
+  assert.equal(watcher.feed('> say jrealm', 'jrealm'), null);
+  assert.equal(watcher.feed('> say jr', 'jrealm'), null);
+  assert.equal(watcher.feed('ealm', 'jrealm'), null, 'an echo is not part of what joins up');
+  assert.equal(watcher.feed('管理員和 jrealm 都來了', 'jrealm、管理員'), 'jrealm');
+});
+
 const alerts = page => page.messages.filter(message => message.type === 'ALERT');
 const say = (page, text) => page.output(`<span>${text}\n</span>`);
 
@@ -47,6 +77,21 @@ ui('with nothing saved the default word stops everything and raises one alert', 
     say(page, 'jrealm 又說了一次。');
     await sleep(200);
     assert.equal(alerts(page).length, 1, 'the same hit again right away does not alert again');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a word split across two batches of output, with a line break in between, still stops everything', async () => {
+  const page = await boot({ scale: 20 });
+  try {
+    await page.ask(START);
+    say(page, '一個自稱 jre');
+    await sleep(50);
+    assert.equal(alerts(page).length, 0);
+    say(page, 'alm 的人出現了。');
+    assert.ok(await waitFor(() => alerts(page).length === 1, 2000));
+    assert.equal(await page.running(), false);
   } finally {
     page.close();
   }
