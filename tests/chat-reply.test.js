@@ -108,8 +108,12 @@ test('worthAnswering skips one-character messages, and normalizeSettings default
   assert.equal(Chat.worthAnswering('好'), false);
   assert.equal(Chat.worthAnswering('  好 '), false);
   assert.equal(Chat.worthAnswering('你好'), true);
-  assert.deepEqual(Chat.normalizeSettings(undefined), { enabled: false, threshold: 0.5 });
-  assert.deepEqual(Chat.normalizeSettings({ enabled: true, threshold: 0.7 }), { enabled: true, threshold: 0.7 });
+  assert.deepEqual(Chat.normalizeSettings(undefined), { enabled: false, threshold: 0.5, cooldownSec: 60, perHour: 10 });
+  assert.deepEqual(Chat.normalizeSettings({ enabled: true, threshold: 0.7, cooldownSec: 5, perHour: 3 }), { enabled: true, threshold: 0.7, cooldownSec: 5, perHour: 3 });
+  assert.equal(Chat.normalizeSettings({ cooldownSec: -1 }).cooldownSec, 0);
+  assert.equal(Chat.normalizeSettings({ cooldownSec: 'x' }).cooldownSec, 60);
+  assert.equal(Chat.normalizeSettings({ perHour: 0 }).perHour, 1);
+  assert.equal(Chat.normalizeSettings({ perHour: 9999 }).perHour, 100);
   assert.equal(Chat.normalizeSettings({ enabled: 'yes' }).enabled, false, 'only true turns it on');
   assert.equal(Chat.normalizeSettings({ threshold: 5 }).threshold, 1);
   assert.equal(Chat.normalizeSettings({ threshold: 0 }).threshold, 0.1);
@@ -188,4 +192,113 @@ test('onIncoming is called once for each non-empty thing people tell me, and nev
   const recorder = Chat.createRecorder({ now: () => 0, onIncoming: event => heard.push(event) });
   recorder.feed('> [P]有氣質回答你：回聲\n[P]你回答有氣質：我說的\n[P]你說道：公開\n[P]有氣質回答你：\n[P]有氣質回答你：真的來訊\n');
   assert.deepEqual(heard, [{ name: '有氣質', text: '真的來訊' }]);
+});
+
+const LIMITS = { cooldownSec: 60, perHour: 10 };
+
+test('limiter: one person is answered once per cooldown, the same text from them is ignored for ten minutes, and refusals use nothing up', () => {
+  let clock = 0;
+  const limiter = Chat.createLimiter({ now: () => clock });
+  assert.equal(Boolean(limiter.take('有氣質', '你好嗎', LIMITS)), true);
+  assert.equal(Boolean(limiter.take('有氣質', '吃飯了嗎', LIMITS)), false, 'same person inside the cooldown');
+  assert.equal(Boolean(limiter.take('別人', '吃飯了嗎', LIMITS)), true, 'another person is not held back');
+  clock += 61 * 1000;
+  assert.equal(Boolean(limiter.take('有氣質', '你 好嗎！', LIMITS)), false, 'the same text again (spaces and punctuation do not matter)');
+  assert.equal(Boolean(limiter.take('有氣質', '吃飯了嗎', LIMITS)), true, 'a different text after the cooldown');
+  clock += Chat.REPEAT_MS;
+  assert.equal(Boolean(limiter.take('有氣質', '你好嗎', LIMITS)), true, 'after ten minutes the same text counts again');
+});
+
+test('limiter: at most perHour answers in a rolling hour, whoever asks, and the count frees up as time passes', () => {
+  let clock = 0;
+  const limiter = Chat.createLimiter({ now: () => clock });
+  const limits = { cooldownSec: 0, perHour: 2 };
+  assert.equal(Boolean(limiter.take('甲', '第一句話', limits)), true);
+  clock += 1000;
+  assert.equal(Boolean(limiter.take('乙', '第二句話', limits)), true);
+  clock += 1000;
+  assert.equal(Boolean(limiter.take('丙', '第三句話', limits)), false, 'the third one in the hour');
+  clock += 3600 * 1000 - 1500;
+  assert.equal(Boolean(limiter.take('丙', '第三句話', limits)), true, 'the first one is more than an hour old');
+});
+
+test('limiter: a reply the tool sent is recognised once, and only for a while', () => {
+  let clock = 0;
+  const limiter = Chat.createLimiter({ now: () => clock });
+  limiter.noteSent('對啊出去走走');
+  assert.equal(limiter.isOwn('對啊出去走走'), true);
+  assert.equal(limiter.isOwn('對啊出去走走'), false, 'used up');
+  limiter.noteSent('還沒');
+  clock += Chat.OWN_MS + 1;
+  assert.equal(limiter.isOwn('還沒'), false, 'too old, so it is something I typed myself');
+});
+
+test('a reply line the tool sent itself is not recorded as my answer, and what it answered is not left waiting for the next manual reply', () => {
+  const own = new Set(['對啊出去走走']);
+  const recorder = Chat.createRecorder({ now: () => 0, isOwn: text => own.delete(text) });
+  assert.deepEqual(feedAll(recorder, '[P]有氣質回答你：今天天氣不錯\n', '[P]你回答有氣質：對啊出去走走\n'), []);
+  assert.deepEqual(feedAll(recorder, '[P]你回答有氣質：我手動回的\n'), [], 'the message was already answered by the tool');
+  assert.equal(feedAll(recorder, '[P]有氣質回答你：新的一句\n', '[P]你回答有氣質：好\n').length, 1, 'a manual reply to a new message still records');
+});
+
+ui('the same person telling me similar things twice in a row is answered once, and the tool\'s own reply never becomes data', async () => {
+  const page = await boot({ scale: 20 });
+  try {
+    page.store.chatPairs = [...PAIRS];
+    enableChat(page, { enabled: true, threshold: 0.4 });
+    page.output('<span>[P]有氣質回答你：今天天氣不錯\n</span>');
+    page.output('<span>[P]有氣質回答你：今天天氣真的不錯\n</span>');
+    assert.ok(await waitFor(() => page.sent.includes('reply 對啊出去走走'), 3000));
+    await new Promise(resolve => setTimeout(resolve, 900));
+    assert.equal(page.sent.filter(command => command.startsWith('reply')).length, 1, 'only one answer inside the cooldown');
+    page.output('<span>[P]你回答有氣質：對啊出去走走\n</span>');
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal(page.store.chatPairs.length, 1, 'the echo of the tool\'s own reply is not stored');
+  } finally {
+    page.close();
+  }
+});
+
+test('limiter: a reservation that is refunded gives the cooldown and the hourly slot back, and confirm counts the cooldown from the moment of sending', () => {
+  let clock = 0;
+  const limiter = Chat.createLimiter({ now: () => clock });
+  const limits = { cooldownSec: 60, perHour: 1 };
+  const ticket = limiter.take('有氣質', '你好嗎', limits);
+  assert.ok(ticket);
+  assert.equal(limiter.take('別人', '吃飯了嗎', limits), null, 'the hour is used up while the reply waits');
+  limiter.refund(ticket);
+  assert.ok(limiter.take('有氣質', '你好嗎', limits), 'refunded: the same person and the same text are allowed again');
+  const sentLimits = { cooldownSec: 60, perHour: 10 };
+  const other = Chat.createLimiter({ now: () => clock });
+  const waiting = other.take('甲', '第一句話', sentLimits);
+  clock += 8000;
+  other.confirm(waiting);
+  clock += 55 * 1000;
+  assert.equal(other.take('甲', '第二句話', sentLimits), null, 'sent 55 seconds ago, so still cooling down');
+  clock += 6000;
+  assert.ok(other.take('甲', '第二句話', sentLimits), 'the cooldown counts from the send, not from the reservation');
+});
+
+test('limiter: the tool\'s own reply is recognised even if the game echoes it with different spacing or punctuation, and the cooldown is capped at an hour', () => {
+  const limiter = Chat.createLimiter({ now: () => 0 });
+  limiter.noteSent('對啊 出去走走！');
+  assert.equal(limiter.isOwn('對啊出去走走'), true);
+  assert.equal(Chat.normalizeSettings({ cooldownSec: 99999 }).cooldownSec, 3600);
+});
+
+ui('a reply that was cancelled before it was sent does not use up the person\'s cooldown', async () => {
+  const page = await boot({ scale: 20 });
+  try {
+    page.store.chatPairs = [...PAIRS];
+    enableChat(page, { enabled: true, threshold: 0.4 });
+    page.output('<span>[P]有氣質回答你：今天天氣不錯\n</span>');
+    await new Promise(resolve => setTimeout(resolve, 60));
+    page.output('<span>jrealm 出現了\n</span>');
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(page.sent.length, 0, 'the first reply was cancelled');
+    page.output('<span>[P]有氣質回答你：今天天氣真的不錯\n</span>');
+    assert.ok(await waitFor(() => page.sent.includes('reply 對啊出去走走'), 3000), 'the same person is answered right away, nothing was used up');
+  } finally {
+    page.close();
+  }
 });

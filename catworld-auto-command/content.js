@@ -120,25 +120,36 @@ const STOP_KEYWORD_COOLDOWN_MS = 10000;
 // 聊天回覆：別人對我說的話與我的回覆配成一筆筆存進 chatPairs（一律記錄，不受自動回覆開關影響）。
 // 自動回覆（設定 chatReply，預設關）：別人對我說的話和資料集裡某句夠相似，就隨機等幾秒後送 reply 加我以前的回覆；
 // 走 startMacro（巨集在跑算 active()，閒置時也送得出去）。等待中的回覆記在 chatTimers，關掉開關、停止一切（含驗證碼）、retire 都會取消
-const chatTimers = new Set();
+const chatTimers = new Map(); // 計時器 → 限流的票（取消時額度還回去）
 const cancelChatReplies = () => {
-  chatTimers.forEach(timer => clearTimeout(timer));
+  chatTimers.forEach((ticket, timer) => {
+    clearTimeout(timer);
+    chatLimiter.refund(ticket);
+  });
   chatTimers.clear();
 };
 let chatReply = CatworldChatReply.normalizeSettings(undefined);
-const chatRecorder = CatworldChatReply.createRecorder({ onIncoming: answerChat });
+const chatLimiter = CatworldChatReply.createLimiter();
+const chatRecorder = CatworldChatReply.createRecorder({ onIncoming: answerChat, isOwn: chatLimiter.isOwn });
 let chatSave = Promise.resolve();
-async function answerChat({ text }) {
+async function answerChat({ name, text }) {
   if (!chatReply.enabled || !CatworldChatReply.worthAnswering(text)) return;
   try {
     const stored = (await chrome.storage.local.get(CatworldChatReply.KEY))[CatworldChatReply.KEY];
     const hit = CatworldChatReply.bestReply(Array.isArray(stored) ? stored : [], text, chatReply.threshold);
-    if (!hit) return;
+    const ticket = hit && chatLimiter.take(name, text, chatReply);
+    if (!ticket) return;
     const timer = setTimeout(() => {
       chatTimers.delete(timer);
-      startMacro(`reply ${hit.reply}`, 'chat');
+      // 驗證碼辨識中、或因驗證停止：這句回覆過時了，不送
+      if (captcha || /驗證/.test(stopReason) || !startMacro(`reply ${hit.reply}`, 'chat')) {
+        chatLimiter.refund(ticket);
+        return;
+      }
+      chatLimiter.confirm(ticket);
+      chatLimiter.noteSent(hit.reply);
     }, CatworldChatReply.replyDelayMs());
-    chatTimers.add(timer);
+    chatTimers.set(timer, ticket);
   } catch {
     // 連不上儲存（孤兒程式）：這次不回
   }

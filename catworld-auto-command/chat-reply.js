@@ -24,8 +24,9 @@ function parseLine(line) {
 // 回覆文字會被原樣送出或當成巨集：含分號（巨集分隔）或 @等待 的不收
 const safeReply = text => text.length > 0 && !text.includes(';') && !text.includes('；') && !text.includes('@等待');
 
-// onIncoming（選填）：每收到一句別人對我說的話（非空）就呼叫一次，帶 { name, text }
-function createRecorder({ now = () => Date.now(), onIncoming = null } = {}) {
+// onIncoming（選填）：每收到一句別人對我說的話（非空）就呼叫一次，帶 { name, text }；
+// isOwn（選填）：我的回覆行如果是工具自己送的（isOwn(文字) 為真）就不記成我的回覆，這個人那句來訊也算回過了
+function createRecorder({ now = () => Date.now(), onIncoming = null, isOwn = null } = {}) {
   let rest = '';
   const waiting = new Map(); // 暱稱 → { text, at }：這個人最後對我說的一句
   function handle(line, pairs) {
@@ -39,6 +40,7 @@ function createRecorder({ now = () => Date.now(), onIncoming = null } = {}) {
       else waiting.delete(event.name); // 空的來訊蓋掉這個人之前那句，免得回覆配到更早的話
       return;
     }
+    if (isOwn?.(event.text)) { waiting.delete(event.name); return; }
     const heard = waiting.get(event.name);
     if (!heard) return;
     if (now() - heard.at > PAIR_WINDOW_MS) { waiting.delete(event.name); return; }
@@ -63,10 +65,16 @@ function addPair(pairs, pair) {
   return [...pairs, pair].slice(-MAX_PAIRS);
 }
 
-// 自動回覆的設定（chrome.storage.local.chatReply）：預設關；門檻是相似度（0～1）要達到多少才回，預設 0.5，限制在 0.1～1
+// 自動回覆的設定（chrome.storage.local.chatReply）：預設關；門檻是相似度（0～1）要達到多少才回，預設 0.5，限制在 0.1～1；
+// cooldownSec 同一個人的冷卻秒數（預設 60，0～3600）、perHour 全部每小時最多回幾則（預設 10，1～100）
+const bounded = (value, min, max, fallback) => (typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback);
 function normalizeSettings(raw) {
-  const threshold = typeof raw?.threshold === 'number' && Number.isFinite(raw.threshold) ? Math.min(1, Math.max(0.1, raw.threshold)) : 0.5;
-  return { enabled: raw?.enabled === true, threshold };
+  return {
+    enabled: raw?.enabled === true,
+    threshold: bounded(raw?.threshold, 0.1, 1, 0.5),
+    cooldownSec: bounded(raw?.cooldownSec, 0, 3600, 60),
+    perHour: bounded(raw?.perHour, 1, 100, 10),
+  };
 }
 
 // 字面相似度：兩段文字去掉標點與空白後，以相鄰兩字（bigram）算 Dice 係數（2×共同 ÷ 兩邊總數，0～1）；只有一個字就拿那一個字比
@@ -101,8 +109,66 @@ function bestReply(pairs, said, threshold, random = Math.random) {
   return top[Math.floor(random() * top.length)].pair;
 }
 
+const REPEAT_MS = 10 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const OWN_MS = 5 * 60 * 1000; // 工具送出的回覆，遊戲回印「你回答…」最多等這麼久
+// 限流：同一個人 cooldownSec 秒內只回一次、同一個人說同一句話 REPEAT_MS 內不再回、全部每小時最多 perHour 則。
+// take 預約（回票）、confirm 送出時改從那一刻算、refund 沒送出時還回去；
+// noteSent／isOwn：記下工具自己送出的回覆文字，遊戲回印同一句時 isOwn 認得（去標點空白後比對、只認一次、超過 OWN_MS 就當是自己手打的）
+function createLimiter({ now = () => Date.now() } = {}) {
+  const lastByName = new Map();
+  const seen = new Map();
+  let reserved = []; // 這一小時內預約的回覆（{ at }），每筆也是 take 回傳的票
+  let own = [];
+  // 檢查並預約：可以回就記下（同一個人緊接著來的第二句才擋得住）並回票，不行回 null（被拒絕的不占額度）
+  function take(name, text, { cooldownSec, perHour }) {
+    const at = now();
+    reserved = reserved.filter(item => at - item.at < HOUR_MS);
+    [lastByName, seen].forEach(map => map.forEach((time, key) => { if (at - time >= HOUR_MS) map.delete(key); }));
+    const key = `${name}\n${squash(text)}`;
+    if (reserved.length >= perHour) return null;
+    if (lastByName.has(name) && at - lastByName.get(name) < cooldownSec * 1000) return null;
+    if (seen.has(key) && at - seen.get(key) < REPEAT_MS) return null;
+    const ticket = { at, name, key, prevLast: lastByName.get(name), prevSeen: seen.get(key) };
+    reserved.push(ticket);
+    lastByName.set(name, at);
+    seen.set(key, at);
+    return ticket;
+  }
+  // 真的要送出了：冷卻與額度改從送出的這一刻算
+  function confirm(ticket) {
+    const at = now();
+    ticket.at = at;
+    lastByName.set(ticket.name, at);
+    seen.set(ticket.key, at);
+  }
+  // 預約的回覆沒有送出（被取消、被擋下）：把額度與冷卻還回去
+  function refund(ticket) {
+    reserved = reserved.filter(item => item !== ticket);
+    const restore = (map, key, previous) => {
+      if (previous === undefined) map.delete(key);
+      else map.set(key, previous);
+    };
+    restore(lastByName, ticket.name, ticket.prevLast);
+    restore(seen, ticket.key, ticket.prevSeen);
+  }
+  const prune = () => { own = own.filter(item => now() - item.at <= OWN_MS); };
+  function noteSent(text) {
+    prune();
+    own.push({ text: squash(text), at: now() });
+  }
+  function isOwn(text) {
+    prune();
+    const index = own.findIndex(item => item.text === squash(text));
+    if (index < 0) return false;
+    own.splice(index, 1);
+    return true;
+  }
+  return { take, confirm, refund, noteSent, isOwn };
+}
+
 // 看到來訊到送出回覆之間隨機等 3～10 秒（毫秒）
 const replyDelayMs = (random = Math.random) => 3000 + Math.floor(random() * 7000);
 
-globalThis.CatworldChatReply = { KEY, SETTINGS_KEY, MAX_PAIRS, PAIR_WINDOW_MS, parseLine, createRecorder, addPair, normalizeSettings, similarity, worthAnswering, bestReply, replyDelayMs };
+globalThis.CatworldChatReply = { KEY, SETTINGS_KEY, MAX_PAIRS, PAIR_WINDOW_MS, parseLine, createRecorder, addPair, createLimiter, REPEAT_MS, OWN_MS, normalizeSettings, similarity, worthAnswering, bestReply, replyDelayMs };
 })();
