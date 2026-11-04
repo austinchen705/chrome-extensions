@@ -27,7 +27,8 @@ const EXIT_COMMANDS = {
   eastup: 'eu', eastdown: 'ed', westup: 'wu', westdown: 'wd',
   northup: 'nu', northdown: 'nd', southup: 'su', southdown: 'sd',
 };
-const EXIT_LINE = /這裡(?:明顯的出口是|唯一的出口是)\s*([^\n]*)/;
+// 行首才算（玩家的稱號或名字裡含這句話不能當成出口行）
+const EXIT_LINE = /^[ \t]*這裡(?:明顯的出口是|唯一的出口是)[ \t]*([^\n]*)/m;
 function parseExits(text) {
   const match = EXIT_LINE.exec(text);
   if (!match) return [];
@@ -53,8 +54,11 @@ function parsePerson(rawLine) {
   return match ? { id: match[1].trim(), state: match[2] } : null;
 }
 
+// 輸出裡可能有兩份房間描述（抵達時印的、再加 l 印的）：只算最後一份（從最後一個出口行開始，怪物與人物行都在它後面）
 function parseLook(text) {
-  const out = String(text ?? '');
+  const whole = String(text ?? '');
+  const starts = [...whole.matchAll(new RegExp(EXIT_LINE.source, 'gm'))].map(match => match.index);
+  const out = starts.length ? whole.slice(starts[starts.length - 1]) : whole;
   const lines = out.split(/\r?\n/);
   return { exits: parseExits(out), monsters: lines.map(parseMonster).filter(Boolean), people: lines.map(parsePerson).filter(Boolean) };
 }

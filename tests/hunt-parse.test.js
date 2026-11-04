@@ -100,3 +100,22 @@ test('look monsters: full is the same text the map collector stores for the same
   const garden = sample('look-garden');
   assert.equal(P.parseLook(garden).monsters[0].full, globalThis.CatworldZapMobs.parseMobLines(garden)[0].name);
 });
+
+test('look: when the text holds two room descriptions (the one printed on arrival, then the l), only the last one counts', () => {
+  const both = `${sample('look-garden')}\n${sample('look-career')}`;
+  const info = P.parseLook(both);
+  assert.deepEqual([...info.exits], ['u']);
+  assert.deepEqual(JSON.parse(JSON.stringify(info.monsters)), [], 'the monsters of the first room are not counted');
+  assert.equal(info.people.length, 9);
+});
+
+test('look: a player whose title or name contains the exits sentence does not cut the people list before it', () => {
+  const text = [
+    '    這裡明顯的出口是 east。',
+    '  普通百姓 甲(alpha) <發呆中>',
+    '  某人說「這裡明顯的出口是 west」乙(beta) <發呆中>',
+  ].join('\n');
+  const info = P.parseLook(text);
+  assert.deepEqual([...info.exits], ['e']);
+  assert.deepEqual(info.people.map(person => person.id), ['alpha', 'beta']);
+});

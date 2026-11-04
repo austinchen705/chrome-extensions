@@ -790,6 +790,20 @@ CatworldMapHunt.FIELDS.forEach(item => {
   $('huntFields').append(label, input);
 });
 showHuntSettings();
+// 自動學到的 NPC（finger 找不到的 ID）：只顯示與清除，寫入在遊戲頁的 content.js
+async function showHuntNpcs() {
+  const list = (await chrome.storage.local.get(CatworldMapHunt.NPCS_KEY))[CatworldMapHunt.NPCS_KEY];
+  const ids = Array.isArray(list) ? list.filter(id => typeof id === 'string') : [];
+  $('huntNpcs').textContent = ids.length ? `已學到的 NPC（${ids.length}）：${ids.join('、')}` : '已學到的 NPC：尚未學到';
+}
+$('huntNpcClear').addEventListener('click', async () => {
+  await chrome.storage.local.remove(CatworldMapHunt.NPCS_KEY);
+  showHuntNpcs();
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes[CatworldMapHunt.NPCS_KEY]) showHuntNpcs();
+});
+showHuntNpcs();
 
 // 遊戲頁裡的狀態變了（面板、置頂面板按開始／停止）會通知這裡馬上更新；設定頁開在背景分頁時自己的每秒更新會被降頻，不通知就要切回來才會對
 chrome.runtime.onMessage.addListener((message, sender) => {

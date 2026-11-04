@@ -485,8 +485,8 @@ function clearTimers() {
 
 // 固定、隨機兩條循環與狀態觸發共用同一個送出佇列，任兩次送出至少間隔 commandDelayMs；
 // 每個項目記下來源，停掉定時時只丟掉定時的項目，不影響還在跑的觸發
-function enqueue(command, source = 'timer', run = null) {
-  queue.push({ command, source, run });
+function enqueue(command, source = 'timer', run = null, onSent = null) {
+  queue.push({ command, source, run, onSent });
   pumpQueue();
 }
 
@@ -548,6 +548,7 @@ function pumpQueue() {
     const result = sendCommand(entry.command);
     if (!result.ok) { stopEverything(result.error); return; }
     lastSentAt = Date.now();
+    entry.onSent?.();
     if (entry.run) {
       entry.run.pending -= 1;
       finishMacroIfDone(entry.run);
@@ -787,6 +788,55 @@ function cancelMacros(owner) {
 
 // 蒐集到的怪物位置：內建加個人（只在讀取時合併）
 const mapStore = async () => CatworldMapCollect.withBuiltin((await chrome.storage.local.get('mapMonsters')).mapMonsters);
+// 送一個指令給遊戲並收它的回應文字（巡怪的 l 與 finger 用）：收集 #content 新增的文字，出現 ASK_PATTERN 的內容之後再安靜
+// ASK_QUIET_MS 就交出去；一直等不到就在 ASK_MAX_MS 後交出目前收到的（可能是空的）。指令走共用送出佇列（來源 hunt）
+const ASK = {
+  look: { pattern: /出口是/, quietMs: 400 },
+  finger: { pattern: /權限等級|找不到/, quietMs: 250 },
+};
+const ASK_MAX_MS = 8000;
+function askGame(command, kind) {
+  return new Promise(resolve => {
+    let text = '';
+    let sent = false;
+    let quiet = null;
+    let limit = null;
+    const done = () => {
+      observer.disconnect();
+      clearTimeout(quiet);
+      clearTimeout(limit);
+      resolve(text);
+    };
+    const observer = new MutationObserver(records => {
+      if (!sent) return;
+      text += CatworldZapMobs.textFromAdded(records.flatMap(record => (record.type === 'characterData'
+        ? [record.target.textContent || '']
+        : Array.from(record.addedNodes, node => node.textContent || ''))));
+      if (ASK[kind].pattern.test(text)) {
+        clearTimeout(quiet);
+        quiet = setTimeout(done, ASK[kind].quietMs);
+      }
+    });
+    observer.observe(document.getElementById('content'), { subtree: true, childList: true, characterData: true });
+    limit = setTimeout(done, ASK_MAX_MS);
+    enqueue(command, 'hunt', null, () => { sent = true; });
+  });
+}
+// 不算「別人」的 ID：設定頁的白名單加上自動學到的 NPC
+async function learnedNpcs() {
+  const list = (await chrome.storage.local.get(CatworldMapHunt.NPCS_KEY))[CatworldMapHunt.NPCS_KEY];
+  return Array.isArray(list) ? list.filter(id => typeof id === 'string') : [];
+}
+// 回傳小寫的 ID 集合（英文 ID 不分大小寫）
+async function huntNpcs() {
+  const { [CatworldMapHunt.SETTINGS_KEY]: saved } = await chrome.storage.local.get(CatworldMapHunt.SETTINGS_KEY);
+  return new Set([...CatworldMapHunt.splitIds(CatworldMapHunt.normalizeSettings(saved).npcWhitelist), ...await learnedNpcs()].map(id => id.toLowerCase()));
+}
+async function learnHuntNpc(id) {
+  const learned = await learnedNpcs();
+  const name = id.toLowerCase();
+  if (!learned.some(known => known.toLowerCase() === name)) await chrome.storage.local.set({ [CatworldMapHunt.NPCS_KEY]: [...learned, name] });
+}
 // 地圖巡怪：目標是面板「選怪」勾選的怪（map-hunt-ui.js，依區域記在 mapHuntPicks）與地圖目前顯示的區域；指令走共用送出佇列（來源 hunt）
 hunt = CatworldMapHunt.create({
   target: async () => {
@@ -799,6 +849,9 @@ hunt = CatworldMapHunt.create({
   room: () => CatworldMapCollect.currentRoom(document)?.key ?? null,
   areaHtml: area => document.getElementById(`m-${area}`)?.innerHTML ?? '',
   readStore: mapStore,
+  ask: askGame,
+  npcs: huntNpcs,
+  learnNpc: learnHuntNpc,
   send: command => { enqueue(command, 'hunt'); return true; },
   dropQueue: () => dropQueue('hunt'),
   alert: reason => alertOnly(reason, '⚠ 巡怪已停止'),

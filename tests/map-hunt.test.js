@@ -15,7 +15,9 @@ const mobsAt = (...rooms) => mobsIn(MOB, ...rooms);
 const MOB_B = '另一隻怪(other mob)';
 
 // 假遊戲：moves[現在][指令] = 下一間（沒有就留在原地）；reply 為 false 時不回任何輸出（看門狗會因為沒回應而停）
-function world(page, { at, moves = MOVES, reply = true, stuck = false } = {}) {
+// looks[房間] = { exits, lines }：l 的輸出（出口行與後面的怪物、人物行）；silentLook 為 true 時 l 不回應；
+// fingers[ID] = finger 的輸出，沒寫就不回應
+function world(page, { at, moves = MOVES, reply = true, stuck = false, looks = {}, fingers = {}, silentLook = false, arrivals = {}, arrivalDelayMs = 0, lookDelayMs = 0 } = {}) {
   const doc = page.w.document;
   doc.body.insertAdjacentHTML('beforeend', `<div id="map_table"><span id="map_header">地圖 (<span data-default-grid="□">測試區</span>)</span><div id="map_wrapper"><div id="m-t">${ROW}</div></div><div id="map_anchor"></div></div>`);
   const state = { at, log: [] };
@@ -29,7 +31,21 @@ function world(page, { at, moves = MOVES, reply = true, stuck = false } = {}) {
     state.log.push(command);
     const next = stuck ? undefined : moves[state.at]?.[command];
     if (next) state.at = next;
-    if (reply) page.output('<span>…\n</span>');
+    if (command === 'l') {
+      const info = looks[state.at] || {};
+      const show = () => page.output(`<span>${['測試房間 - ', '    這裡是房間。', `    這裡明顯的出口是 ${info.exits ?? 'east'}。`, ...(info.lines || [])].join('\n')}\n</span>`);
+      if (!silentLook) {
+        if (lookDelayMs) setTimeout(show, lookDelayMs);
+        else show();
+      }
+    } else if (command.startsWith('finger ')) {
+      if (fingers[command.slice(7)] !== undefined) page.output(`<span>${fingers[command.slice(7)]}\n</span>`);
+    } else if (next && arrivals[state.at]) {
+      const info = arrivals[state.at];
+      const show = () => page.output(`<span>${['測試房間 - ', '    這裡是房間。', `    這裡明顯的出口是 ${info.exits ?? 'east'}。`, ...(info.lines || [])].join('\n')}\n</span>`);
+      if (arrivalDelayMs) setTimeout(show, arrivalDelayMs);
+      else show();
+    } else if (reply) page.output('<span>…\n</span>');
   });
   return state;
 }
@@ -53,15 +69,15 @@ const huntText = page => panelRoot(page).querySelector('.hunt-text').textContent
 const click = (page, selector) => panelRoot(page).querySelector(selector).click();
 const alerts = page => page.messages.filter(message => message.type === 'ALERT');
 
-ui('hunt: walks to the nearest room that has the chosen monster and stops there', async () => {
+ui('hunt: walks to the room that has the chosen monster, looks at it, and is done when every target room was handled', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
     const game = world(page, { at: 'a' });
     await pick(page, MOB);
     click(page, '.hstart');
-    assert.ok(await waitFor(() => /已到達/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e']);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l']);
     assert.equal(game.at, 'c');
     assert.equal((await page.ask({ type: 'STATUS' })).hunt.on, false);
   } finally {
@@ -109,9 +125,9 @@ ui('hunt: goes to the nearest of several target rooms, and ignores a collected r
     const game = world(page, { at: 'a' });
     await pick(page, MOB);
     click(page, '.hstart');
-    assert.ok(await waitFor(() => /已到達/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e']);
-    assert.equal(game.at, 'c');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'e', 'l'], 'the nearer room c first, then d');
+    assert.equal(game.at, 'd');
     assert.match(huntText(page), /略過 1 間.*zz.*不在地圖上/, 'the room that is not on the map is named in the panel');
   } finally {
     page.close();
@@ -198,9 +214,9 @@ ui('hunt: several monsters can be ticked, and the target rooms are the rooms of 
     await pick(page, MOB, MOB_B);
     assert.deepEqual([...page.store.mapHuntPicks.t].sort(), [MOB, MOB_B].sort(), 'the ticks are saved per area');
     click(page, '.hstart');
-    assert.ok(await waitFor(() => /已到達/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e'], 'the nearer of the two rooms, c, which only has the second monster');
-    assert.equal(game.at, 'c');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'e', 'l'], 'c (only the second monster) is nearer, then d');
+    assert.equal(game.at, 'd');
   } finally {
     page.close();
   }
@@ -213,8 +229,8 @@ ui('hunt: a monster that is not ticked does not make its room a target', async (
     const game = world(page, { at: 'a' });
     await pick(page, MOB);
     click(page, '.hstart');
-    assert.ok(await waitFor(() => /已到達/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'e']);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'e', 'l']);
     assert.equal(game.at, 'd');
   } finally {
     page.close();
@@ -287,8 +303,8 @@ ui('hunt: the start button is disabled while a hunt is running or starting, so a
     click(page, '.hstart');
     assert.ok(await waitFor(() => game.log.length >= 1, 2000));
     assert.equal(panelRoot(page).querySelector('.hstart').disabled, true);
-    await waitFor(() => /已到達/.test(huntText(page)), 4000);
-    assert.deepEqual(game.log, ['e', 'e', 'e'], 'one walk only');
+    await waitFor(() => /巡完了/.test(huntText(page)), 4000);
+    assert.deepEqual(game.log, ['e', 'e', 'e', 'l'], 'one walk only');
   } finally {
     page.close();
   }
@@ -304,7 +320,7 @@ ui('hunt: a few ticks without a readable room are waited out; a room that stays 
     assert.ok(await waitFor(() => game.log.length === 1, 2000));
     await sleep(60);
     game.at = 'b';
-    assert.ok(await waitFor(() => /已到達/.test(huntText(page)), 4000), huntText(page));
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
     assert.equal(alerts(page).length, 0, 'a short gap is not an alarm');
   } finally {
     page.close();
@@ -319,5 +335,179 @@ ui('hunt: a few ticks without a readable room are waited out; a room that stays 
     assert.match(huntText(lost), /讀不到目前所在的房間/);
   } finally {
     lost.close();
+  }
+});
+
+const PLAYER_FINGER = '英文代號：    somebody\n姓    名：    某人\n權限等級：    (player)\n';
+const NOT_FOUND = '找不到這個人。';
+const MOB_LINE = '  ※測試怪(test mob) [fight][kill]';
+const PERSON = (id, name = '某人') => `  普通百姓 ${name}(${id}) <發呆中>`;
+
+ui('hunt: a room with a player in it is skipped, and the panel says who', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c', 'd');
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE, PERSON('somebody')] }, d: { lines: [MOB_LINE] } }, fingers: { somebody: PLAYER_FINGER } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 5000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'finger somebody', 'e', 'l'], 'looked at c, asked about the unknown id, left for d');
+    assert.match(huntText(page), /略過 1 間.*t\/c 有別人 somebody/);
+    assert.equal(alerts(page).length, 0, 'meeting a player is not an alarm');
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: an id that finger cannot find is an NPC: remembered, the room is not skipped, and it is not asked about again', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c', 'd');
+    const smith = { lines: [MOB_LINE, PERSON('smith', '鑄造師')] };
+    const game = world(page, { at: 'a', looks: { c: smith, d: smith }, fingers: { smith: NOT_FOUND } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 5000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'finger smith', 'e', 'l'], 'asked once, at the first room only');
+    assert.deepEqual([...page.store.mapHuntNpcs], ['smith']);
+    assert.doesNotMatch(huntText(page), /略過/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: a finger that gets no answer is treated as a player, and nothing is learned from silence', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE, PERSON('ghost')] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'finger ghost']);
+    assert.match(huntText(page), /略過 1 間.*有別人 ghost/);
+    assert.equal(page.store.mapHuntNpcs, undefined);
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: an id on the whitelist is never asked about and does not count as someone', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { npcWhitelist: 'smith、banker' };
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE, PERSON('smith', '鑄造師')] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l']);
+    assert.doesNotMatch(huntText(page), /略過/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: a room whose look gets no answer is skipped like a door that does not open', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', silentLook: true });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /略過 1 間.*t\/c 讀不到房間/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: what the move itself printed on arrival is not the answer to l (a player who is in the arrival text but gone from l does not count)', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    // 抵達描述比 l 的回應早到（l 還在佇列裡等指令間隔）：它有人、l 沒有人
+    const game = world(page, { at: 'a', arrivalDelayMs: 15, lookDelayMs: 120, arrivals: { c: { lines: [MOB_LINE, PERSON('somebody')] } }, looks: { c: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l'], 'no finger: the answer to l says the room is empty');
+    assert.doesNotMatch(huntText(page), /略過/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: a room with none of the ticked monsters is left at once, without asking about the people in it', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', looks: { c: { lines: [PERSON('somebody')] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l']);
+    assert.doesNotMatch(huntText(page), /略過/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: an id with odd characters is treated as a player without being sent to finger, and is not learned', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE, PERSON('evil;quit')] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l'], 'nothing with a semicolon is ever sent');
+    assert.match(huntText(page), /略過 1 間.*有別人 evil;quit/);
+    assert.equal(page.store.mapHuntNpcs, undefined);
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: whitelist and learned NPCs match whatever the case, and a learned NPC is not asked about on the next run', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { npcWhitelist: 'Smith' };
+    page.store.mapHuntNpcs = ['banker'];
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE, PERSON('smith', '鑄造師'), PERSON('BANKER', '錢莊')] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l'], 'neither is asked about, neither counts as someone');
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: stopping while an NPC is being remembered does not send another finger or touch the next run', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE, PERSON('smith', '鑄造師'), PERSON('ghost')] } }, fingers: { smith: NOT_FOUND } });
+    // 定時開著：停止後佇列裡若多出一個 finger，它會被送出去（沒有任何功能在跑時佇列不會送）
+    await page.ask({ type: 'START', settings: { commands: ['ps'], minSeconds: 1, maxSeconds: 1, commandDelayMs: 0 } });
+    // 記 NPC 的儲存很慢，停止剛好落在這段時間
+    const set = page.w.chrome.storage.local.set;
+    page.w.chrome.storage.local.set = async values => {
+      if (values.mapHuntNpcs) await sleep(150);
+      return set(values);
+    };
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => game.log.includes('finger smith'), 4000));
+    await sleep(60);
+    click(page, '.hstop');
+    await sleep(500);
+    assert.equal(game.log.includes('finger ghost'), false, 'no finger after the stop');
+    assert.equal((await page.ask({ type: 'STATUS' })).hunt.on, false);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
   }
 });

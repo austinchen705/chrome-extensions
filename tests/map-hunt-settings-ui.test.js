@@ -34,6 +34,7 @@ async function boot(store = {}) {
           local: {
             get: async keys => Object.fromEntries([].concat(keys).filter(key => key in store).map(key => [key, JSON.parse(JSON.stringify(store[key]))])),
             set: async values => { Object.assign(store, JSON.parse(JSON.stringify(values))); },
+            remove: async keys => { [].concat(keys).forEach(key => { delete store[key]; }); },
           },
           sync: { get: async () => ({}), set: async () => {} },
           session: { get: async () => ({}), set: async () => {} },
@@ -88,6 +89,28 @@ ui('an edit is saved at once with the other fields, and a broken stored value fa
     change(dom, field(doc, 'eatBelow'), '250');
     assert.ok(await waitFor(() => store.mapHuntSettings.eatBelow === 50), 'out of range goes back to the default');
     assert.equal(field(doc, 'eatBelow').value, '50');
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('the learned NPCs are listed, and the clear button forgets them', async () => {
+  const { dom, doc, store } = await boot({ mapHuntNpcs: ['smith', 'banker'] });
+  try {
+    assert.ok(await waitFor(() => /smith、banker/.test(doc.getElementById('huntNpcs').textContent)), doc.getElementById('huntNpcs').textContent);
+    assert.match(doc.getElementById('huntNpcs').textContent, /（2）/);
+    doc.getElementById('huntNpcClear').click();
+    assert.ok(await waitFor(() => store.mapHuntNpcs === undefined), 'the stored list is removed');
+    assert.ok(await waitFor(() => /尚未學到/.test(doc.getElementById('huntNpcs').textContent)));
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('with nothing learned the list says so', async () => {
+  const { dom, doc } = await boot();
+  try {
+    assert.match(doc.getElementById('huntNpcs').textContent, /尚未學到/);
   } finally {
     dom.window.close();
   }
