@@ -179,6 +179,13 @@
     <label class="check"><input id="persistentAlert" type="checkbox"> 警報提示音一直響，按「確認」才停</label>
     <p class="hint tight">預設關閉＝原本的行為：每 10 秒響一次、最多 5 分鐘，回到遊戲頁點一下、按鍵或按「開始」就停。開啟後不會自己停，要按遊戲頁面板標題列（或系統通知上）的「確認」才會停，標題也會一直閃。</p>
   </details>
+  <details class="alertbox fold" id="sec-stopwords">
+    <summary>停止關鍵字</summary>
+    <label class="check"><input id="stopKeywordsOn" type="checkbox"> 遊戲輸出出現關鍵字就停止所有功能並警報</label>
+    <label for="stopKeywordsList">關鍵字（可填多個，用、分隔）</label>
+    <input id="stopKeywordsList" type="text">
+    <p class="hint tight">預設開啟，預設只有 jrealm。遊戲輸出（輸出區新出現的文字）含清單裡任何一個詞（不分大小寫）就停止定時、隨機、所有觸發、巨集、巡怪，響一次並跳通知；閒置時也會提醒。自己打的指令的回聲（以 &gt; 開頭的行）不算；同一個命中 10 秒內不重複。清單清空就不會命中。</p>
+  </details>
   <details class="alertbox fold" id="sec-reward">
     <summary>在線獎勵</summary>
     <label class="check"><input id="autoReward" type="checkbox"> 在線獎勵自動領取</label>
@@ -299,6 +306,7 @@
   <script src="map-data.js"></script>
   <script src="map-collect.js"></script>
   <script src="map-hunt.js"></script>
+  <script src="stop-keywords.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -110,6 +110,10 @@ const REPEAT_BEEP_MS = 10 * 1000;
 const REPEAT_BEEP_MAX_MS = 5 * 60 * 1000;
 // popup 的開關「警報提示音一直響，按確認才停」，預設關閉；存在 storage，改了馬上生效
 let persistentAlert = false;
+// 停止關鍵字（設定頁，缺值＝開、清單 jrealm）：遊戲輸出含清單裡的詞就停掉所有功能並警報；同一個命中後 STOP_KEYWORD_COOLDOWN_MS 內不重複
+let stopKeywords = CatworldStopKeywords.normalize(undefined);
+let lastStopKeywordAt = -Infinity;
+const STOP_KEYWORD_COOLDOWN_MS = 10000;
 let watchdogTimer = null;
 let lastCommand = '';
 // 驗證碼自動辨識（閒置時也作用，手動打 reward 領獎也會幫忙輸入）：偵測到圖或提示後暫停送出佇列，等圖印完（CAPTCHA_QUIET_MS 內沒有新輸出）
@@ -232,6 +236,12 @@ const takeoverPattern = /有人從別處[\s\S]{0,40}?連線取代你所控制的
 function stopForTakeover() {
   const reason = '遊戲顯示有人從別處連線取代你所控制的人物，已停止';
   alertOnly(reason, '⚠ 連線被取代');
+  return stopEverything(reason);
+}
+// 輸出裡出現停止關鍵字：全部停下並提醒一次（原因不含「驗證」，之後可以直接再按開始）
+function stopForKeyword(word) {
+  const reason = `遊戲輸出出現關鍵字「${word}」，已全部停止`;
+  alertOnly(reason, '⚠ 命中關鍵字');
   return stopEverything(reason);
 }
 // 指令送出後遊戲通常會回覆；超時沒新輸出視為需要驗證。送的是驗證碼答案時，沒回應＝答錯，交給重送
@@ -387,6 +397,12 @@ const captchaObserver = new MutationObserver(allRecords => {
   if (meaningful && watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
   const addedText = addedTexts.join('');
   watchReward(addedText);
+  // 停止關鍵字閒置時也作用（只看新出現的、不是自己打的回聲）
+  const keywordHit = stopKeywords.enabled && Date.now() - lastStopKeywordAt > STOP_KEYWORD_COOLDOWN_MS ? CatworldStopKeywords.find(addedText, stopKeywords.words) : null;
+  if (keywordHit) {
+    lastStopKeywordAt = Date.now();
+    stopForKeyword(keywordHit);
+  }
   // 自動辨識要原始 HTML（背景色 span 裡的亂碼文字也是方塊）：元素取 outerHTML，文字節點照 HTML 規則跳脫
   const addedHtml = records.map(record => (record.type === 'characterData'
     ? escapeHtml(record.target.textContent || '')
@@ -1403,14 +1419,16 @@ globalThis.CatworldShopCollect?.setSender?.(text => startMacro(text, 'shop'));
 // popup 改了「一直響到確認」開關，不用重新整理遊戲頁就生效
 chrome.storage.onChanged?.addListener((changes, area) => {
   if (area === 'local' && changes.persistentAlert) persistentAlert = changes.persistentAlert.newValue === true;
+  if (area === 'local' && changes[CatworldStopKeywords.KEY]) stopKeywords = CatworldStopKeywords.normalize(changes[CatworldStopKeywords.KEY].newValue);
   if (area === 'local' && changes.autoReward) {
     autoReward = changes.autoReward.newValue !== false;
     if (!autoReward) cancelReward();
   }
 });
 
-chrome.storage.local.get(['running', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert', 'autoReward']).then(data => {
+chrome.storage.local.get(['running', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert', 'autoReward', CatworldStopKeywords.KEY]).then(data => {
   persistentAlert = data.persistentAlert === true;
+  stopKeywords = CatworldStopKeywords.normalize(data[CatworldStopKeywords.KEY]);
   autoReward = data.autoReward !== false;
   if (data.settings) settings = { ...settings, ...data.settings };
   // 規則設定會留著，但開關不會：重新整理遊戲頁後觸發不會自己恢復。舊版只有一組設定，升級時放進練功

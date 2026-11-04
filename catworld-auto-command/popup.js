@@ -101,7 +101,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'skill-moves.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'stop-keywords.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'skill-moves.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -147,6 +147,10 @@ document.addEventListener('toggle', event => {
   const folds = Object.fromEntries([...document.querySelectorAll('details[id]')].map(box => [box.id, box.open]));
   chrome.storage.local.set({ popupFolds: folds });
 }, true);
+// 停止關鍵字：開關與清單存成一個物件，遊戲頁監聽 storage 變化，馬上生效
+const saveStopKeywords = () => chrome.storage.local.set({ [CatworldStopKeywords.KEY]: { enabled: $('stopKeywordsOn').checked, words: $('stopKeywordsList').value } });
+$('stopKeywordsOn').addEventListener('change', saveStopKeywords);
+$('stopKeywordsList').addEventListener('change', saveStopKeywords);
 $('autoReward').addEventListener('change', () => {
   chrome.storage.local.set({ autoReward: $('autoReward').checked });
 });
@@ -811,7 +815,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 });
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
+  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', CatworldStopKeywords.KEY, 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
   huntSettings = CatworldMapHunt.normalizeSettings(data[CatworldMapHunt.SETTINGS_KEY]);
   showHuntSettings();
   $('shopSkipNames').value = typeof data[CatworldShopCollect.SKIP_NAMES_KEY] === 'string' ? data[CatworldShopCollect.SKIP_NAMES_KEY] : CatworldShopCollect.DEFAULT_SKIP_NAMES;
@@ -825,6 +829,9 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   Object.entries(FEATURE_BOXES).forEach(([key, id]) => { $(id).checked = data.zapFeatures?.[key] === true; });
   $('persistentAlert').checked = data.persistentAlert === true;
   $('autoReward').checked = data.autoReward !== false;
+  const stopKeywords = CatworldStopKeywords.normalize(data[CatworldStopKeywords.KEY]);
+  $('stopKeywordsOn').checked = stopKeywords.enabled;
+  $('stopKeywordsList').value = stopKeywords.words;
   $('mainWeapon').value = weaponValue(data.mainWeapon);
   equipmentKeep = CatworldZapEquipment.normalizeKeepRule(data.equipmentKeep);
   showEquipmentKeep();

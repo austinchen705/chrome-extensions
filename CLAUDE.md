@@ -17,6 +17,11 @@
 - 規則的 `priority`（最優先）由 `content.js` 處理：命中時指令用 `startMacro(…, { priority: true })` 包成 priority 巨集；`currentPriority`（最早的那個）放行，`nextQueued` 只送它的佇列項目，`syncHold` 把其他巨集的 `@等待` 凍結（`frozen`、`remaining`）、放行後接著算；`finishMacroIfDone` 要看 `frozen`，否則被凍結的巨集會被誤判結束。測試在 `tests/trigger-priority.test.js`。
 - 關鍵字規則（`kind: 'keyword'`）的新文字由 `captchaObserver` 在驗證碼檢查之後交給 `engine.onText`，只取 `#content` 內新增的內容。防迴圈靠「只看新文字、冷卻中的直接丟掉、`>` 開頭的回聲行略過」三件事，改動時不能拿掉任何一個，對應測試要保留。
 
+## 停止關鍵字
+
+- `stop-keywords.js`（純函式，content script 與設定頁共用；manifest、popup.html、popup 備援注入都要載入，在 `content.js`／`popup.js` 之前）：`normalize`（缺值＝開、清單 `jrealm`；清單被清空就是真的沒有詞）、`list`（`、,，;；` 與換行分隔、去重、最多 `MAX_WORDS` 個、每個最多 `MAX_LENGTH` 字）、`find`（不分大小寫的子字串；以 `>` 開頭的行是自己指令的回聲，不算）。設定存在 `chrome.storage.local.stopKeywords`（`{ enabled, words }`，words 是字串），設定頁改了馬上生效（`storage.onChanged`）。
+- `content.js` 的 `captchaObserver` 在 `watchReward` 之後、驗證碼分支與 `active()` 判斷**之前**檢查（所以閒置時也提醒）：命中就 `stopForKeyword`＝`alertOnly`（響一次、不進 `ringing`）加 `stopEverything`；原因不含「驗證」，停了之後可以直接再按開始。`STOP_KEYWORD_COOLDOWN_MS`（10 秒）內同一批後續的命中不重複。測試在 `tests/stop-keywords.test.js`。
+
 ## 孤兒程式與重複面板
 
 - 擴充功能在 `chrome://extensions` 重新載入後，遊戲分頁沒重新整理的話，**舊版 content script 還留在頁面上**（連不上擴充功能的「孤兒」）：它的面板、計時器、送指令的佇列都還活著；而設定頁在 `sendMessage` 收到 `Receiving end does not exist` 時會備援注入一份新的（`popup.js`），新的隔離環境看不到舊的防重複旗標，所以頁面上會有兩個面板、兩份程式同時送指令，驗證碼也可能停不下來（`chrome.runtime.sendMessage` 在孤兒裡會直接丟例外）。
