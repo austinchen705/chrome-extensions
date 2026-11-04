@@ -1,0 +1,102 @@
+// 地圖巡怪用的輸出解析（純函式）：l、finger、time。樣本是遊戲的真實輸出（tests/fixtures/hunt/）
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+require(path.join(__dirname, '..', 'catworld-auto-command', 'hunt-parse.js'));
+const P = globalThis.CatworldHuntParse;
+
+const sample = name => fs.readFileSync(path.join(__dirname, 'fixtures', 'hunt', `${name}.txt`), 'utf8');
+
+test('time: the Taipei time line is read as UTC+8 and given back as epoch milliseconds', () => {
+  // 2026-11-04 09:55:01 台北時間 = 01:55:01 UTC
+  assert.equal(P.parseTime(sample('time')), Date.UTC(2026, 10, 4, 1, 55, 1));
+});
+
+test('time: no Taipei time line means failure (null)', () => {
+  assert.equal(P.parseTime('[小貓的世界]\n小貓時間為丙寅年八月十八日午時。'), null);
+  assert.equal(P.parseTime(''), null);
+  assert.equal(P.parseTime(undefined), null);
+});
+
+test('finger: a player record is a player', () => {
+  assert.equal(P.parseFinger(sample('finger-player')), 'player');
+});
+
+test('finger: not found is an NPC (no real NPC sample yet: the user only said it says it cannot be found)', () => {
+  assert.equal(P.parseFinger('> finger ferryman\n找不到這個人。'), 'npc');
+});
+
+test('finger: anything else is unknown, and the caller treats unknown as a player', () => {
+  assert.equal(P.parseFinger(''), 'unknown');
+  assert.equal(P.parseFinger('> finger abau\n你的動作太快了。'), 'unknown');
+  assert.equal(P.parseFinger(undefined), 'unknown');
+});
+
+const exitsOf = text => [...P.parseLook(text).exits];
+
+test('look exits: full direction names become commands, one or several exits', () => {
+  assert.deepEqual(exitsOf(sample('look-garden')), ['s', 'w']);
+  assert.deepEqual(exitsOf(sample('look-valley')), ['e', 'nw']);
+  assert.deepEqual(exitsOf(sample('look-treetop-fighting')), ['d', 'u']);
+  assert.deepEqual(exitsOf(sample('look-career')), ['u'], '「這裡唯一的出口是 up」');
+});
+
+test('look exits: the combined up/down directions, an unknown word is kept as it is, no exit line means none', () => {
+  assert.deepEqual(exitsOf('這裡明顯的出口是 eastup、westdown 和 enter。'), ['eu', 'wd', 'enter']);
+  assert.deepEqual(exitsOf('這裡明顯的出口是 southeast, northeast 和 north。'), ['se', 'ne', 'n']);
+  assert.deepEqual(exitsOf('沒有出口的一段文字'), []);
+  assert.deepEqual(exitsOf(undefined), []);
+});
+
+const monstersOf = text => JSON.parse(JSON.stringify(P.parseLook(text).monsters));
+
+test('look monsters: one entry per ※ line, same-name monsters are not merged', () => {
+  const three = monstersOf(sample('look-garden'));
+  assert.equal(three.length, 3);
+  three.forEach(mob => assert.deepEqual(mob, { name: '峨嵋派 第五代弟子', id: 'emei pupil', full: '峨嵋派 第五代弟子(emei pupil)', state: '' }));
+});
+
+test('look monsters: the state tag is kept, corpses and the prompt are not monsters', () => {
+  assert.deepEqual(monstersOf(sample('look-treetop-fighting')), [{ name: '炎蛛', id: 'fire spider', full: '炎蛛(fire spider)', state: '戰鬥中' }]);
+  assert.deepEqual(monstersOf(sample('look-treetop-ko')), [{ name: '炎蛛', id: 'fire spider', full: '炎蛛(fire spider)', state: '昏迷不醒' }]);
+});
+
+test('look monsters: rooms with only people and items have none', () => {
+  assert.deepEqual(monstersOf(sample('look-career')), []);
+  assert.deepEqual(monstersOf(sample('look-valley')), []);
+});
+
+const peopleOf = text => JSON.parse(JSON.stringify(P.parseLook(text).people));
+
+test('look people: every line with an ID and a <state> that is not a monster, nine players in the career room', () => {
+  const ids = peopleOf(sample('look-career')).map(person => person.id);
+  assert.deepEqual(ids, ['sxd', 'kenpi', 'fanfist', 'fanwhip', 'fansword', 'fffantisy', 'fanew', 'ffantisy', 'kikky']);
+  assert.equal(peopleOf(sample('look-career'))[1].state, '發呆六分鐘');
+});
+
+test('look people: a lone player in the valley, and the long title line is still one person', () => {
+  assert.deepEqual(peopleOf(sample('look-valley')), [{ id: 'geats', state: '發呆四分鐘' }]);
+});
+
+test('look people: items without a state, corpses, monsters, the door in the description and the prompt are not people', () => {
+  assert.deepEqual(peopleOf(sample('look-garden')), []);
+  assert.deepEqual(peopleOf(sample('look-treetop-fighting')), []);
+  assert.deepEqual(peopleOf(sample('look-treetop-ko')), []);
+  const career = peopleOf(sample('look-career')).map(person => person.id);
+  assert.ok(!career.includes('waterskin') && !career.includes('meat'));
+});
+
+test('look exits: a word with a hyphen or a digit is kept whole as the command', () => {
+  assert.deepEqual(exitsOf('這裡明顯的出口是 north-east 和 door2。'), ['north-east', 'door2']);
+});
+
+test('look monsters: full is the same text the map collector stores for the same line', () => {
+  require(path.join(__dirname, '..', 'catworld-auto-command', 'zap-mobs.js'));
+  const line = '  ※「縣城官兵」 官兵(Soldier) <戰鬥中> [fight][kill]';
+  const stored = globalThis.CatworldZapMobs.parseMobLines(line)[0].name;
+  assert.equal(P.parseLook(line).monsters[0].full, stored);
+  const garden = sample('look-garden');
+  assert.equal(P.parseLook(garden).monsters[0].full, globalThis.CatworldZapMobs.parseMobLines(garden)[0].name);
+});
