@@ -123,7 +123,7 @@ function moveRow(box, move) {
 function render(learned, reply) {
   const box = document.createElement('div');
   box.setAttribute(OWN, '');
-  Object.assign(box.style, { border: '1px solid rgba(160, 170, 180, 0.35)', borderRadius: '4px', background: 'rgba(255, 255, 255, 0.04)', padding: '6px 10px', margin: '6px 0', whiteSpace: 'pre-wrap' });
+  Object.assign(box.style, { border: '1px solid rgba(160, 170, 180, 0.35)', borderRadius: '4px', padding: '6px 10px', margin: '6px 0', whiteSpace: 'pre-wrap' });
   line(box, `招式列表（顏色＝傷害：${TIERS.map(tier => tier.label).join('、')}；藍＝加內力；招式名兩個字換一個色）`, '#9aa5b1');
   if (!reply?.ok) {
     line(box, `查不到招式資料：${reply?.error ?? '沒有回應'}（extension 剛重新載入的話，請重新整理遊戲頁）`, '#ff8a7a');
