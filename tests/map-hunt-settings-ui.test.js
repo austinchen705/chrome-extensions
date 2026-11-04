@@ -69,6 +69,7 @@ ui('the hunt section is a closed fold with every field at its default', async ()
     assert.equal(field(doc, 'afterKillCommand').value, 'gc');
     assert.equal(field(doc, 'refuseKeyword').value, '並不想跟你較量');
     assert.equal(field(doc, 'endKeywords').value, '一動也不動了、死了');
+    assert.equal(field(doc, 'fightTimeoutSec').value, '60');
     assert.equal(field(doc, 'eatCommand').value, '', 'the eat command has no default');
   } finally {
     dom.window.close();

@@ -795,6 +795,9 @@ const ASK = {
   finger: { pattern: /權限等級|找不到/, quietMs: 250 },
 };
 const ASK_MAX_MS = 8000;
+const addedText = records => CatworldZapMobs.textFromAdded(records.flatMap(record => (record.type === 'characterData'
+  ? [record.target.textContent || '']
+  : Array.from(record.addedNodes, node => node.textContent || ''))));
 function askGame(command, kind) {
   return new Promise(resolve => {
     let text = '';
@@ -809,9 +812,7 @@ function askGame(command, kind) {
     };
     const observer = new MutationObserver(records => {
       if (!sent) return;
-      text += CatworldZapMobs.textFromAdded(records.flatMap(record => (record.type === 'characterData'
-        ? [record.target.textContent || '']
-        : Array.from(record.addedNodes, node => node.textContent || ''))));
+      text += addedText(records);
       if (ASK[kind].pattern.test(text)) {
         clearTimeout(quiet);
         quiet = setTimeout(done, ASK[kind].quietMs);
@@ -852,8 +853,20 @@ hunt = CatworldMapHunt.create({
   ask: askGame,
   npcs: huntNpcs,
   learnNpc: learnHuntNpc,
-  send: command => { enqueue(command, 'hunt'); return true; },
-  dropQueue: () => dropQueue('hunt'),
+  settings: async () => CatworldMapHunt.normalizeSettings((await chrome.storage.local.get(CatworldMapHunt.SETTINGS_KEY))[CatworldMapHunt.SETTINGS_KEY]),
+  watch: handler => {
+    const observer = new MutationObserver(records => handler(addedText(records)));
+    observer.observe(document.getElementById('content'), { subtree: true, childList: true, characterData: true });
+    return () => observer.disconnect();
+  },
+  kee: () => {
+    const stat = readStat('氣');
+    return stat && stat.max > 0 ? (stat.value / stat.max) * 100 : NaN;
+  },
+  send: command => { queueCommand(command, 'hunt'); return true; },
+  // 停止後才送的回家指令：用巨集（執行中算 active()，佇列才送得出去），owner 不是 hunt，所以停止巡怪時不會被一起取消
+  sendAfterStop: command => startMacro(command, 'hunt-home'),
+  dropQueue: () => { dropQueue('hunt'); cancelMacros('hunt'); },
   alert: reason => alertOnly(reason, '⚠ 巡怪已停止'),
   notify: () => renderPanel(),
 });

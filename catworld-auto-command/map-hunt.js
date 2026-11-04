@@ -14,6 +14,11 @@ const MOVE_TIMEOUT_TICKS = 25; // 5 秒
 const MAX_SKIPS = 3;
 const MAX_WRONG = 3; // 同一個目標走錯房間幾次就略過
 const SAFE_ID = /^[A-Za-z][A-Za-z0-9 _.'-]*$/;
+const MAX_STUCK = 3; // 連續幾次打完指令後怪的數量沒減少就略過這間
+const TICKS_PER_SEC = 1000 / TICK_MS;
+const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
+const NO_TARGET = /你要對誰施展這個招式/;
+const KNOCKED_OUT = '昏迷不醒';
 
 // 設定頁的欄位（也決定預設值與檢查）：type 是 text、number 或 select
 const FIELDS = [
@@ -31,6 +36,7 @@ const FIELDS = [
   { key: 'specialIntervalSec', label: '特攻最小間隔（秒）', type: 'number', default: 10, min: 1, max: 600 },
   { key: 'refuseKeyword', label: '怪不想打時遊戲回的字（fight 被拒就改 kill）', type: 'text', default: '並不想跟你較量' },
   { key: 'endKeywords', label: '怪倒下的字（用、分隔）', type: 'text', default: '一動也不動了、死了' },
+  { key: 'fightTimeoutSec', label: '等怪倒下最久幾秒（逾時就用 l 看一眼）', type: 'number', default: 60, min: 5, max: 600 },
   { key: 'npcWhitelist', label: 'NPC 白名單（英文 ID，用、分隔）', type: 'text', default: '' },
   { key: 'standbyCommand', label: '巡完一輪後送的待命指令（可空）', type: 'text', default: '' },
   { key: 'aheadSec', label: '提早幾秒開始下一輪', type: 'number', default: 20, min: 0, max: 600 },
@@ -59,6 +65,7 @@ function create(deps) {
   const Parse = globalThis.CatworldHuntParse;
   let state = null;
   let timer = null;
+  let unwatch = null; // 取消「看遊戲輸出」的訂閱
   let note = '';
   let noteAlert = false;
   // 按下「開始」到讀完儲存、建好狀態之間（有 await）：這段時間算「在跑」，再按開始會被擋、按停止會取消這次開始
@@ -76,6 +83,9 @@ function create(deps) {
     timer = null;
     const was = state;
     state = null;
+    unwatch?.();
+    unwatch = null;
+    was?.fight?.resolve('stopped');
     note = reason + skippedNote(was?.skipped ?? []);
     deps.dropQueue();
     if (alert && was) deps.alert(reason);
@@ -101,7 +111,7 @@ function create(deps) {
   };
 
   // 到了目標房間：送 l 看房間。沒有勾選的怪就直接換下一間（不必問人）；有別人就略過這間；沒見過的 ID 用 finger 分辨
-  // 玩家與 NPC（NPC 記下來，下次不再問）；看不到房間（l 沒回應或讀不懂）當成走不過去；其餘算看過了（之後的票在這裡打怪）。
+  // 玩家與 NPC（NPC 記下來，下次不再問）；看不到房間（l 沒回應或讀不懂）當成走不過去；其餘進 fightRoom 打怪。
   // 每個 await 之後都要確認這一次巡怪還在（停止或重新開始後，舊的檢查不能再動新的狀態、也不能再送指令）
   async function inspect(token, here) {
     const info = Parse.parseLook(await deps.ask('l', 'look'));
@@ -126,8 +136,120 @@ function create(deps) {
       return;
     }
     state.skips = 0;
-    doneWith(here, here);
+    await fightRoom(token, here, info);
   }
+
+  // 把房間裡勾選的怪一隻一隻打完：fight（被拒就 kill）→ 倒下就送打完指令 → 再 l 重數；連續 MAX_STUCK 次數量沒減少就略過這間
+  async function fightRoom(token, here, first) {
+    let info = first;
+    let stuck = 0;
+    for (;;) {
+      // 昏迷的怪打不了，不當目標也不算還沒打完
+      const mine = info.monsters.filter(mob => token.mobs.includes(mob.full) && mob.state !== KNOCKED_OUT);
+      if (!mine.length) { doneWith(here, here); return; }
+      // ID 會被放進 fight 指令，和 finger 一樣只收普通英數
+      const target = mine.find(mob => SAFE_ID.test(mob.id));
+      if (!target) { state.skipped.push({ key: here, why: '怪的 ID 不能用' }); doneWith(here); return; }
+      const outcome = await fightOne(token, target);
+      if (state !== token || outcome === 'stopped') return;
+      if (state.settings.afterKillCommand) deps.send(state.settings.afterKillCommand);
+      info = Parse.parseLook(await deps.ask('l', 'look'));
+      if (state !== token) return;
+      if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
+      const left = info.monsters.filter(mob => token.mobs.includes(mob.full) && mob.state !== KNOCKED_OUT).length;
+      stuck = left < mine.length ? 0 : stuck + 1;
+      if (stuck >= MAX_STUCK) { state.skipped.push({ key: here, why: '打不動' }); doneWith(here); return; }
+    }
+  }
+
+  // 打一隻：送 fight，之後由 onText（拒戰句、結束句）與 fightTick（特攻、補氣、逾時看 l）推進；結束時回 'ended'，被停止回 'stopped'
+  function fightOne(token, mob) {
+    return new Promise(resolve => {
+      // 特攻從開打算起隔一個間隔才送第一次，免得緊跟在 fight 後面被拒戰時得到「你要對誰施展這個招式」
+      state.fight = { mob, resolve, killSent: false, buffer: '', noTarget: false, waited: 0, lastSpecial: state.ticks, checking: false, silentChecks: 0, endWords: splitIds(state.settings.endKeywords) };
+      deps.notify();
+      if (!deps.send(`fight ${mob.id}`)) finish('指令送不出去，已停止', { alert: true });
+    });
+  }
+  const endFight = fight => {
+    if (state?.fight !== fight) return;
+    state.fight = null;
+    fight.resolve('ended');
+  };
+
+  // 遊戲新增的輸出（content.js 以 deps.watch 餵進來）：只在打的時候看。拒戰句→改送 kill；結束句（怪死、昏迷）→這一隻打完；
+  // 「你要對誰施展這個招式」→這場不再送特攻。忙碌拒絕句不用處理：被拒的特攻不重排，等下一次間隔
+  function onText(text) {
+    const fight = state?.fight;
+    if (!fight) return;
+    fight.buffer = (fight.buffer + text).slice(-500);
+    const settings = state.settings;
+    if (NO_TARGET.test(fight.buffer)) fight.noTarget = true;
+    if (!fight.killSent && settings.refuseKeyword && fight.buffer.includes(settings.refuseKeyword)) {
+      fight.killSent = true;
+      fight.noTarget = false; // 前面的特攻對著還沒開打的怪，不算這場沒有目標
+      fight.buffer = '';
+      deps.send(`kill ${fight.mob.id}`);
+      return;
+    }
+    if (fight.endWords.some(word => fight.buffer.includes(word))) {
+      fight.buffer = '';
+      endFight(fight);
+    }
+  }
+
+  // 等太久沒看到結束句：送 l 看一眼。還有怪在 <戰鬥中> 就繼續等；怪昏迷或不見了就當結束；怪還在但沒在打（指令沒送到？）重送 fight（已改 kill 就重送 kill），最多 3 次
+  function lookCheck(fight) {
+    const token = state;
+    fight.checking = true;
+    deps.ask('l', 'look').then(text => {
+      if (state !== token || state.fight !== fight) return;
+      fight.checking = false;
+      fight.waited = 0;
+      const info = Parse.parseLook(text);
+      if (!info.exits.length) { if ((fight.silentChecks += 1) >= MAX_STUCK) endFight(fight); return; }
+      const mine = info.monsters.filter(mob => token.mobs.includes(mob.full));
+      if (mine.some(mob => mob.state === '戰鬥中')) return;
+      if (mine.some(mob => mob.state !== KNOCKED_OUT) && (fight.silentChecks += 1) < MAX_STUCK) { deps.send(`${fight.killSent ? 'kill' : 'fight'} ${fight.mob.id}`); return; }
+      endFight(fight);
+    }).catch(() => { if (state === token) finish('看房間時出錯，已停止', { alert: true }); });
+  }
+
+  // 戰鬥中補氣（每秒看一次）：吃藥模式低於門檻就送吃藥指令（至少間隔 5 秒）；自己回模式戰鬥中沒辦法閒置，掉到危險線就回家、停止、警報
+  function healInFight() {
+    const settings = state.settings;
+    const percent = deps.kee();
+    if (!Number.isFinite(percent)) return;
+    if (settings.healMode === 'rest') {
+      if (percent < settings.dangerBelow) {
+        const home = settings.homeCommand;
+        finish(`戰鬥中氣只剩 ${Math.round(percent)}%（低於 ${settings.dangerBelow}%），${home ? '已回家並' : ''}停止`, { alert: true });
+        if (home) deps.sendAfterStop(home);
+      }
+      return;
+    }
+    if (percent < settings.eatBelow && settings.eatCommand && state.ticks - state.lastEat >= EAT_GAP_TICKS) {
+      state.lastEat = state.ticks;
+      deps.send(settings.eatCommand);
+    }
+  }
+
+  function fightTick() {
+    const fight = state.fight;
+    const settings = state.settings;
+    fight.waited += 1;
+    if (state.ticks % TICKS_PER_SEC === 0) {
+      healInFight();
+      if (!state || state.fight !== fight) return;
+    }
+    // 特攻：怪還活著、這場沒被告知沒有目標、距離上次已過最小間隔才送（#busy 還沒有樣本，不看狀態列）
+    if (settings.specialCommand && !fight.noTarget && state.ticks - fight.lastSpecial >= settings.specialIntervalSec * TICKS_PER_SEC) {
+      fight.lastSpecial = state.ticks;
+      deps.send(settings.specialCommand);
+    }
+    if (!fight.checking && fight.waited >= settings.fightTimeoutSec * TICKS_PER_SEC) lookCheck(fight);
+  }
+
   function arrive(here) {
     const token = state;
     state.phase = 'look';
@@ -156,7 +278,10 @@ function create(deps) {
   }
 
   function tick() {
-    if (!state || state.phase === 'look') return;
+    if (!state) return;
+    state.ticks += 1;
+    if (state.fight) { fightTick(); return; }
+    if (state.phase === 'look') return;
     const here = deps.room();
     state.waited += 1;
     if (state.phase === 'move') {
@@ -197,6 +322,7 @@ function create(deps) {
       const graph = Route.parseArea(deps.areaHtml(target.area));
       if (!Object.keys(graph.rooms).length) return fail('讀不到這個區域的地圖');
       const store = await deps.readStore();
+      const settings = await deps.settings();
       if (cancelled) return fail('已取消', false);
       const places = target.mobs.flatMap(mob => Collect.locate(store, mob)).filter(place => place.area === target.area);
       const rooms = [...new Set(places.flatMap(place => place.rooms.map(room => `${place.area}/${room}`)))];
@@ -204,9 +330,11 @@ function create(deps) {
       if (!targets.size) return fail('這個區域沒有蒐集到勾選的怪的房間（或那些房間不在地圖上）');
       state = {
         mobs: target.mobs, graph, targets, skipped: rooms.filter(key => !graph.rooms[key]).map(key => ({ key, why: '不在地圖上' })),
+        settings, ticks: 0, lastEat: -Infinity, fight: null,
         skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [], phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       note = '';
+      unwatch = deps.watch(onText);
       timer = setInterval(tick, TICK_MS);
       tick();
       deps.notify();
@@ -233,6 +361,7 @@ function create(deps) {
   const summary = () => {
     if (!state) return { text: note || '未啟動', alert: noteAlert };
     const who = state.mobs.length === 1 ? state.mobs[0] : `${state.mobs.length} 種怪`;
+    if (state.fight) return { text: `${who}：在 ${state.goal} 打 ${state.fight.mob.name}${skippedNote(state.skipped)}`, alert: noteAlert };
     if (state.phase === 'look') return { text: `${who}：到了 ${state.goal}，看房間…${skippedNote(state.skipped)}`, alert: noteAlert };
     return { text: `${who}：走向 ${state.goal ?? '…'}（目標剩 ${state.targets.size} 間）${skippedNote(state.skipped)}`, alert: noteAlert };
   };
