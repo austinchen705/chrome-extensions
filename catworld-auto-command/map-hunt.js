@@ -22,6 +22,10 @@ const TICKS_PER_SEC = 1000 / TICK_MS;
 const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
 const NO_TARGET = /你要對誰施展這個招式/;
 const KNOCKED_OUT = '昏迷不醒';
+const RESPAWN_MS = 15 * 60 * 1000; // 怪在伺服器時間的每小時 00、15、30、45 分重生
+const RECALIBRATE_LEAD_MS = 30 * 1000; // 距開始時間不到這麼久（或估計已經到了），而上次校準已經超過 RECALIBRATE_GAP_MS，就重新校準
+const RECALIBRATE_GAP_MS = 20 * 1000;
+const FRESH_MS = 60 * 1000; // 開始下一輪前，最近一次校準不能比這更舊
 const QI_WAIT_TICKS = 60 * TICKS_PER_SEC; // 試出口前等氣回復最多等這麼久，等不到就略過這個目標
 const NO_MEDICINE_WINDOW_TICKS = 10 * TICKS_PER_SEC; // 吃藥指令真的送出後，這麼久內出現沒藥關鍵字才算
 
@@ -44,6 +48,7 @@ const FIELDS = [
   { key: 'endKeywords', label: '怪倒下的字（用、分隔）', type: 'text', default: '一動也不動了、死了' },
   { key: 'fightTimeoutSec', label: '等怪倒下最久幾秒（逾時就用 l 看一眼）', type: 'number', default: 60, min: 5, max: 600 },
   { key: 'npcWhitelist', label: 'NPC 白名單（英文 ID，用、分隔）', type: 'text', default: '' },
+  { key: 'loopRounds', label: '巡完一輪後等下一個重生再巡（關＝巡完就停）', type: 'select', options: [['on', '開'], ['off', '關']], default: 'on' },
   { key: 'standbyCommand', label: '巡完一輪後送的待命指令（可空）', type: 'text', default: '' },
   { key: 'aheadSec', label: '提早幾秒開始下一輪', type: 'number', default: 20, min: 0, max: 600 },
 ];
@@ -469,6 +474,82 @@ function create(deps) {
     }
   }
 
+  // ---- 輪與輪之間 ----
+  // 時間都用伺服器時間（毫秒）：deps.now()＋偏差。state.after 是「這一輪打下來的怪從什麼時候起重生」：
+  // 等待之後開始的那一輪＝它等的那個重生本身（精確的整點，不能用算出來的時間，否則偏差差一點就會把同一個重生又算一次）；
+  // 馬上開始的（按開始、或掃描太久而已過）＝現在加提早秒數。下一個重生＝after 之後的第一個 15 分鐘整點
+  const nextSpawn = after => (Math.floor(after / RESPAWN_MS) + 1) * RESPAWN_MS;
+  const hhmm = ms => {
+    const date = new Date(ms + 8 * 3600 * 1000);
+    return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
+  };
+  // 用 time 讀伺服器時間，回偏差（伺服器時間 − 電腦時鐘）；讀不到回 null
+  async function readOffset() {
+    const server = Parse.parseTime(await deps.ask('time', 'time'));
+    return server === null ? null : server - deps.now();
+  }
+  const roundFields = () => ({ skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [] });
+  // 每個目標房間都處理過一次＝一輪。沒開「等下一個重生」或這一輪什麼都沒處理（沒有走得到的目標）就停（第 2 輪以後警報）；
+  // 否則送待命指令（是巨集的話等它跑完），用 time 校準，等到下一個重生減「提早秒數」再開始下一輪
+  function endRound() {
+    const message = state.handled ? `這一輪巡完了（到過 ${state.visited.length} 間）` : '沒有走得到的目標房間了';
+    if (state.settings.loopRounds !== 'on' || !state.handled) { finish(message, { alert: !state.handled && state.round > 1 }); return; }
+    if (state.settings.standbyCommand && !sendOrStop(state.settings.standbyCommand)) return;
+    state.phase = 'standby';
+    deps.notify();
+  }
+  function calibrate() {
+    const token = state;
+    state.phase = 'wait';
+    state.calibrating = true;
+    deps.notify();
+    readOffset().then(offset => {
+      if (state !== token) return;
+      state.calibrating = false;
+      if (offset === null) { finish('讀不到伺服器時間（time 的輸出），已停止', { alert: true }); return; }
+      const ahead = state.settings.aheadSec * 1000;
+      const spawn = nextSpawn(state.after);
+      const now = deps.now() + offset;
+      if (now >= spawn - ahead) { beginRound(now + ahead, offset); return; }
+      state.waiting = { startAt: spawn - ahead, spawn, offset, calibratedAt: deps.now(), asking: false, rounds: state.round, visited: state.visited.length };
+      deps.notify();
+    }).catch(() => { if (state === token) finish('讀取伺服器時間時出錯，已停止', { alert: true }); });
+  }
+  function beginRound(after) {
+    state.round += 1;
+    state.waiting = null;
+    state.after = after;
+    state.targets = new Set(state.allTargets);
+    state.skipped = [...state.baseSkipped];
+    Object.assign(state, roundFields());
+    state.phase = 'plan';
+    deps.notify();
+  }
+  // 等待中：快到時（或電腦時鐘被調過、估計已經到了）先重新校準，確認剛校準過（一分鐘內）才開始；校準讀不到也停止
+  function waitTick() {
+    if (state.phase === 'standby') {
+      if (!deps.macroRunning()) calibrate();
+      return;
+    }
+    const waiting = state.waiting;
+    if (!waiting || waiting.asking) return;
+    const now = deps.now();
+    const estimate = now + waiting.offset;
+    if (estimate >= waiting.startAt - RECALIBRATE_LEAD_MS && now - waiting.calibratedAt > RECALIBRATE_GAP_MS) {
+      const token = state;
+      waiting.asking = true;
+      readOffset().then(offset => {
+        if (state !== token) return;
+        if (offset === null) { finish('讀不到伺服器時間（time 的輸出），已停止', { alert: true }); return; }
+        waiting.offset = offset;
+        waiting.calibratedAt = deps.now();
+        waiting.asking = false;
+      }).catch(() => { if (state === token) finish('讀取伺服器時間時出錯，已停止', { alert: true }); });
+      return;
+    }
+    if (estimate >= waiting.startAt && now - waiting.calibratedAt <= FRESH_MS) beginRound(waiting.spawn);
+  }
+
   // 規劃下一步：到了目標就看房間；否則挑路線最短的目標，送出路線的第一個指令
   // 學習開著時分兩張圖：嚴格圖（已知出口的房間只走出口裡有的）優先；只有寬鬆圖（純地圖圖示）走得到時，圖示的猜測可能走不通
   function plan(here) {
@@ -486,7 +567,7 @@ function create(deps) {
       else if (!guess || loose.length < guess.way.length) guess = { key, way: loose, graph: looseGraph };
     });
     const chosen = best ?? guess;
-    if (!chosen) { finish(state.handled ? `這一輪巡完了（到過 ${state.visited.length} 間）` : '沒有走得到的目標房間了'); return; }
+    if (!chosen) { endRound(); return; }
     const cmd = chosen.way[0];
     state.goal = chosen.key;
     state.expected = chosen.graph.rooms[here].exits[cmd];
@@ -511,6 +592,7 @@ function create(deps) {
       vitals();
       if (!state) return;
     }
+    if (state.phase === 'wait' || state.phase === 'standby') { waitTick(); return; }
     if (state.trial) { trialTick(); return; }
     if (state.phase === 'look') return;
     const here = deps.room();
@@ -577,14 +659,23 @@ function create(deps) {
       const learn = settings.learnExits === 'on';
       const learned = learn ? forgetOut(normalizeLearned(await deps.exits())) : {};
       if (cancelled) return fail('已取消', false);
+      let offset = 0;
+      if (settings.loopRounds === 'on') {
+        const read = await readOffset();
+        if (cancelled) return fail('已取消', false);
+        if (read === null) return fail('讀不到伺服器時間（time 的輸出），沒有開始');
+        offset = read;
+      }
       const places = target.mobs.flatMap(mob => Collect.locate(store, mob)).filter(place => place.area === target.area);
       const rooms = [...new Set(places.flatMap(place => place.rooms.map(room => `${place.area}/${room}`)))];
       const targets = new Set(rooms.filter(key => graph.rooms[key]));
       if (!targets.size) return fail('這個區域沒有蒐集到勾選的怪的房間（或那些房間不在地圖上）');
+      const baseSkipped = rooms.filter(key => !graph.rooms[key]).map(key => ({ key, why: '不在地圖上' }));
       state = {
-        mobs: target.mobs, graph, targets, skipped: rooms.filter(key => !graph.rooms[key]).map(key => ({ key, why: '不在地圖上' })),
+        round: 1, after: deps.now() + offset + settings.aheadSec * 1000, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
+        mobs: target.mobs, graph, targets, skipped: [...baseSkipped],
         settings, learn, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
-        skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [], phase: 'plan', goal: null, expected: null, from: null, waited: 0,
+        ...roundFields(), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       note = '';
       unwatch = deps.watch(onText);
@@ -615,6 +706,9 @@ function create(deps) {
     if (!state) return { text: note || '未啟動', alert: noteAlert };
     const who = state.mobs.length === 1 ? state.mobs[0] : `${state.mobs.length} 種怪`;
     if (state.resting) return { text: `${who}：休息中 ${Math.round(state.restPercent)}%→${state.settings.restResume}%${skippedNote(state.skipped)}`, alert: noteAlert };
+    if (state.waiting) return { text: `${who}：等下一個重生 ${hhmm(state.waiting.spawn)}（第 ${state.waiting.rounds} 輪到過 ${state.waiting.visited} 間）${skippedNote(state.skipped)}`, alert: noteAlert };
+    if (state.phase === 'standby') return { text: `${who}：等待指令送完，再校準伺服器時間…${skippedNote(state.skipped)}`, alert: noteAlert };
+    if (state.calibrating) return { text: `${who}：校準伺服器時間…${skippedNote(state.skipped)}`, alert: noteAlert };
     if (state.trial) return { text: `${who}：在 ${state.trial.room} 試出口${skippedNote(state.skipped)}`, alert: noteAlert };
     if (state.learning) return { text: `${who}：看 ${state.goal ?? '房間'} 的出口…${skippedNote(state.skipped)}`, alert: noteAlert };
     if (state.fight) return { text: `${who}：在 ${state.goal} 打 ${state.fight.mob.name}${skippedNote(state.skipped)}`, alert: noteAlert };

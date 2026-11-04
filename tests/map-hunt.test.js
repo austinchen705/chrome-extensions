@@ -6,7 +6,7 @@ const { ui, boot: bootPage, sleep, waitFor, fixture } = require('./helpers/game-
 
 const SCALE = 20;
 // 開始前必填的欄位（吃藥指令、沒藥關鍵字、回家指令）：各測試預設都填好，要測缺欄位的自己清掉
-const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall' };
+const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off' };
 const boot = async options => {
   const page = await bootPage(options);
   page.store.mapHuntSettings = { ...REQUIRED };
@@ -904,13 +904,13 @@ ui('heal: rest mode only needs the home command', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { healMode: 'rest' };
+    page.store.mapHuntSettings = { healMode: 'rest', loopRounds: 'off' };
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } } });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /填：回家指令/.test(huntText(page)), 3000), huntText(page));
     assert.equal(/吃藥指令|沒藥關鍵字/.test(huntText(page)), false);
-    page.store.mapHuntSettings = { healMode: 'rest', homeCommand: 'recall' };
+    page.store.mapHuntSettings = { healMode: 'rest', homeCommand: 'recall', loopRounds: 'off' };
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
     assert.equal(game.log[0], 'e', 'it walks: nothing makes it rest or eat');
@@ -1380,6 +1380,223 @@ ui('learn: when the qi stays under the eat line it gives up on the target instea
     click(page, '.hstart');
     assert.ok(await waitFor(() => /氣一直太低/.test(huntText(page)), 8000), huntText(page));
     assert.equal(game.log.includes('w') || game.log.includes('u'), false, 'nothing was tried');
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 票 08：輪與輪之間 ----
+// 假時鐘：電腦時鐘 = 真正的伺服器時間 − skew + drift，每過一毫秒走 scale 毫秒（等一刻鐘才不用真的等）；
+// jump 把兩邊一起往後撥（模擬一輪走了很久），drift 只撥電腦時鐘（模擬時鐘被校正或調整），replyError 是 time 回的秒數誤差
+const taipei = ms => {
+  const date = new Date(ms + 8 * 3600 * 1000);
+  return `小貓時間為丙寅年八月十八日午時。\n台北時間為西元${date.getUTCFullYear()}年${date.getUTCMonth() + 1}月${date.getUTCDate()}日 ${date.getUTCHours()}點${date.getUTCMinutes()}分${date.getUTCSeconds()}秒 (星期三)。`;
+};
+const fakeClock = (page, startServer, { skewMs = 7 * 60 * 1000, scale = 300 } = {}) => {
+  const real0 = Date.now();
+  const start = Date.parse(startServer);
+  const clock = { jump: 0, drift: 0, replyError: 0, times: 0 };
+  clock.server = () => start + (Date.now() - real0) * scale + clock.jump;
+  clock.computer = () => clock.server() - skewMs + clock.drift;
+  page.w.Date.now = clock.computer;
+  return clock;
+};
+const timeScript = (page, clock, next = () => false) => (command, ...rest) => {
+  if (command === 'time') {
+    clock.times += 1;
+    say(page, taipei(clock.server() + clock.replyError));
+    return true;
+  }
+  return next(command, ...rest);
+};
+const at = text => Date.parse(`2026-11-04T${text}+08:00`);
+const roundPage = async (settings = {}) => {
+  const page = await boot({ scale: SCALE });
+  page.store.mapMonsters = mobsAt('c');
+  page.store.mapHuntSettings = { ...REQUIRED, loopRounds: 'on', ...settings };
+  return page;
+};
+const lookTimer = (clock, times) => command => {
+  if (command === 'l') times.push(clock.server());
+  return false;
+};
+
+ui('rounds: it reads the server time at the start, sends the standby command after a round, and starts the next round at the respawn minus the head start', async () => {
+  const page = await roundPage({ standbyCommand: 'home' });
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const looks = [];
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script: timeScript(page, clock, lookTimer(clock, looks)) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /等下一個重生 10:15/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log.slice(0, 6), ['time', 'e', 'e', 'l', 'home', 'time']);
+    assert.ok(await waitFor(() => looks.length >= 2, 9000), 'the second round starts');
+    assert.ok(looks[1] >= at('10:14:40'), `not before the head start (${new Date(looks[1]).toISOString()})`);
+    assert.ok(looks[1] < at('10:15:10'), `and not long after it (${new Date(looks[1]).toISOString()})`);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rounds: each round waits for the next respawn, even when the clock reading is a little off between rounds', async () => {
+  const page = await roundPage();
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const looks = [];
+    const script = timeScript(page, clock, lookTimer(clock, looks));
+    const flaky = (command, ...rest) => {
+      if (command === 'time') clock.replyError = clock.times % 2 ? -2000 : 0; // 每次讀到的秒數差一點
+      return script(command, ...rest);
+    };
+    world(page, { at: 'a', looks: { c: { lines: [] } }, script: flaky });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => looks.length >= 3, 14000), `three rounds (${looks.length})`);
+    assert.ok(looks[1] >= at('10:14:40') && looks[1] < at('10:15:10'), new Date(looks[1]).toISOString());
+    assert.ok(looks[2] >= at('10:29:40') && looks[2] < at('10:30:10'), `the second respawn is not counted twice (${new Date(looks[2]).toISOString()})`);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rounds: a round that took longer than a respawn period starts the next one at once', async () => {
+  const page = await roundPage();
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const script = timeScript(page, clock, command => {
+      if (command === 'e' && countOf(game, 'e') === 1) clock.jump += 16 * 60 * 1000; // 這一輪走了十六分鐘
+      return false;
+    });
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, 'l') >= 2, 4000), game.log.join(','));
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rounds: started just before a respawn, the next wait is for the one after it', async () => {
+  const page = await roundPage();
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:14:30+08:00');
+    const looks = [];
+    world(page, { at: 'a', looks: { c: { lines: [] } }, script: timeScript(page, clock, lookTimer(clock, looks)) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /等下一個重生 10:30/.test(huntText(page)), 8000), huntText(page));
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rounds: when the computer clock is changed during the wait it checks the time again before starting', async () => {
+  const page = await roundPage();
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const looks = [];
+    world(page, { at: 'a', looks: { c: { lines: [] } }, script: timeScript(page, clock, lookTimer(clock, looks)) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /等下一個重生/.test(huntText(page)), 4000), huntText(page));
+    clock.drift += 10 * 60 * 1000; // 電腦時鐘突然快了十分鐘：只看它的話現在就會開始
+    assert.ok(await waitFor(() => looks.length >= 2, 9000), 'the second round starts');
+    assert.ok(looks[1] >= at('10:14:40'), `not at the wrong time (${new Date(looks[1]).toISOString()})`);
+    assert.ok(clock.times >= 3, 'it asked for the time again');
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rounds: a standby command that is a macro finishes before the time is read', async () => {
+  const page = await roundPage({ standbyCommand: 'home;inn' });
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script: timeScript(page, clock) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /等下一個重生/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log.slice(3, 7), ['l', 'home', 'inn', 'time']);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rounds: a time reply that cannot be read at the start means it does not start', async () => {
+  const page = await roundPage();
+  try {
+    const script = command => {
+      if (command === 'time') { say(page, '小貓時間為丙寅年八月十八日午時。'); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /讀不到伺服器時間/.test(huntText(page)), 5000), huntText(page));
+    assert.equal(await hunting(page), false);
+    assert.deepEqual(game.log, ['time'], 'nothing was walked');
+  } finally {
+    page.close();
+  }
+});
+
+ui('rounds: a time reply that cannot be read after a round stops the hunt with an alert', async () => {
+  const page = await roundPage();
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const good = timeScript(page, clock);
+    const script = (command, ...rest) => {
+      if (command === 'time' && clock.times >= 1) { say(page, '小貓時間為丙寅年八月十八日午時。'); return true; }
+      return good(command, ...rest);
+    };
+    world(page, { at: 'a', looks: { c: { lines: [] } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(message => /讀不到伺服器時間/.test(message.reason)), 5000));
+    assert.equal(await hunting(page), false);
+  } finally {
+    page.close();
+  }
+});
+
+ui('rounds: stopping while it waits for the respawn sends nothing more, even after the time has passed', async () => {
+  const page = await roundPage();
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script: timeScript(page, clock) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /等下一個重生/.test(huntText(page)), 4000), huntText(page));
+    click(page, '.hstop');
+    assert.equal(await hunting(page), false);
+    const count = game.log.length;
+    clock.jump += 30 * 60 * 1000;
+    await sleep(400);
+    assert.equal(game.log.length, count);
+  } finally {
+    page.close();
+  }
+});
+
+ui('rounds: a captcha while it waits stops the hunt like everything else', async () => {
+  const page = await roundPage();
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00', { scale: 100 });
+    const script = timeScript(page, clock, command => /^\d+$/.test(command));
+    world(page, { at: 'a', looks: { c: { lines: [] } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /等下一個重生/.test(huntText(page)), 4000), huntText(page));
+    page.output(fixture('sprite-62044.html'));
+    assert.ok(await waitFor(() => alerts(page).length >= 1, 8000), 'three unanswered tries stop everything');
+    assert.equal(await hunting(page), false);
   } finally {
     page.close();
   }

@@ -796,6 +796,7 @@ const mapStore = async () => CatworldMapCollect.withBuiltin((await chrome.storag
 const ASK = {
   look: { pattern: /出口是/, quietMs: 400 },
   finger: { pattern: /權限等級|找不到/, quietMs: 250 },
+  time: { pattern: /台北時間為/, quietMs: 250 },
 };
 const ASK_MAX_MS = 8000;
 const addedText = records => CatworldZapMobs.textFromAdded(records.flatMap(record => (record.type === 'characterData'
@@ -856,6 +857,8 @@ hunt = CatworldMapHunt.create({
   ask: askGame,
   npcs: huntNpcs,
   learnNpc: learnHuntNpc,
+  now: () => Date.now(),
+  macroRunning: () => [...macroRuns].some(run => run.owner === 'hunt'),
   exits: async () => (await chrome.storage.local.get(CatworldMapHunt.EXITS_KEY))[CatworldMapHunt.EXITS_KEY] ?? {},
   saveExits: learned => chrome.storage.local.set({ [CatworldMapHunt.EXITS_KEY]: learned }),
   settings: async () => CatworldMapHunt.normalizeSettings((await chrome.storage.local.get(CatworldMapHunt.SETTINGS_KEY))[CatworldMapHunt.SETTINGS_KEY]),
