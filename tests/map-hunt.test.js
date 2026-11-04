@@ -1601,3 +1601,45 @@ ui('rounds: a captcha while it waits stops the hunt like everything else', async
     page.close();
   }
 });
+
+// ---- 功能開關：預設關閉，設定頁「輔助功能」勾了才出現 ----
+const setHuntFeature = (page, on) => {
+  page.store.zapFeatures = { hunt: on };
+  page.changeListeners.forEach(listener => listener({ zapFeatures: { newValue: page.store.zapFeatures } }, 'local'));
+};
+
+ui('feature switch: the hunt row is hidden until the setting is switched on', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const line = () => panelRoot(page).querySelector('.hunt-line');
+    assert.equal(line().hidden, true, 'off by default');
+    setHuntFeature(page, true);
+    assert.equal(line().hidden, false);
+    setHuntFeature(page, false);
+    assert.equal(line().hidden, true);
+  } finally {
+    page.close();
+  }
+});
+
+ui('feature switch: switching it off stops a hunt that is running and closes the pick list', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: command => command === FIGHT });
+    setHuntFeature(page, true);
+    await pick(page, MOB);
+    assert.equal(panelRoot(page).querySelector('.hunt-pick').hidden, false, 'the list is open');
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => game.log.includes(FIGHT), 4000));
+    setHuntFeature(page, false);
+    assert.equal(await hunting(page), false);
+    assert.equal(panelRoot(page).querySelector('.hunt-pick').hidden, true);
+    assert.match(huntText(page), /已在設定頁關閉/);
+    const count = game.log.length;
+    await sleep(300);
+    assert.equal(game.log.length, count, 'nothing more is sent');
+  } finally {
+    page.close();
+  }
+});

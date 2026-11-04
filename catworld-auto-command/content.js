@@ -1071,6 +1071,14 @@ function initPanel() {
     zapPanel?.setEnabled({ mobs: features?.mobs === true, items: features?.items === true });
     equipmentUI?.setEnabled(features?.items === true);
     riddleUI?.setEnabled(features?.riddles === true);
+    // 地圖巡怪：預設關閉，關著時整個「巡怪」列（含選怪清單）藏起來；關掉時正在巡就停下來
+    const huntOn = features?.hunt === true;
+    root.querySelector('.hunt-line').hidden = !huntOn;
+    if (!huntOn) {
+      const pickBox = root.querySelector('.hunt-pick');
+      if (pickBox) pickBox.hidden = true;
+      if (hunt.on()) hunt.stop('巡怪功能已在設定頁關閉，已停止');
+    }
   };
   applyZapFeatures(null);
   chrome.storage.local.get('zapFeatures').then(data => applyZapFeatures(data.zapFeatures)).catch(() => {});
