@@ -37,7 +37,7 @@ function typable(node) {
   return node;
 }
 
-function attach(root, { data = globalThis.CatworldMentorData } = {}) {
+function attach(root) {
   const style = el('style', { textContent: STYLE });
   const row = el('div', { className: 'line' },
     el('span', { className: 't', textContent: '拜師' }),
@@ -50,7 +50,7 @@ function attach(root, { data = globalThis.CatworldMentorData } = {}) {
   root.querySelector('.body').append(row, box);
 
   const status = row.querySelector('.mt-status');
-  const groups = M.groupRows(M.rowsFromData(data));
+  const groups = M.groupRows(M.rowsFromData(globalThis.CatworldMentorData));
 
   function render() {
     const found = M.search(groups, search.value);
@@ -59,7 +59,7 @@ function attach(root, { data = globalThis.CatworldMentorData } = {}) {
       el('span', { textContent: group.skills.map(M.skillLabel).join('、') }), el('br'),
       el('span', { className: 'mt-meta', textContent: `路線 ${group.route}` }))));
     if (!found.length) list.append(el('div', { className: 'mt-empty', textContent: '沒有符合的導師' }));
-    status.textContent = `${found.length} 位`;
+    status.textContent = `${found.length} 筆`;
   }
 
   search.addEventListener('input', render);

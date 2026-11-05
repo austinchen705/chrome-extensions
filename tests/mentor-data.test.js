@@ -23,6 +23,16 @@ test('mentor-data.js is exactly what node tools/gen-mentor-data.js makes from do
   assert.equal(file, render(built));
 });
 
+test('the built-in data gives each mentor of a shared row only their own route (no row keeps two routes joined by a double slash)', () => {
+  const built = build(fs.readFileSync(path.join(root, 'docs/data/mentors.tsv'), 'utf8')).rows;
+  const routeOf = (mentor, skill) => built.find(row => row[0] === mentor && row[1] === skill)?.[2];
+  ['喬峰', '洪七公'].forEach(mentor => assert.ok(routeOf(mentor, '降龍十八掌'), mentor));
+  ['楊過', '小龍女'].forEach(mentor => assert.ok(routeOf(mentor, '玉女劍法'), mentor));
+  assert.notEqual(routeOf('喬峰', '降龍十八掌'), routeOf('洪七公', '降龍十八掌'));
+  assert.notEqual(routeOf('楊過', '玉女劍法'), routeOf('小龍女', '玉女劍法'));
+  assert.deepEqual(built.filter(row => row[2].includes(' // ')), []);
+});
+
 test('a row with several mentors separated by a slash becomes one row per mentor that all share the route', () => {
   const { rows } = rowsOf(line('甲/乙', '功法', 'run e', '掌拳類', '', '心法', '配合'));
   assert.deepEqual(rows, [['甲', '功法', 'run e', '掌拳類', '', '心法'], ['乙', '功法', 'run e', '掌拳類', '', '心法']]);
