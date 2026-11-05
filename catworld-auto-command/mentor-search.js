@@ -64,13 +64,11 @@ function setEdits(edits, keys, command) {
 }
 
 // 匯出成貼進試算表的文字：一行一筆「導師 Tab 功法 Tab 指令」（和 mentors.tsv 前三欄同格式）。
-// 儲存的鍵已經壓掉空白與大小寫，名稱從內建資料找回來；內建資料已經沒有的就用鍵上的字
+// 儲存的鍵已經壓掉空白與大小寫，名稱從內建資料找回來，內建資料沒有的略過（呼叫端要先濾掉並告知）
 function exportEdits(edits, rows) {
   const names = new Map(rows.map(row => [routeKey(row.mentor, row.skill), [row.mentor, row.skill]]));
-  return Object.entries(edits).map(([key, command]) => {
-    const [mentor, skill] = names.get(key) || [key.slice(0, key.indexOf('|')), key.slice(key.indexOf('|') + 1)];
-    return [mentor, skill, command.replace(/\s+/g, ' ')].join('\t');
-  }).join('\n');
+  return Object.entries(edits).filter(([key]) => names.has(key))
+    .map(([key, command]) => [...names.get(key), command.replace(/\s+/g, ' ')].join('\t')).join('\n');
 }
 
 // 檢查貼回來的文字，整份通過才回 { ok: true, edits }，否則回說明第幾行的 error。

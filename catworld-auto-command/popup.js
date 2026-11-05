@@ -231,7 +231,11 @@ chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' &
 // 拜師導師路線：遊戲面板「拜師」列改過的路線（chrome.storage.local.mentorRoutes），這裡顯示筆數、複製、匯入、清除
 const MENTOR_KEY = 'mentorRoutes';
 const MENTOR_ROWS = CatworldMentorSearch.rowsFromData(globalThis.CatworldMentorData);
+const MENTOR_KNOWN = new Set(MENTOR_ROWS.map(row => CatworldMentorSearch.routeKey(row.mentor, row.skill)));
 const readMentorEdits = async () => CatworldMentorSearch.parseEdits((await chrome.storage.local.get(MENTOR_KEY))[MENTOR_KEY]);
+// 匯入與清除是讀改寫，排成一條佇列依序做（連點兩下才不會互相蓋掉）；遊戲頁剛好同時存的編輯仍可能被蓋掉（已知限制，同聊天回覆）
+let mentorQueue = Promise.resolve();
+const mentorWrite = work => { mentorQueue = mentorQueue.then(work, work); return mentorQueue; };
 function mentorMessage(text, level) { $('mentorMsg').textContent = text; markLevel($('mentorMsg'), level); }
 async function showMentorEdits() {
   const count = Object.keys(await readMentorEdits()).length;
@@ -239,28 +243,39 @@ async function showMentorEdits() {
 }
 $('mentorCopy').addEventListener('click', async () => {
   const edits = await readMentorEdits();
-  if (!Object.keys(edits).length) { mentorMessage('還沒有自己改過的路線', 'warn'); return; }
-  try { await navigator.clipboard.writeText(CatworldMentorSearch.exportEdits(edits, MENTOR_ROWS)); mentorMessage(`已複製 ${Object.keys(edits).length} 筆`); }
-  catch (e) { mentorMessage(`複製失敗：${e.message}`, 'error'); }
+  const keys = Object.keys(edits);
+  if (!keys.length) { mentorMessage('還沒有自己改過的路線', 'warn'); return; }
+  // 名稱只能從內建資料找回來；內建資料沒有的（儲存的鍵已壓掉空白與大小寫）不輸出，免得交出去的名稱是錯的
+  const known = Object.fromEntries(Object.entries(edits).filter(([key]) => MENTOR_KNOWN.has(key)));
+  const skipped = keys.length - Object.keys(known).length;
+  if (!Object.keys(known).length) { mentorMessage(`這 ${skipped} 筆都不在內建資料裡，無法輸出名稱`, 'warn'); return; }
+  try {
+    await navigator.clipboard.writeText(CatworldMentorSearch.exportEdits(known, MENTOR_ROWS));
+    mentorMessage(`已複製 ${keys.length - skipped} 筆` + (skipped ? `（另有 ${skipped} 筆不在內建資料裡，沒有輸出）` : ''), skipped ? 'warn' : undefined);
+  } catch (e) { mentorMessage(`複製失敗：${e.message}`, 'error'); }
 });
 $('mentorClear').addEventListener('click', async () => {
   if (!Object.keys(await readMentorEdits()).length) { mentorMessage('還沒有自己改過的路線', 'warn'); return; }
   if (!confirm('清除全部自己改過的拜師路線？會回到內建的路線，清掉就回不來了。')) return;
-  await chrome.storage.local.remove(MENTOR_KEY);
-  mentorMessage('已清除');
+  await mentorWrite(async () => {
+    try { await chrome.storage.local.remove(MENTOR_KEY); mentorMessage('已清除'); }
+    catch (e) { mentorMessage(`清除失敗：${e.message}`, 'error'); }
+  });
   showMentorEdits();
 });
 $('mentorImportToggle').addEventListener('click', () => { $('mentorImportBox').hidden = !$('mentorImportBox').hidden; });
 $('mentorImportApply').addEventListener('click', async () => {
   const checked = CatworldMentorSearch.parseImport($('mentorImportText').value, globalThis.CatworldMacro?.parseSteps);
   if (!checked.ok) { mentorMessage(`沒有匯入：${checked.error}`, 'error'); return; }
-  const known = new Set(MENTOR_ROWS.map(row => CatworldMentorSearch.routeKey(row.mentor, row.skill)));
-  const unknown = Object.keys(checked.edits).filter(key => !known.has(key)).length;
-  await chrome.storage.local.set({ [MENTOR_KEY]: { ...(await readMentorEdits()), ...checked.edits } });
-  $('mentorImportText').value = '';
-  $('mentorImportBox').hidden = true;
-  const count = Object.keys(checked.edits).length;
-  mentorMessage(`已匯入 ${count} 筆` + (unknown ? `（其中 ${unknown} 筆不在內建資料裡，面板不會顯示）` : ''), unknown ? 'warn' : undefined);
+  const unknownCount = Object.keys(checked.edits).filter(key => !MENTOR_KNOWN.has(key)).length;
+  await mentorWrite(async () => {
+    try {
+      await chrome.storage.local.set({ [MENTOR_KEY]: { ...(await readMentorEdits()), ...checked.edits } });
+    } catch (e) { mentorMessage(`匯入失敗：${e.message}`, 'error'); return; }
+    $('mentorImportText').value = '';
+    $('mentorImportBox').hidden = true;
+    mentorMessage(`已匯入 ${Object.keys(checked.edits).length} 筆` + (unknownCount ? `（其中 ${unknownCount} 筆不在內建資料裡，面板不會顯示）` : ''), unknownCount ? 'warn' : undefined);
+  });
   showMentorEdits();
 });
 showMentorEdits();

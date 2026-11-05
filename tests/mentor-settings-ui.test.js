@@ -84,15 +84,16 @@ ui('the section is a fold, and the count follows the stored edits', async () => 
   }
 });
 
-ui('copy puts mentor, skill and command on the clipboard with the built-in names, and warns when there is nothing', async () => {
+ui('copy puts mentor, skill and command on the clipboard with the built-in names, leaves out what the built-in data lacks, and warns when there is nothing to copy', async () => {
   const page = await boot({ mentorRoutes: { '歐陽峰|基礎杖法': 'run e 5n 2o s', '不存在的人|某功法': 'run e 5n n' } });
   try {
     let copied = null;
     Object.defineProperty(page.dom.window.navigator, 'clipboard', { value: { writeText: async text => { copied = text; } }, configurable: true });
     click(page, 'mentorCopy');
     assert.ok(await waitFor(() => copied !== null));
-    assert.equal(copied, '歐陽峰\t基礎杖法\trun e 5n 2o s\n不存在的人\t某功法\trun e 5n n');
-    assert.match(msg(page).textContent, /已複製 2 筆/);
+    assert.equal(copied, '歐陽峰\t基礎杖法\trun e 5n 2o s', 'a name the built-in data does not have cannot be recovered from the key, so it is not exported');
+    assert.match(msg(page).textContent, /已複製 1 筆.*另有 1 筆/);
+    assert.equal(msg(page).classList.contains('msg-warn'), true);
   } finally {
     page.dom.window.close();
   }
@@ -152,6 +153,51 @@ ui('clear removes the edits only after the confirm', async () => {
     click(page, 'mentorClear');
     assert.ok(await waitFor(() => !('mentorRoutes' in page.store)));
     assert.ok(await waitFor(() => /還沒有/.test(info(page))));
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('copy with only unknown skills says so and copies nothing', async () => {
+  const page = await boot({ mentorRoutes: { '不存在的人|某功法': 'run e 5n n' } });
+  try {
+    let copied = null;
+    Object.defineProperty(page.dom.window.navigator, 'clipboard', { value: { writeText: async text => { copied = text; } }, configurable: true });
+    click(page, 'mentorCopy');
+    assert.ok(await waitFor(() => msg(page).textContent.includes('都不在內建資料裡')));
+    assert.equal(copied, null);
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('two imports in a row both land, and a failing write says so', async () => {
+  const page = await boot();
+  try {
+    importText(page, '歐陽峰\t基礎杖法\trun e 5n 2o s');
+    importText(page, '李書文\t基礎杖法\trun e 5n 2o n');
+    assert.ok(await waitFor(() => Object.keys(page.store.mentorRoutes ?? {}).length === 2), 'the second import did not overwrite the first');
+    page.dom.window.chrome.storage.local.set = async () => { throw new Error('quota'); };
+    importText(page, '張三豐\t太極劍法\trun e 5n 2o se');
+    assert.ok(await waitFor(() => msg(page).textContent.includes('匯入失敗：quota')));
+    assert.equal(msg(page).classList.contains('msg-error'), true);
+    page.dom.window.chrome.storage.local.remove = async () => { throw new Error('gone'); };
+    page.dom.window.confirm = () => true;
+    click(page, 'mentorClear');
+    assert.ok(await waitFor(() => msg(page).textContent.includes('清除失敗：gone')));
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('the section remembers whether it is open in popupFolds', async () => {
+  const page = await boot({ popupFolds: { 'sec-mentor': true } });
+  try {
+    const section = page.doc.getElementById('sec-mentor');
+    assert.ok(await waitFor(() => section.open === true), 'restored from storage');
+    section.open = false;
+    section.dispatchEvent(new page.dom.window.Event('toggle'));
+    assert.ok(await waitFor(() => page.store.popupFolds?.['sec-mentor'] === false));
   } finally {
     page.dom.window.close();
   }
