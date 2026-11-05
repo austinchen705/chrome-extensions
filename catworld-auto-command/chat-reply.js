@@ -77,6 +77,42 @@ function normalizeSettings(raw) {
   };
 }
 
+// 匯出／匯入文字：一行一筆「對方說 <Tab> 我回」，舊的在前（匯入後順序不變）
+const flat = text => String(text).replace(/\s+/g, ' ').trim();
+const exportText = pairs => pairs.map(pair => flat(pair.said) + '\t' + flat(pair.reply)).join('\n');
+// 檢查匯入文字：整份每一行都合格才回 { ok: true, pairs }，否則回 { ok: false, error }（說明第幾行哪裡不對）；空行略過
+function parseImport(text) {
+  const lines = String(text ?? '').replace(/\r\n?/g, '\n').split('\n');
+  const pairs = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index].trim()) continue;
+    const parts = lines[index].split('\t');
+    const where = '第 ' + (index + 1) + ' 行';
+    if (parts.length !== 2) return { ok: false, error: where + '要剛好有一個 Tab，分成「對方說」和「我回」兩段' };
+    const said = parts[0].trim();
+    const reply = parts[1].trim();
+    if (!said) return { ok: false, error: where + '「對方說」是空的' };
+    if (!reply) return { ok: false, error: where + '「我回」是空的' };
+    if (!safeReply(reply)) return { ok: false, error: where + '的回覆含分號或 @等待，會被當成巨集，不收' };
+    pairs.push({ said, reply });
+  }
+  if (!pairs.length) return { ok: false, error: '沒有可匯入的內容' };
+  return { ok: true, pairs };
+}
+// 把匯入的接在已存的後面（算最新的）：同一組 said+reply 不重複，總數超過 MAX_PAIRS 丟最舊的；回傳 { pairs, added, duplicate, dropped }
+function mergeImported(existing, imported, at) {
+  let all = existing;
+  let added = 0;
+  let duplicate = 0;
+  imported.forEach((pair, index) => {
+    const next = addPair(all, { said: pair.said, reply: pair.reply, at: at + index });
+    if (next === all) duplicate += 1;
+    else added += 1;
+    all = next;
+  });
+  return { pairs: all, added, duplicate, dropped: Math.max(0, existing.length + added - all.length) };
+}
+
 // 字面相似度：兩段文字去掉標點與空白後，以相鄰兩字（bigram）算 Dice 係數（2×共同 ÷ 兩邊總數，0～1）；只有一個字就拿那一個字比
 const squash = text => String(text ?? '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 function bigrams(text) {
@@ -170,5 +206,5 @@ function createLimiter({ now = () => Date.now() } = {}) {
 // 看到來訊到送出回覆之間隨機等 3～10 秒（毫秒）
 const replyDelayMs = (random = Math.random) => 3000 + Math.floor(random() * 7000);
 
-globalThis.CatworldChatReply = { KEY, SETTINGS_KEY, MAX_PAIRS, PAIR_WINDOW_MS, parseLine, createRecorder, addPair, createLimiter, REPEAT_MS, OWN_MS, normalizeSettings, similarity, worthAnswering, bestReply, replyDelayMs };
+globalThis.CatworldChatReply = { KEY, SETTINGS_KEY, MAX_PAIRS, PAIR_WINDOW_MS, parseLine, createRecorder, addPair, exportText, parseImport, mergeImported, createLimiter, REPEAT_MS, OWN_MS, normalizeSettings, similarity, worthAnswering, bestReply, replyDelayMs };
 })();

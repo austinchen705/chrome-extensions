@@ -169,6 +169,61 @@ function showChatReply(settings) {
   $('chatPerHour').value = settings.perHour;
 }
 ['chatReplyOn', 'chatThreshold', 'chatCooldown', 'chatPerHour'].forEach(id => $(id).addEventListener('change', saveChatReply));
+// 聊天回覆的資料集：遊戲頁寫進 storage，這裡顯示筆數與清單、刪單筆、清除、匯出與匯入
+const CHAT_PAIRS_KEY = CatworldChatReply.KEY;
+const readChatPairs = async () => {
+  const stored = (await chrome.storage.local.get(CHAT_PAIRS_KEY))[CHAT_PAIRS_KEY];
+  return Array.isArray(stored) ? stored : [];
+};
+function chatMessage(text, level) { $('chatPairsMsg').textContent = text; markLevel($('chatPairsMsg'), level); }
+async function showChatPairs() {
+  const pairs = await readChatPairs();
+  $('chatPairsInfo').textContent = pairs.length ? `資料集 ${pairs.length} 筆（最多 ${CatworldChatReply.MAX_PAIRS}，滿了丟最舊的）` : '還沒有資料（自己和人私聊就會自動記）';
+  const list = $('chatPairsList');
+  list.hidden = !pairs.length;
+  list.replaceChildren(...pairs.slice().reverse().map(pair => {
+    const row = document.createElement('div');
+    row.className = 'chat-pair';
+    const text = document.createElement('span');
+    text.className = 'chat-pair-text';
+    text.textContent = `${pair.said} → ${pair.reply}`;
+    const remove = document.createElement('button');
+    remove.textContent = '刪除';
+    remove.addEventListener('click', async () => {
+      const current = await readChatPairs();
+      await chrome.storage.local.set({ [CHAT_PAIRS_KEY]: current.filter(item => !(item.said === pair.said && item.reply === pair.reply)) });
+      showChatPairs();
+    });
+    row.append(text, remove);
+    return row;
+  }));
+}
+$('chatPairsCopy').addEventListener('click', async () => {
+  const pairs = await readChatPairs();
+  if (!pairs.length) { chatMessage('還沒有資料', 'warn'); return; }
+  try { await navigator.clipboard.writeText(CatworldChatReply.exportText(pairs)); chatMessage(`已複製 ${pairs.length} 筆`); }
+  catch (e) { chatMessage(`複製失敗：${e.message}`, 'error'); }
+});
+$('chatPairsClear').addEventListener('click', async () => {
+  if (!confirm('清除全部聊天資料集？清掉就回不來了。')) return;
+  await chrome.storage.local.remove(CHAT_PAIRS_KEY);
+  chatMessage('已清除');
+  showChatPairs();
+});
+$('chatPairsImportToggle').addEventListener('click', () => { $('chatPairsImportBox').hidden = !$('chatPairsImportBox').hidden; });
+$('chatPairsImportApply').addEventListener('click', async () => {
+  const checked = CatworldChatReply.parseImport($('chatPairsImportText').value);
+  if (!checked.ok) { chatMessage(`沒有匯入：${checked.error}`, 'error'); return; }
+  const merged = CatworldChatReply.mergeImported(await readChatPairs(), checked.pairs, Date.now());
+  await chrome.storage.local.set({ [CHAT_PAIRS_KEY]: merged.pairs });
+  $('chatPairsImportText').value = '';
+  $('chatPairsImportBox').hidden = true;
+  const notes = [merged.duplicate ? `${merged.duplicate} 筆已經有了` : '', merged.dropped ? `超過上限，丟掉最舊的 ${merged.dropped} 筆` : ''].filter(Boolean);
+  chatMessage(`已匯入 ${merged.added} 筆` + (notes.length ? `（${notes.join('、')}）` : ''), merged.dropped ? 'warn' : undefined);
+  showChatPairs();
+});
+showChatPairs();
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[CHAT_PAIRS_KEY]) showChatPairs(); });
 $('autoReward').addEventListener('change', () => {
   chrome.storage.local.set({ autoReward: $('autoReward').checked });
 });

@@ -318,3 +318,28 @@ ui('a threshold changed on the settings page takes effect on the open game page 
     page.close();
   }
 });
+
+test('exportText and parseImport round-trip, and an import is checked as a whole before anything is accepted', () => {
+  const pairs = [{ said: '你好嗎', reply: '還不錯', at: 1 }, { said: '吃飽沒', reply: '吃過了', at: 2 }];
+  const text = Chat.exportText(pairs);
+  assert.equal(text, '你好嗎\t還不錯\n吃飽沒\t吃過了');
+  const back = Chat.parseImport(text + '\n\n');
+  assert.equal(back.ok, true, 'blank lines are skipped');
+  assert.equal(Chat.exportText(Chat.mergeImported([], back.pairs, 10).pairs), text, 'the round trip gives the same text');
+  assert.match(Chat.parseImport('好的\t可以\n沒有tab').error, /^第 2 行/);
+  assert.match(Chat.parseImport('\t可以').error, /第 1 行.*對方說/);
+  assert.match(Chat.parseImport('好的\t').error, /第 1 行.*我回/);
+  assert.match(Chat.parseImport('好的\t先走;再來').error, /第 1 行.*巨集/);
+  assert.match(Chat.parseImport('a\tb\tc').error, /Tab/);
+  assert.match(Chat.parseImport('  \n').error, /沒有可匯入/);
+});
+
+test('mergeImported puts imports last as the newest, skips ones already there, and reports what the cap dropped', () => {
+  const existing = Array.from({ length: Chat.MAX_PAIRS }, (_, index) => ({ said: 's' + index, reply: 'r' + index, at: index }));
+  const merged = Chat.mergeImported(existing, [{ said: 's3', reply: 'r3' }, { said: 'new', reply: 'x' }], 9999);
+  assert.deepEqual([merged.added, merged.duplicate, merged.dropped], [1, 1, 1]);
+  assert.equal(merged.pairs.length, Chat.MAX_PAIRS);
+  assert.equal(merged.pairs[0].said, 's1', 'the oldest one went');
+  assert.equal(merged.pairs.at(-1).said, 'new');
+  assert.equal(existing.length, Chat.MAX_PAIRS, 'the input is not changed');
+});

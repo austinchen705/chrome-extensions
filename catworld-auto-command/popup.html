@@ -77,6 +77,11 @@
     .extra-name { flex:1; min-width:0; overflow-wrap:anywhere; }
     .extra-state { white-space:nowrap; }
     .extra-item button { font-size:12px; padding:2px 8px; }
+    .chat-pairs { max-height:180px; overflow:auto; margin-top:6px; border:1px solid #ddd; border-radius:7px; }
+    .chat-pair { display:flex; gap:6px; align-items:center; padding:4px 8px; font-size:12px; border-bottom:1px solid #eee; }
+    .chat-pair:last-child { border-bottom:0; }
+    .chat-pair-text { flex:1; min-width:0; overflow-wrap:anywhere; }
+    .chat-pair button { font-size:12px; padding:2px 8px; }
     /* 摺疊：設定項目一多就很長，預設收起，標題列寫出重點；展開狀態記在 storage（popupFolds） */
     details.fold { border:1px solid #ddd; border-radius:9px; padding:0 10px; margin-top:10px; }
     details.fold[open] { padding-bottom:10px; }
@@ -195,7 +200,17 @@
       <div><label for="chatCooldown">同一個人的冷卻（秒，0～3600）</label><input id="chatCooldown" type="number" min="0" max="3600" step="1"></div>
       <div><label for="chatPerHour">每小時最多回幾則（1～100）</label><input id="chatPerHour" type="number" min="1" max="100" step="1"></div>
     </div>
-    <p class="hint tight">預設關閉。只回別人對你說的私聊（[P]暱稱回答你：…），在資料集裡找最相似的一句，相似度達到門檻才回，隔 3～10 秒隨機延遲後用 reply 送出。同一個人冷卻中、同一個人 10 分鐘內重複說同一句、或超過每小時上限都不回；驗證碼處理中或按了停止也不送。資料集是你自己的對話（對方說一句、你在 2 分鐘內回一句），一律自動記錄，不受這個開關影響。數字超出範圍會限制在範圍內，留白或不是數字則退回預設值。</p>
+    <div id="chatPairsInfo" class="hint tight">還沒有資料</div>
+    <div id="chatPairsList" class="chat-pairs" hidden></div>
+    <button id="chatPairsCopy">複製（匯出文字）</button>
+    <button id="chatPairsImportToggle">匯入…</button>
+    <button id="chatPairsClear">清除全部</button>
+    <div id="chatPairsImportBox" hidden>
+      <textarea id="chatPairsImportText" rows="4" placeholder="一行一筆：對方說 [Tab] 我回"></textarea>
+      <button id="chatPairsImportApply">匯入</button>
+    </div>
+    <div id="chatPairsMsg" class="hint tight"></div>
+    <p class="hint tight">預設關閉。只回別人對你說的私聊（[P]暱稱回答你：…），在資料集裡找最相似的一句，相似度達到門檻才回，隔 3～10 秒隨機延遲後用 reply 送出。同一個人冷卻中、同一個人 10 分鐘內重複說同一句、或超過每小時上限都不回；驗證碼處理中或按了停止也不送。資料集是你自己的對話（對方說一句、你在 2 分鐘內回一句），一律自動記錄，不受這個開關影響。數字超出範圍會限制在範圍內，留白或不是數字則退回預設值。匯出／匯入是一行一筆「對方說 Tab 我回」，舊的在前；匯入先檢查整份，有一行不合格就整份不收，合格的接在現有資料後面當最新的（同樣的一組不重複，超過 500 筆丟最舊的）。</p>
   </details>
   <details class="alertbox fold" id="sec-reward">
     <summary>在線獎勵</summary>

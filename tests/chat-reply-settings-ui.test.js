@@ -35,6 +35,7 @@ async function boot(store = {}) {
           local: {
             get: async keys => Object.fromEntries([].concat(keys).filter(key => key in store).map(key => [key, JSON.parse(JSON.stringify(store[key]))])),
             set: async values => { Object.assign(store, JSON.parse(JSON.stringify(values))); },
+            remove: async key => { delete store[key]; },
           },
           sync: { get: async () => ({}), set: async () => {} },
           session: { get: async () => ({}), set: async () => {} },
@@ -95,5 +96,76 @@ ui('out-of-range values are clamped and blank ones fall back to the default, in 
     assert.deepEqual(['chatThreshold', 'chatCooldown', 'chatPerHour'].map(id => doc.getElementById(id).value), ['1', '3600', '10']);
   } finally {
     dom.window.close();
+  }
+});
+
+const PAIRS = [{ said: '今天天氣真好', reply: '對啊出去走走', at: 1 }, { said: '吃飽沒', reply: '吃過了', at: 2 }];
+const click = (page, id) => page.doc.getElementById(id).dispatchEvent(new page.dom.window.Event('click', { bubbles: true }));
+const listed = page => [...page.doc.querySelectorAll('#chatPairsList .chat-pair-text')].map(node => node.textContent);
+
+ui('the data set shows its count and list newest first, and one entry can be deleted', async () => {
+  const page = await boot({ chatPairs: PAIRS });
+  try {
+    assert.ok(await waitFor(() => listed(page).length === 2));
+    assert.deepEqual(listed(page), ['吃飽沒 → 吃過了', '今天天氣真好 → 對啊出去走走']);
+    assert.match(page.doc.getElementById('chatPairsInfo').textContent, /資料集 2 筆/);
+    page.doc.querySelector('#chatPairsList .chat-pair button').dispatchEvent(new page.dom.window.Event('click', { bubbles: true }));
+    assert.ok(await waitFor(() => page.store.chatPairs.length === 1));
+    assert.deepEqual(page.store.chatPairs.map(pair => pair.said), ['今天天氣真好']);
+    assert.ok(await waitFor(() => listed(page).length === 1), 'the list redraws');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('clear removes everything only after the confirm, and the list is hidden when empty', async () => {
+  const page = await boot({ chatPairs: PAIRS });
+  try {
+    assert.ok(await waitFor(() => listed(page).length === 2));
+    page.dom.window.confirm = () => false;
+    click(page, 'chatPairsClear');
+    await sleep(50);
+    assert.equal(page.store.chatPairs.length, 2, 'declining keeps the data');
+    page.dom.window.confirm = () => true;
+    click(page, 'chatPairsClear');
+    assert.ok(await waitFor(() => !('chatPairs' in page.store)));
+    assert.ok(await waitFor(() => page.doc.getElementById('chatPairsList').hidden));
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('copy puts the export text on the clipboard', async () => {
+  const page = await boot({ chatPairs: PAIRS });
+  try {
+    let copied = null;
+    Object.defineProperty(page.dom.window.navigator, 'clipboard', { value: { writeText: async text => { copied = text; } }, configurable: true });
+    click(page, 'chatPairsCopy');
+    assert.ok(await waitFor(() => copied !== null));
+    assert.equal(copied, '今天天氣真好\t對啊出去走走\n吃飽沒\t吃過了');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('an import that passes is added after what is there, and one bad line stops the whole import without touching the data', async () => {
+  const page = await boot({ chatPairs: PAIRS });
+  const importText = text => {
+    page.doc.getElementById('chatPairsImportText').value = text;
+    click(page, 'chatPairsImportApply');
+  };
+  try {
+    assert.ok(await waitFor(() => listed(page).length === 2));
+    importText('新的話\t新的回覆\n吃飽沒\t吃過了\n壞掉沒有tab');
+    assert.ok(await waitFor(() => page.doc.getElementById('chatPairsMsg').textContent.includes('第 3 行')));
+    assert.equal(page.doc.getElementById('chatPairsMsg').classList.contains('msg-error'), true);
+    assert.equal(page.store.chatPairs.length, 2, 'nothing was written');
+    importText('新的話\t新的回覆\n吃飽沒\t吃過了');
+    assert.ok(await waitFor(() => page.store.chatPairs.length === 3));
+    assert.equal(page.store.chatPairs.at(-1).reply, '新的回覆', 'the import is the newest');
+    assert.match(page.doc.getElementById('chatPairsMsg').textContent, /已匯入 1 筆.*1 筆已經有了/);
+    assert.equal(page.doc.getElementById('chatPairsImportText').value, '', 'the box is emptied after a successful import');
+  } finally {
+    page.dom.window.close();
   }
 });
