@@ -228,6 +228,43 @@ $('chatPairsImportApply').addEventListener('click', async () => {
 });
 showChatPairs();
 chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[CHAT_PAIRS_KEY]) showChatPairs(); });
+// 拜師導師路線：遊戲面板「拜師」列改過的路線（chrome.storage.local.mentorRoutes），這裡顯示筆數、複製、匯入、清除
+const MENTOR_KEY = 'mentorRoutes';
+const MENTOR_ROWS = CatworldMentorSearch.rowsFromData(globalThis.CatworldMentorData);
+const readMentorEdits = async () => CatworldMentorSearch.parseEdits((await chrome.storage.local.get(MENTOR_KEY))[MENTOR_KEY]);
+function mentorMessage(text, level) { $('mentorMsg').textContent = text; markLevel($('mentorMsg'), level); }
+async function showMentorEdits() {
+  const count = Object.keys(await readMentorEdits()).length;
+  $('mentorInfo').textContent = count ? `自己改過 ${count} 個功法的路線` : '還沒有自己改過的路線';
+}
+$('mentorCopy').addEventListener('click', async () => {
+  const edits = await readMentorEdits();
+  if (!Object.keys(edits).length) { mentorMessage('還沒有自己改過的路線', 'warn'); return; }
+  try { await navigator.clipboard.writeText(CatworldMentorSearch.exportEdits(edits, MENTOR_ROWS)); mentorMessage(`已複製 ${Object.keys(edits).length} 筆`); }
+  catch (e) { mentorMessage(`複製失敗：${e.message}`, 'error'); }
+});
+$('mentorClear').addEventListener('click', async () => {
+  if (!Object.keys(await readMentorEdits()).length) { mentorMessage('還沒有自己改過的路線', 'warn'); return; }
+  if (!confirm('清除全部自己改過的拜師路線？會回到內建的路線，清掉就回不來了。')) return;
+  await chrome.storage.local.remove(MENTOR_KEY);
+  mentorMessage('已清除');
+  showMentorEdits();
+});
+$('mentorImportToggle').addEventListener('click', () => { $('mentorImportBox').hidden = !$('mentorImportBox').hidden; });
+$('mentorImportApply').addEventListener('click', async () => {
+  const checked = CatworldMentorSearch.parseImport($('mentorImportText').value, globalThis.CatworldMacro?.parseSteps);
+  if (!checked.ok) { mentorMessage(`沒有匯入：${checked.error}`, 'error'); return; }
+  const known = new Set(MENTOR_ROWS.map(row => CatworldMentorSearch.routeKey(row.mentor, row.skill)));
+  const unknown = Object.keys(checked.edits).filter(key => !known.has(key)).length;
+  await chrome.storage.local.set({ [MENTOR_KEY]: { ...(await readMentorEdits()), ...checked.edits } });
+  $('mentorImportText').value = '';
+  $('mentorImportBox').hidden = true;
+  const count = Object.keys(checked.edits).length;
+  mentorMessage(`已匯入 ${count} 筆` + (unknown ? `（其中 ${unknown} 筆不在內建資料裡，面板不會顯示）` : ''), unknown ? 'warn' : undefined);
+  showMentorEdits();
+});
+showMentorEdits();
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[MENTOR_KEY]) showMentorEdits(); });
 $('autoReward').addEventListener('change', () => {
   chrome.storage.local.set({ autoReward: $('autoReward').checked });
 });

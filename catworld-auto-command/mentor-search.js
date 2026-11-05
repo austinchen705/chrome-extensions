@@ -63,6 +63,34 @@ function setEdits(edits, keys, command) {
   return next;
 }
 
+// 匯出成貼進試算表的文字：一行一筆「導師 Tab 功法 Tab 指令」（和 mentors.tsv 前三欄同格式）。
+// 儲存的鍵已經壓掉空白與大小寫，名稱從內建資料找回來；內建資料已經沒有的就用鍵上的字
+function exportEdits(edits, rows) {
+  const names = new Map(rows.map(row => [routeKey(row.mentor, row.skill), [row.mentor, row.skill]]));
+  return Object.entries(edits).map(([key, command]) => {
+    const [mentor, skill] = names.get(key) || [key.slice(0, key.indexOf('|')), key.slice(key.indexOf('|') + 1)];
+    return [mentor, skill, command.replace(/\s+/g, ' ')].join('\t');
+  }).join('\n');
+}
+
+// 檢查貼回來的文字，整份通過才回 { ok: true, edits }，否則回說明第幾行的 error。
+// 指令格式用 parseSteps 檢查（和編輯框同一個）；多的欄位（mentors.tsv 後面的欄）忽略，空行略過
+function parseImport(text, parseSteps) {
+  const edits = {};
+  const lines = String(text ?? '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const [mentor, skill, command] = lines[i].split('\t').map(field => field.trim());
+    const fail = reason => ({ ok: false, error: `第 ${i + 1} 行：${reason}` });
+    if (!mentor || !skill || !command) return fail('要是「導師 [Tab] 功法 [Tab] 指令」三欄');
+    const checked = parseSteps ? parseSteps(command) : { error: '無法檢查指令格式' };
+    if (checked.error) return fail(checked.error);
+    edits[routeKey(mentor, skill)] = command;
+  }
+  if (!Object.keys(edits).length) return { ok: false, error: '沒有內容' };
+  return { ok: true, edits };
+}
+
 // 把修改套到每一列：路線與巨集指令換成改的那一條（原樣送出），解謎之後的路線、備註、不能自動走的原因都不再適用
 function applyEdits(rows, edits) {
   return rows.map(row => {
@@ -106,5 +134,5 @@ function skillLabel({ skill, category, maxLevel, heart }) {
   return extra.length ? `${skill}（${extra.join('、')}）` : skill;
 }
 
-globalThis.CatworldMentorSearch = { canonicalRoute, rowsFromData, routeKey, parseEdits, setEdits, applyEdits, groupRows, search, skillLabel };
+globalThis.CatworldMentorSearch = { canonicalRoute, rowsFromData, routeKey, parseEdits, setEdits, applyEdits, exportEdits, parseImport, groupRows, search, skillLabel };
 })();

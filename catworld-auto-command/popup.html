@@ -257,6 +257,19 @@
     <div id="mapCollectMsg" class="hint tight"></div>
     <p class="hint tight">遊戲頁的地圖視窗開著時，走進房間、輸出區印出怪物行（※名稱(ID)），就會記給你所在的房間（只增不減，重新整理遊戲頁也不會丟）：手動走一輪就蒐集得到。複製出來每列一個房間，Tab 分隔：區域代號、區域名稱、房間代號、怪物（名稱(ID)，逗號分隔）。只存在這台瀏覽器的本機。</p>
   </details>
+  <details class="alertbox fold" id="sec-mentor">
+    <summary>拜師導師路線</summary>
+    <div id="mentorInfo" class="hint tight">還沒有自己改過的路線</div>
+    <button id="mentorCopy">複製（可貼進試算表）</button>
+    <button id="mentorImportToggle">匯入…</button>
+    <button id="mentorClear">清除全部修改</button>
+    <div id="mentorImportBox" hidden>
+      <textarea id="mentorImportText" rows="4" placeholder="一行一筆：導師 [Tab] 功法 [Tab] 指令"></textarea>
+      <button id="mentorImportApply">匯入</button>
+    </div>
+    <div id="mentorMsg" class="hint tight"></div>
+    <p class="hint tight">在遊戲面板的「拜師」列改過的路線。複製出來每行一筆，Tab 分隔：導師、功法、指令（和 mentors.tsv 前三欄同格式），可以交給作者併進內建資料。匯入會加在現有修改上，同一個功法以匯入的為準；整份檢查通過才寫入。只存在這台瀏覽器的本機。</p>
+  </details>
   <details class="alertbox fold" id="sec-shop">
     <summary>裝備資料庫（商人 check）</summary>
     <label class="check"><input id="featureShop" type="checkbox"> 啟用裝備資料庫（預設關閉，勾了馬上生效）</label>
@@ -335,6 +348,9 @@
   <script src="map-hunt.js"></script>
   <script src="stop-keywords.js"></script>
   <script src="chat-reply.js"></script>
+  <script src="macro-wait.js"></script>
+  <script src="mentor-data.js"></script>
+  <script src="mentor-search.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
