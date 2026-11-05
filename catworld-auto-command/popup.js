@@ -151,6 +151,24 @@ document.addEventListener('toggle', event => {
 const saveStopKeywords = () => chrome.storage.local.set({ [CatworldStopKeywords.KEY]: { enabled: $('stopKeywordsOn').checked, words: $('stopKeywordsList').value } });
 $('stopKeywordsOn').addEventListener('change', saveStopKeywords);
 $('stopKeywordsList').addEventListener('change', saveStopKeywords);
+// 聊天回覆：四個欄位存成一個物件（不合法的值退回預設並寫回欄位），遊戲頁監聽 storage 變化，馬上生效
+const saveChatReply = () => {
+  const settings = CatworldChatReply.normalizeSettings({
+    enabled: $('chatReplyOn').checked,
+    threshold: $('chatThreshold').value === '' ? undefined : Number($('chatThreshold').value),
+    cooldownSec: $('chatCooldown').value === '' ? undefined : Number($('chatCooldown').value),
+    perHour: $('chatPerHour').value === '' ? undefined : Number($('chatPerHour').value),
+  });
+  showChatReply(settings);
+  chrome.storage.local.set({ [CatworldChatReply.SETTINGS_KEY]: settings });
+};
+function showChatReply(settings) {
+  $('chatReplyOn').checked = settings.enabled;
+  $('chatThreshold').value = settings.threshold;
+  $('chatCooldown').value = settings.cooldownSec;
+  $('chatPerHour').value = settings.perHour;
+}
+['chatReplyOn', 'chatThreshold', 'chatCooldown', 'chatPerHour'].forEach(id => $(id).addEventListener('change', saveChatReply));
 $('autoReward').addEventListener('change', () => {
   chrome.storage.local.set({ autoReward: $('autoReward').checked });
 });
@@ -816,7 +834,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 });
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', CatworldStopKeywords.KEY, 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
+  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
   huntSettings = CatworldMapHunt.normalizeSettings(data[CatworldMapHunt.SETTINGS_KEY]);
   showHuntSettings();
   $('shopSkipNames').value = typeof data[CatworldShopCollect.SKIP_NAMES_KEY] === 'string' ? data[CatworldShopCollect.SKIP_NAMES_KEY] : CatworldShopCollect.DEFAULT_SKIP_NAMES;
@@ -833,6 +851,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   const stopKeywords = CatworldStopKeywords.normalize(data[CatworldStopKeywords.KEY]);
   $('stopKeywordsOn').checked = stopKeywords.enabled;
   $('stopKeywordsList').value = stopKeywords.words;
+  showChatReply(CatworldChatReply.normalizeSettings(data[CatworldChatReply.SETTINGS_KEY]));
   $('mainWeapon').value = weaponValue(data.mainWeapon);
   equipmentKeep = CatworldZapEquipment.normalizeKeepRule(data.equipmentKeep);
   showEquipmentKeep();

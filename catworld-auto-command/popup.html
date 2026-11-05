@@ -187,6 +187,16 @@
     <textarea id="stopKeywordsList" rows="3"></textarea>
     <p class="hint tight">預設開啟，預設只有 jrealm。遊戲輸出（輸出區新出現的文字）含清單裡任何一個詞（不分大小寫）就停止定時、隨機、所有觸發、巨集、巡怪，響一次並跳通知；閒置時也會提醒。輸出分批到或詞中間換行也看得到（最近 5 秒的新增文字會接起來比對，忽略空白與換行）；自己打的指令的回聲（以 &gt; 開頭的行）不算；同一個命中 10 秒內不重複。清單清空就不會命中。</p>
   </details>
+  <details class="alertbox fold" id="sec-chat">
+    <summary>聊天回覆</summary>
+    <label class="check"><input id="chatReplyOn" type="checkbox"> 有人私訊我時，用資料集裡相似對話的回覆自動回話</label>
+    <div class="row">
+      <div><label for="chatThreshold">相似度門檻（0.1～1）</label><input id="chatThreshold" type="number" min="0.1" max="1" step="0.05"></div>
+      <div><label for="chatCooldown">同一個人的冷卻（秒，0～3600）</label><input id="chatCooldown" type="number" min="0" max="3600" step="1"></div>
+      <div><label for="chatPerHour">每小時最多回幾則（1～100）</label><input id="chatPerHour" type="number" min="1" max="100" step="1"></div>
+    </div>
+    <p class="hint tight">預設關閉。只回別人對你說的私聊（[P]暱稱回答你：…），在資料集裡找最相似的一句，相似度達到門檻才回，隔 3～10 秒隨機延遲後用 reply 送出。同一個人冷卻中、同一個人 10 分鐘內重複說同一句、或超過每小時上限都不回；驗證碼處理中或按了停止也不送。資料集是你自己的對話（對方說一句、你在 2 分鐘內回一句），一律自動記錄，不受這個開關影響。數字超出範圍會限制在範圍內，留白或不是數字則退回預設值。</p>
+  </details>
   <details class="alertbox fold" id="sec-reward">
     <summary>在線獎勵</summary>
     <label class="check"><input id="autoReward" type="checkbox"> 在線獎勵自動領取</label>
@@ -308,6 +318,7 @@
   <script src="map-collect.js"></script>
   <script src="map-hunt.js"></script>
   <script src="stop-keywords.js"></script>
+  <script src="chat-reply.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

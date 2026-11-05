@@ -302,3 +302,19 @@ ui('a reply that was cancelled before it was sent does not use up the person\'s 
     page.close();
   }
 });
+
+ui('a threshold changed on the settings page takes effect on the open game page without a refresh', async () => {
+  const page = await boot({ scale: 20 });
+  try {
+    page.store.chatPairs = PAIRS;
+    enableChat(page, { enabled: true, threshold: 1, cooldownSec: 0, perHour: 10 });
+    page.output('<span>[P]有氣質回答你：今天天氣不錯\n</span>');
+    await new Promise(resolve => setTimeout(resolve, 900));
+    assert.equal(page.sent.length, 0, 'not an exact match, so a threshold of 1 stays quiet');
+    enableChat(page, { enabled: true, threshold: 0.4, cooldownSec: 0, perHour: 10 });
+    page.output('<span>[P]有氣質回答你：今天天氣不錯\n</span>');
+    assert.ok(await waitFor(() => page.sent.includes('reply 對啊出去走走'), 3000), 'the lowered threshold answers it');
+  } finally {
+    page.close();
+  }
+});
