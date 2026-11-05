@@ -346,3 +346,87 @@ ui('the built-in data is never rewritten: only the edit is stored, and the edit 
     page.close();
   }
 });
+
+// ---- 個人編輯路線：審查後的修正 ----
+const CUT = ['丙', '功法丙', 'run e 5n 2o t 謎 run e', '', '', '', 'run e 5n 2o t', '謎 run e', [], ''];
+
+ui('saving a route unchanged is not saved, so the riddle warning of a cut route is not lost, and the box shows what is left after the riddle', async () => {
+  const page = await boot({ preload: preload([...EDITABLE, CUT]) });
+  try {
+    await open(page);
+    const box = startEdit(page, entriesOf(page, '丙')[0]);
+    assert.match(box.textContent, /走到謎就停，後面的路線：謎 run e/);
+    const msg = () => box.querySelector('.mt-edit-msg');
+    box.querySelector('.mt-edit-text').value = '  ';
+    box.querySelector('.mt-edit-save').click();
+    assert.equal(msg().classList.contains('mt-bad'), true);
+    box.querySelector('.mt-edit-text').value = 'run e 5n 2o t';
+    box.querySelector('.mt-edit-save').click();
+    assert.match(msg().textContent, /沒有改動/);
+    assert.equal(msg().classList.contains('mt-bad'), false, 'the red of the earlier error is cleared');
+    assert.equal(store(page), undefined);
+    assert.match(entriesOf(page, '丙')[0].textContent, /走到這裡要先解謎/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('resetting skills that were never edited says so and saves nothing', async () => {
+  const page = await boot({ preload: preload(EDITABLE) });
+  try {
+    await open(page);
+    const box = startEdit(page, entriesOf(page, '乙')[0]);
+    box.querySelector('.mt-edit-reset').click();
+    assert.match(box.querySelector('.mt-edit-msg').textContent, /沒有自己改過/);
+    assert.equal(store(page), undefined);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a change from another tab does not throw away an open edit box; the list catches up when the box is closed', async () => {
+  const page = await boot({ preload: preload(EDITABLE) });
+  try {
+    await open(page);
+    const box = startEdit(page, entryWith(page, '乙', '功法三'), { text: 'run 打到一半' });
+    const next = { '甲|功法一': 'run 3e' };
+    page.store.mentorRoutes = next;
+    page.changeListeners.forEach(listener => listener({ mentorRoutes: { newValue: next } }, 'local'));
+    assert.ok(panel(page).querySelector('.mt-editbox'), 'the box is still there');
+    assert.equal(box.querySelector('.mt-edit-text').value, 'run 打到一半', 'and so is what was typed');
+    assert.doesNotMatch(entryWith(page, '甲', '功法一').textContent, /run 3e/, 'the list was not redrawn yet');
+    box.querySelector('.mt-edit-cancel').click();
+    assert.match(entryWith(page, '甲', '功法一').textContent, /路線 run 3e/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('two edit boxes saved back to back both land, the second is not built on a stale copy', async () => {
+  const page = await boot({ preload: preload(EDITABLE) });
+  try {
+    await open(page);
+    const first = startEdit(page, entriesOf(page, '甲')[0], { text: 'run 1e' });
+    const second = startEdit(page, entryWith(page, '乙', '功法三'), { text: 'run 2e' });
+    first.querySelector('.mt-edit-save').click();
+    second.querySelector('.mt-edit-save').click();
+    assert.ok(await waitFor(() => Object.keys(store(page) ?? {}).length === 3), JSON.stringify(store(page)));
+    assert.deepEqual(store(page), { '甲|功法一': 'run 1e', '甲|功法二': 'run 1e', '乙|功法三': 'run 2e' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('when the macro module is not there the format cannot be checked, so nothing is saved', async () => {
+  const page = await boot({ preload: preload(EDITABLE) });
+  try {
+    await open(page);
+    const box = startEdit(page, entriesOf(page, '乙')[0], { text: 'run 9n' });
+    page.w.CatworldMacro = undefined;
+    box.querySelector('.mt-edit-save').click();
+    assert.match(box.querySelector('.mt-edit-msg').textContent, /無法檢查指令格式/);
+    assert.equal(store(page), undefined);
+  } finally {
+    page.close();
+  }
+});

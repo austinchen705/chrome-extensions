@@ -66,22 +66,45 @@ function attach(root, { startSteps }) {
   // 使用者自己改的路線（導師|功法 → 指令）：存在本機，套在內建資料上，內建資料本身不動
   let edits = {};
   let groups = M.groupRows(rows);
-  const setEdits = value => {
+  // 編輯框開著時不重畫清單（另一個分頁改了、或啟動時晚到的讀取，會把打到一半的字洗掉），關掉編輯框再補畫
+  let stale = false;
+  const editing = () => Boolean(list.querySelector('.mt-editbox'));
+  const loadEdits = (value, { force = false } = {}) => {
     edits = M.parseEdits(value);
     groups = M.groupRows(M.applyEdits(rows, edits));
-    if (!box.hidden) render();
+    if (box.hidden) return;
+    if (editing() && !force) stale = true;
+    else render();
   };
-  chrome.storage.local.get(EDITS_KEY).then(data => setEdits(data[EDITS_KEY])).catch(() => {});
+  const closeEditBox = editBox => {
+    editBox.remove();
+    if (stale) render();
+  };
+  chrome.storage.local.get(EDITS_KEY).then(data => loadEdits(data[EDITS_KEY])).catch(() => {});
   chrome.storage.onChanged?.addListener((changes, area) => {
-    if (area === 'local' && changes[EDITS_KEY]) setEdits(changes[EDITS_KEY].newValue);
+    if (area === 'local' && changes[EDITS_KEY]) loadEdits(changes[EDITS_KEY].newValue);
   });
+  // 存的動作排隊一個接一個做，每次都用最新的修改算：連續快速存兩個編輯框時，後面的不會用舊的底稿蓋掉前面剛存的
+  let writing = Promise.resolve();
+  const persist = (update, onError) => {
+    writing = writing.then(async () => {
+      const next = update(edits);
+      try {
+        await chrome.storage.local.set({ [EDITS_KEY]: next });
+        loadEdits(next, { force: true });
+      } catch (error) {
+        onError(`儲存失敗：${error.message}`);
+      }
+    });
+  };
 
   // 一筆：導師、功法、路線原文；有巨集指令就附「走過去」（遇到謎只走到謎之前），備註與不能自動走的原因另起一行
   function itemNode(group) {
-    const node = el('div', { className: 'mt-item' },
-      el('span', { className: 'mt-name', textContent: group.mentor }), ' ',
+    const name = el('span', { className: 'mt-name', textContent: group.mentor });
+    const node = el('div', { className: 'mt-item' }, name, ' ',
       el('span', { textContent: group.skills.map(M.skillLabel).join('、') }), el('br'),
       el('span', { className: 'mt-meta', textContent: `路線 ${group.route}` }));
+    if (group.edited) name.after(' ', el('span', { className: 'mt-tag', textContent: '已自訂' }));
     if (group.command) {
       const idle = group.rest ? '走到解謎處' : '走過去';
       const button = el('button', { className: 'mt-walk', textContent: idle, title: group.command });
@@ -103,53 +126,55 @@ function attach(root, { startSteps }) {
       // 不讓 click 傳到遊戲的 window.onclick：它會把游標搶回遊戲輸入框，輸入框就打不了字
       event.stopPropagation();
       const open = node.querySelector('.mt-editbox');
-      if (open) open.remove();
+      if (open) closeEditBox(open);
       else node.append(editBox(group));
     });
-    node.firstChild.after(...(group.edited ? [' ', el('span', { className: 'mt-tag', textContent: '已自訂' })] : []));
     node.append(' ', edit);
     return node;
   }
 
-  // 編輯框：路線（分號隔開的巨集，從醉仙樓出發）與要套用的功法（預設這一筆的全部），存、改回內建、取消
+  // 編輯框：路線（分號隔開的巨集，從醉仙樓出發）與要套用的功法（預設這一筆的全部），存、改回內建、取消。
+  // 存的內容和預填的一樣就不存：預填的是這一筆現在會送出的指令，遇到謎的筆預填的是謎之前的部分，原樣存下來會把「要先解謎」的提示弄丟
   function editBox(group) {
-    const area = typable(el('textarea', { className: 'mt-edit-text', value: group.command || group.route, placeholder: '完整指令，用 ; 分隔（從醉仙樓出發）' }));
-    const checks = group.skills.map(skill => el('label', {}, el('input', { type: 'checkbox', className: 'mt-edit-skill', value: skill.skill, checked: true }), ` ${skill.skill}`));
+    const initial = group.command || group.route;
+    const area = typable(el('textarea', { className: 'mt-edit-text', value: initial, placeholder: '完整指令，用 ; 分隔（從醉仙樓出發）' }));
+    const picks = group.skills.map(skill => ({ key: M.routeKey(group.mentor, skill.skill), input: el('input', { type: 'checkbox', className: 'mt-edit-skill', value: skill.skill, checked: true }), name: skill.skill }));
     const msg = el('span', { className: 'mt-meta mt-edit-msg' });
     const save = el('button', { className: 'mt-edit-save', textContent: '儲存' });
     const reset = el('button', { className: 'mt-edit-reset', textContent: '改回內建' });
     const cancel = el('button', { className: 'mt-edit-cancel', textContent: '取消' });
-    const box = el('div', { className: 'mt-editbox' }, el('div', { textContent: '這條路線套用到：' }), checks, area, save, ' ', reset, ' ', cancel, el('br'), msg);
-    ['mousedown', 'click'].forEach(type => box.addEventListener(type, event => event.stopPropagation()));
-    const complain = text => { msg.textContent = text; msg.classList.add('mt-bad'); };
-    const chosen = () => group.skills.filter((skill, i) => checks[i].querySelector('input').checked).map(skill => M.routeKey(group.mentor, skill.skill));
-    async function persist(next) {
-      try {
-        await chrome.storage.local.set({ [EDITS_KEY]: next });
-        setEdits(next);
-      } catch (error) {
-        complain(`儲存失敗：${error.message}`);
-      }
-    }
+    const hint = group.rest ? el('div', { className: 'mt-meta mt-caution', textContent: `這條路線走到謎就停，後面的路線：${group.rest}；請補上完整指令再存` }) : '';
+    const editBox = el('div', { className: 'mt-editbox' }, el('div', { textContent: '這條路線套用到：' }), picks.map(pick => el('label', {}, pick.input, ` ${pick.name}`)), hint, area, save, ' ', reset, ' ', cancel, el('br'), msg);
+    ['mousedown', 'click'].forEach(type => editBox.addEventListener(type, event => event.stopPropagation()));
+    // 驗證、錯誤的訊息標紅，一般訊息不上色；換新訊息時舊的上色一起清掉
+    const say = (text, level = 'info') => {
+      msg.textContent = text;
+      msg.classList.toggle('mt-bad', level === 'error');
+    };
+    const chosen = () => picks.filter(pick => pick.input.checked).map(pick => pick.key);
     save.addEventListener('click', () => {
       const text = area.value.trim();
       const keys = chosen();
-      const error = text && globalThis.CatworldMacro?.parseSteps?.(text)?.error;
-      if (!text) complain('路線不能是空的（要改回內建請按「改回內建」）');
-      else if (error) complain(error);
-      else if (!keys.length) complain('至少選一個功法');
-      else persist(M.setEdits(edits, keys, text));
+      const macro = globalThis.CatworldMacro;
+      if (!text) say('路線不能是空的（要改回內建請按「改回內建」）', 'error');
+      else if (text === initial.trim()) say('沒有改動');
+      else if (!macro?.parseSteps) say('無法檢查指令格式（巨集模組沒載入），請重新整理遊戲頁', 'error');
+      else if (macro.parseSteps(text).error) say(macro.parseSteps(text).error, 'error');
+      else if (!keys.length) say('至少選一個功法', 'error');
+      else persist(current => M.setEdits(current, keys, text), error => say(error, 'error'));
     });
     reset.addEventListener('click', () => {
       const keys = chosen();
-      if (!keys.length) complain('至少選一個功法');
-      else persist(M.setEdits(edits, keys, ''));
+      if (!keys.length) say('至少選一個功法', 'error');
+      else if (!keys.some(key => key in edits)) say('這些功法沒有自己改過');
+      else persist(current => M.setEdits(current, keys, ''), error => say(error, 'error'));
     });
-    cancel.addEventListener('click', () => box.remove());
-    return box;
+    cancel.addEventListener('click', () => closeEditBox(editBox));
+    return editBox;
   }
 
   function render() {
+    stale = false;
     const found = M.search(groups, search.value);
     list.replaceChildren(...found.map(itemNode));
     if (!found.length) list.append(el('div', { className: 'mt-empty', textContent: '沒有符合的導師' }));
