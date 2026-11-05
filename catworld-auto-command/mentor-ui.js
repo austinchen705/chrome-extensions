@@ -1,4 +1,4 @@
-// 面板的「拜師」列：搜尋導師名、功法名、配合心法，結果依導師與路線分組，顯示每位導師教哪些功法與路線，並可以走過去。
+// 面板的「拜師」列：搜尋導師名、功法名、配合心法，結果依導師與路線分組，顯示每位導師教哪些功法與路線，可以走過去，也可以改路線。
 // 資料是內建的（mentor-data.js），分組與搜尋在 mentor-search.js；這裡只負責畫面。UI 放在面板的 shadow DOM 內，
 // 頁面層級的 MutationObserver 與 body.textContent 看不到，不會被當成遊戲輸出或驗證碼提示。
 //
@@ -8,6 +8,7 @@
 if (globalThis.CatworldMentorUI) return;
 
 const M = globalThis.CatworldMentorSearch;
+const EDITS_KEY = 'mentorRoutes';
 
 const STYLE = `
   .mt-box { padding: 4px 0 8px; }
@@ -22,6 +23,11 @@ const STYLE = `
   .mt-walk { font-size: 12px; cursor: pointer; }
   .mt-caution { color: #ffb347; }
   .mt-bad { color: #ff8a7a; }
+  .mt-tag { color: #6ec1ff; font-size: 12px; }
+  .mt-edit, .mt-editbox button { font-size: 12px; cursor: pointer; }
+  .mt-editbox { padding: 4px 0; font-size: 13px; color: #bbb; }
+  .mt-editbox textarea { all: unset; box-sizing: border-box; display: block; width: 100%; min-height: 54px; margin: 4px 0; padding: 4px 6px; border-radius: 6px; background: #3a3a3e; color: #eee; font: 13px ui-monospace, Consolas, monospace; white-space: pre-wrap; user-select: text; }
+  .mt-editbox label { margin-right: 8px; white-space: nowrap; cursor: pointer; }
 `;
 
 const el = (name, props = {}, ...children) => {
@@ -56,7 +62,19 @@ function attach(root, { startSteps }) {
   root.querySelector('.body').append(row, box);
 
   const status = row.querySelector('.mt-status');
-  const groups = M.groupRows(M.rowsFromData(globalThis.CatworldMentorData));
+  const rows = M.rowsFromData(globalThis.CatworldMentorData);
+  // 使用者自己改的路線（導師|功法 → 指令）：存在本機，套在內建資料上，內建資料本身不動
+  let edits = {};
+  let groups = M.groupRows(rows);
+  const setEdits = value => {
+    edits = M.parseEdits(value);
+    groups = M.groupRows(M.applyEdits(rows, edits));
+    if (!box.hidden) render();
+  };
+  chrome.storage.local.get(EDITS_KEY).then(data => setEdits(data[EDITS_KEY])).catch(() => {});
+  chrome.storage.onChanged?.addListener((changes, area) => {
+    if (area === 'local' && changes[EDITS_KEY]) setEdits(changes[EDITS_KEY].newValue);
+  });
 
   // 一筆：導師、功法、路線原文；有巨集指令就附「走過去」（遇到謎只走到謎之前），備註與不能自動走的原因另起一行
   function itemNode(group) {
@@ -80,7 +98,55 @@ function attach(root, { startSteps }) {
     }
     if (group.rest) node.append(el('br'), el('span', { className: 'mt-meta mt-caution', textContent: `走到這裡要先解謎，後面的路線：${group.rest}` }));
     if (group.notes.length) node.append(el('br'), el('span', { className: 'mt-meta', textContent: `備註：${group.notes.join('、')}` }));
+    const edit = el('button', { className: 'mt-edit', textContent: '編輯' });
+    edit.addEventListener('click', event => {
+      // 不讓 click 傳到遊戲的 window.onclick：它會把游標搶回遊戲輸入框，輸入框就打不了字
+      event.stopPropagation();
+      const open = node.querySelector('.mt-editbox');
+      if (open) open.remove();
+      else node.append(editBox(group));
+    });
+    node.firstChild.after(...(group.edited ? [' ', el('span', { className: 'mt-tag', textContent: '已自訂' })] : []));
+    node.append(' ', edit);
     return node;
+  }
+
+  // 編輯框：路線（分號隔開的巨集，從醉仙樓出發）與要套用的功法（預設這一筆的全部），存、改回內建、取消
+  function editBox(group) {
+    const area = typable(el('textarea', { className: 'mt-edit-text', value: group.command || group.route, placeholder: '完整指令，用 ; 分隔（從醉仙樓出發）' }));
+    const checks = group.skills.map(skill => el('label', {}, el('input', { type: 'checkbox', className: 'mt-edit-skill', value: skill.skill, checked: true }), ` ${skill.skill}`));
+    const msg = el('span', { className: 'mt-meta mt-edit-msg' });
+    const save = el('button', { className: 'mt-edit-save', textContent: '儲存' });
+    const reset = el('button', { className: 'mt-edit-reset', textContent: '改回內建' });
+    const cancel = el('button', { className: 'mt-edit-cancel', textContent: '取消' });
+    const box = el('div', { className: 'mt-editbox' }, el('div', { textContent: '這條路線套用到：' }), checks, area, save, ' ', reset, ' ', cancel, el('br'), msg);
+    ['mousedown', 'click'].forEach(type => box.addEventListener(type, event => event.stopPropagation()));
+    const complain = text => { msg.textContent = text; msg.classList.add('mt-bad'); };
+    const chosen = () => group.skills.filter((skill, i) => checks[i].querySelector('input').checked).map(skill => M.routeKey(group.mentor, skill.skill));
+    async function persist(next) {
+      try {
+        await chrome.storage.local.set({ [EDITS_KEY]: next });
+        setEdits(next);
+      } catch (error) {
+        complain(`儲存失敗：${error.message}`);
+      }
+    }
+    save.addEventListener('click', () => {
+      const text = area.value.trim();
+      const keys = chosen();
+      const error = text && globalThis.CatworldMacro?.parseSteps?.(text)?.error;
+      if (!text) complain('路線不能是空的（要改回內建請按「改回內建」）');
+      else if (error) complain(error);
+      else if (!keys.length) complain('至少選一個功法');
+      else persist(M.setEdits(edits, keys, text));
+    });
+    reset.addEventListener('click', () => {
+      const keys = chosen();
+      if (!keys.length) complain('至少選一個功法');
+      else persist(M.setEdits(edits, keys, ''));
+    });
+    cancel.addEventListener('click', () => box.remove());
+    return box;
   }
 
   function render() {

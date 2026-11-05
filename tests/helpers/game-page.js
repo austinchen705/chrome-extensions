@@ -29,8 +29,9 @@ const waitFor = async (condition, ms = 3000) => {
 
 // 一個遊戲頁（照真實頁面的結構）：#content 是輸出區，#uptime 是輸出區外每秒跳的時鐘，#input 在表單裡（送出的指令記在 sent）
 // builtin: true 才載入內建資料（map-data.js、shop-data.js、mentor-data.js）；其他測試要自己決定房間、商品與導師，不能被真實資料影響
+// initialStore：腳本啟動前就已經存在 chrome.storage.local 的內容（啟動時讀一次的設定要靠它）
 // preload：在所有腳本之前先在頁面執行的程式（測試自己放假的內建資料，例如 globalThis.CatworldMentorData = […]）
-async function boot({ scale = 1, builtin = false, preload = '' } = {}) {
+async function boot({ scale = 1, builtin = false, preload = '', initialStore = {} } = {}) {
   const dom = new JSDOM('<html><body><div id="main"><div id="content"><span id="message"></span></div></div><div id="buttons"><div id="uptime">00:00</div></div><form id="f"><input id="input"></form></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   const sent = [];
@@ -51,7 +52,7 @@ async function boot({ scale = 1, builtin = false, preload = '' } = {}) {
       return id;
     };
   });
-  const store = {};
+  const store = JSON.parse(JSON.stringify(initialStore));
   const changeListeners = [];
   w.AudioContext = class {
     constructor() { this.state = 'suspended'; }

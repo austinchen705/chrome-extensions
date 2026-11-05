@@ -207,3 +207,142 @@ ui('the built-in data lets 小龍女 walk through the tomb in one macro', async 
     page.close();
   }
 });
+
+// ---- 個人編輯路線 ----
+const ROW = (mentor, skill, route) => [mentor, skill, route, '', '', '', route, '', [], ''];
+const EDITABLE = [
+  ROW('甲', '功法一', 'run e 5n 2o t'),
+  ROW('甲', '功法二', 'run e 5n 2o t'),
+  ROW('乙', '功法三', 'run e 5n 2o w'),
+  ROW('乙', '功法四', 'run e 5n 2o s'),
+];
+const entriesOf = (page, mentor) => [...panel(page).querySelectorAll('.mt-item')].filter(node => node.querySelector('.mt-name').textContent === mentor);
+const entryWith = (page, mentor, skill) => entriesOf(page, mentor).find(node => node.textContent.includes(skill));
+// 打開某一筆的編輯框：只勾 skills 列的功法（不給就全勾），填入路線
+const startEdit = (page, node, { skills, text } = {}) => {
+  node.querySelector('.mt-edit').click();
+  const box = node.querySelector('.mt-editbox');
+  if (skills) box.querySelectorAll('.mt-edit-skill').forEach(check => { check.checked = skills.includes(check.value); });
+  if (text !== undefined) box.querySelector('.mt-edit-text').value = text;
+  return box;
+};
+// 跨視窗的物件原型不同，deepStrictEqual 會失敗，先轉成純 JSON
+const plain = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
+const store = page => plain(page.store.mentorRoutes);
+
+ui('editing the route of one skill saves it under mentor and skill, splits that skill into its own entry marked as edited, and walks the edited route', async () => {
+  const page = await boot({ scale: 20, preload: preload(EDITABLE) });
+  try {
+    await open(page);
+    assert.equal(entriesOf(page, '甲').length, 1, 'the two skills share one entry before the edit');
+    startEdit(page, entriesOf(page, '甲')[0], { skills: ['功法二'], text: 'run e 5n 2o t;push stone' }).querySelector('.mt-edit-save').click();
+    assert.ok(await waitFor(() => store(page)));
+    assert.deepEqual(store(page), { '甲|功法二': 'run e 5n 2o t;push stone' });
+    assert.ok(await waitFor(() => entriesOf(page, '甲').length === 2));
+    const edited = entryWith(page, '甲', '功法二');
+    assert.match(edited.textContent, /已自訂/);
+    assert.match(edited.textContent, /路線 run e 5n 2o t;push stone/);
+    assert.doesNotMatch(entryWith(page, '甲', '功法一').textContent, /已自訂/);
+    edited.querySelector('.mt-walk').click();
+    assert.ok(await waitFor(() => page.sent.length === 2));
+    assert.deepEqual(page.sent, ['run e 5n 2o t', 'push stone']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a skill edited to the same route as another entry joins it', async () => {
+  const page = await boot({ preload: preload(EDITABLE) });
+  try {
+    await open(page);
+    startEdit(page, entryWith(page, '乙', '功法四'), { text: 'run e 5n 2o w' }).querySelector('.mt-edit-save').click();
+    assert.ok(await waitFor(() => entriesOf(page, '乙').length === 1));
+    assert.match(entriesOf(page, '乙')[0].textContent, /功法三.*功法四|功法四.*功法三/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('resetting to built-in removes the saved edit and the entry goes back where it was', async () => {
+  const page = await boot({ preload: preload(EDITABLE), initialStore: { mentorRoutes: { '甲|功法二': 'run e 5n 2o t;push stone' } } });
+  try {
+    await open(page);
+    assert.ok(await waitFor(() => entriesOf(page, '甲').length === 2));
+    startEdit(page, entryWith(page, '甲', '功法二')).querySelector('.mt-edit-reset').click();
+    assert.ok(await waitFor(() => entriesOf(page, '甲').length === 1));
+    assert.deepEqual(store(page), {});
+    assert.doesNotMatch(entriesOf(page, '甲')[0].textContent, /已自訂/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('an empty route, a route the macro cannot read, or no skill ticked is refused with the reason and nothing is saved', async () => {
+  const page = await boot({ preload: preload(EDITABLE) });
+  try {
+    await open(page);
+    const item = entriesOf(page, '甲')[0];
+    const box = startEdit(page, item, { text: '   ' });
+    const msg = () => box.querySelector('.mt-edit-msg');
+    box.querySelector('.mt-edit-save').click();
+    assert.match(msg().textContent, /不能是空的/);
+    assert.equal(msg().classList.contains('mt-bad'), true);
+    box.querySelector('.mt-edit-text').value = '@等待 abc';
+    box.querySelector('.mt-edit-save').click();
+    assert.match(msg().textContent, /等待/);
+    box.querySelector('.mt-edit-text').value = 'run e';
+    box.querySelectorAll('.mt-edit-skill').forEach(check => { check.checked = false; });
+    box.querySelector('.mt-edit-save').click();
+    assert.match(msg().textContent, /至少選一個功法/);
+    assert.equal(store(page), undefined, 'nothing was saved');
+  } finally {
+    page.close();
+  }
+});
+
+ui('edits saved before the page loaded are applied, and an edit made in another tab shows up without a reload', async () => {
+  const page = await boot({ preload: preload(EDITABLE), initialStore: { mentorRoutes: { '乙|功法三': 'run e 5n 2o n' } } });
+  try {
+    await open(page);
+    assert.ok(await waitFor(() => /路線 run e 5n 2o n/.test(entryWith(page, '乙', '功法三')?.textContent ?? '')));
+    const next = { '乙|功法三': 'run e 5n 2o n', '甲|功法一': 'run 3e' };
+    page.store.mentorRoutes = next;
+    page.changeListeners.forEach(listener => listener({ mentorRoutes: { newValue: next } }, 'local'));
+    assert.ok(await waitFor(() => /路線 run 3e/.test(entryWith(page, '甲', '功法一')?.textContent ?? '')));
+  } finally {
+    page.close();
+  }
+});
+
+ui('bad saved data does not break the list: wrong shapes and non-string values are ignored', async () => {
+  for (const junk of ['junk', ['a|b'], { '甲|功法一': 5, 'no-bar': 'x', '乙|功法三': '   ' }]) {
+    const page = await boot({ preload: preload(EDITABLE), initialStore: { mentorRoutes: junk } });
+    try {
+      await open(page);
+      assert.deepEqual(names(page), ['乙', '乙', '甲'], JSON.stringify(junk));
+    } finally {
+      page.close();
+    }
+  }
+});
+
+ui('the built-in data is never rewritten: only the edit is stored, and the edit and its box do not leak clicks to the game', async () => {
+  const page = await boot({ preload: preload(EDITABLE) });
+  try {
+    await open(page);
+    let leaked = 0;
+    page.w.document.addEventListener('click', () => { leaked += 1; });
+    const item = entriesOf(page, '乙')[0];
+    item.querySelector('.mt-edit').dispatchEvent(new page.w.MouseEvent('click', { bubbles: true, composed: true }));
+    const box = item.querySelector('.mt-editbox');
+    box.querySelector('.mt-edit-text').dispatchEvent(new page.w.MouseEvent('click', { bubbles: true, composed: true }));
+    assert.equal(leaked, 0);
+    box.querySelector('.mt-edit-text').value = 'run 9n';
+    box.querySelector('.mt-edit-save').click();
+    assert.ok(await waitFor(() => store(page)));
+    assert.deepEqual(Object.keys(page.store).sort(), ['mentorRoutes', 'zapFeatures'], 'only the edit is added to storage (zapFeatures is the switch the test turned on)');
+    assert.deepEqual(JSON.parse(JSON.stringify(page.w.CatworldMentorData)), EDITABLE);
+  } finally {
+    page.close();
+  }
+});
