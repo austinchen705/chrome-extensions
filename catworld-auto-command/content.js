@@ -1099,6 +1099,13 @@ function initPanel() {
   } catch (error) {
     console.error('[catworld] 解謎列初始化失敗', error);
   }
+  // 「拜師」列：搜導師、功法、心法（資料內建，不經 background）；壞了不能牽連後面按鈕的綁定
+  let mentorUI = null;
+  try {
+    mentorUI = CatworldMentorUI.attach(root);
+  } catch (error) {
+    console.error('[catworld] 拜師列初始化失敗', error);
+  }
   // 「裝備」列：借用怪物列的浮層區段；讀取目前穿著送的 i／view 也走巨集
   let equipmentUI = null;
   try {
@@ -1132,6 +1139,7 @@ function initPanel() {
     zapPanel?.setEnabled({ mobs: features?.mobs === true, items: features?.items === true });
     equipmentUI?.setEnabled(features?.items === true);
     riddleUI?.setEnabled(features?.riddles === true);
+    mentorUI?.setEnabled(features?.masters === true);
     // 地圖巡怪：預設關閉，關著時整個「巡怪」列（含選怪清單）藏起來；關掉時正在巡就停下來
     const huntOn = features?.hunt === true;
     root.querySelector('.hunt-line').hidden = !huntOn;

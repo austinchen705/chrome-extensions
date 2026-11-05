@@ -28,8 +28,9 @@ const waitFor = async (condition, ms = 3000) => {
 };
 
 // 一個遊戲頁（照真實頁面的結構）：#content 是輸出區，#uptime 是輸出區外每秒跳的時鐘，#input 在表單裡（送出的指令記在 sent）
-// builtin: true 才載入內建資料（map-data.js、shop-data.js）；其他測試要自己決定房間與商品，不能被真實資料影響
-async function boot({ scale = 1, builtin = false } = {}) {
+// builtin: true 才載入內建資料（map-data.js、shop-data.js、mentor-data.js）；其他測試要自己決定房間、商品與導師，不能被真實資料影響
+// preload：在所有腳本之前先在頁面執行的程式（測試自己放假的內建資料，例如 globalThis.CatworldMentorData = […]）
+async function boot({ scale = 1, builtin = false, preload = '' } = {}) {
   const dom = new JSDOM('<html><body><div id="main"><div id="content"><span id="message"></span></div></div><div id="buttons"><div id="uptime">00:00</div></div><form id="f"><input id="input"></form></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   const sent = [];
@@ -74,7 +75,8 @@ async function boot({ scale = 1, builtin = false } = {}) {
   };
   // content.js 啟動時有一段非同步的初始化（重新整理後自動停止等），等它跑完才開始操作
   const install = files => files.forEach(file => w.eval(fs.readFileSync(path.join(root, file), 'utf8')));
-  install(builtin ? SCRIPTS : SCRIPTS.filter(file => !/^(map|shop)-data.js$/.test(file)));
+  if (preload) w.eval(preload);
+  install(builtin ? SCRIPTS : SCRIPTS.filter(file => !/^(map|shop|mentor)-data.js$/.test(file)));
   await sleep(80);
   const ask = message => new Promise(resolve => {
     const handled = messageListeners.map(listener => listener(message, { id: 'ext' }, resolve)).some(result => result === true);

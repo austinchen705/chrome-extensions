@@ -87,6 +87,12 @@
 - 開關是 `chrome.storage.local.zapFeatures.skills`（缺值＝關閉，設定頁 `featureSkills`，和其他輔助功能同一個 `FEATURE_BOXES`），flush 時才讀。`skills-data.js`（約 170 KB）只在 background 載入、不隨每個遊戲分頁載入。已悟 N 招＝資料裡 `moves` 的前 N 招（和 `skills.js` 的「30 × 已悟招數」門檻解讀一致），下一招的門檻取 `levels[N]`。傷害分級的顏色在 `TIERS`（每級 `color` 與 `second` 兩個色系，招式名用 `nameChunks` 兩個字一段、兩色輪流，數字部分用 `color`），傷害類型欄混著說明時只留第一句。
 - 測試：`tests/skill-moves.test.js`（純函式用真實資料；遊戲頁用整個 content script 在 jsdom 裡跑、假 background 用 `lookup` 回真實資料）。**真實的 careers 輸出文字（節點與換行的切法）只用使用者貼的樣本驗證**。
 
+## 拜師導師搜尋
+
+- 規格與票在 `.scratch/mentor-search/`（不進 git）。資料來源是 `docs/data/mentors.tsv`（欄位：導師、功法、路線原文、類別、最高等級、配合心法、來源；來源「最高」＝試算表「最高功法導師」分頁，「配合」＝「功法配合表」分頁），由 `tools/gen-mentor-data.js` 產生 `catworld-auto-command/mentor-data.js`（`globalThis.CatworldMentorData`，每列 `[導師, 功法, 路線, 類別, 最高等級, 配合心法]`），**不要手改產生的檔案**。產生規則：導師欄用 `/` 分隔的拆成各自一列、共用路線；同一位導師的同一個功法兩個分頁都有時，路線、類別、配合心法以「配合」為準，最高等級取「最高」的，路線不同的列在產生報告；格式不對或少於 30 列時失敗、不覆寫。沒有導師可找的列（「(玩家)」「(解謎)」）整理來源檔時就不收。
+- `mentor-search.js`（純函式）：`groupRows` 依「導師＋整串路線」分組（`canonicalRoute` 把空白壓成一個、相鄰相同的方向合併，`nu nu` ＝ `2nu`；`t`、`run` 這類不是方向的字不合併），`search` 比對導師名、功法名、配合心法（子字串、不分大小寫、忽略所有空白），導師名符合的排前面、同級依導師名，空白時全部列出。`mentor-ui.js` 是面板的「拜師」列（`attach(root)` 回傳 `setEnabled`），不經 background；開關是 `zapFeatures.masters`（缺值＝關閉，設定頁 `featureMasters`，和其他輔助功能同一個 `FEATURE_BOXES`）。資料檔、查詢模組、UI 模組都要加進 manifest 與 popup 備援注入的 `files`（`zap-riddle-ui.js` 之後、`pip-panel.js` 之前），`injection-lists` 測試會比對。
+- 測試：`tests/mentor-search.test.js`（整個 content script 在 jsdom；假資料用 `boot({ preload })` 放在所有腳本之前，一個測試用 `builtin: true` 的真實資料）、`tests/mentor-data.test.js`（產生腳本的規則，以及 `mentor-data.js` 和 TSV 一致）。測試底座預設不載入 `mentor-data.js`。
+
 ## 無名物品
 
 - 資料是 `zap-data.json` 的 `items`，由 `tools/gen-zap-data.js` 從 `ub.htm` 解析（`tools/zap-parse.js` 的 `parseUnknownObjectHtml`）。`ub.htm` 有三張表，LV 在帶 `rowspan` 的儲存格往下列沿用：第 1 張只有名稱、第 2 張是名稱＋功能、第 3 張是名稱＋武器效果＋防具效果；解析結果少於 30 筆時產生腳本會失敗、不覆寫。
