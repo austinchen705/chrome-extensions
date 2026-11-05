@@ -1,5 +1,6 @@
 // 拜師導師搜尋的純函式（不碰 DOM 與 chrome.*）：把內建資料（mentor-data.js）的每一列「導師、功法、路線」依導師與路線分組、搜尋、排序。
-// 路線寫法不同但等價（nu nu 與 2nu）的視為同一條；多位導師共用一條路線的列在產生資料時就已經拆成各自一列。
+// 路線寫法不同但等價（nu nu 與 2nu）的視為同一條；多位導師共用一條路線的列在產生資料時就已經拆成各自一列；
+// 路線轉成巨集指令（走過去用）也是產生資料時做的（tools/mentor-route.js），這裡只帶著用。
 (() => {
 if (globalThis.CatworldMentorSearch) return;
 
@@ -32,19 +33,20 @@ function canonicalRoute(route) {
   return out.join(' ');
 }
 
-// 內建資料每一列是 [導師, 功法, 路線, 類別, 最高等級, 配合心法]
+// 內建資料每一列是 [導師, 功法, 路線, 類別, 最高等級, 配合心法, 巨集指令, 解謎之後的路線, 備註[], 不能自動走的原因]
 const rowsFromData = data => (Array.isArray(data) ? data : [])
   .filter(row => Array.isArray(row) && row[0] && row[1] && row[2])
-  .map(([mentor, skill, route, category, maxLevel, heart]) => ({
+  .map(([mentor, skill, route, category, maxLevel, heart, command, rest, notes, reason]) => ({
     mentor: String(mentor), skill: String(skill), route: String(route), category: String(category ?? ''), maxLevel: String(maxLevel ?? ''), heart: String(heart ?? ''),
+    command: String(command ?? ''), rest: String(rest ?? ''), notes: Array.isArray(notes) ? notes.map(String) : [], reason: String(reason ?? ''),
   }));
 
-// 依「導師＋整串路線」分組；同一組裡同名的功法只留第一個
+// 依「導師＋整串路線」分組（路線相同，巨集指令與備註也相同，取第一列的）；同一組裡同名的功法只留第一個
 function groupRows(rows) {
   const groups = new Map();
   rows.forEach(row => {
     const key = `${row.mentor}\u0000${canonicalRoute(row.route)}`;
-    if (!groups.has(key)) groups.set(key, { mentor: row.mentor, route: flat(row.route), skills: [] });
+    if (!groups.has(key)) groups.set(key, { mentor: row.mentor, route: flat(row.route), command: row.command, rest: row.rest, notes: row.notes, reason: row.reason, skills: [] });
     const group = groups.get(key);
     if (!group.skills.some(skill => skill.skill === row.skill)) group.skills.push({ skill: row.skill, category: row.category, maxLevel: row.maxLevel, heart: row.heart });
   });

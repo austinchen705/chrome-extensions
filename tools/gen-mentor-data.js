@@ -1,26 +1,28 @@
 // 把 docs/data/mentors.tsv（試算表「最高功法導師」與「功法配合表」兩個分頁整理出來的導師資料）轉成 catworld-auto-command/mentor-data.js，
 // 當作內建的拜師導師資料（mentor-search.js 分組與搜尋）。
-// 用法：node tools/gen-mentor-data.js；不要手改產生的檔案，改 TSV 再重新產生。
+// 用法：node tools/gen-mentor-data.js；不要手改產生的檔案，改 TSV 再重新產生。路線轉成巨集指令的規則在 tools/mentor-route.js。
 // TSV 欄位：導師、功法、路線（原文）、類別、最高等級、配合心法、來源（最高＝最高功法導師分頁，配合＝功法配合表分頁）。
 // 導師欄用 / 分隔多位導師時拆成各自一列、共用同一條路線；同一位導師的同一個功法兩個分頁都有時，路線、類別、配合心法以「配合」為準，最高等級取「最高」的。
 const fs = require('fs');
 const path = require('path');
+const { parseRoute, skeleton, riddles } = require('./mentor-route');
 
 const MIN_ROWS = 30;
 const COLUMNS = 7;
+const SEP = String.fromCharCode(0);
 const flat = text => text.replace(/\s+/g, ' ').trim();
 
 function build(text, { minRows = MIN_ROWS } = {}) {
   const lines = text.split('\n').filter(Boolean).slice(1);
   const merged = new Map();
-  const report = { conflicts: [] };
+  const report = { conflicts: [], notWalkable: [] };
   lines.forEach((line, i) => {
     const cells = line.split('\t');
     if (cells.length !== COLUMNS) throw new Error(`第 ${i + 2} 列欄位數不對（要 ${COLUMNS} 欄）：${line}`);
     const [mentors, skill, route, category, maxLevel, heart, source] = cells.map(flat);
     if (!mentors || !skill || !route || !['最高', '配合'].includes(source)) throw new Error(`第 ${i + 2} 列格式不對：${line}`);
     mentors.split('/').map(flat).filter(Boolean).forEach(mentor => {
-      const key = `${mentor}\u0000${skill}`;
+      const key = mentor + SEP + skill;
       const row = { mentor, skill, route, category, maxLevel, heart };
       const old = merged.get(key);
       if (!old) {
@@ -33,13 +35,26 @@ function build(text, { minRows = MIN_ROWS } = {}) {
       merged.set(key, { ...match, maxLevel: high.maxLevel, source: '兩者' });
     });
   });
-  const rows = [...merged.values()].map(({ mentor, skill, route, category, maxLevel, heart }) => [mentor, skill, route, category, maxLevel, heart]);
+  // 同一位導師骨架相同（只差在有的寫「謎」、有的寫明了指令）的路線，用謎最少的那條來轉成巨集指令
+  const entries = [...merged.values()];
+  const keyOf = ({ mentor, route }) => mentor + SEP + skeleton(route);
+  const best = new Map();
+  entries.forEach(entry => {
+    const key = keyOf(entry);
+    if (!best.has(key) || riddles(entry.route) < riddles(best.get(key))) best.set(key, entry.route);
+  });
+  const rows = entries.map(entry => {
+    const { mentor, skill, route, category, maxLevel, heart } = entry;
+    const { command, rest, notes, reason } = parseRoute(best.get(keyOf(entry)));
+    if (!command) report.notWalkable.push({ mentor, skill, reason });
+    return [mentor, skill, route, category, maxLevel, heart, command, rest, notes, reason];
+  });
   if (rows.length < minRows) throw new Error(`只解析出 ${rows.length} 列，資料檔可能壞了，不覆寫`);
   return { rows, report };
 }
 
 function render(rows) {
-  return `// 由 tools/gen-mentor-data.js 從 docs/data/mentors.tsv 產生，不要手改。每列：[導師, 功法, 路線（原文）, 類別, 最高等級, 配合心法]
+  return `// 由 tools/gen-mentor-data.js 從 docs/data/mentors.tsv 產生，不要手改。每列：[導師, 功法, 路線（原文）, 類別, 最高等級, 配合心法, 巨集指令, 解謎之後的路線, 備註[], 不能自動走的原因]
 globalThis.CatworldMentorData = [
 ${rows.map(row => '  ' + JSON.stringify(row)).join(',\n')},
 ];
@@ -53,5 +68,6 @@ if (require.main === module) {
   const { rows, report } = build(fs.readFileSync(path.join(root, 'docs/data/mentors.tsv'), 'utf8'));
   fs.writeFileSync(path.join(root, 'catworld-auto-command/mentor-data.js'), render(rows));
   console.log(`mentor-data.js：${rows.length} 列（導師與功法）`);
+  report.notWalkable.forEach(row => console.log(`不能自動走：${row.mentor} ${row.skill}（${row.reason}）`));
   report.conflicts.forEach(c => console.log(`兩個分頁路線不同：${c.mentor} ${c.skill}\n  最高：${c.最高}\n  配合：${c.配合}`));
 }

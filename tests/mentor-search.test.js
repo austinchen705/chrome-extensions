@@ -126,3 +126,69 @@ ui('the search box does not leak keys or clicks to the game', async () => {
     page.close();
   }
 });
+
+// ---- 走過去 ----
+const WALK = [
+  // [導師, 功法, 路線, 類別, 最高等級, 配合心法, 巨集指令, 解謎之後的路線, 備註, 不能自動走的原因]
+  ['甲', '功法甲', 'run e 5n 2o t (push stone) run 9s e', '', '', '', 'run e 5n 2o t;push stone;run 9s e', '', ['要穿真武令'], ''],
+  ['乙', '功法乙', 'run e 5n 2o t 謎 run e', '', '', '', 'run e 5n 2o t', '謎 run e', [], ''],
+  ['丙', '功法丙', 'run 2e u', '', '', '', '', '', [], '不是從醉仙樓出發'],
+];
+const itemOf = (page, mentor) => [...panel(page).querySelectorAll('.mt-item')].find(node => node.querySelector('.mt-name').textContent === mentor);
+
+ui('the walk button sends the commands of the macro one after another', async () => {
+  const page = await boot({ scale: 20, preload: preload(WALK) });
+  try {
+    await open(page);
+    itemOf(page, '甲').querySelector('.mt-walk').click();
+    assert.ok(await waitFor(() => page.sent.length === 3), `sent ${JSON.stringify(page.sent)}`);
+    assert.deepEqual(page.sent, ['run e 5n 2o t', 'push stone', 'run 9s e']);
+    assert.match(itemOf(page, '甲').textContent, /備註：要穿真武令/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a route with a riddle walks only up to it and says what is left', async () => {
+  const page = await boot({ scale: 20, preload: preload(WALK) });
+  try {
+    await open(page);
+    const item = itemOf(page, '乙');
+    assert.equal(item.querySelector('.mt-walk').textContent, '走到解謎處');
+    assert.match(item.textContent, /走到這裡要先解謎，後面的路線：謎 run e/);
+    item.querySelector('.mt-walk').click();
+    assert.ok(await waitFor(() => page.sent.length === 1));
+    assert.deepEqual(page.sent, ['run e 5n 2o t']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a route that cannot be walked automatically has no button, only the route and the reason', async () => {
+  const page = await boot({ preload: preload(WALK) });
+  try {
+    await open(page);
+    const item = itemOf(page, '丙');
+    assert.equal(item.querySelector('.mt-walk'), null);
+    assert.match(item.textContent, /路線 run 2e u/);
+    assert.match(item.textContent, /不能自動走：不是從醉仙樓出發/);
+    assert.deepEqual(page.sent, []);
+  } finally {
+    page.close();
+  }
+});
+
+ui('the built-in data lets 小龍女 walk through the tomb in one macro', async () => {
+  const page = await boot({ scale: 20, builtin: true });
+  try {
+    await open(page);
+    type(page, '美女拳法');
+    const item = itemOf(page, '小龍女');
+    assert.ok(item, 'found');
+    item.querySelector('.mt-walk').click();
+    assert.ok(await waitFor(() => page.sent.length >= 3));
+    assert.ok(page.sent.includes('worship tomb'), JSON.stringify(page.sent));
+  } finally {
+    page.close();
+  }
+});

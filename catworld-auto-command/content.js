@@ -1102,7 +1102,7 @@ function initPanel() {
   // 「拜師」列：搜導師、功法、心法（資料內建，不經 background）；壞了不能牽連後面按鈕的綁定
   let mentorUI = null;
   try {
-    mentorUI = CatworldMentorUI.attach(root);
+    mentorUI = CatworldMentorUI.attach(root, { startSteps: text => startMacro(text) });
   } catch (error) {
     console.error('[catworld] 拜師列初始化失敗', error);
   }
