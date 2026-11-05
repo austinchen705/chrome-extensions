@@ -24,6 +24,7 @@ const waitFor = async (condition, ms = 3000) => {
 };
 
 async function boot(store = {}) {
+  const listeners = [];
   const dom = await JSDOM.fromFile(path.join(root, 'popup.html'), {
     runScripts: 'dangerously',
     resources: 'usable',
@@ -39,7 +40,7 @@ async function boot(store = {}) {
           },
           sync: { get: async () => ({}), set: async () => {} },
           session: { get: async () => ({}), set: async () => {} },
-          onChanged: { addListener() {} },
+          onChanged: { addListener: listener => listeners.push(listener) },
         },
         tabs: { query: async () => [], get: async () => { throw new Error('no tab'); }, sendMessage: async () => { throw new Error('no tab'); }, create: async () => {}, update: async () => {} },
         permissions: { contains: async () => true, request: async () => true, remove: async () => true, onAdded: { addListener() {} }, onRemoved: { addListener() {} } },
@@ -56,7 +57,7 @@ async function boot(store = {}) {
     else input.value = value;
     input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
   };
-  return { dom, doc, store, change };
+  return { dom, doc, store, change, listeners };
 }
 
 ui('with nothing stored the fields show the defaults and the switch is off', async () => {
@@ -165,6 +166,19 @@ ui('an import that passes is added after what is there, and one bad line stops t
     assert.equal(page.store.chatPairs.at(-1).reply, '新的回覆', 'the import is the newest');
     assert.match(page.doc.getElementById('chatPairsMsg').textContent, /已匯入 1 筆.*1 筆已經有了/);
     assert.equal(page.doc.getElementById('chatPairsImportText').value, '', 'the box is emptied after a successful import');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('a pair the game page records later shows up in the list without reopening the page', async () => {
+  const page = await boot({ chatPairs: PAIRS });
+  try {
+    assert.ok(await waitFor(() => listed(page).length === 2));
+    page.store.chatPairs = [...PAIRS, { said: '剛來的話', reply: '剛回的', at: 3 }];
+    page.listeners.forEach(listener => listener({ chatPairs: {} }, 'local'));
+    assert.ok(await waitFor(() => listed(page).length === 3));
+    assert.equal(listed(page)[0], '剛來的話 → 剛回的');
   } finally {
     page.dom.window.close();
   }

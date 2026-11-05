@@ -218,8 +218,12 @@ $('chatPairsImportApply').addEventListener('click', async () => {
   await chrome.storage.local.set({ [CHAT_PAIRS_KEY]: merged.pairs });
   $('chatPairsImportText').value = '';
   $('chatPairsImportBox').hidden = true;
-  const notes = [merged.duplicate ? `${merged.duplicate} 筆已經有了` : '', merged.dropped ? `超過上限，丟掉最舊的 ${merged.dropped} 筆` : ''].filter(Boolean);
-  chatMessage(`已匯入 ${merged.added} 筆` + (notes.length ? `（${notes.join('、')}）` : ''), merged.dropped ? 'warn' : undefined);
+  const notes = [
+    merged.duplicate ? `${merged.duplicate} 筆已經有了` : '',
+    merged.dropped ? `超過上限，丟掉原本最舊的 ${merged.dropped} 筆` : '',
+    merged.trimmed ? `匯入的比上限多，只留最新的 ${merged.added} 筆，最舊的 ${merged.trimmed} 筆沒收` : '',
+  ].filter(Boolean);
+  chatMessage(`已匯入 ${merged.added} 筆` + (notes.length ? `（${notes.join('、')}）` : ''), merged.dropped || merged.trimmed ? 'warn' : undefined);
   showChatPairs();
 });
 showChatPairs();

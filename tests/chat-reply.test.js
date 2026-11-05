@@ -343,3 +343,21 @@ test('mergeImported puts imports last as the newest, skips ones already there, a
   assert.equal(merged.pairs.at(-1).said, 'new');
   assert.equal(existing.length, Chat.MAX_PAIRS, 'the input is not changed');
 });
+
+test('parseImport flattens whitespace the way exportText does, so text with runs of spaces survives a round trip', () => {
+  const pairs = [{ said: '你   好\t嗎', reply: '還\n不錯', at: 1 }];
+  const text = Chat.exportText(pairs);
+  assert.equal(text, '你 好 嗎\t還 不錯');
+  assert.equal(Chat.exportText(Chat.parseImport('你   好 嗎\t還   不錯').pairs), text);
+});
+
+test('mergeImported tells apart old pairs the cap pushed out and imported ones it could not keep', () => {
+  const existing = Array.from({ length: 10 }, (_, index) => ({ said: 's' + index, reply: 'r' + index, at: index }));
+  const imported = Array.from({ length: Chat.MAX_PAIRS + 5 }, (_, index) => ({ said: 'n' + index, reply: 'x' + index }));
+  const merged = Chat.mergeImported(existing, imported, 1000);
+  assert.deepEqual([merged.added, merged.dropped, merged.trimmed, merged.pairs.length], [Chat.MAX_PAIRS, 10, 5, Chat.MAX_PAIRS]);
+  assert.equal(merged.pairs[0].said, 'n5', 'only the newest imported ones are kept');
+  assert.equal(merged.pairs.at(-1).said, 'n' + (Chat.MAX_PAIRS + 4));
+  const small = Chat.mergeImported(existing, [{ said: "a", reply: "b" }], 1000);
+  assert.deepEqual([small.added, small.dropped, small.trimmed], [1, 0, 0], "nothing is reported when nothing was lost");
+});

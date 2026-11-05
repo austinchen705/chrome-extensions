@@ -89,8 +89,8 @@ function parseImport(text) {
     const parts = lines[index].split('\t');
     const where = '第 ' + (index + 1) + ' 行';
     if (parts.length !== 2) return { ok: false, error: where + '要剛好有一個 Tab，分成「對方說」和「我回」兩段' };
-    const said = parts[0].trim();
-    const reply = parts[1].trim();
+    const said = flat(parts[0]);
+    const reply = flat(parts[1]);
     if (!said) return { ok: false, error: where + '「對方說」是空的' };
     if (!reply) return { ok: false, error: where + '「我回」是空的' };
     if (!safeReply(reply)) return { ok: false, error: where + '的回覆含分號或 @等待，會被當成巨集，不收' };
@@ -99,18 +99,20 @@ function parseImport(text) {
   if (!pairs.length) return { ok: false, error: '沒有可匯入的內容' };
   return { ok: true, pairs };
 }
-// 把匯入的接在已存的後面（算最新的）：同一組 said+reply 不重複，總數超過 MAX_PAIRS 丟最舊的；回傳 { pairs, added, duplicate, dropped }
+// 把匯入的接在已存的後面（算最新的）：同一組 said+reply 不重複，總數超過 MAX_PAIRS 丟最舊的；回傳 { pairs, added, duplicate, dropped, trimmed }（dropped＝被擠掉的舊資料筆數，trimmed＝匯入的比上限還多、匯入裡最舊的被丟掉幾筆，added 不含 trimmed）
 function mergeImported(existing, imported, at) {
-  let all = existing;
-  let added = 0;
+  const keyOf = pair => JSON.stringify([pair.said, pair.reply]);
+  const known = new Set(existing.map(keyOf));
+  const fresh = [];
   let duplicate = 0;
   imported.forEach((pair, index) => {
-    const next = addPair(all, { said: pair.said, reply: pair.reply, at: at + index });
-    if (next === all) duplicate += 1;
-    else added += 1;
-    all = next;
+    if (known.has(keyOf(pair))) { duplicate += 1; return; }
+    known.add(keyOf(pair));
+    fresh.push({ said: pair.said, reply: pair.reply, at: at + index });
   });
-  return { pairs: all, added, duplicate, dropped: Math.max(0, existing.length + added - all.length) };
+  const all = [...existing, ...fresh];
+  const trimmed = Math.max(0, fresh.length - MAX_PAIRS);
+  return { pairs: all.slice(-MAX_PAIRS), added: fresh.length - trimmed, duplicate, dropped: Math.min(existing.length, Math.max(0, all.length - MAX_PAIRS)), trimmed };
 }
 
 // 字面相似度：兩段文字去掉標點與空白後，以相鄰兩字（bigram）算 Dice 係數（2×共同 ÷ 兩邊總數，0～1）；只有一個字就拿那一個字比
