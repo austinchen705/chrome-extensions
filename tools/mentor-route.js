@@ -1,26 +1,30 @@
 // 把試算表上的導師路線原文轉成可以用巨集送出的指令（分號隔開），只在產生資料（tools/gen-mentor-data.js）時用，不隨擴充功能載入。
 // 路線原文常夾著說明：括號裡的英文指令（push stone、worship tomb…）是要一起送出的步驟，括號裡的中文是只給人看的提示，
-// 「謎」表示這裡要先解謎（工具不替你解），// 之後是備註。只有從醉仙樓出發（run e 5n 2o 起頭）而且每個字都認得的路線才轉，
+// 「謎」表示這裡要先解謎（工具不替你解），// 之後是備註。只有從醉仙樓出發（run e 5n 起頭）而且每個字都認得的路線才轉，
 // 其餘一律回「不能自動走」，寧可不走也不送出猜的指令。
 require('../catworld-auto-command/mentor-search.js');
 
 const { canonicalRoute } = globalThis.CatworldMentorSearch;
 
-const FROM_INN = 'run e 5n 2o';
+const FROM_INN = 'run e 5n';
 // 括號裡或括號外可以送的動詞：每個動詞後面接一個對象；試算表上的錯字在 TYPOS 修正
 const VERBS = new Set(['push', 'open', 'worship', 'enter', 'touch']);
 const TYPOS = { oepn: 'open' };
-const DIRECTION_WORD = /^\d*[a-z]+$/;
+// run 後面可以接的走路字：方向（可帶數字倍數）與 t；不認得的字寧可不走
+const DIRECTION_WORD = /^\d*(?:n|s|e|w|ne|nw|se|sw|nu|nd|su|sd|eu|ed|wu|wd|u|d|o|t)$/;
 const RIDDLE = '謎';
 
 const flat = text => String(text ?? '').replace(/\s+/g, ' ').trim();
+// 動詞（修正錯字後）；不是可以送的動詞回 null
+const verbOf = word => { const verb = TYPOS[word] ?? word; return VERBS.has(verb) ? verb : null; };
+const startsFromInn = route => { const canonical = canonicalRoute(route); return canonical === FROM_INN || canonical.startsWith(`${FROM_INN} `); };
 
 // 括號裡的字是不是可以送的指令（動詞加一個對象），是就回修正錯字後的指令
 function commandText(text) {
   const parts = flat(text).split(' ');
   if (parts.length !== 2) return null;
-  const verb = TYPOS[parts[0]] ?? parts[0];
-  return VERBS.has(verb) ? `${verb} ${parts[1]}` : null;
+  const verb = verbOf(parts[0]);
+  return verb ? `${verb} ${parts[1]}` : null;
 }
 
 // 把原文切成項目：word（括號外的字）、command（括號裡的指令）、note（括號裡的提示）、riddle（謎，記下它在原文的位置）、tail（// 之後的備註）
@@ -61,16 +65,21 @@ function tokenize(route) {
   return items;
 }
 
-// 比對用的骨架：括號裡的指令與謎都換成謎、提示與備註丟掉；骨架相同的路線走的是同一條路，只是有的寫了謎有的寫明了指令
+// 括號外的「動詞加一個對象」（push 櫃子）：項目 k 是動詞而且後面接著一個字
+const bareCommandAt = (items, k) => items[k].type === 'word' && verbOf(items[k].text) !== null && items[k + 1]?.type === 'word';
+
+// 比對用的骨架：括號裡的指令、括號外的「動詞加對象」與謎都換成謎，提示與備註丟掉；
+// 骨架相同的路線走的是同一條路，只是有的寫了謎有的寫明了指令
 function skeleton(route) {
   const items = tokenize(route);
   const parts = [];
   for (let k = 0; k < items.length; k += 1) {
-    const item = items[k];
-    if (item.type === 'word' && VERBS.has(TYPOS[item.text] ?? item.text) && items[k + 1]?.type === 'word') {
+    const { type, text } = items[k];
+    if (bareCommandAt(items, k)) {
       parts.push(RIDDLE);
       k += 1;
-    } else parts.push(item.type === 'word' ? item.text : item.type === 'command' || item.type === 'riddle' ? RIDDLE : '');
+    } else if (type === 'command' || type === 'riddle') parts.push(RIDDLE);
+    else if (type === 'word') parts.push(text);
   }
   return canonicalRoute(parts.join(' '));
 }
@@ -81,7 +90,7 @@ const riddles = route => tokenize(route).filter(item => item.type === 'riddle').
 // 遇到謎就只轉到謎之前，rest 是謎與後面的原文（沒有謎就是空字串）；notes 是括號裡的中文提示與 // 之後的備註
 function parseRoute(route) {
   const fail = reason => ({ command: '', rest: '', notes: [], reason });
-  if (!canonicalRoute(route).startsWith(FROM_INN)) return fail('不是從醉仙樓出發');
+  if (!startsFromInn(route)) return fail('不是從醉仙樓出發');
   const items = tokenize(route);
   const commands = [];
   const notes = [];
@@ -104,18 +113,16 @@ function parseRoute(route) {
       commands.push(item.text);
       continue;
     }
-    const word = TYPOS[item.text] ?? item.text;
-    if (word === 'run') {
+    if (item.text === 'run') {
       closeRun();
       run = ['run'];
-    } else if (VERBS.has(word)) {
+    } else if (verbOf(item.text) !== null) {
       closeRun();
-      const next = items[k + 1];
-      if (next?.type !== 'word') return fail('路線寫法無法判讀');
-      commands.push(`${word} ${next.text}`);
+      if (!bareCommandAt(items, k)) return fail('路線寫法無法判讀');
+      commands.push(`${verbOf(item.text)} ${items[k + 1].text}`);
       k += 1;
-    } else if (run && DIRECTION_WORD.test(word)) {
-      run.push(word);
+    } else if (run && DIRECTION_WORD.test(item.text)) {
+      run.push(item.text);
     } else {
       return fail('路線寫法無法判讀');
     }
@@ -124,4 +131,7 @@ function parseRoute(route) {
   return { command: commands.join(';'), rest, notes, reason: '' };
 }
 
-module.exports = { parseRoute, skeleton, riddles, tokenize };
+// 一條路線裡寫明的指令（push stone、worship tomb…），給「用另一條路線補上謎」的備註用
+const spelledOut = route => parseRoute(route).command.split(';').filter(command => verbOf(command.split(' ')[0]) !== null);
+
+module.exports = { parseRoute, skeleton, riddles, spelledOut };

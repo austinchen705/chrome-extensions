@@ -5,7 +5,7 @@
 // 導師欄用 / 分隔多位導師時拆成各自一列、共用同一條路線；同一位導師的同一個功法兩個分頁都有時，路線、類別、配合心法以「配合」為準，最高等級取「最高」的。
 const fs = require('fs');
 const path = require('path');
-const { parseRoute, skeleton, riddles } = require('./mentor-route');
+const { parseRoute, skeleton, riddles, spelledOut } = require('./mentor-route');
 
 const MIN_ROWS = 30;
 const COLUMNS = 7;
@@ -35,19 +35,21 @@ function build(text, { minRows = MIN_ROWS } = {}) {
       merged.set(key, { ...match, maxLevel: high.maxLevel, source: '兩者' });
     });
   });
-  // 同一位導師骨架相同（只差在有的寫「謎」、有的寫明了指令）的路線，用謎最少的那條來轉成巨集指令
+  // 路線寫「謎」的，用同一位導師「另一個分頁」、骨架相同（只差在有的寫謎有的寫明了指令）而且謎比較少的路線來轉；
+  // 同一個分頁裡骨架相同的不補，因為看不出那個謎是不是那個指令。補過的在備註寫明，原文照舊顯示
   const entries = [...merged.values()];
+  const sheetOf = entry => (entry.source === '最高' ? '最高' : '配合');
   const keyOf = ({ mentor, route }) => mentor + SEP + skeleton(route);
-  const best = new Map();
-  entries.forEach(entry => {
-    const key = keyOf(entry);
-    if (!best.has(key) || riddles(entry.route) < riddles(best.get(key))) best.set(key, entry.route);
-  });
+  const donorOf = entry => entries
+    .filter(other => keyOf(other) === keyOf(entry) && sheetOf(other) !== sheetOf(entry) && riddles(other.route) < riddles(entry.route))
+    .sort((a, b) => riddles(a.route) - riddles(b.route))[0];
   const rows = entries.map(entry => {
     const { mentor, skill, route, category, maxLevel, heart } = entry;
-    const { command, rest, notes, reason } = parseRoute(best.get(keyOf(entry)));
+    const donor = riddles(route) ? donorOf(entry) : undefined;
+    const { command, rest, notes, reason } = parseRoute(donor ? donor.route : route);
     if (!command) report.notWalkable.push({ mentor, skill, reason });
-    return [mentor, skill, route, category, maxLevel, heart, command, rest, notes, reason];
+    const filled = donor ? [...notes, `已用另一條路線補上謎：${spelledOut(donor.route).join('、') || '見另一條路線'}`] : notes;
+    return [mentor, skill, route, category, maxLevel, heart, command, rest, filled, reason];
   });
   if (rows.length < minRows) throw new Error(`只解析出 ${rows.length} 列，資料檔可能壞了，不覆寫`);
   return { rows, report };

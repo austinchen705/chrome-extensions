@@ -111,10 +111,12 @@ test('a route that does not start from the inn, or has a word it cannot read, is
   const unreadable = parseRoute(`${INN} t 神秘 e`);
   assert.deepEqual([unreadable.command, unreadable.rest], ['', '']);
   assert.match(unreadable.reason, /無法判讀/);
+  assert.match(parseRoute(`${INN} t sww e`).reason, /無法判讀/, 'a word that is not a known direction is not sent');
 });
 
-test('o o and 2o mean the same at the start, so both count as from the inn', () => {
-  assert.notEqual(parseRoute('run e 5n o o 2ne t').command, '');
+test('any route that starts with run e 5n is from the inn, whether it leaves with o, o o or 2o', () => {
+  ['run e 5n o 2s e s t', 'run e 5n o o 2ne t', 'run e 5n 2o sw t'].forEach(route => assert.equal(parseRoute(route).command, route));
+  assert.equal(parseRoute('run e 5nn t').command, '');
 });
 
 test('a riddle is filled in from another route of the same mentor that spells out the command at the same place', () => {
@@ -126,8 +128,18 @@ test('a riddle is filled in from another route of the same mentor that spells ou
   assert.equal(byName['甲功法一'][6], `${INN} t;worship tomb;run e`);
   assert.equal(byName['甲功法一'][7], '');
   assert.equal(byName['甲功法一'][2], `${INN} t 謎 run e`, 'the route as written is kept for display');
+  assert.deepEqual(byName['甲功法一'][8], ['已用另一條路線補上謎：worship tomb'], 'the player is told the riddle was filled in');
   assert.equal(byName['乙功法三'][6], `${INN} t`, 'another mentor spelling it out does not count');
   assert.equal(byName['乙功法三'][7], '謎 run e');
+  assert.deepEqual(byName['乙功法三'][8], []);
+});
+
+test('a riddle is not filled in from a route in the same sheet, because it cannot be told to be the same step', () => {
+  const built = rowsOf(
+    line('甲', '功法一', `${INN} t 謎`, '', '', '', '配合') +
+    line('甲', '功法二', `${INN} t push 櫃子`, '', '', '', '配合')).rows;
+  assert.deepEqual([built[0][6], built[0][7], built[0][8]], [`${INN} t`, '謎', []]);
+  assert.equal(built[1][6], `${INN} t;push 櫃子`);
 });
 
 test('the built-in data walks 小龍女 all the way and stops 玄智和尚 at the riddle', () => {
@@ -137,4 +149,7 @@ test('the built-in data walks 小龍女 all the way and stops 玄智和尚 at th
   assert.equal(find('小龍女', '美女拳法')[7], '');
   assert.equal(find('玄智和尚', '誦經')[7], '謎 run 7e 8n e');
   assert.equal(find('東方不敗', '柔虹指法')[6], '');
+  assert.deepEqual(find('小龍女', '美女拳法')[8], ['已用另一條路線補上謎：worship tomb']);
+  assert.deepEqual([find('洪七公', '降龍十八掌')[6].includes('push'), find('洪七公', '降龍十八掌')[7]], [false, '謎'], 'the same-sheet guess is not used');
+  assert.equal(find('王重陽', '基本劍術')[6], 'run e 5n o 2s e s t 3sw 2su wu 2su wu w n 3w nw 2wu n');
 });

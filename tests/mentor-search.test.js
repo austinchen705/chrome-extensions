@@ -133,6 +133,7 @@ const WALK = [
   ['甲', '功法甲', 'run e 5n 2o t (push stone) run 9s e', '', '', '', 'run e 5n 2o t;push stone;run 9s e', '', ['要穿真武令'], ''],
   ['乙', '功法乙', 'run e 5n 2o t 謎 run e', '', '', '', 'run e 5n 2o t', '謎 run e', [], ''],
   ['丙', '功法丙', 'run 2e u', '', '', '', '', '', [], '不是從醉仙樓出發'],
+  ['丁', '功法丁', 'run e 5n 2o t', '', '', '', '@等待 abc', '', [], ''],
 ];
 const itemOf = (page, mentor) => [...panel(page).querySelectorAll('.mt-item')].find(node => node.querySelector('.mt-name').textContent === mentor);
 
@@ -159,6 +160,20 @@ ui('a route with a riddle walks only up to it and says what is left', async () =
     item.querySelector('.mt-walk').click();
     assert.ok(await waitFor(() => page.sent.length === 1));
     assert.deepEqual(page.sent, ['run e 5n 2o t']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('when the macro cannot be started the button says so instead of claiming it was sent', async () => {
+  const page = await boot({ preload: preload(WALK) });
+  try {
+    await open(page);
+    const button = itemOf(page, '丁').querySelector('.mt-walk');
+    button.click();
+    assert.equal(button.textContent, '送不出去');
+    assert.equal(button.classList.contains('mt-bad'), true);
+    assert.deepEqual(page.sent, []);
   } finally {
     page.close();
   }
