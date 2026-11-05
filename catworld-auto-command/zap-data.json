@@ -10941,6 +10941,27 @@
    "riddle": false
   },
   {
+   "name": "武當山區",
+   "path": "",
+   "command": "run e 5n 2o se t e nd 3n 2w t n nu wu u",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "襄陽",
+   "path": "",
+   "command": "run e 5n 2o se t 2e nd 3n t",
+   "npc": "",
+   "riddle": false
+  },
+  {
+   "name": "武當山",
+   "path": "",
+   "command": "run e 5n 2o se t e nd 3n 2w t n nu eu 2nu n s 2n",
+   "npc": "",
+   "riddle": false
+  },
+  {
    "name": "白猿(white ape)",
    "path": "",
    "command": "run e 5n 2o t s e 2s t 3sw 2su wu s 2w; worship tomb;run e 4s;enter crack",
@@ -10960,6 +10981,38 @@
    "name": "蜈蚣(centipede)",
    "path": "",
    "command": "run e 5n 2o sw t n nu 5w t w nw w n;touch 石壁;run s 2w s sw se s w sw su wu 2n ne 2u 2d sw 2s",
+   "npc": "",
+   "riddle": false,
+   "mob": true
+  },
+  {
+   "name": "野狗(Dog)",
+   "path": "",
+   "command": "run e e s ne ne",
+   "npc": "",
+   "riddle": false,
+   "mob": true
+  },
+  {
+   "name": "野狼(Wildwolf)",
+   "path": "",
+   "command": "run e 7n",
+   "npc": "",
+   "riddle": false,
+   "mob": true
+  },
+  {
+   "name": "老虎(tiger)",
+   "path": "",
+   "command": "run e 8n",
+   "npc": "",
+   "riddle": false,
+   "mob": true
+  },
+  {
+   "name": "黑熊(Bear)",
+   "path": "",
+   "command": "run e 9n",
    "npc": "",
    "riddle": false,
    "mob": true
