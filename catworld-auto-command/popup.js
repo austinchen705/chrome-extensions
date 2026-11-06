@@ -663,6 +663,16 @@ function createTriggerPane(group) {
   const priorityField = rule => element('label', { className: 'check', title: '命中時這條規則的指令最優先送出，連已經排隊、正在 @等待 的其他指令都先暫停，送完才接著做' },
     field('priority', element('input', { type: 'checkbox', checked: rule.priority === true })), '最優先（其他指令先暫停）');
 
+  // 這條規則最後一個指令後面加隨機數字：勾了才顯示範圍欄；欄位空白退回 50～150
+  const numberField = rule => {
+    const on = field('numOn', element('input', { type: 'checkbox', checked: Boolean(rule.number) }));
+    const min = field('numMin', element('input', { type: 'number', min: 0, value: rule.number?.min ?? 50, title: '最小數字' }));
+    const max = field('numMax', element('input', { type: 'number', min: 0, value: rule.number?.max ?? 150, title: '最大數字' }));
+    const range = element('span', { className: 'numrange', hidden: !on.checked }, min, '～', max);
+    on.addEventListener('change', () => { range.hidden = !on.checked; });
+    return element('label', { className: 'check', title: '每次命中送出時，在最後一個指令後面加一個空白和範圍內的隨機整數，例如 pw 87，給遊戲的 alias 用' }, on, '最後一個指令後面加隨機數字', range);
+  };
+
   // 規則卡片預設收起：標頭（啟用、狀態、刪除）與一行摘要常駐，其餘欄位放進 body，點「展開」或摘要才看到。
   // 還沒填內容的規則（剛新增、預設空白規則）直接展開。describe 回傳摘要文字，欄位一改就更新
   function foldRule(card, head, body, describe, open) {
@@ -718,7 +728,7 @@ function createTriggerPane(group) {
       element('div', { className: 'row' },
         element('div', {}, element('label', { textContent: '冷卻（秒，最少 1）' }), cooldown),
         element('div', {}, element('label', { textContent: '回復緩衝（％）' }), buffer)),
-      rearm, stopGroupField(rule), priorityField(rule));
+      rearm, numberField(rule), stopGroupField(rule), priorityField(rule));
     const card = element('div', { className: 'rule' }, head, body);
     foldRule(card, head, body, () => `${stat.value} ${op.value === 'ge' ? '≥' : '≤'} ${value.value}${unit.value === 'pct' ? '％' : ''}　→　${commandText(card, commands)}`, open);
 
@@ -747,7 +757,7 @@ function createTriggerPane(group) {
     const body = element('div', { className: 'rule-body' },
       element('label', { textContent: '關鍵字（遊戲新出現的文字含有就觸發，不分大小寫；可以貼多行，換行與空白不影響比對，分批印出來的也看得到）' }), pattern,
       element('label', { textContent: '送出的指令（一行一個，依序送出）' }), commands,
-      element('label', { textContent: '冷卻（秒，最少 1）' }), cooldown, stopGroupField(rule), priorityField(rule));
+      element('label', { textContent: '冷卻（秒，最少 1）' }), cooldown, numberField(rule), stopGroupField(rule), priorityField(rule));
     const card = element('div', { className: 'rule' }, head, body);
     foldRule(card, head, body, () => `「${pattern.value.replace(/\s+/g, ' ').trim() || '（尚未填關鍵字）'}」　→　${commandText(card, commands)}`, open);
     card.dataset.kind = 'keyword';
@@ -760,6 +770,11 @@ function createTriggerPane(group) {
   function readSettings() {
     const get = (card, name) => card.querySelector(`[data-f="${name}"]`);
     const lines = (card, name) => get(card, name).value.split('\n').map(x => x.trim()).filter(Boolean);
+    const numberOf = card => {
+      if (!get(card, 'numOn').checked) return {};
+      const bound = (name, fallback) => (get(card, name).value.trim() === '' ? fallback : Number(get(card, name).value));
+      return { number: { min: bound('numMin', 50), max: bound('numMax', 150) } };
+    };
     return {
       rules: [...$g('rules').children].map(card => (card.dataset.kind === 'keyword'
         ? {
@@ -767,6 +782,7 @@ function createTriggerPane(group) {
           enabled: get(card, 'enabled').checked,
           pattern: get(card, 'pattern').value.trim(),
           commands: lines(card, 'commands'),
+          ...numberOf(card),
           cooldown: Number(get(card, 'cooldown').value),
           stopGroup: get(card, 'stopGroup').checked,
           priority: get(card, 'priority').checked,
@@ -779,6 +795,7 @@ function createTriggerPane(group) {
           unit: get(card, 'unit').value,
           value: Number(get(card, 'value').value),
           commands: lines(card, 'commands'),
+          ...numberOf(card),
           cooldown: Number(get(card, 'cooldown').value),
           buffer: Number(get(card, 'buffer').value),
           stopGroup: get(card, 'stopGroup').checked,

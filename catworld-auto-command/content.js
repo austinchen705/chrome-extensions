@@ -744,7 +744,8 @@ async function startTriggers(group, config) {
     now: () => Date.now(),
     readStat,
     isNormal: isStatusNormal,
-    send: (commands, index) => {
+    send: (rawCommands, index) => {
+      const commands = CatworldTriggerEngine.withNumber(rawCommands, config.rules[index]?.number);
       const stops = config.rules[index]?.stopGroup === true;
       const priority = config.rules[index]?.priority === true;
       if (!stops && group.on) {

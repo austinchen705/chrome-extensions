@@ -65,12 +65,32 @@ function positive(value, fallback, min) {
   return Number.isFinite(n) && n >= min ? n : fallback;
 }
 
+// number：這條規則最後一個指令後面接一個 min～max 的隨機整數（遊戲的 alias 用 $1 收，例如 pw -> practice $1 whip）；
+// 不是 0～NUMBER_LIMIT 的數字就不帶，範圍寫反交換
+const NUMBER_LIMIT = 1000000;
+function cleanNumber(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const a = Math.round(Number(raw.min));
+  const b = Math.round(Number(raw.max));
+  if (![a, b].every(n => Number.isFinite(n) && n >= 0 && n <= NUMBER_LIMIT)) return null;
+  return { min: Math.min(a, b), max: Math.max(a, b) };
+}
+
+// 這次命中要送的指令：有設隨機數字就在最後一個指令後面接一個空白和數字（每次命中重抽），其餘指令不變
+function withNumber(commands, rawNumber, random = Math.random) {
+  const number = cleanNumber(rawNumber);
+  if (!number || !commands.length) return commands;
+  const pick = number.min + Math.floor(random() * (number.max - number.min + 1));
+  return [...commands.slice(0, -1), `${commands[commands.length - 1]} ${pick}`];
+}
+
 function normalizeRule(raw = {}) {
   const commands = (Array.isArray(raw.commands) ? raw.commands : String(raw.commands || '').split('\n'))
     .map(command => String(command).trim()).filter(Boolean);
   const stopGroup = raw.stopGroup === true;
   const priority = raw.priority === true;
   const hasAction = commands.length > 0 || stopGroup;
+  const number = cleanNumber(raw.number);
   if (raw.kind === 'keyword') {
     const pattern = String(raw.pattern ?? '').trim();
     return {
@@ -78,6 +98,7 @@ function normalizeRule(raw = {}) {
       enabled: raw.enabled !== false && pattern !== '' && hasAction,
       pattern,
       commands,
+      ...(number ? { number } : {}),
       stopGroup,
       priority,
       cooldown: positive(raw.cooldown, DEFAULTS.cooldown, MIN_COOLDOWN_SEC),
@@ -93,6 +114,7 @@ function normalizeRule(raw = {}) {
     unit: raw.unit === 'pct' ? 'pct' : 'abs',
     value,
     commands,
+    ...(number ? { number } : {}),
     stopGroup,
     priority,
     cooldown: positive(raw.cooldown, DEFAULTS.cooldown, MIN_COOLDOWN_SEC),
@@ -324,5 +346,5 @@ function createEngine(rawConfig, io) {
   return { tick, onText, rearm, snapshot };
 }
 
-globalThis.CatworldTriggerEngine = { STATS, MIN_COOLDOWN_SEC, DEFAULTS, GROUPS, loadGroupSettings, normalizeConfig, hasActiveRules, rearmLevel, rearmText, createEngine };
+globalThis.CatworldTriggerEngine = { STATS, MIN_COOLDOWN_SEC, DEFAULTS, GROUPS, loadGroupSettings, normalizeConfig, hasActiveRules, rearmLevel, rearmText, createEngine, cleanNumber, withNumber };
 })();
