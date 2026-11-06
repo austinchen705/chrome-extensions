@@ -186,6 +186,48 @@ $('test').addEventListener('click', async () => {
 $('persistentAlert').addEventListener('change', () => {
   chrome.storage.local.set({ persistentAlert: $('persistentAlert').checked });
 });
+// 新版本提示：背景每天檢查一次（update-check.js），結果存在 storage；這裡只顯示，「立即檢查」才請背景現在去查
+const updateTime = at => new Date(at).toLocaleString('zh-TW', { hour12: false });
+async function showUpdate() {
+  const U = CatworldUpdateCheck;
+  const state = (await chrome.storage.local.get(U.KEY))[U.KEY];
+  const view = U.describe(state, chrome.runtime.getManifest().version, updateTime);
+  $('updateText').textContent = view ? view.text : '尚未檢查新版本（每天自動檢查一次）';
+  markLevel($('updateText'), view?.level);
+  $('updateCmd').hidden = !view?.newer;
+  $('updateCommand').textContent = /Win/i.test(navigator.userAgent) ? U.COMMANDS.win : U.COMMANDS.unix;
+}
+$('updateNow').addEventListener('click', async () => {
+  $('updateNow').disabled = true;
+  $('updateText').textContent = '檢查中…';
+  markLevel($('updateText'), 'info');
+  try {
+    const result = await chrome.runtime.sendMessage({ type: 'UPDATE_CHECK' });
+    if (!result?.ok) throw new Error(result?.error || '背景沒有回應');
+  } catch (e) {
+    $('updateText').textContent = `檢查新版本失敗：${e.message}`;
+    markLevel($('updateText'), 'error');
+    $('updateNow').disabled = false;
+    return;
+  }
+  $('updateNow').disabled = false;
+  showUpdate();
+});
+$('updateCopy').addEventListener('click', async () => {
+  const button = $('updateCopy');
+  try {
+    await navigator.clipboard.writeText($('updateCommand').textContent);
+    button.textContent = '已複製';
+  } catch {
+    button.textContent = '複製失敗，請手動選取上面的指令';
+  }
+  setTimeout(() => { button.textContent = '複製更新指令'; }, 3000);
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes[CatworldUpdateCheck.KEY]) showUpdate();
+});
+showUpdate();
+
 // 摺疊區塊（details）的展開狀態：toggle 事件不冒泡，用捕獲階段聽；每次存目前全部的狀態
 document.addEventListener('toggle', event => {
   if (event.target.tagName !== 'DETAILS' || !event.target.id) return;

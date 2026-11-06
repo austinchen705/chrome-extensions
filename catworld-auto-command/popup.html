@@ -18,6 +18,10 @@
     #start, #randomStart, #idleStart, .tstart-btn { background:#222; color:white; }
     #stop, #randomStop, #idleStop, .tstop-btn { background:#eee; color:#222; }
     #test, #beep, #skills { margin-top:8px; width:100%; background:#f4f4f4; }
+    .updaterow { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+    .updaterow .status { flex:1; margin:0; }
+    .updaterow button { flex:none; padding:4px 10px; font-size:12px; background:#eee; color:#222; }
+    #updateCommand { display:block; margin:4px 0 0; padding:6px 8px; border-radius:6px; background:#f0f0f0; font-size:12px; word-break:break-all; user-select:all; }
     .status { margin-bottom:4px; font-size:13px; padding:8px; border-radius:7px; background:#f6f6f6; }
     .hint { font-size:11px; color:#777; margin-top:8px; line-height:1.4; }
     /* 驗證、錯誤、警告的訊息：error 紅、warn 琥珀（和規則狀態 .pill 同一組顏色），info 不上色 */
@@ -95,6 +99,11 @@
 </head>
 <body>
   <h2>CatWorld Auto Command <small id="version"></small></h2>
+  <div class="updaterow"><div class="status" id="updateText">尚未檢查新版本（每天自動檢查一次）</div><button id="updateNow" type="button">立即檢查</button></div>
+  <div id="updateCmd" hidden>
+    <code id="updateCommand"></code>
+    <div class="buttons"><button id="updateCopy" type="button">複製更新指令</button></div>
+  </div>
   <div class="tabs" role="tablist">
     <button role="tab" id="tab-timer" data-tab="timer" aria-selected="true">定時送出</button>
     <button role="tab" id="tab-random" data-tab="random" aria-selected="false">隨機送出</button>
@@ -381,6 +390,7 @@
   <script src="macro-wait.js"></script>
   <script src="mentor-data.js"></script>
   <script src="mentor-search.js"></script>
+  <script src="update-check.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

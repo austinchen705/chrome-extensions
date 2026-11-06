@@ -23,6 +23,12 @@
 - `stop-keywords.js`（純函式，content script 與設定頁共用；manifest、popup.html、popup 備援注入都要載入，在 `content.js`／`popup.js` 之前）：`normalize`（缺值＝開、清單 `jrealm`；清單被清空就是真的沒有詞）、`list`（`、` 或空行分隔，單純換行算同一個詞，所以多行的輸出可以整段貼成一個詞；逗號、分號不分隔，因為貼進來的輸出裡常有；去重、最多 `MAX_WORDS` 個、每個最多 `MAX_LENGTH` 字，不算空白）、`find`（不分大小寫的子字串，比對時忽略所有空白與換行；以 `>` 開頭的行是自己指令的回聲，不算）、`createWatcher`（和驗證碼的 `artWatcher` 同一種處理：輸出分批到、詞在行中間換行，所以把最近 `WINDOW_MS`＝5 秒的新增文字接起來再比對，最多留 `MAX_CHARS`，命中後清空；`now` 可注入）。設定存在 `chrome.storage.local.stopKeywords`（`{ enabled, words }`，words 是字串），設定頁的欄位是 `<textarea id="stopKeywordsList">`（`<input>` 會把貼上的換行吃掉）；改了馬上生效（`storage.onChanged`）。
 - `content.js` 的 `captchaObserver` 在 `watchReward` 之後、驗證碼分支與 `active()` 判斷**之前**檢查（所以閒置時也提醒）：一律先餵 `stopKeywordWatcher.feed`（閒置時也餵，視窗才接得起來），命中就 `stopForKeyword`＝`alertOnly`（響一次、不進 `ringing`）加 `stopEverything`；原因不含「驗證」，停了之後可以直接再按開始。`STOP_KEYWORD_COOLDOWN_MS`（10 秒）內同一批後續的命中不重複。測試在 `tests/stop-keywords.test.js`。
 
+## 新版本提示
+
+- `update-check.js`（純函式，background 與設定頁載入，**content script 不載入**）：`parseVersion`（讀 manifest.json 文字裡的版本，格式不對回 null）、`compareVersions`、`shouldCheck`（從沒檢查過或距上次成功超過 `INTERVAL_MS` 一天；上次失敗的 `RETRY_MS` 一小時內不再試；時間在未來當作要檢查）、`describe`（設定頁顯示的 `{ level, text, newer }`：有新版是 warn、一樣是 info、**只有手動檢查失敗才是 error**，自動檢查失敗與還沒有紀錄回 null＝不吵人）、`COMMANDS`（和 README 安裝指令相同，測試會對照）。結果存在 `chrome.storage.local.updateCheck`（`{ checkedAt, latest, error: { at, message, manual } }`，失敗時保留上次成功的 `latest`）。
+- 抓取與排程只在 `background.js`（`checkForUpdate`、`maybeCheckForUpdate`）：`chrome.alarms` 每天一次（**沒有同名 alarm 才建立**，重建會重算週期、service worker 一醒來就建的話永遠等不到），載入時也看一次 `shouldCheck`；15 秒逾時、`cache: 'no-store'`；**整個功能只在 `chrome.alarms` 存在時啟用**（其他載入 `background.js` 的測試的假 chrome 沒有 alarms，載入時不會碰網路）；「立即檢查」是 `UPDATE_CHECK` 訊息（只接受擴充功能自己的頁面，和 `SHARED_REFRESH` 一樣看 `sender.id` 與 `sender.url`）。manifest 需要 `alarms` 權限與 `https://raw.githubusercontent.com/*` 的 host 權限。**只提示，不自動更新**（解壓縮載入的擴充功能 Chrome 不會自動更新，也不能自己改檔案或重新載入成新版）。
+- 設定頁（`popup.html` 最上面、`popup.js` 的 `showUpdate`）只顯示，`storage.onChanged` 即時更新，指令依 `navigator.userAgent` 選 Windows 或 shell 版。測試在 `tests/update-check.test.js`（純函式、在記憶體裡執行 background、jsdom 載入真正的 popup.html）；真正連到 GitHub 與 `alarms` 的行為只能在真實瀏覽器驗證。
+
 ## 孤兒程式與重複面板
 
 - 擴充功能在 `chrome://extensions` 重新載入後，遊戲分頁沒重新整理的話，**舊版 content script 還留在頁面上**（連不上擴充功能的「孤兒」）：它的面板、計時器、送指令的佇列都還活著；而設定頁在 `sendMessage` 收到 `Receiving end does not exist` 時會備援注入一份新的（`popup.js`），新的隔離環境看不到舊的防重複旗標，所以頁面上會有兩個面板、兩份程式同時送指令，驗證碼也可能停不下來（`chrome.runtime.sendMessage` 在孤兒裡會直接丟例外）。

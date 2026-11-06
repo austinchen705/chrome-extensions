@@ -1,5 +1,5 @@
 // content script 不能直接彈系統通知、也不能開分頁，由這裡代為處理
-importScripts('zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'shared-data.js', 'line-notify.js', 'game-urls.js', 'skills-data.js', 'skill-moves.js');
+importScripts('zap-mobs.js', 'zap-items.js', 'zap-riddles.js', 'shared-data.js', 'line-notify.js', 'game-urls.js', 'update-check.js', 'skills-data.js', 'skill-moves.js');
 // 面板上的 ⚙：按一下在新分頁開啟設定頁（popup.html 當成分頁開，?tab= 帶遊戲分頁的 id），再按一次關閉並切回遊戲分頁。
 // 「遊戲分頁 → 設定分頁」的對應放在 storage.session，service worker 被收掉再醒來也還在
 const settingsKey = gameTabId => `settingsTab:${gameTabId}`;
@@ -287,7 +287,56 @@ chrome.runtime.onInstalled?.addListener(async () => {
   if (Object.keys(defaults).length) await chrome.storage.local.set(defaults);
 });
 
+// 新版本提示（update-check.js）：每天去 GitHub 讀一次最新的 manifest.json，結果存在 chrome.storage.local.updateCheck，設定頁顯示；
+// 排程用 chrome.alarms（service worker 會被回收，setTimeout 不可靠）；沒有 alarms（測試用的假 chrome）就整個不啟用，也不會在載入時碰網路
+const UPDATE_ALARM = 'update-check';
+const UPDATE_TIMEOUT_MS = 15000;
+let updateCheckRunning = null;
+function checkForUpdate({ manual = false } = {}) {
+  if (updateCheckRunning) return updateCheckRunning;
+  updateCheckRunning = (async () => {
+    const key = CatworldUpdateCheck.KEY;
+    const now = Date.now();
+    const previous = (await chrome.storage.local.get(key))[key] ?? {};
+    let next;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), UPDATE_TIMEOUT_MS);
+    try {
+      const response = await fetch(CatworldUpdateCheck.MANIFEST_URL, { cache: 'no-store', signal: controller.signal });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const latest = CatworldUpdateCheck.parseVersion(await response.text());
+      if (!latest) throw new Error('讀不到版本號');
+      next = { checkedAt: now, latest };
+    } catch (error) {
+      next = { ...previous, error: { at: now, message: error?.name === 'AbortError' ? '逾時' : String(error?.message || error), manual } };
+    } finally {
+      clearTimeout(timer);
+    }
+    await chrome.storage.local.set({ [key]: next });
+    return next;
+  })().finally(() => { updateCheckRunning = null; });
+  return updateCheckRunning;
+}
+async function maybeCheckForUpdate() {
+  const key = CatworldUpdateCheck.KEY;
+  const state = (await chrome.storage.local.get(key))[key];
+  if (CatworldUpdateCheck.shouldCheck(state, Date.now())) await checkForUpdate();
+}
+if (chrome.alarms) {
+  // 同名的 alarm 重新建立會重算週期，每次 service worker 醒來都建的話永遠等不到，所以沒有才建
+  chrome.alarms.get(UPDATE_ALARM).then(alarm => {
+    if (!alarm) chrome.alarms.create(UPDATE_ALARM, { periodInMinutes: 24 * 60 });
+  }).catch(() => {});
+  chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === UPDATE_ALARM) maybeCheckForUpdate().catch(() => {}); });
+  maybeCheckForUpdate().catch(() => {});
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // 設定頁的「立即檢查」新版本：只接受擴充功能自己的頁面
+  if (message?.type === 'UPDATE_CHECK' && sender.id === chrome.runtime.id && sender.url?.startsWith(chrome.runtime.getURL(''))) {
+    checkForUpdate({ manual: true }).then(state => sendResponse({ ok: true, state }), error => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
   // 設定頁的「立即更新」：只接受擴充功能自己的頁面（和 LINE_TEST 一樣看 sender.id 與 sender.url）
   if (message?.type === 'SHARED_REFRESH' && sender.id === chrome.runtime.id && sender.url?.startsWith(chrome.runtime.getURL(''))) {
     refreshSharedOnce(true).then(cache => sendResponse({ ok: true, cache }), error => sendResponse({ ok: false, error: error.message }));
