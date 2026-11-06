@@ -1,4 +1,4 @@
-// 內力可練上限：最大內力 = 內功心法（force）等級 × 10 + ⌊enable 的內功有效等級 ÷ 5⌋。
+// 內力可練上限：最大內力 = (內功心法（force）等級 + ⌊enable 的內功有效等級 ÷ 5⌋) × 10。
 // 打 hp 時在輸出下面多一行上限與目前最大內力的差；兩個等級 hp 不會印，所以在打 sk（內功心法）與 enable（有效等級）時記下來，
 // 存在 chrome.storage.local.forceLevels（{ base, effective, baseAt, effectiveAt }）。
 // 純函式匯出在 globalThis.CatworldForceCap；遊戲頁的觀察器只在有 #content 與 chrome 時才跑。開關是 zapFeatures.forceCap（缺值＝開）。
@@ -25,10 +25,10 @@ function parseHp(text) {
   return { cur: Number(match[1]), max: Number(match[2]) };
 }
 
-const cap = (base, effective) => base * 10 + Math.floor(effective / 5);
+const cap = (base, effective) => (base + Math.floor(effective / 5)) * 10;
 const known = value => Number.isFinite(value) && value >= 0;
 
-// 顯示的一行：{ level, text }；等級沒記過時說要先打什麼，不猜
+// 顯示的一行：{ level, text }；等級沒記過時說要先打什麼，不猜；最大內力已經到（或超過）上限就沒有東西要提示，回 null
 function describe(levels, hp, timeText = String) {
   const missing = [];
   if (!known(levels?.base)) missing.push('sk');
@@ -36,10 +36,10 @@ function describe(levels, hp, timeText = String) {
   if (missing.length) return { level: 'warn', text: `內力可練上限：還不知道，先打 ${missing.join('、')} 讓我記下等級` };
   const total = cap(levels.base, levels.effective);
   const gap = total - hp.max;
-  const state = gap > 0 ? `還差 ${gap}` : gap === 0 ? '已達上限' : `已超過 ${-gap}`;
+  if (gap <= 0) return null;
   const at = Math.min(levels.baseAt ?? Infinity, levels.effectiveAt ?? Infinity);
   const when = Number.isFinite(at) ? `，等級讀於 ${timeText(at)}` : '';
-  return { level: 'info', text: `內力可練上限：${total}（目前最大 ${hp.max}，${state}${when}）` };
+  return { level: 'info', text: `內力可練上限：${total}（目前最大 ${hp.max}，還差 ${gap}${when}）` };
 }
 
 globalThis.CatworldForceCap = { parseBase, parseEffective, parseHp, cap, describe };
@@ -83,7 +83,8 @@ async function flush() {
     if (base !== null) Object.assign(levels, { base, baseAt: now });
     if (effective !== null) Object.assign(levels, { effective, effectiveAt: now });
     if (base !== null || effective !== null) await chrome.storage.local.set({ forceLevels: levels });
-    if (hp) render(describe(levels, hp, clock));
+    const view = hp && describe(levels, hp, clock);
+    if (view) render(view);
   } catch {
     // 連不上儲存（孤兒程式）：什麼都不做
   }

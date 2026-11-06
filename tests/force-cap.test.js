@@ -42,17 +42,18 @@ test('parsers read the real hp, sk and enable output', () => {
   assert.equal(F.parseHp(null), null);
 });
 
-test('cap is force level x 10 plus the effective level over 5, rounded down', () => {
-  assert.equal(F.cap(156, 244), 1608);
-  assert.equal(F.cap(156, 4), 1560);
+test('cap is (force level + the effective level over 5, rounded down) x 10', () => {
+  assert.equal(F.cap(156, 244), 2040, '(156 + 48) x 10');
+  assert.equal(F.cap(156, 4), 1560, 'under 5 adds nothing');
+  assert.equal(F.cap(156, 5), 1570);
   assert.equal(F.cap(0, 0), 0);
 });
 
-test('describe says how far from the cap, and asks for sk / enable when a level is unknown', () => {
+test('describe says how far from the cap (nothing once reached), and asks for sk / enable when a level is unknown', () => {
   const levels = { base: 156, effective: 244, baseAt: 1000, effectiveAt: 2000 };
-  assert.equal(F.describe(levels, { cur: 1046, max: 1560 }, at => `t${at}`).text, '內力可練上限：1608（目前最大 1560，還差 48，等級讀於 t1000）');
-  assert.match(F.describe(levels, { cur: 1, max: 1608 }).text, /已達上限/);
-  assert.match(F.describe(levels, { cur: 1, max: 1700 }).text, /已超過 92/);
+  assert.equal(F.describe(levels, { cur: 1046, max: 1560 }, at => `t${at}`).text, '內力可練上限：2040（目前最大 1560，還差 480，等級讀於 t1000）');
+  assert.equal(F.describe(levels, { cur: 1, max: 2040 }), null, 'max already at the cap: nothing to say');
+  assert.equal(F.describe(levels, { cur: 1, max: 2100 }), null, 'past the cap: nothing to say either');
   assert.equal(F.describe({ base: 156 }, { cur: 1, max: 1560 }).text, '內力可練上限：還不知道，先打 enable 讓我記下等級');
   assert.equal(F.describe(undefined, { cur: 1, max: 1560 }).text, '內力可練上限：還不知道，先打 sk、enable 讓我記下等級');
   assert.equal(F.describe(undefined, { cur: 1, max: 1560 }).level, 'warn');
@@ -70,7 +71,7 @@ ui('sk and enable record the levels, then hp gets a line under its output', asyn
     assert.equal(box(page), null, 'sk and enable alone show nothing');
     page.output(`<span>${HP}</span>`);
     assert.ok(await waitFor(() => box(page)));
-    assert.match(box(page).textContent, /內力可練上限：1608（目前最大 1560，還差 48/);
+    assert.match(box(page).textContent, /內力可練上限：2040（目前最大 1560，還差 480/);
   } finally {
     page.close();
   }
@@ -103,7 +104,7 @@ ui('output split across batches is still read, and the switch turns it off', asy
   try {
     HP.split('\n').forEach(row => on.output(`<span>${row}\n</span>`));
     assert.ok(await waitFor(() => box(on)));
-    assert.match(box(on).textContent, /1608/);
+    assert.match(box(on).textContent, /2040/);
     assert.equal(on.w.document.querySelectorAll('[data-catworld-forcecap]').length, 1, 'one line, not one per batch');
   } finally {
     on.close();
@@ -114,4 +115,15 @@ test('the module is wired in the manifest and the settings page', () => {
   assert.ok(JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')).content_scripts[0].js.includes('force-cap.js'));
   assert.match(fs.readFileSync(path.join(root, 'popup.html'), 'utf8'), /id="featureForceCap"/);
   assert.match(fs.readFileSync(path.join(root, 'popup.js'), 'utf8'), /forceCap: 'featureForceCap'/);
+});
+
+ui('hp shows no line once the maximum internal force has reached the cap', async () => {
+  const page = await boot({ initialStore: { forceLevels: { base: 156, effective: 244 } } });
+  try {
+    page.output(`<span>${HP.replace('1560', '2040')}</span>`);
+    await sleep(700);
+    assert.equal(box(page), null);
+  } finally {
+    page.close();
+  }
 });

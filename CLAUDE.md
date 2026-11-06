@@ -32,7 +32,7 @@
 
 ## 內力可練上限
 
-- `force-cap.js`（manifest 與 popup 備援注入的 `files` 都要載入，在 `skill-moves.js` 之後、`content.js` 之前）：純函式 `parseHp`（要有「內力」行**和**後面的「目前狀態」才算 hp，`sc` 的人物表有一樣的內力行但沒有「目前狀態」，不能顯示）、`parseBase`（`sk` 的「內功心法 (force)」等級）、`parseEffective`（`enable` 內功那行的「有效等級」）、`cap`（base × 10 ＋ ⌊effective ÷ 5⌋）、`describe`。**base 是 `sk` 的內功心法，不是六合童子功之類的門派內功；effective 是 `enable` 的有效等級**（樣本：156 與 244 → 1608，目前最大內力 1560 ＝ 156 × 10）。等級存在 `chrome.storage.local.forceLevels`（`{ base, effective, baseAt, effectiveAt }`），觀察器和招式列表一樣把 5 秒內的新增文字接起來、靜止 `SETTLE_MS` 後一次解析，自己插入的節點（`data-catworld-forcecap`）要排除。開關 `zapFeatures.forceCap`（**缺值＝開**，`FEATURE_DEFAULT_ON`）在 flush 時才讀。測試在 `tests/force-cap.test.js`；公式是使用者給的，只用一組真實樣本核對過。
+- `force-cap.js`（manifest 與 popup 備援注入的 `files` 都要載入，在 `skill-moves.js` 之後、`content.js` 之前）：純函式 `parseHp`（要有「內力」行**和**後面的「目前狀態」才算 hp，`sc` 的人物表有一樣的內力行但沒有「目前狀態」，不能顯示）、`parseBase`（`sk` 的「內功心法 (force)」等級）、`parseEffective`（`enable` 內功那行的「有效等級」）、`cap`（最大內力到達或超過上限時 `describe` 回 null、不顯示；(base ＋ ⌊effective ÷ 5⌋) × 10，括號在乘 10 之前，1.101.0 曾寫成只有 base 乘 10 而算錯）、`describe`。**base 是 `sk` 的內功心法，不是六合童子功之類的門派內功；effective 是 `enable` 的有效等級**（樣本：156 與 244 → (156 ＋ 48) × 10 ＝ 2040，使用者親自算過；目前最大內力 1560 ＝ 156 × 10）。等級存在 `chrome.storage.local.forceLevels`（`{ base, effective, baseAt, effectiveAt }`），觀察器和招式列表一樣把 5 秒內的新增文字接起來、靜止 `SETTLE_MS` 後一次解析，自己插入的節點（`data-catworld-forcecap`）要排除。開關 `zapFeatures.forceCap`（**缺值＝開**，`FEATURE_DEFAULT_ON`）在 flush 時才讀。測試在 `tests/force-cap.test.js`；公式是使用者給的，只用一組真實樣本核對過。
 
 ## 孤兒程式與重複面板
 
