@@ -1,4 +1,4 @@
-// 聊天回覆的資料集：遊戲輸出裡別人對我說的話（「[P]有氣質回答你：測試」）和我的回覆（「[P]你告訴有氣質：…」或「[P]你回答有氣質：…」）
+// 聊天回覆的資料集：遊戲輸出裡別人對我說的話（「[P]有氣質回答你：測試」，對方先開口時是「[P]山本由伸(yamamoto)告訴你：你好」）和我的回覆（「[P]你告訴有氣質：…」或「[P]你回答有氣質：…」）
 // 配成一筆「對方說 → 我回」，存在 chrome.storage.local.chatPairs（[{ said, reply, at }]）。
 // 輸出分批到、行可能在中間被切開，所以只處理「已經收到換行」的完整行，剩下的留給下一批。
 // 公開 say（「[P]你說道：」）、自己打的指令的回聲（> 開頭）不算。純函式，不碰 DOM 與 chrome.*；遊戲頁的觀察器接在 content.js。
@@ -9,12 +9,17 @@ const KEY = 'chatPairs';
 const SETTINGS_KEY = 'chatReply';
 const MAX_PAIRS = 500;
 const PAIR_WINDOW_MS = 2 * 60 * 1000; // 來訊之後多久內的回覆才算「回這句」
-const INCOMING = /^\s*\[P\]\s*(.+?)回答你[：:]\s*(.*?)\s*$/;
+const INCOMING = /^\s*\[P\]\s*(.+?)(?:回答|告訴)你[：:]\s*(.*?)\s*$/;
 const OUTGOING = /^\s*\[P\]\s*你(?:告訴|回答)(.+?)[：:]\s*(.*?)\s*$/;
 
-// 一行的意思：{ kind: 'in' | 'out', name, text }；不是私聊、或是回聲（> 開頭）回 null
+// 一行的意思：{ kind: 'in' | 'out', name, text }；不是私聊、或是回聲（> 開頭）回 null。
+// 例外：遊戲閒置時新輸出前面會帶提示符「> 」（實際輸出：「> [P]山本由伸回答你：w r u」），所以來訊的開頭允許有一個「> 」；
+// 回聲是「> 指令」，不會長成 [P]… 的樣子，所以這樣不會把回聲當成來訊
 function parseLine(line) {
-  if (/^\s*>/.test(line)) return null;
+  if (/^\s*>/.test(line)) {
+    const prompted = INCOMING.exec(line.replace(/^\s*>\s*(?=\[P\])/, ''));
+    return prompted ? { kind: 'in', name: prompted[1], text: prompted[2] } : null;
+  }
   const out = OUTGOING.exec(line);
   if (out) return { kind: 'out', name: out[1], text: out[2] };
   const incoming = INCOMING.exec(line);
@@ -56,7 +61,15 @@ function createRecorder({ now = () => Date.now(), onIncoming = null, isOwn = nul
     lines.forEach(line => handle(line, pairs));
     return pairs;
   }
-  return { feed };
+  // 一段時間沒有新輸出時呼叫：留著的最後一行（沒收到換行）當作完整的一行處理，不然最後一句私聊會一直等到下一批輸出才出現
+  function flush() {
+    const line = rest;
+    rest = '';
+    const pairs = [];
+    if (line.trim()) handle(line, pairs);
+    return pairs;
+  }
+  return { feed, flush };
 }
 
 // 加進已存的清單（回傳新陣列，不改輸入）：同一組 said+reply 不重複，只留最新的 MAX_PAIRS 筆

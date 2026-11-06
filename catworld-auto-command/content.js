@@ -2,6 +2,13 @@
 if (globalThis.__catworldAutoCommandInstalled) return;
 globalThis.__catworldAutoCommandInstalled = true;
 let running = false;
+// 隨機指令獨立於定時（固定指令）：各自開始、停止
+let randomRunning = false;
+// idle（全域暫停）：idleState 是 { phase: 'idling' | 'working', at, timer }，idlePaused 在 idle 中為 true；
+// idle 中定時、隨機、兩組觸發都不送指令，結束後自動繼續
+let idleState = null;
+let idlePaused = false;
+let idleSettings = null;
 let queueTimer = null;
 let randomTimer = null;
 const queue = [];
@@ -31,6 +38,8 @@ function retire() {
   if (retired) return;
   retired = true;
   running = false;
+  randomRunning = false;
+  cancelIdle({ resume: false });
   clearTimers();
   groupList.forEach(group => stopTriggers(group, ''));
   hunt?.stop('');
@@ -56,7 +65,7 @@ function notifyStateChanged() {
     // 擴充功能剛重新載入，這個頁面的連線已失效
   }
 }
-function active() { return running || anyTriggerOn() || macroRuns.size > 0 || (hunt?.on() ?? false); }
+function active() { return running || randomRunning || anyTriggerOn() || macroRuns.size > 0 || (hunt?.on() ?? false); }
 
 // 在線獎勵：看到「在線獎勵： N分鐘後可領取」（自己打 sc 的輸出）就排一個 N+1 分鐘後送 reward 的計時，已經排著的就不再排。
 // 閒置時也作用（不走送出佇列，佇列只在 active() 時送）；開關是設定頁的 autoReward（缺值＝開）。
@@ -69,6 +78,8 @@ let rewardTimer = null;
 // 面板「獎勵」那一行的資料：at＝預定送出的時間，retry＝正在第幾次重試（兩者都沒有就不顯示）
 let rewardView = null;
 function cancelReward() {
+  clearTimeout(scTimer);
+  scTimer = null;
   clearTimeout(rewardTimer);
   rewardTimer = null;
   rewardView = null;
@@ -87,6 +98,7 @@ function sendReward(attempt) {
   rewardView = null;
   if (retired) return;
   const result = sendCommand('reward');
+  if (result.ok) scheduleSc(SC_AFTER_REWARD_MS);
   if (!result.ok) {
     if (attempt >= REWARD_TRIES) console.info('[catworld] 在線獎勵：reward 送不出去，放棄', result.error);
     else {
@@ -95,6 +107,33 @@ function sendReward(attempt) {
     }
   }
   renderPanel();
+}
+// 自動下 sc 取得下一次獎勵倒數（不是人觸發）：領完獎（送出 reward）後等 SC_AFTER_REWARD_MS，驗證碼還在處理就每 SC_RECHECK_MS 再看一次（最多 SC_MAX_TRIES 次）；
+// 開始定時或隨機時若還沒有倒數也下一次。只在「在線獎勵自動領取」開著時；SC_MIN_GAP_MS 內不重複下，已經有倒數排程就不下
+const SC_AFTER_REWARD_MS = 20000;
+const SC_RECHECK_MS = 10000;
+const SC_MAX_TRIES = 12;
+const SC_MIN_GAP_MS = 30000;
+let scTimer = null;
+let lastScAt = -Infinity;
+function scheduleSc(delay, tries = 0) {
+  clearTimeout(scTimer);
+  scTimer = setTimeout(() => {
+    scTimer = null;
+    if (retired || !autoReward) return;
+    if (captcha || checkCaptcha()) {
+      if (tries < SC_MAX_TRIES) scheduleSc(SC_RECHECK_MS, tries + 1);
+      return;
+    }
+    if (!rewardTimer) sendCommand('sc');
+    lastScAt = Date.now();
+  }, delay);
+}
+// 開始定時／隨機時：沒有倒數、最近也沒下過 sc 才下一次，走送出佇列（遵守指令間隔）
+function requestScAtStart(owner) {
+  if (!autoReward || rewardTimer || scTimer || Date.now() - lastScAt < SC_MIN_GAP_MS) return;
+  lastScAt = Date.now();
+  queueCommand('sc', owner);
 }
 function rewardSummary() {
   if (!rewardView) return '';
@@ -130,7 +169,18 @@ const cancelChatReplies = () => {
 };
 let chatReply = CatworldChatReply.normalizeSettings(undefined);
 const chatLimiter = CatworldChatReply.createLimiter();
-const chatRecorder = CatworldChatReply.createRecorder({ onIncoming: answerChat, isOwn: chatLimiter.isOwn });
+// 置頂浮窗的「密語」區塊（whisper-block.js），initPanel 建立；有人私聊就先交給它顯示，再看要不要自動回覆
+let whisperBlock = null;
+const onIncomingChat = info => {
+  console.log('[catworld] 密語：收到私聊', info.name);
+  try {
+    whisperBlock?.add(info);
+  } catch (error) {
+    console.error('[catworld] 密語區塊更新失敗', error);
+  }
+  return answerChat(info);
+};
+const chatRecorder = CatworldChatReply.createRecorder({ onIncoming: onIncomingChat, isOwn: chatLimiter.isOwn });
 let chatSave = Promise.resolve();
 async function answerChat({ name, text }) {
   if (!chatReply.enabled || !CatworldChatReply.worthAnswering(text)) return;
@@ -163,7 +213,14 @@ function recordChat(pairs) {
     await chrome.storage.local.set({ [CatworldChatReply.KEY]: all });
   }).catch(() => {}); // 連不上儲存（孤兒程式）就是沒記到
 }
-const feedChat = text => recordChat(chatRecorder.feed(text));
+// 輸出分批到、行要收到換行才算完整；最後一行如果沒有換行，等 CHAT_QUIET_MS 沒有新輸出就當完整的一行（不然最後一句私聊要等下一批輸出才出現）
+const CHAT_QUIET_MS = 1500;
+let chatQuietTimer = null;
+const feedChat = text => {
+  recordChat(chatRecorder.feed(text));
+  clearTimeout(chatQuietTimer);
+  chatQuietTimer = setTimeout(() => recordChat(chatRecorder.flush()), CHAT_QUIET_MS);
+};
 let watchdogTimer = null;
 let lastCommand = '';
 // 驗證碼自動辨識（閒置時也作用，手動打 reward 領獎也會幫忙輸入）：偵測到圖或提示後暫停送出佇列，等圖印完（CAPTCHA_QUIET_MS 內沒有新輸出）
@@ -432,7 +489,7 @@ function feedKeywords(records) {
       ? [record.target.textContent || '']
       : Array.from(record.addedNodes, node => node.textContent || '')))
     .join('');
-  if (text.trim()) groupList.forEach(group => { if (group.on) group.engine.onText(text); });
+  if (text.trim() && !idlePaused) groupList.forEach(group => { if (group.on) group.engine.onText(text); });
 }
 const captchaObserver = new MutationObserver(allRecords => {
   if (!contextAlive(chrome)) {
@@ -533,20 +590,28 @@ function sendCommand(command, { answer = false } = {}) {
   return { ok: true };
 }
 
-function clearTimers() {
+function clearFixedTimers() {
   fixedRuns.forEach(run => clearTimeout(run.timer));
   fixedRuns = [];
+}
+function clearRandomTimers() {
   nextRandomAt = null;
   nextRandomCommand = null;
-  if (queueTimer) clearTimeout(queueTimer);
   if (randomTimer) clearTimeout(randomTimer);
+  randomTimer = null;
+}
+function clearTimers() {
+  clearFixedTimers();
+  clearRandomTimers();
+  if (queueTimer) clearTimeout(queueTimer);
   if (watchdogTimer) clearTimeout(watchdogTimer);
   watchdogTimer = null;
   clearCaptcha();
   queueTimer = null;
-  randomTimer = null;
   dropQueue('timer');
+  dropQueue('random');
   cancelMacros('timer');
+  cancelMacros('random');
   // 上面清掉了送出佇列的計時器；佇列裡若還有觸發的指令，要重新排程
   pumpQueue();
 }
@@ -630,6 +695,7 @@ function pumpQueue() {
 
 // 固定指令：每一項各自循環，開始時先送一次，之後在「它自己的」最短～最長秒數之間隨機等一段時間再送，彼此不等
 function startFixedItems() {
+  if (idlePaused) return;
   fixedRuns = fixedItems().map(item => ({ item, timer: null, at: null }));
   fixedRuns.forEach(runFixedItem);
 }
@@ -644,7 +710,7 @@ function runFixedItem(run) {
 
 // 隨機指令：先均勻隨機挑一個，再在「它自己的」最短～最長秒數之間隨機等一段時間，到時間才送出，然後再挑下一個
 function scheduleRandomCommand() {
-  if (!running) return;
+  if (!randomRunning || idlePaused) return;
   const item = CatworldTimer.pickRandomItem(randomItems());
   if (!item) return;
   const delay = CatworldTimer.delayMs(item);
@@ -654,8 +720,8 @@ function scheduleRandomCommand() {
 }
 
 function runRandomCommand(command) {
-  if (!running) return;
-  queueCommand(command, 'timer');
+  if (!randomRunning) return;
+  queueCommand(command, 'random');
   scheduleRandomCommand();
 }
 
@@ -671,23 +737,101 @@ function armDetection() {
   stopReason = '';
 }
 
+// 定時（固定指令）：只管固定指令；隨機指令是獨立的 startRandom／stopRandom
 async function start(newSettings) {
-  clearTimers();
+  clearFixedTimers();
+  dropQueue('timer');
+  cancelMacros('timer');
   settings = { ...settings, ...newSettings };
   armDetection();
   running = true;
   await chrome.storage.local.set({ running: true, settings, stopReason: '' });
+  requestScAtStart('timer');
   startFixedItems();
+  renderPanel();
+}
+
+// 定時或隨機停止：只停自己的；兩個都沒在跑、也沒有觸發等功能時才清共用的計時器與驗證碼狀態（和以前一個開關時一樣）
+function finishStop() {
+  if (active()) pumpQueue();
+  else clearTimers();
+}
+async function stop(reason = '已停止') {
+  stopReason = reason;
+  running = false;
+  clearFixedTimers();
+  dropQueue('timer');
+  cancelMacros('timer');
+  finishStop();
+  renderPanel();
+  await chrome.storage.local.set({ running: false, stopReason });
+}
+
+async function startRandom(newSettings) {
+  clearRandomTimers();
+  dropQueue('random');
+  cancelMacros('random');
+  settings = { ...settings, ...newSettings };
+  armDetection();
+  randomRunning = true;
+  await chrome.storage.local.set({ randomRunning: true, settings, stopReason: '' });
+  requestScAtStart('random');
   scheduleRandomCommand();
   renderPanel();
 }
 
-async function stop(reason = '已停止') {
+async function stopRandom(reason = '已停止') {
   stopReason = reason;
-  running = false;
-  clearTimers();
+  randomRunning = false;
+  clearRandomTimers();
+  dropQueue('random');
+  cancelMacros('random');
+  finishStop();
   renderPanel();
-  await chrome.storage.local.set({ running: false, stopReason });
+  await chrome.storage.local.set({ randomRunning: false, stopReason });
+}
+
+// idle：進入時暫停定時、隨機與兩組觸發（只是不再送新指令，已經在跑的巨集照做完），idle 持續 durMin～durMax 分鐘後自動繼續，
+// 再隔 everyMin～everyMax 分鐘又 idle。按「開始」就先 idle 一次
+function pauseForIdle() {
+  idlePaused = true;
+  clearFixedTimers();
+  clearRandomTimers();
+}
+function resumeFromIdle() {
+  idlePaused = false;
+  if (running) startFixedItems();
+  if (randomRunning) scheduleRandomCommand();
+  groupList.forEach(group => { if (group.on) group.engine.tick(); });
+}
+function beginIdling() {
+  const ms = CatworldTimer.idleMs(idleSettings.durMin, idleSettings.durMax);
+  pauseForIdle();
+  idleState = { phase: 'idling', at: Date.now() + ms, timer: setTimeout(endIdling, ms) };
+  renderPanel();
+}
+function endIdling() {
+  if (retired || !idleState) return;
+  resumeFromIdle();
+  const ms = CatworldTimer.idleMs(idleSettings.everyMin, idleSettings.everyMax);
+  idleState = { phase: 'working', at: Date.now() + ms, timer: setTimeout(beginIdling, ms) };
+  renderPanel();
+}
+function startIdle(raw) {
+  cancelIdle();
+  idleSettings = CatworldTimer.normalizeIdle(raw);
+  armDetection();
+  beginIdling();
+}
+// resume：停止 idle 時是否讓暫停的功能繼續（全部停止或頁面作廢時不繼續）
+function cancelIdle({ resume = true } = {}) {
+  if (idleState) clearTimeout(idleState.timer);
+  idleState = null;
+  if (idlePaused) {
+    idlePaused = false;
+    if (resume && !retired) resumeFromIdle();
+  }
+  renderPanel();
 }
 
 // 狀態觸發：每秒讀一次 #monitor 的數值交給規則引擎判斷，要送的指令走共用佇列
@@ -764,8 +908,8 @@ async function startTriggers(group, config) {
   });
   group.on = true;
   await saveGroupConfig(group.id, config);
-  group.engine.tick();
-  group.timer = setInterval(() => group.engine.tick(), 1000);
+  if (!idlePaused) group.engine.tick();
+  group.timer = setInterval(() => { if (!idlePaused) group.engine.tick(); }, 1000);
   renderPanel();
   return { ok: true };
 }
@@ -788,10 +932,12 @@ function stopTriggers(group, note = '已停止') {
 
 // 驗證碼或送出失敗：定時與兩組觸發、巨集一起停
 function stopEverything(reason) {
+  cancelIdle({ resume: false });
   groupList.forEach(group => stopTriggers(group));
   hunt?.stop(reason);
   cancelMacros();
   cancelChatReplies();
+  stopRandom(reason);
   return stop(reason);
 }
 
@@ -1027,7 +1173,7 @@ function initPanel() {
       .mini { display: flex; gap: 6px; flex: none; }
       .mini button { all: unset; text-align: center; padding: 3px 12px; border-radius: 6px;
         background: #3a3a3e; cursor: pointer; font-size: 14px; font-weight: 600; }
-      .mini button.start, .mini button.tstart { background: #2f7d4a; }
+      .mini button.start, .mini button.tstart, .mini button.rstart, .mini button.istart { background: #2f7d4a; }
       .mini button[disabled] { opacity: .35; cursor: default; }
       .line[hidden] { display: none; }
       .macro-io-msg { font-size: 14px; color: #bbb; }
@@ -1049,6 +1195,10 @@ function initPanel() {
       <div class="body">
         <div class="line"><span class="t">定時</span><span class="s timer-text"></span>
           <span class="mini"><button class="start">開始</button><button class="stop">停止</button></span></div>
+        <div class="line"><span class="t">隨機</span><span class="s random-text"></span>
+          <span class="mini"><button class="rstart">開始</button><button class="rstop">停止</button></span></div>
+        <div class="line"><span class="t">Idle</span><span class="s idle-text"></span>
+          <span class="mini"><button class="istart">開始</button><button class="istop">停止</button></span></div>
         ${groupList.map(group => `<div class="line" data-group="${group.id}"><span class="t">${group.name}</span><span class="s trigger-text"></span>
           <span class="mini"><button class="tstart">開始</button><button class="tstop">停止</button></span></div>`).join('\n        ')}
         <div class="line macro-line"><span class="t">巨集</span><span class="s macro-text"></span>
@@ -1070,6 +1220,8 @@ function initPanel() {
       return [group.id, { text: row.querySelector('.trigger-text'), start: row.querySelector('.tstart'), stop: row.querySelector('.tstop') }];
     })),
     start: $('.start'), stop: $('.stop'),
+    randomText: $('.random-text'), rstart: $('.rstart'), rstop: $('.rstop'),
+    idleText: $('.idle-text'), istart: $('.istart'), istop: $('.istop'),
     macroText: $('.macro-text'), mstop: $('.mstop'),
     huntText: $('.hunt-text'), hstart: $('.hstart'), hstop: $('.hstop'),
     rewardLine: $('.reward-line'), rewardText: $('.reward-text'),
@@ -1080,6 +1232,17 @@ function initPanel() {
     statsBlock = CatworldStatsBlock.attach(root);
   } catch (error) {
     console.error('[catworld] 數值區塊初始化失敗', error);
+  }
+  // 「密語」區塊（只在置頂浮窗顯示）放在數值區塊上面；壞了一樣不能牽連後面的綁定
+  try {
+    whisperBlock = CatworldWhisperBlock.attach(root);
+    // 配色（設定頁選，缺值＝橘）：啟動時讀一次，之後設定頁改了馬上跟著變
+    chrome.storage.local.get('whisperColor').then(data => whisperBlock?.setColor(data.whisperColor)).catch(() => {});
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes.whisperColor) whisperBlock?.setColor(changes.whisperColor.newValue);
+    });
+  } catch (error) {
+    console.error('[catworld] 密語區塊初始化失敗', error);
   }
   // 「怪物」列：讀 #exp 列出適合打的怪、怪物出現時顯示資訊（資料由 background 提供）
   // 怪物列壞了不能牽連後面開始／停止按鈕的綁定
@@ -1141,6 +1304,7 @@ function initPanel() {
     equipmentUI?.setEnabled(features?.items === true);
     riddleUI?.setEnabled(features?.riddles === true);
     mentorUI?.setEnabled(features?.masters === true);
+    whisperBlock?.setEnabled(features?.whisper !== false);
     // 地圖巡怪：預設關閉，關著時整個「巡怪」列（含選怪清單）藏起來；關掉時正在巡就停下來
     const huntOn = features?.hunt === true;
     root.querySelector('.hunt-line').hidden = !huntOn;
@@ -1165,13 +1329,31 @@ function initPanel() {
     const { settings: saved } = await chrome.storage.local.get('settings');
     if (saved) settings = { ...settings, ...saved };
     if (running) return;
-    if (!fixedItems().length && !randomItems().length) {
-      stop('尚未設定指令，請先在 popup 設定');
+    if (!fixedItems().length) {
+      stop('尚未設定固定指令，請先在 popup 設定');
       return;
     }
     start(settings);
   });
   panel.stop.addEventListener('click', () => { if (running) stop(); });
+  panel.rstart.addEventListener('click', async () => {
+    if (randomRunning) return;
+    const { settings: saved } = await chrome.storage.local.get('settings');
+    if (saved) settings = { ...settings, ...saved };
+    if (randomRunning) return;
+    if (!randomItems().length) {
+      stopRandom('尚未設定隨機指令，請先在 popup 設定');
+      return;
+    }
+    startRandom(settings);
+  });
+  panel.rstop.addEventListener('click', () => { if (randomRunning) stopRandom(); });
+  panel.istart.addEventListener('click', async () => {
+    if (idleState) return;
+    const { idleSettings: saved } = await chrome.storage.local.get('idleSettings');
+    if (!idleState) startIdle(saved);
+  });
+  panel.istop.addEventListener('click', () => { if (idleState) cancelIdle(); });
   groupList.forEach(group => {
     const row = panel.groups[group.id];
     row.start.addEventListener('click', async () => {
@@ -1387,13 +1569,14 @@ function renderPanel() {
   panel.label.textContent = ringing ? `${label}・響鈴中` : label;
   panel.confirm.hidden = !ringing;
   let timerText = stopReason || '未啟動';
+  let randomText = timerText;
+  const left = at => `${Math.max(0, Math.ceil((at - Date.now()) / 1000))} 秒後`;
   if (running) {
-    // 倒數與「到時候要執行哪些指令」：固定指令每一項一行，隨機指令是被挑中的那一個
-    const left = at => `${Math.max(0, Math.ceil((at - Date.now()) / 1000))} 秒後`;
-    const lines = fixedRuns.map(run => `固定 ${left(run.at)}：${run.item.command}`);
-    if (nextRandomAt) lines.push(`隨機 ${left(nextRandomAt)}：${nextRandomCommand}`);
-    timerText = lines.join('\n') || '執行中';
+    // 倒數與「到時候要執行哪些指令」：固定指令每一項一行
+    timerText = idlePaused ? 'Idle 中，暫停' : fixedRuns.map(run => `固定 ${left(run.at)}：${run.item.command}`).join('\n') || '執行中';
   }
+  if (randomRunning) randomText = idlePaused ? 'Idle 中，暫停' : nextRandomAt ? `隨機 ${left(nextRandomAt)}：${nextRandomCommand}` : '執行中';
+  const idleText = !idleState ? '未啟動' : idleState.phase === 'idling' ? `Idle 中，${left(idleState.at)}繼續` : `${left(idleState.at)}進入 idle`;
   if (captcha) {
     timerText = captcha.answer ? `驗證碼：已送出 ${captcha.answer}（第 ${captcha.attempts} 次），等遊戲回應…`
       : captcha.sendTimer ? `驗證碼：讀到 ${captcha.read}，${captcha.sendSeconds} 秒後送出…`
@@ -1401,6 +1584,10 @@ function renderPanel() {
   }
   let changed = panel.timerText.textContent !== timerText;
   panel.timerText.textContent = timerText;
+  if (panel.randomText.textContent !== randomText) changed = true;
+  panel.randomText.textContent = randomText;
+  if (panel.idleText.textContent !== idleText) changed = true;
+  panel.idleText.textContent = idleText;
   groupList.forEach((group, index) => {
     const row = panel.groups[group.id];
     if (row.text.textContent !== summaries[index].text) changed = true;
@@ -1436,7 +1623,11 @@ function renderPanel() {
   panel.timerText.classList.toggle('alert', captchaStopped);
   panel.start.disabled = running;
   panel.stop.disabled = !running;
-  const stateKey = [running, ...groupList.map(group => group.on), macroRuns.size > 0, hunt.on()].join();
+  panel.rstart.disabled = randomRunning;
+  panel.rstop.disabled = !randomRunning;
+  panel.istart.disabled = Boolean(idleState);
+  panel.istop.disabled = !idleState;
+  const stateKey = [running, randomRunning, idleState?.phase, ...groupList.map(group => group.on), macroRuns.size > 0, hunt.on()].join();
   if (lastStateKey !== null && stateKey !== lastStateKey) notifyStateChanged();
   lastStateKey = stateKey;
 }
@@ -1449,6 +1640,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'STOP') {
     stop().then(() => sendResponse({ ok: true }));
     return true;
+  }
+  if (message.type === 'START_RANDOM') {
+    startRandom(message.settings).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (message.type === 'STOP_RANDOM') {
+    stopRandom().then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (message.type === 'START_IDLE') {
+    startIdle(message.settings);
+    sendResponse({ ok: true });
+    return;
+  }
+  if (message.type === 'STOP_IDLE') {
+    cancelIdle();
+    sendResponse({ ok: true });
+    return;
   }
   // 觸發相關的訊息都要帶 group（combat／practice）
   const group = triggerGroups[message.group];
@@ -1473,6 +1682,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'STATUS') {
     sendResponse({
       running,
+      randomRunning,
+      idle: idleState ? { phase: idleState.phase, at: idleState.at } : null,
       ringing,
       settings,
       stopReason,
@@ -1511,7 +1722,7 @@ chrome.storage.onChanged?.addListener((changes, area) => {
   }
 });
 
-chrome.storage.local.get(['running', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY]).then(data => {
+chrome.storage.local.get(['running', 'randomRunning', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY]).then(data => {
   persistentAlert = data.persistentAlert === true;
   chatReply = CatworldChatReply.normalizeSettings(data[CatworldChatReply.SETTINGS_KEY]);
   stopKeywords = CatworldStopKeywords.normalize(data[CatworldStopKeywords.KEY]);
@@ -1522,7 +1733,9 @@ chrome.storage.local.get(['running', 'settings', 'triggerGroupSettings', 'trigge
   groupList.forEach(item => { item.config = savedGroups[item.id]; });
   // Safety choice: a page reload does not silently resume automation.
   running = false;
+  randomRunning = false;
   if (data.running) chrome.storage.local.set({ running: false, stopReason });
+  if (data.randomRunning) chrome.storage.local.set({ randomRunning: false, stopReason });
   renderPanel();
 });
 

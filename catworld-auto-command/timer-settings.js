@@ -51,9 +51,29 @@ function delayMs(item, random = Math.random) {
   return (item.minSeconds + random() * (item.maxSeconds - item.minSeconds)) * 1000;
 }
 
+// idle（全域暫停功能）：每隔 everyMin～everyMax 分鐘進入 idle，idle 持續 durMin～durMax 分鐘，都是在範圍內隨機抽；
+// 單位分鐘、可以有小數；不是 0 到 IDLE_LIMIT 的正數就退回預設，最大值不會小於最小值
+const IDLE_DEFAULTS = Object.freeze({ everyMin: 20, everyMax: 40, durMin: 2, durMax: 5 });
+const IDLE_LIMIT = 1440;
+function normalizeIdle(raw) {
+  const pick = (value, fallback) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 && n <= IDLE_LIMIT ? n : fallback;
+  };
+  const everyMin = pick(raw?.everyMin, IDLE_DEFAULTS.everyMin);
+  const durMin = pick(raw?.durMin, IDLE_DEFAULTS.durMin);
+  return {
+    everyMin,
+    everyMax: Math.max(everyMin, pick(raw?.everyMax, IDLE_DEFAULTS.everyMax)),
+    durMin,
+    durMax: Math.max(durMin, pick(raw?.durMax, IDLE_DEFAULTS.durMax)),
+  };
+}
+const idleMs = (min, max, random = Math.random) => (min + random() * (max - min)) * 60 * 1000;
+
 // 指令欄位裡的 <enter>（整個指令就只有它）＝送一個空白行，等於在遊戲輸入框按 Enter（翻下一頁）；
 // 遊戲收到空字串會送純換行。各處的欄位會把空白指令濾掉，所以要用文字代號表示
 const commandText = command => (/^\s*<enter>\s*$/i.test(String(command ?? '')) ? '' : String(command ?? ''));
 
-globalThis.CatworldTimer = { DEFAULT_MIN, DEFAULT_MAX, normalizeFixedItems, normalizeRandomItems, pickRandomItem, delayMs, commandText };
+globalThis.CatworldTimer = { DEFAULT_MIN, DEFAULT_MAX, normalizeFixedItems, normalizeRandomItems, pickRandomItem, delayMs, commandText, IDLE_DEFAULTS, normalizeIdle, idleMs };
 })();

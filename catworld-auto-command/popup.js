@@ -101,7 +101,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'skill-moves.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'whisper-block.js', 'skill-moves.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -113,16 +113,61 @@ async function send(message) {
 $('start').addEventListener('click', async () => {
   try {
     const settings = readSettings();
-    if (!settings.fixedItems.length && !settings.randomItems.length) throw new Error('至少要有一個指令');
+    if (!settings.fixedItems.length) throw new Error('至少要有一個固定指令');
     const badFixed = settings.fixedItems.find(item => item.maxSeconds < item.minSeconds);
     if (badFixed) throw new Error(`固定指令「${badFixed.command}」的最長秒數不能小於最短秒數`);
+    await chrome.storage.local.set({ settings });
+    await send({ type: 'START', settings });
+    setStatus(`執行中：固定：${settings.fixedItems.map(item => item.command).join(' / ')}`);
+  } catch (e) { setStatus(e.message, 'error'); }
+});
+
+// 隨機送出：獨立的一頁，各自開始、停止
+const setRandomStatus = (text, level = 'info') => {
+  $('randomStatus').textContent = `狀態：${text}`;
+  markLevel($('randomStatus'), level);
+};
+$('randomStart').addEventListener('click', async () => {
+  try {
+    const settings = readSettings();
+    if (!settings.randomItems.length) throw new Error('至少要有一個隨機指令');
     const badRandom = settings.randomItems.find(item => item.maxSeconds < item.minSeconds);
     if (badRandom) throw new Error(`隨機指令「${badRandom.command}」的最長秒數不能小於最短秒數`);
     await chrome.storage.local.set({ settings });
-    await send({ type: 'START', settings });
-    const listText = (label, items) => (items.length ? `${label}：${items.map(item => item.command).join(' / ')}` : '');
-    setStatus(`執行中：${[listText('固定', settings.fixedItems), listText('隨機', settings.randomItems)].filter(Boolean).join('；')}`);
-  } catch (e) { setStatus(e.message, 'error'); }
+    await send({ type: 'START_RANDOM', settings });
+    setRandomStatus(`執行中：${settings.randomItems.map(item => item.command).join(' / ')}`);
+  } catch (e) { setRandomStatus(e.message, 'error'); }
+});
+$('randomStop').addEventListener('click', async () => {
+  try { await send({ type: 'STOP_RANDOM' }); setRandomStatus('已停止'); }
+  catch (e) { setRandomStatus(e.message, 'error'); }
+});
+
+// Idle（全域暫停）：四個欄位存在 chrome.storage.local.idleSettings，按「開始」才套用
+const IDLE_FIELDS = { everyMin: 'idleEveryMin', everyMax: 'idleEveryMax', durMin: 'idleDurMin', durMax: 'idleDurMax' };
+const readIdleFields = () => CatworldTimer.normalizeIdle(Object.fromEntries(Object.entries(IDLE_FIELDS).map(([key, id]) => [key, $(id).value])));
+const showIdleFields = idle => Object.entries(IDLE_FIELDS).forEach(([key, id]) => { $(id).value = idle[key]; });
+const setIdleStatus = (text, level = 'info') => {
+  $('idleStatus').textContent = `狀態：${text}`;
+  markLevel($('idleStatus'), level);
+};
+Object.values(IDLE_FIELDS).forEach(id => $(id).addEventListener('change', () => {
+  const idle = readIdleFields();
+  showIdleFields(idle);
+  chrome.storage.local.set({ idleSettings: idle });
+}));
+$('idleStart').addEventListener('click', async () => {
+  try {
+    const idle = readIdleFields();
+    showIdleFields(idle);
+    await chrome.storage.local.set({ idleSettings: idle });
+    await send({ type: 'START_IDLE', settings: idle });
+    setIdleStatus('Idle 中');
+  } catch (e) { setIdleStatus(e.message, 'error'); }
+});
+$('idleStop').addEventListener('click', async () => {
+  try { await send({ type: 'STOP_IDLE' }); setIdleStatus('已停止'); }
+  catch (e) { setIdleStatus(e.message, 'error'); }
 });
 
 $('stop').addEventListener('click', async () => {
@@ -332,7 +377,10 @@ try {
 }
 
 // 輔助功能的開關（預設關閉）：存成一個物件，遊戲頁的面板監聽 storage 變化，馬上生效
-const FEATURE_BOXES = { mobs: 'featureMobs', items: 'featureItems', riddles: 'featureRiddles', shop: 'featureShop', skills: 'featureSkills', hunt: 'featureHunt', masters: 'featureMasters' };
+const FEATURE_BOXES = { mobs: 'featureMobs', items: 'featureItems', riddles: 'featureRiddles', shop: 'featureShop', skills: 'featureSkills', hunt: 'featureHunt', masters: 'featureMasters', whisper: 'featureWhisper' };
+// 缺值＝開的功能（其他都是缺值＝關）
+const FEATURE_DEFAULT_ON = new Set(['whisper']);
+$('whisperColor').addEventListener('change', () => { chrome.storage.local.set({ whisperColor: $('whisperColor').value }); });
 Object.values(FEATURE_BOXES).forEach(id => $(id).addEventListener('change', () => {
   chrome.storage.local.set({ zapFeatures: Object.fromEntries(Object.entries(FEATURE_BOXES).map(([key, box]) => [key, $(box).checked])) });
 }));
@@ -663,14 +711,15 @@ function createTriggerPane(group) {
   const priorityField = rule => element('label', { className: 'check', title: '命中時這條規則的指令最優先送出，連已經排隊、正在 @等待 的其他指令都先暫停，送完才接著做' },
     field('priority', element('input', { type: 'checkbox', checked: rule.priority === true })), '最優先（其他指令先暫停）');
 
-  // 這條規則最後一個指令後面加隨機數字：勾了才顯示範圍欄；欄位空白退回 50～150
-  const numberField = rule => {
+  // 這條規則最後一個指令後面加隨機數字：勾了才顯示範圍欄；欄位空白退回 50～150。只有練功組有（戰鬥組不放，回傳空陣列）
+  const numberFields = rule => {
+    if (group.id !== 'practice') return [];
     const on = field('numOn', element('input', { type: 'checkbox', checked: Boolean(rule.number) }));
     const min = field('numMin', element('input', { type: 'number', min: 0, value: rule.number?.min ?? 50, title: '最小數字' }));
     const max = field('numMax', element('input', { type: 'number', min: 0, value: rule.number?.max ?? 150, title: '最大數字' }));
     const range = element('span', { className: 'numrange', hidden: !on.checked }, min, '～', max);
     on.addEventListener('change', () => { range.hidden = !on.checked; });
-    return element('label', { className: 'check', title: '每次命中送出時，在最後一個指令後面加一個空白和範圍內的隨機整數，例如 pw 87，給遊戲的 alias 用' }, on, '最後一個指令後面加隨機數字', range);
+    return [element('label', { className: 'check', title: '每次命中送出時，在最後一個指令後面加一個空白和範圍內的隨機整數，例如 pw 87，給遊戲的 alias 用' }, on, '最後一個指令後面加隨機數字', range)];
   };
 
   // 規則卡片預設收起：標頭（啟用、狀態、刪除）與一行摘要常駐，其餘欄位放進 body，點「展開」或摘要才看到。
@@ -728,7 +777,7 @@ function createTriggerPane(group) {
       element('div', { className: 'row' },
         element('div', {}, element('label', { textContent: '冷卻（秒，最少 1）' }), cooldown),
         element('div', {}, element('label', { textContent: '回復緩衝（％）' }), buffer)),
-      rearm, numberField(rule), stopGroupField(rule), priorityField(rule));
+      rearm, ...numberFields(rule), stopGroupField(rule), priorityField(rule));
     const card = element('div', { className: 'rule' }, head, body);
     foldRule(card, head, body, () => `${stat.value} ${op.value === 'ge' ? '≥' : '≤'} ${value.value}${unit.value === 'pct' ? '％' : ''}　→　${commandText(card, commands)}`, open);
 
@@ -757,7 +806,7 @@ function createTriggerPane(group) {
     const body = element('div', { className: 'rule-body' },
       element('label', { textContent: '關鍵字（遊戲新出現的文字含有就觸發，不分大小寫；可以貼多行，換行與空白不影響比對，分批印出來的也看得到）' }), pattern,
       element('label', { textContent: '送出的指令（一行一個，依序送出）' }), commands,
-      element('label', { textContent: '冷卻（秒，最少 1）' }), cooldown, numberField(rule), stopGroupField(rule), priorityField(rule));
+      element('label', { textContent: '冷卻（秒，最少 1）' }), cooldown, ...numberFields(rule), stopGroupField(rule), priorityField(rule));
     const card = element('div', { className: 'rule' }, head, body);
     foldRule(card, head, body, () => `「${pattern.value.replace(/\s+/g, ' ').trim() || '（尚未填關鍵字）'}」　→　${commandText(card, commands)}`, open);
     card.dataset.kind = 'keyword';
@@ -771,7 +820,7 @@ function createTriggerPane(group) {
     const get = (card, name) => card.querySelector(`[data-f="${name}"]`);
     const lines = (card, name) => get(card, name).value.split('\n').map(x => x.trim()).filter(Boolean);
     const numberOf = card => {
-      if (!get(card, 'numOn').checked) return {};
+      if (!get(card, 'numOn')?.checked) return {};
       const bound = (name, fallback) => (get(card, name).value.trim() === '' ? fallback : Number(get(card, name).value));
       return { number: { min: bound('numMin', 50), max: bound('numMax', 150) } };
     };
@@ -902,21 +951,30 @@ function renderCountdown(status) {
   if (status?.running) {
     const settings = status.settings || {};
     (status.fixed || []).forEach(entry => parts.push(`固定 ${entry.command}：${left(entry.at)}`));
-    if (CatworldTimer.normalizeRandomItems(settings).length) {
-      parts.push(`隨機指令：${status.nextRandomAt ? `${status.nextRandomCommand}，${left(status.nextRandomAt)}` : '—'}`);
-    }
   }
-  $('countdown').textContent = `下一輪：${parts.length ? parts.join('　') : '—'}`;
+  $('countdown').textContent = `下一輪：${parts.length ? parts.join('　') : status?.idle?.phase === 'idling' && status?.running ? 'Idle 中' : '—'}`;
+  const random = status?.randomRunning
+    ? (status.idle?.phase === 'idling' ? 'Idle 中' : status.nextRandomAt ? `${status.nextRandomCommand}，${left(status.nextRandomAt)}` : '—')
+    : '—';
+  $('randomCountdown').textContent = `下一輪：${random}`;
+  const idle = status?.idle;
+  if (idle) $('idleStatus').textContent = `狀態：${idle.phase === 'idling' ? 'Idle 中' : '運作中'}，${left(idle.at)}${idle.phase === 'idling' ? '繼續' : '進入 idle'}`;
 }
 
 // 每秒向遊戲頁要一次狀態，更新定時倒數與兩組觸發的讀數、規則狀態
 // 定時的狀態文字平常只在按這一頁自己的按鈕時才會改；在面板或置頂面板裡開始、停止時，這裡要跟著變（只在開始／停止翻轉時改，不蓋掉錯誤訊息）
 let lastTimerRunning = null;
+let lastRandomRunning = null;
+let lastIdle = null;
 async function refreshLive() {
   let status = null;
   try { status = await send({ type: 'STATUS' }); } catch { /* 連不上遊戲頁：讀數顯示 — */ }
   if (status && lastTimerRunning !== null && Boolean(status.running) !== lastTimerRunning) setStatus(status.running ? '執行中' : (status.stopReason || '已停止'), status.running ? 'info' : stopLevel(status.stopReason));
   if (status) lastTimerRunning = Boolean(status.running);
+  if (status && lastRandomRunning !== null && Boolean(status.randomRunning) !== lastRandomRunning) setRandomStatus(status.randomRunning ? '執行中' : (status.stopReason || '已停止'), status.randomRunning ? 'info' : stopLevel(status.stopReason));
+  if (status) lastRandomRunning = Boolean(status.randomRunning);
+  if (status && lastIdle !== null && Boolean(status.idle) !== lastIdle && !status.idle) setIdleStatus(status.stopReason && !status.running && !status.randomRunning ? status.stopReason : '已停止', 'info');
+  if (status) lastIdle = Boolean(status.idle);
   renderCountdown(status);
   Object.values(panes).forEach(pane => pane.refresh(status));
 }
@@ -962,7 +1020,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 });
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
+  const data = await chrome.storage.local.get(['settings', 'idleSettings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
   huntSettings = CatworldMapHunt.normalizeSettings(data[CatworldMapHunt.SETTINGS_KEY]);
   showHuntSettings();
   $('shopSkipNames').value = typeof data[CatworldShopCollect.SKIP_NAMES_KEY] === 'string' ? data[CatworldShopCollect.SKIP_NAMES_KEY] : CatworldShopCollect.DEFAULT_SKIP_NAMES;
@@ -973,7 +1031,8 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     const box = document.getElementById(id);
     if (box?.tagName === 'DETAILS') box.open = open === true;
   });
-  Object.entries(FEATURE_BOXES).forEach(([key, id]) => { $(id).checked = data.zapFeatures?.[key] === true; });
+  $('whisperColor').value = [...$('whisperColor').options].some(option => option.value === data.whisperColor) ? data.whisperColor : 'orange';
+  Object.entries(FEATURE_BOXES).forEach(([key, id]) => { $(id).checked = FEATURE_DEFAULT_ON.has(key) ? data.zapFeatures?.[key] !== false : data.zapFeatures?.[key] === true; });
   $('persistentAlert').checked = data.persistentAlert === true;
   $('autoReward').checked = data.autoReward !== false;
   const stopKeywords = CatworldStopKeywords.normalize(data[CatworldStopKeywords.KEY]);
@@ -995,11 +1054,18 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   Object.values(panes).forEach(pane => pane.render(savedGroups[pane.group.id]));
   // 舊版的分頁名稱是 trigger（現在叫練功）
   const lastTab = data.popupTab === 'trigger' ? 'practice' : data.popupTab;
-  showTab(panes[lastTab] ? lastTab : 'timer');
+  showTab(panes[lastTab] || lastTab === 'random' || lastTab === 'idle' ? lastTab : 'timer');
+  showIdleFields(CatworldTimer.normalizeIdle(data.idleSettings));
   try {
     const status = await send({ type: 'STATUS' });
     setStatus(status?.running ? '執行中' : (status?.stopReason || '已停止'), status?.running ? 'info' : stopLevel(status?.stopReason));
-  } catch { setStatus('請切到 CatWorld Web 分頁', 'warn'); }
+    setRandomStatus(status?.randomRunning ? '執行中' : (status?.stopReason || '已停止'), status?.randomRunning ? 'info' : stopLevel(status?.stopReason));
+    setIdleStatus(status?.idle ? (status.idle.phase === 'idling' ? 'Idle 中' : '運作中') : '已停止');
+  } catch {
+    setStatus('請切到 CatWorld Web 分頁', 'warn');
+    setRandomStatus('請切到 CatWorld Web 分頁', 'warn');
+    setIdleStatus('請切到 CatWorld Web 分頁', 'warn');
+  }
   refreshLive();
   setInterval(refreshLive, 1000);
 })();

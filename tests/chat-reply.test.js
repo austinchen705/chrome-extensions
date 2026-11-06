@@ -190,7 +190,7 @@ ui('stopping everything (here through a stop keyword) cancels a reply that is st
 test('onIncoming is called once for each non-empty thing people tell me, and never for echoes, my own lines or public say', () => {
   const heard = [];
   const recorder = Chat.createRecorder({ now: () => 0, onIncoming: event => heard.push(event) });
-  recorder.feed('> [P]有氣質回答你：回聲\n[P]你回答有氣質：我說的\n[P]你說道：公開\n[P]有氣質回答你：\n[P]有氣質回答你：真的來訊\n');
+  recorder.feed('> reply 嗨\n> [P]你回答有氣質：回聲\n[P]你回答有氣質：我說的\n[P]你說道：公開\n[P]有氣質回答你：\n[P]有氣質回答你：真的來訊\n');
   assert.deepEqual(heard, [{ name: '有氣質', text: '真的來訊' }]);
 });
 
@@ -360,4 +360,30 @@ test('mergeImported tells apart old pairs the cap pushed out and imported ones i
   assert.equal(merged.pairs.at(-1).said, 'n' + (Chat.MAX_PAIRS + 4));
   const small = Chat.mergeImported(existing, [{ said: "a", reply: "b" }], 1000);
   assert.deepEqual([small.added, small.dropped, small.trimmed], [1, 0, 0], "nothing is reported when nothing was lost");
+});
+
+test('flush treats the held last line as complete once, and an empty hold does nothing', () => {
+  const seen = [];
+  const rec = Chat.createRecorder({ onIncoming: info => seen.push(info) });
+  rec.feed('[P]有氣質回答你：沒有換行');
+  assert.deepEqual(seen, [], 'held until the line is complete');
+  rec.flush();
+  assert.deepEqual(seen, [{ name: '有氣質', text: '沒有換行' }]);
+  rec.flush();
+  rec.feed('下一批\n');
+  assert.equal(seen.length, 1, 'nothing is reported twice');
+});
+
+test('a private message the other side starts ("告訴你", with an id in the name) counts as incoming, like "回答你"', () => {
+  const seen = [];
+  const rec = Chat.createRecorder({ onIncoming: info => seen.push(info) });
+  rec.feed('[P]山本由伸(yamamoto)告訴你：你好  \n[P]有氣質回答你：測試\n[P]你告訴有氣質：回覆\n');
+  assert.deepEqual(seen, [{ name: '山本由伸(yamamoto)', text: '你好' }, { name: '有氣質', text: '測試' }]);
+});
+
+test('an incoming private message with the game prompt in front ("> [P]…回答你：…") counts, typed-command echoes still do not', () => {
+  const heard = [];
+  const recorder = Chat.createRecorder({ now: () => 0, onIncoming: event => heard.push(event) });
+  recorder.feed('你坐下來運氣用功。\n> [P]山本由伸回答你：w r u\n> tell 山本 hi\n> [P]山本由伸(yamamoto)告訴你：你好\n');
+  assert.deepEqual(heard, [{ name: '山本由伸', text: 'w r u' }, { name: '山本由伸(yamamoto)', text: '你好' }]);
 });

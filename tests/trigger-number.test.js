@@ -67,7 +67,7 @@ ui('the number also works for a stop-group rule and a priority rule', async () =
   }
   const page2 = await boot({ scale: SCALE });
   try {
-    await page2.ask({ type: 'START_TRIGGER', group: 'combat', config: config([keyword('口渴', ['pw'], { number: { min: 8, max: 8 }, priority: true })]) });
+    await page2.ask({ type: 'START_TRIGGER', group: 'practice', config: config([keyword('口渴', ['pw'], { number: { min: 8, max: 8 }, priority: true })]) });
     page2.output('<span>你覺得口渴。</span>');
     assert.ok(await waitFor(() => page2.sent.includes('pw 8'), 1500));
   } finally {
@@ -147,6 +147,23 @@ ui('a stored range comes back ticked in the card', async () => {
     const card = page.doc.querySelector('#rules-practice > .rule');
     assert.equal(f(card, 'numOn').checked, true);
     assert.deepEqual([f(card, 'numMin').value, f(card, 'numMax').value], ['60', '90']);
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('the combat tab has no number option, and saving there drops a stale one', async () => {
+  const store = { triggerGroupSettings: { combat: { rules: [keyword('口渴', ['pw'], { number: { min: 60, max: 90 } })], delayMax: 0, requireNormal: false } } };
+  const page = await bootPopup(store);
+  try {
+    assert.ok(await page.waitUntil(() => page.doc.querySelectorAll('#rules-combat > .rule').length > 0));
+    const card = page.doc.querySelector('#rules-combat > .rule');
+    assert.equal(f(card, 'numOn'), null);
+    assert.ok(page.doc.querySelector('#rules-practice > .rule [data-f="numOn"]'), 'the practice tab still has it');
+    f(card, 'cooldown').value = '7';
+    f(card, 'cooldown').dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
+    assert.ok(await page.waitUntil(() => store.triggerGroupSettings.combat.rules[0].cooldown === 7));
+    assert.equal('number' in store.triggerGroupSettings.combat.rules[0], false);
   } finally {
     page.dom.window.close();
   }

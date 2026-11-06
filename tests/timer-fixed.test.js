@@ -34,10 +34,10 @@ ui('each fixed item runs on its own interval', async () => {
   }
 });
 
-ui('no fixed item and one random item still runs', async () => {
+ui('the random timer runs on its own without any fixed item', async () => {
   const page = await boot({ scale: SCALE });
   try {
-  await page.ask({ type: 'START', settings: { fixedItems: [], randomItems: [{ command: 'look', minSeconds: 1, maxSeconds: 1 }], commandDelayMs: 0 } });
+  await page.ask({ type: 'START_RANDOM', settings: { fixedItems: [], randomItems: [{ command: 'look', minSeconds: 1, maxSeconds: 1 }], commandDelayMs: 0 } });
   assert.ok(await waitFor(() => count(page, 'look') >= 2, 2000), 'the random item is sent');
   assert.ok(!page.sent.includes('ps'), 'the default fixed command is not sent when the list was emptied');
   assert.equal((await page.ask({ type: 'STATUS' })).fixed.length, 0);

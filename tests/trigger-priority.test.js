@@ -12,7 +12,8 @@ const config = rules => ({ rules, delayMax: 0, requireNormal: false });
 const TIMER = { fixedItems: [{ command: 'a;@等待 2;b', minSeconds: 600, maxSeconds: 600 }], commandDelayMs: 0 };
 
 async function run(extra) {
-  const page = await boot({ scale: SCALE });
+  // 開始定時會先下一次 sc（領獎倒數），和這裡比對的送出順序無關，所以關掉自動領獎
+  const page = await boot({ scale: SCALE, initialStore: { autoReward: false } });
   try {
     await page.ask({ type: 'START', settings: TIMER });
     assert.ok(await waitFor(() => page.sent.includes('a'), 1000), 'the timer macro starts and is now waiting');

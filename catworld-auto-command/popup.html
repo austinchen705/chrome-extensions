@@ -15,8 +15,8 @@
     .row > div { flex:1; min-width:0; }
     .buttons { display:flex; gap:8px; margin-top:14px; }
     button { flex:1; border:0; border-radius:8px; padding:9px; cursor:pointer; font-weight:600; }
-    #start, .tstart-btn { background:#222; color:white; }
-    #stop, .tstop-btn { background:#eee; color:#222; }
+    #start, #randomStart, #idleStart, .tstart-btn { background:#222; color:white; }
+    #stop, #randomStop, #idleStop, .tstop-btn { background:#eee; color:#222; }
     #test, #beep, #skills { margin-top:8px; width:100%; background:#f4f4f4; }
     .status { margin-bottom:4px; font-size:13px; padding:8px; border-radius:7px; background:#f6f6f6; }
     .hint { font-size:11px; color:#777; margin-top:8px; line-height:1.4; }
@@ -97,6 +97,8 @@
   <h2>CatWorld Auto Command <small id="version"></small></h2>
   <div class="tabs" role="tablist">
     <button role="tab" id="tab-timer" data-tab="timer" aria-selected="true">定時送出</button>
+    <button role="tab" id="tab-random" data-tab="random" aria-selected="false">隨機送出</button>
+    <button role="tab" id="tab-idle" data-tab="idle" aria-selected="false">Idle</button>
   </div>
 
   <div data-pane="timer">
@@ -111,15 +113,34 @@
     </details>
     <label>指令間隔（毫秒）</label>
     <input id="commandDelayMs" type="number" min="0" value="500">
+    <div class="buttons">
+      <button id="start">開始</button><button id="stop">停止</button>
+    </div>
+  </div>
+
+  <div data-pane="random" hidden>
+    <div class="status" id="randomStatus">狀態：讀取中…</div>
+    <div class="status" id="randomCountdown">下一輪：—</div>
     <details class="fold" id="fold-random">
       <summary id="summaryRandom">隨機指令</summary>
       <div class="ritem rhead"><span>指令</span><span>最短（秒）</span><span>最長（秒）</span><span></span></div>
       <div id="randomItems"></div>
       <button id="addRandom" class="add-item" type="button">＋ 新增隨機指令</button>
-      <p class="hint tight">隨機指令：先隨機挑一個，等它自己的時間才送出。每個指令被挑中的機率一樣；秒數只決定「挑中它之後要等多久」，到時間才送出，送出後再挑下一個。</p>
+      <p class="hint tight">隨機指令：先隨機挑一個，等它自己的時間才送出。每個指令被挑中的機率一樣；秒數只決定「挑中它之後要等多久」，到時間才送出，送出後再挑下一個。這一頁和「定時送出」完全獨立，各自開始、停止；指令間隔共用「定時送出」那一頁的設定。</p>
     </details>
     <div class="buttons">
-      <button id="start">開始</button><button id="stop">停止</button>
+      <button id="randomStart">開始</button><button id="randomStop">停止</button>
+    </div>
+  </div>
+
+  <div data-pane="idle" hidden>
+    <div class="status" id="idleStatus">狀態：讀取中…</div>
+    <p class="hint tight">Idle：按「開始」會先 idle 一次，期間定時、隨機、戰鬥、練功都不送新指令（已經在跑的巨集照做完，驗證碼、獲取獎勵、你自己打的指令不受影響）；idle 結束後自動繼續，再隔一段隨機的時間又 idle。時間都是在範圍內隨機抽（單位分鐘，可以填小數）。改了設定要按「開始」才套用。</p>
+    <div class="ritem rhead"><span>項目</span><span>最短（分）</span><span>最長（分）</span><span></span></div>
+    <div class="ritem"><span>隔多久再 idle</span><input id="idleEveryMin" type="number" min="0.1" step="any"><input id="idleEveryMax" type="number" min="0.1" step="any"><span></span></div>
+    <div class="ritem"><span>idle 多久</span><input id="idleDurMin" type="number" min="0.1" step="any"><input id="idleDurMax" type="number" min="0.1" step="any"><span></span></div>
+    <div class="buttons">
+      <button id="idleStart">開始</button><button id="idleStop">停止</button>
     </div>
   </div>
 
@@ -181,6 +202,13 @@
     <label class="check"><input id="featureRiddles" type="checkbox"> 解謎清單</label>
     <label class="check"><input id="featureHunt" type="checkbox"> 地圖巡怪（面板的「巡怪」列：選怪、自動走到房間打怪；實驗中，預設關閉）</label>
     <label class="check"><input id="featureMasters" type="checkbox"> 拜師導師搜尋（面板的「拜師」列：搜導師、功法、心法，看導師教什麼與怎麼走；預設關閉）</label>
+    <label class="check"><input id="featureWhisper" type="checkbox"> 密語區塊（置頂浮窗最上面顯示最近 5 句私聊並閃爍提醒；預設開啟）</label>
+    <label class="check">密語區塊的顏色
+      <select id="whisperColor">
+        <option value="orange">橘</option><option value="red">紅</option><option value="yellow">黃</option><option value="green">綠</option>
+        <option value="cyan">青</option><option value="blue">藍</option><option value="purple">紫</option><option value="pink">粉</option>
+      </select>
+    </label>
     <label class="check"><input id="featureSkills" type="checkbox"> 招式列表（打 careers 時，把已悟的招式依資料列出來並上色）</label>
   </details>
   <details class="alertbox fold" id="sec-alert">
