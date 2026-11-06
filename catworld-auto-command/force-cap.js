@@ -28,6 +28,7 @@ function parseHp(text) {
 const cap = (base, effective) => (base + Math.floor(effective / 5)) * 10;
 const known = value => Number.isFinite(value) && value >= 0;
 
+// 公式只算得出基本值，等級、上線時間等其他因素可能再加上限，所以文字標明是估算，超過時不顯示。
 // 顯示的一行：{ level, text }；等級沒記過時說要先打什麼，不猜；最大內力已經到（或超過）上限就沒有東西要提示，回 null
 function describe(levels, hp, timeText = String) {
   const missing = [];
@@ -39,7 +40,7 @@ function describe(levels, hp, timeText = String) {
   if (gap <= 0) return null;
   const at = Math.min(levels.baseAt ?? Infinity, levels.effectiveAt ?? Infinity);
   const when = Number.isFinite(at) ? `，等級讀於 ${timeText(at)}` : '';
-  return { level: 'info', text: `內力可練上限：${total}（目前最大 ${hp.max}，還差 ${gap}${when}）` };
+  return { level: 'info', text: `內力可練上限：${total}（公式估算，實際可能更高；目前最大 ${hp.max}，還差 ${gap}${when}）` };
 }
 
 globalThis.CatworldForceCap = { parseBase, parseEffective, parseHp, cap, describe };

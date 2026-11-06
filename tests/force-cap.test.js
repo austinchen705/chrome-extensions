@@ -51,7 +51,7 @@ test('cap is (force level + the effective level over 5, rounded down) x 10', () 
 
 test('describe says how far from the cap (nothing once reached), and asks for sk / enable when a level is unknown', () => {
   const levels = { base: 156, effective: 244, baseAt: 1000, effectiveAt: 2000 };
-  assert.equal(F.describe(levels, { cur: 1046, max: 1560 }, at => `t${at}`).text, '內力可練上限：2040（目前最大 1560，還差 480，等級讀於 t1000）');
+  assert.equal(F.describe(levels, { cur: 1046, max: 1560 }, at => `t${at}`).text, '內力可練上限：2040（公式估算，實際可能更高；目前最大 1560，還差 480，等級讀於 t1000）');
   assert.equal(F.describe(levels, { cur: 1, max: 2040 }), null, 'max already at the cap: nothing to say');
   assert.equal(F.describe(levels, { cur: 1, max: 2100 }), null, 'past the cap: nothing to say either');
   assert.equal(F.describe({ base: 156 }, { cur: 1, max: 1560 }).text, '內力可練上限：還不知道，先打 enable 讓我記下等級');
@@ -71,7 +71,7 @@ ui('sk and enable record the levels, then hp gets a line under its output', asyn
     assert.equal(box(page), null, 'sk and enable alone show nothing');
     page.output(`<span>${HP}</span>`);
     assert.ok(await waitFor(() => box(page)));
-    assert.match(box(page).textContent, /內力可練上限：2040（目前最大 1560，還差 480/);
+    assert.match(box(page).textContent, /內力可練上限：2040（公式估算，實際可能更高；目前最大 1560，還差 480/);
   } finally {
     page.close();
   }
