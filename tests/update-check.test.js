@@ -191,7 +191,7 @@ try {
 }
 const ui = JSDOM ? test : test.skip;
 
-async function bootPopup({ store = {}, version = '1.0.0', reply = { ok: true }, platform = 'Windows' } = {}) {
+async function bootPopup({ store = {}, version = '1.0.0', reply = { ok: true }, platform = 'Windows', fetchImpl = null } = {}) {
   const listeners = [];
   const messages = [];
   const clipboard = [];
@@ -208,6 +208,7 @@ async function bootPopup({ store = {}, version = '1.0.0', reply = { ok: true }, 
     resources: 'usable',
     url: `file://${extensionDir.split(path.sep).join('/')}/popup.html`,
     beforeParse(window) {
+      if (fetchImpl) window.fetch = fetchImpl;
       Object.defineProperty(window.navigator, 'userAgent', { value: `Mozilla/5.0 (${platform})`, configurable: true });
       Object.defineProperty(window.navigator, 'clipboard', { value: { writeText: async text => { clipboard.push(text); } }, configurable: true });
       window.chrome = {
@@ -299,5 +300,66 @@ ui('"立即檢查" asks the background, then shows the result; a failed check is
     assert.equal(failing.doc.getElementById('updateNow').disabled, false);
   } finally {
     failing.dom.window.close();
+  }
+});
+
+const CHANGELOG = `# 版本紀錄
+
+說明文字，不是版本。
+
+## 1.2.0（2026-11-06）
+
+- **新功能**。用 \`hp\` 看。
+
+## 1.1.0（2026-11-05）
+
+- 修正。
+
+## 1.0.0（2026-11-01）
+
+- 第一版。
+`;
+
+test('parseNotes lists the versions newest first, marks the ones newer than the current, and drops markdown marks', () => {
+  const notes = U.parseNotes(CHANGELOG.replace(/\n/g, '\r\n'), '1.1.0');
+  assert.deepEqual(notes.map(note => [note.version, note.newer]), [['1.2.0', true], ['1.1.0', false], ['1.0.0', false]]);
+  assert.equal(notes[0].title, '1.2.0（2026-11-06）');
+  assert.equal(notes[0].body, '- 新功能。用 hp 看。');
+  assert.deepEqual(U.parseNotes('沒有任何版本', '1.0.0'), []);
+  assert.deepEqual(U.parseNotes(null, '1.0.0'), []);
+  const many = Array.from({ length: 30 }, (_, i) => `## 1.${30 - i}.0（d）\n\n- x\n`).join('\n');
+  assert.equal(U.parseNotes(many, '1.0.0').length, U.NOTES_MAX, 'only the latest few');
+});
+
+ui('"更新說明" fetches the changelog, shows newer versions marked, and a second click hides it', async () => {
+  const urls = [];
+  const page = await bootPopup({ version: '1.1.0', fetchImpl: async url => { urls.push(url); return { ok: true, text: async () => CHANGELOG }; } });
+  try {
+    const box = page.doc.getElementById('updateNotesBox');
+    assert.equal(box.hidden, true);
+    page.doc.getElementById('updateNotes').click();
+    assert.ok(await page.waitUntil(() => box.querySelectorAll('h4').length === 3));
+    assert.deepEqual(urls, [U.CHANGELOG_URL]);
+    const heads = Array.from(box.querySelectorAll('h4'));
+    assert.match(heads[0].textContent, /1\.2\.0.*（新）/);
+    assert.equal(heads[0].classList.contains('newer'), true);
+    assert.equal(heads[1].classList.contains('newer'), false);
+    assert.match(box.textContent, /新功能。用 hp 看。/);
+    page.doc.getElementById('updateNotes').click();
+    assert.equal(box.hidden, true);
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('"更新說明" shows a red message when the changelog cannot be read', async () => {
+  const page = await bootPopup({ fetchImpl: async () => ({ ok: false, status: 404, text: async () => '' }) });
+  try {
+    page.doc.getElementById('updateNotes').click();
+    assert.ok(await page.waitUntil(() => /讀取更新說明失敗：HTTP 404/.test(page.doc.getElementById('updateNotesBox').textContent)));
+    assert.equal(page.doc.getElementById('updateNotesBox').querySelector('.msg-error') !== null, true);
+    assert.equal(page.doc.getElementById('updateNotes').disabled, false);
+  } finally {
+    page.dom.window.close();
   }
 });

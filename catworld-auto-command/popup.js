@@ -101,7 +101,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'whisper-block.js', 'skill-moves.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'whisper-block.js', 'skill-moves.js', 'force-cap.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -212,6 +212,37 @@ $('updateNow').addEventListener('click', async () => {
   }
   $('updateNow').disabled = false;
   showUpdate();
+});
+// 更新說明：CHANGELOG.md 不在擴充功能資料夾裡（安裝只複製 extension 資料夾），所以從 GitHub 讀；每次打開才抓，比目前新的版本標琥珀色
+$('updateNotes').addEventListener('click', async () => {
+  const box = $('updateNotesBox');
+  if (!box.hidden) { box.hidden = true; return; }
+  const U = CatworldUpdateCheck;
+  box.hidden = false;
+  box.replaceChildren(Object.assign(document.createElement('div'), { textContent: '讀取中…' }));
+  $('updateNotes').disabled = true;
+  try {
+    const response = await fetch(U.CHANGELOG_URL, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const notes = U.parseNotes(await response.text(), chrome.runtime.getManifest().version);
+    if (!notes.length) throw new Error('讀不到任何版本說明');
+    box.replaceChildren(...notes.flatMap(note => {
+      const head = document.createElement('h4');
+      head.textContent = note.newer ? `${note.title}　（新）` : note.title;
+      head.classList.toggle('newer', note.newer);
+      const body = document.createElement('div');
+      body.className = 'notebody';
+      body.textContent = note.body;
+      return [head, body];
+    }));
+  } catch (e) {
+    const error = document.createElement('div');
+    error.textContent = `讀取更新說明失敗：${e.message}`;
+    markLevel(error, 'error');
+    box.replaceChildren(error);
+  } finally {
+    $('updateNotes').disabled = false;
+  }
 });
 $('updateCopy').addEventListener('click', async () => {
   const button = $('updateCopy');
@@ -419,9 +450,9 @@ try {
 }
 
 // 輔助功能的開關（預設關閉）：存成一個物件，遊戲頁的面板監聽 storage 變化，馬上生效
-const FEATURE_BOXES = { mobs: 'featureMobs', items: 'featureItems', riddles: 'featureRiddles', shop: 'featureShop', skills: 'featureSkills', hunt: 'featureHunt', masters: 'featureMasters', whisper: 'featureWhisper' };
+const FEATURE_BOXES = { mobs: 'featureMobs', items: 'featureItems', riddles: 'featureRiddles', shop: 'featureShop', skills: 'featureSkills', hunt: 'featureHunt', masters: 'featureMasters', whisper: 'featureWhisper', forceCap: 'featureForceCap' };
 // 缺值＝開的功能（其他都是缺值＝關）
-const FEATURE_DEFAULT_ON = new Set(['whisper']);
+const FEATURE_DEFAULT_ON = new Set(['whisper', 'forceCap']);
 $('whisperColor').addEventListener('change', () => { chrome.storage.local.set({ whisperColor: $('whisperColor').value }); });
 Object.values(FEATURE_BOXES).forEach(id => $(id).addEventListener('change', () => {
   chrome.storage.local.set({ zapFeatures: Object.fromEntries(Object.entries(FEATURE_BOXES).map(([key, box]) => [key, $(box).checked])) });

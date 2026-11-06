@@ -27,7 +27,12 @@
 
 - `update-check.js`（純函式，background 與設定頁載入，**content script 不載入**）：`parseVersion`（讀 manifest.json 文字裡的版本，格式不對回 null）、`compareVersions`、`shouldCheck`（從沒檢查過或距上次成功超過 `INTERVAL_MS` 一天；上次失敗的 `RETRY_MS` 一小時內不再試；時間在未來當作要檢查）、`describe`（設定頁顯示的 `{ level, text, newer }`：有新版是 warn、一樣是 info、**只有手動檢查失敗才是 error**，自動檢查失敗與還沒有紀錄回 null＝不吵人）、`COMMANDS`（和 README 安裝指令相同，測試會對照）。結果存在 `chrome.storage.local.updateCheck`（`{ checkedAt, latest, error: { at, message, manual } }`，失敗時保留上次成功的 `latest`）。
 - 抓取與排程只在 `background.js`（`checkForUpdate`、`maybeCheckForUpdate`）：`chrome.alarms` 每天一次（**沒有同名 alarm 才建立**，重建會重算週期、service worker 一醒來就建的話永遠等不到），載入時也看一次 `shouldCheck`；15 秒逾時、`cache: 'no-store'`；**整個功能只在 `chrome.alarms` 存在時啟用**（其他載入 `background.js` 的測試的假 chrome 沒有 alarms，載入時不會碰網路）；「立即檢查」是 `UPDATE_CHECK` 訊息（只接受擴充功能自己的頁面，和 `SHARED_REFRESH` 一樣看 `sender.id` 與 `sender.url`）。manifest 需要 `alarms` 權限與 `https://raw.githubusercontent.com/*` 的 host 權限。**只提示，不自動更新**（解壓縮載入的擴充功能 Chrome 不會自動更新，也不能自己改檔案或重新載入成新版）。
+- 「更新說明」按鈕（`popup.js` 在設定頁**自己** `fetch` `CHANGELOG_URL`，不經 background，靠 `raw.githubusercontent.com` 的 host 權限；`CHANGELOG.md` 在 repo 根目錄、不在擴充功能資料夾，安裝後的版本沒有它，所以一定要從 GitHub 讀）：`update-check.js` 的 `parseNotes`（`## 版本號（日期）` 段落、最多 `NOTES_MAX` 個、拿掉 `**` 與反引號、`newer` 與目前版本比）；每次打開才抓、再按收起，文字一律用 `textContent`，失敗是紅字。
 - 設定頁（`popup.html` 最上面、`popup.js` 的 `showUpdate`）只顯示，`storage.onChanged` 即時更新，指令依 `navigator.userAgent` 選 Windows 或 shell 版。測試在 `tests/update-check.test.js`（純函式、在記憶體裡執行 background、jsdom 載入真正的 popup.html）；真正連到 GitHub 與 `alarms` 的行為只能在真實瀏覽器驗證。
+
+## 內力可練上限
+
+- `force-cap.js`（manifest 與 popup 備援注入的 `files` 都要載入，在 `skill-moves.js` 之後、`content.js` 之前）：純函式 `parseHp`（要有「內力」行**和**後面的「目前狀態」才算 hp，`sc` 的人物表有一樣的內力行但沒有「目前狀態」，不能顯示）、`parseBase`（`sk` 的「內功心法 (force)」等級）、`parseEffective`（`enable` 內功那行的「有效等級」）、`cap`（base × 10 ＋ ⌊effective ÷ 5⌋）、`describe`。**base 是 `sk` 的內功心法，不是六合童子功之類的門派內功；effective 是 `enable` 的有效等級**（樣本：156 與 244 → 1608，目前最大內力 1560 ＝ 156 × 10）。等級存在 `chrome.storage.local.forceLevels`（`{ base, effective, baseAt, effectiveAt }`），觀察器和招式列表一樣把 5 秒內的新增文字接起來、靜止 `SETTLE_MS` 後一次解析，自己插入的節點（`data-catworld-forcecap`）要排除。開關 `zapFeatures.forceCap`（**缺值＝開**，`FEATURE_DEFAULT_ON`）在 flush 時才讀。測試在 `tests/force-cap.test.js`；公式是使用者給的，只用一組真實樣本核對過。
 
 ## 孤兒程式與重複面板
 

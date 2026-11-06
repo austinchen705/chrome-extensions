@@ -7,6 +7,8 @@ if (globalThis.CatworldUpdateCheck) return;
 
 const KEY = 'updateCheck';
 const MANIFEST_URL = 'https://raw.githubusercontent.com/austinchen705/chrome-extensions/main/catworld-auto-command/manifest.json';
+const CHANGELOG_URL = 'https://raw.githubusercontent.com/austinchen705/chrome-extensions/main/CHANGELOG.md';
+const NOTES_MAX = 10; // 更新說明最多列最近幾個版本
 const INTERVAL_MS = 24 * 60 * 60 * 1000;
 const RETRY_MS = 60 * 60 * 1000; // 自動檢查失敗後多久內不再試
 const COMMANDS = Object.freeze({
@@ -60,5 +62,18 @@ function describe(state, current, timeText = String) {
   return { level: 'info', text: `已是最新版本（v${current}），最後檢查：${timeText(state.checkedAt)}`, newer: false };
 }
 
-globalThis.CatworldUpdateCheck = { KEY, MANIFEST_URL, INTERVAL_MS, RETRY_MS, COMMANDS, parseVersion, compareVersions, shouldCheck, describe };
+// CHANGELOG.md 的文字 → 最近 NOTES_MAX 個版本 [{ version, title, body, newer }]（新的在前，照檔案順序）；newer＝比 current 新。
+// 標題要是「## 1.100.0（日期）」這種，不是版本的段落（檔案開頭的說明）略過；內容拿掉 markdown 的 ** 與反引號，用純文字顯示
+function parseNotes(text, current) {
+  const notes = [];
+  String(text ?? '').replace(/\r\n/g, '\n').split(/^## /m).slice(1).forEach(section => {
+    const [title, ...rest] = section.split('\n');
+    const version = title.match(/^(\d{1,6}(?:\.\d{1,6}){1,3})/)?.[1];
+    if (!version) return;
+    notes.push({ version, title: title.trim(), body: rest.join('\n').replace(/\*\*|`/g, '').trim(), newer: compareVersions(version, current) > 0 });
+  });
+  return notes.slice(0, NOTES_MAX);
+}
+
+globalThis.CatworldUpdateCheck = { KEY, MANIFEST_URL, CHANGELOG_URL, NOTES_MAX, parseNotes, INTERVAL_MS, RETRY_MS, COMMANDS, parseVersion, compareVersions, shouldCheck, describe };
 })();
