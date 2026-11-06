@@ -26,6 +26,9 @@ function parseLine(line) {
   return incoming ? { kind: 'in', name: incoming[1], text: incoming[2] } : null;
 }
 
+// 來訊的暱稱帶英文 ID（「愛吃肉的緋爾(fenrir)告訴你」），我的回覆行只有暱稱（「你回答愛吃肉的緋爾」），配對要拿掉結尾的 (ID) 才對得上
+const personKey = name => name.replace(/\s*\([^()]*\)\s*$/, '').trim();
+
 // 回覆文字會被原樣送出或當成巨集：含分號（巨集分隔）或 @等待 的不收
 const safeReply = text => text.length > 0 && !text.includes(';') && !text.includes('；') && !text.includes('@等待');
 
@@ -37,20 +40,21 @@ function createRecorder({ now = () => Date.now(), onIncoming = null, isOwn = nul
   function handle(line, pairs) {
     const event = parseLine(line);
     if (!event) return;
+    const who = personKey(event.name);
     if (event.kind === 'in') {
       if (event.text) {
-        waiting.set(event.name, { text: event.text, at: now() });
+        waiting.set(who, { text: event.text, at: now() });
         onIncoming?.({ name: event.name, text: event.text });
       }
-      else waiting.delete(event.name); // 空的來訊蓋掉這個人之前那句，免得回覆配到更早的話
+      else waiting.delete(who); // 空的來訊蓋掉這個人之前那句，免得回覆配到更早的話
       return;
     }
-    if (isOwn?.(event.text)) { waiting.delete(event.name); return; }
-    const heard = waiting.get(event.name);
+    if (isOwn?.(event.text)) { waiting.delete(who); return; }
+    const heard = waiting.get(who);
     if (!heard) return;
-    if (now() - heard.at > PAIR_WINDOW_MS) { waiting.delete(event.name); return; }
+    if (now() - heard.at > PAIR_WINDOW_MS) { waiting.delete(who); return; }
     if (!safeReply(event.text)) return; // 不安全的回覆不收，但來訊還在，之後乾淨的回覆仍然配得上
-    waiting.delete(event.name);
+    waiting.delete(who);
     pairs.push({ said: heard.text, reply: event.text, at: now() });
   }
   // 餵進新增的文字，回傳這一批湊成的對話（可能是空陣列）

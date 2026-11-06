@@ -16,6 +16,12 @@ test('an incoming line followed by my tell or reply to the same person makes one
   assert.deepEqual(feedAll(reply, '[P]有氣質回答你：我上夜班4天\n', '[P]你回答有氣質：hehe\n').map(({ said, reply: text }) => ({ said, reply: text })), [{ said: '我上夜班4天', reply: 'hehe' }]);
 });
 
+test('an incoming name with an English ID still pairs with my reply, which only has the nickname', () => {
+  const recorder = Chat.createRecorder({ now: () => 0 });
+  const pairs = feedAll(recorder, '> [P]愛吃肉的緋爾(fenrir)告訴你：老實招來\n', '[P]你回答愛吃肉的緋爾：哩別恭蝦\n');
+  assert.deepEqual(pairs.map(({ said, reply }) => ({ said, reply })), [{ said: '老實招來', reply: '哩別恭蝦' }]);
+});
+
 test('a line that arrives cut in two batches is read once it is complete, and half a line is never recorded', () => {
   const recorder = Chat.createRecorder({ now: () => 0 });
   assert.deepEqual(feedAll(recorder, '[P]有氣質回答你：測', '試\n[P]你告訴有氣質：好'), []);
