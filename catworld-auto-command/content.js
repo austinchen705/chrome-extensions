@@ -198,7 +198,7 @@ async function answerChat({ name, text }) {
       }
       chatLimiter.confirm(ticket);
       chatLimiter.noteSent(hit.reply);
-    }, CatworldChatReply.replyDelayMs());
+    }, CatworldChatReply.replyDelayMs(chatReply));
     chatTimers.set(timer, ticket);
   } catch {
     // 連不上儲存（孤兒程式）：這次不回

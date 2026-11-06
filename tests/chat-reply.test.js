@@ -114,8 +114,8 @@ test('worthAnswering skips one-character messages, and normalizeSettings default
   assert.equal(Chat.worthAnswering('好'), false);
   assert.equal(Chat.worthAnswering('  好 '), false);
   assert.equal(Chat.worthAnswering('你好'), true);
-  assert.deepEqual(Chat.normalizeSettings(undefined), { enabled: false, threshold: 0.5, cooldownSec: 60, perHour: 10 });
-  assert.deepEqual(Chat.normalizeSettings({ enabled: true, threshold: 0.7, cooldownSec: 5, perHour: 3 }), { enabled: true, threshold: 0.7, cooldownSec: 5, perHour: 3 });
+  assert.deepEqual(Chat.normalizeSettings(undefined), { enabled: false, threshold: 0.5, cooldownSec: 60, perHour: 10, delayMin: 5, delayMax: 10 });
+  assert.deepEqual(Chat.normalizeSettings({ enabled: true, threshold: 0.7, cooldownSec: 5, perHour: 3, delayMin: 1, delayMax: 2 }), { enabled: true, threshold: 0.7, cooldownSec: 5, perHour: 3, delayMin: 1, delayMax: 2 });
   assert.equal(Chat.normalizeSettings({ cooldownSec: -1 }).cooldownSec, 0);
   assert.equal(Chat.normalizeSettings({ cooldownSec: 'x' }).cooldownSec, 60);
   assert.equal(Chat.normalizeSettings({ perHour: 0 }).perHour, 1);
@@ -392,4 +392,15 @@ test('an incoming private message with the game prompt in front ("> [P]…回答
   const recorder = Chat.createRecorder({ now: () => 0, onIncoming: event => heard.push(event) });
   recorder.feed('你坐下來運氣用功。\n> [P]山本由伸回答你：w r u\n> tell 山本 hi\n> [P]山本由伸(yamamoto)告訴你：你好\n');
   assert.deepEqual(heard, [{ name: '山本由伸', text: 'w r u' }, { name: '山本由伸(yamamoto)', text: '你好' }]);
+});
+
+test('the reply delay is random between delayMin and delayMax seconds (5 to 10 by default), and a maximum under the minimum is raised to it', () => {
+  assert.equal(Chat.replyDelayMs(undefined, () => 0), 5000);
+  assert.equal(Chat.replyDelayMs(undefined, () => 0.5), 7500);
+  assert.equal(Chat.replyDelayMs({ delayMin: 20, delayMax: 40 }, () => 1), 40000);
+  assert.equal(Chat.replyDelayMs({ delayMin: 8, delayMax: 2 }, () => 0.9), 8000, 'max is never under min');
+  assert.equal(Chat.replyDelayMs({ delayMin: 0, delayMax: 0 }), 0);
+  assert.deepEqual(Chat.normalizeSettings({ delayMin: 9, delayMax: 3 }), { ...Chat.normalizeSettings({}), delayMin: 9, delayMax: 9 });
+  assert.equal(Chat.normalizeSettings({ delayMax: 9999 }).delayMax, 300);
+  assert.equal(Chat.normalizeSettings({ delayMin: -4 }).delayMin, 0);
 });

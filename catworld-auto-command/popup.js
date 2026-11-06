@@ -269,13 +269,15 @@ document.addEventListener('toggle', event => {
 const saveStopKeywords = () => chrome.storage.local.set({ [CatworldStopKeywords.KEY]: { enabled: $('stopKeywordsOn').checked, words: $('stopKeywordsList').value } });
 $('stopKeywordsOn').addEventListener('change', saveStopKeywords);
 $('stopKeywordsList').addEventListener('change', saveStopKeywords);
-// 聊天回覆：四個欄位存成一個物件（不合法的值退回預設並寫回欄位），遊戲頁監聽 storage 變化，馬上生效
+// 聊天回覆：六個欄位存成一個物件（不合法的值退回預設並寫回欄位），遊戲頁監聽 storage 變化，馬上生效
 const saveChatReply = () => {
   const settings = CatworldChatReply.normalizeSettings({
     enabled: $('chatReplyOn').checked,
     threshold: $('chatThreshold').value === '' ? undefined : Number($('chatThreshold').value),
     cooldownSec: $('chatCooldown').value === '' ? undefined : Number($('chatCooldown').value),
     perHour: $('chatPerHour').value === '' ? undefined : Number($('chatPerHour').value),
+    delayMin: $('chatDelayMin').value === '' ? undefined : Number($('chatDelayMin').value),
+    delayMax: $('chatDelayMax').value === '' ? undefined : Number($('chatDelayMax').value),
   });
   showChatReply(settings);
   chrome.storage.local.set({ [CatworldChatReply.SETTINGS_KEY]: settings });
@@ -285,8 +287,10 @@ function showChatReply(settings) {
   $('chatThreshold').value = settings.threshold;
   $('chatCooldown').value = settings.cooldownSec;
   $('chatPerHour').value = settings.perHour;
+  $('chatDelayMin').value = settings.delayMin;
+  $('chatDelayMax').value = settings.delayMax;
 }
-['chatReplyOn', 'chatThreshold', 'chatCooldown', 'chatPerHour'].forEach(id => $(id).addEventListener('change', saveChatReply));
+['chatReplyOn', 'chatThreshold', 'chatCooldown', 'chatPerHour', 'chatDelayMin', 'chatDelayMax'].forEach(id => $(id).addEventListener('change', saveChatReply));
 // 聊天回覆的資料集：遊戲頁寫進 storage，這裡顯示筆數與清單、刪單筆、清除、匯出與匯入
 const CHAT_PAIRS_KEY = CatworldChatReply.KEY;
 const readChatPairs = async () => {

@@ -78,7 +78,7 @@ ui('stored settings are shown, and a change is saved as one chatReply object', a
     assert.equal(doc.getElementById('chatThreshold').value, '0.7');
     change('chatCooldown', '300');
     assert.ok(await waitFor(() => store.chatReply?.cooldownSec === 300));
-    assert.deepEqual(store.chatReply, { enabled: true, threshold: 0.7, cooldownSec: 300, perHour: 5 });
+    assert.deepEqual(store.chatReply, { enabled: true, threshold: 0.7, cooldownSec: 300, perHour: 5, delayMin: 5, delayMax: 10 });
     change('chatReplyOn', false);
     assert.ok(await waitFor(() => store.chatReply.enabled === false));
   } finally {
@@ -93,7 +93,7 @@ ui('out-of-range values are clamped and blank ones fall back to the default, in 
     change('chatCooldown', '99999');
     change('chatPerHour', '');
     assert.ok(await waitFor(() => store.chatReply?.perHour === 10));
-    assert.deepEqual(store.chatReply, { enabled: false, threshold: 1, cooldownSec: 3600, perHour: 10 });
+    assert.deepEqual(store.chatReply, { enabled: false, threshold: 1, cooldownSec: 3600, perHour: 10, delayMin: 5, delayMax: 10 });
     assert.deepEqual(['chatThreshold', 'chatCooldown', 'chatPerHour'].map(id => doc.getElementById(id).value), ['1', '3600', '10']);
   } finally {
     dom.window.close();
@@ -181,5 +181,18 @@ ui('a pair the game page records later shows up in the list without reopening th
     assert.equal(listed(page)[0], '剛來的話 → 剛回的');
   } finally {
     page.dom.window.close();
+  }
+});
+
+ui('the reply delay fields show 5 and 10 by default and are saved with the other chatReply fields', async () => {
+  const { dom, doc, store, change } = await boot();
+  try {
+    assert.deepEqual(['chatDelayMin', 'chatDelayMax'].map(id => doc.getElementById(id).value), ['5', '10']);
+    change('chatDelayMin', '12');
+    assert.ok(await waitFor(() => store.chatReply?.delayMin === 12));
+    assert.equal(store.chatReply.delayMax, 12, 'a maximum under the minimum is raised, in storage');
+    assert.equal(doc.getElementById('chatDelayMax').value, '12', 'and in the field');
+  } finally {
+    dom.window.close();
   }
 });

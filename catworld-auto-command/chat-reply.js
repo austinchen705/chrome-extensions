@@ -83,14 +83,20 @@ function addPair(pairs, pair) {
 }
 
 // 自動回覆的設定（chrome.storage.local.chatReply）：預設關；門檻是相似度（0～1）要達到多少才回，預設 0.5，限制在 0.1～1；
-// cooldownSec 同一個人的冷卻秒數（預設 60，0～3600）、perHour 全部每小時最多回幾則（預設 10，1～100）
+// cooldownSec 同一個人的冷卻秒數（預設 60，0～3600）、perHour 全部每小時最多回幾則（預設 10，1～100）、
+// delayMin／delayMax 看到來訊後隨機等幾秒才回（預設 5～10，0～300，最大不小於最小）
 const bounded = (value, min, max, fallback) => (typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback);
+function delayRange(raw) {
+  const delayMin = bounded(raw?.delayMin, 0, 300, 5);
+  return { delayMin, delayMax: Math.max(delayMin, bounded(raw?.delayMax, 0, 300, 10)) };
+}
 function normalizeSettings(raw) {
   return {
     enabled: raw?.enabled === true,
     threshold: bounded(raw?.threshold, 0.1, 1, 0.5),
     cooldownSec: bounded(raw?.cooldownSec, 0, 3600, 60),
     perHour: bounded(raw?.perHour, 1, 100, 10),
+    ...delayRange(raw),
   };
 }
 
@@ -222,8 +228,11 @@ function createLimiter({ now = () => Date.now() } = {}) {
   return { take, confirm, refund, noteSent, isOwn };
 }
 
-// 看到來訊到送出回覆之間隨機等 3～10 秒（毫秒）
-const replyDelayMs = (random = Math.random) => 3000 + Math.floor(random() * 7000);
+// 看到來訊到送出回覆之間隨機等 delayMin～delayMax 秒（毫秒）；沒給設定用預設 5～10 秒
+const replyDelayMs = (settings, random = Math.random) => {
+  const { delayMin, delayMax } = delayRange(settings);
+  return Math.round((delayMin + random() * (delayMax - delayMin)) * 1000);
+};
 
 globalThis.CatworldChatReply = { KEY, SETTINGS_KEY, MAX_PAIRS, PAIR_WINDOW_MS, parseLine, createRecorder, addPair, exportText, parseImport, mergeImported, createLimiter, REPEAT_MS, OWN_MS, normalizeSettings, similarity, worthAnswering, bestReply, replyDelayMs };
 })();
