@@ -174,7 +174,6 @@ const chatLimiter = CatworldChatReply.createLimiter();
 let whisperBlock = null;
 const onIncomingChat = info => {
   console.log('[catworld] 密語：收到私聊', info.name);
-  if (hearScript(info)) return;
   try {
     whisperBlock?.add(info);
   } catch (error) {
@@ -182,7 +181,7 @@ const onIncomingChat = info => {
   }
   return answerChat(info);
 };
-const chatRecorder = CatworldChatReply.createRecorder({ onIncoming: onIncomingChat, isOwn: chatLimiter.isOwn });
+const chatRecorder = CatworldChatReply.createRecorder({ onIncoming: onIncomingChat, isOwn: chatLimiter.isOwn, claim: hearScript });
 let chatSave = Promise.resolve();
 async function answerChat({ name, text }) {
   if (!chatReply.enabled || !CatworldChatReply.worthAnswering(text)) return;
@@ -225,7 +224,8 @@ const feedChat = text => {
 };
 // 劇本對話（chat-script.js，設定 chatScript，預設關）：A 按「現在開一場」先說第一輪，B 看到對方傳來的 tell 像某份劇本的第一輪就接話，之後一人一輪。
 // 劇本由 background 回（共用加內建），這裡快取 SCRIPT_CACHE_MS；每一輪用 tell 送出，走 startMacro（來源 script，算 active()、遵守指令間隔、
-// 驗證碼與停止一切會取消）。被劇本認領的來訊不再當一般私聊（不進密語區、不觸發自動回覆）。
+// 驗證碼與停止一切會取消）。聊天記錄器先問 hearScript：被劇本認領的來訊不記成資料、不進密語區、不觸發自動回覆；
+// 送出的台詞登記在 chatLimiter.noteSent，遊戲回印的「你告訴…」行才會被認成自己送的（不配成我的回覆）。
 let chatScript = CatworldChatScript.normalizeSettings(undefined);
 let scriptCache = { scripts: [], at: 0 };
 let scriptLoading = null;
@@ -256,10 +256,14 @@ function sayTurn(parts, last) {
   const timer = setTimeout(() => {
     scriptTimers.delete(timer);
     const name = chatScript.partnerName || chatScript.partner;
-    const commands = parts.map(part => CatworldChatScript.tellCommand(chatScript.partner, CatworldChatScript.fill(part, name)));
+    const texts = parts.map(part => CatworldChatScript.fill(part, name));
     // 驗證碼辨識中、或因驗證停止：這一輪過時了，整場放棄
-    if (captcha || /驗證/.test(stopReason) || !startMacro(commands.join(';'), 'script')) cancelScript();
-    else if (last) scriptSession = null;
+    if (captcha || /驗證/.test(stopReason) || !startMacro(texts.map(text => CatworldChatScript.tellCommand(chatScript.partner, text)).join(';'), 'script')) {
+      cancelScript();
+      return;
+    }
+    texts.forEach(text => chatLimiter.noteSent(text));
+    if (last) scriptSession = null;
   }, SCRIPT_TURN_MS);
   scriptTimers.add(timer);
 }

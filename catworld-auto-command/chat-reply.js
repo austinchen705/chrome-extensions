@@ -33,8 +33,9 @@ const personKey = name => name.replace(/\s*\([^()]*\)\s*$/, '').trim();
 const safeReply = text => text.length > 0 && !text.includes(';') && !text.includes('；') && !text.includes('@等待');
 
 // onIncoming（選填）：每收到一句別人對我說的話（非空）就呼叫一次，帶 { name, text }；
-// isOwn（選填）：我的回覆行如果是工具自己送的（isOwn(文字) 為真）就不記成我的回覆，這個人那句來訊也算回過了
-function createRecorder({ now = () => Date.now(), onIncoming = null, isOwn = null } = {}) {
+// isOwn（選填）：我的回覆行如果是工具自己送的（isOwn(文字) 為真）就不記成我的回覆，這個人那句來訊也算回過了；
+// claim（選填）：每句非空來訊先問 claim({ name, text })，回 true 代表被別的功能（劇本對話）認領：不記成對方說的話，也不呼叫 onIncoming
+function createRecorder({ now = () => Date.now(), onIncoming = null, isOwn = null, claim = null } = {}) {
   let rest = '';
   const waiting = new Map(); // 暱稱 → { text, at }：這個人最後對我說的一句
   function handle(line, pairs) {
@@ -43,6 +44,7 @@ function createRecorder({ now = () => Date.now(), onIncoming = null, isOwn = nul
     const who = personKey(event.name);
     if (event.kind === 'in') {
       if (event.text) {
+        if (claim?.({ name: event.name, text: event.text })) return;
         waiting.set(who, { text: event.text, at: now() });
         onIncoming?.({ name: event.name, text: event.text });
       }

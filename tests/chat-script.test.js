@@ -20,11 +20,11 @@ const A = { nick: '阿凱', id: 'akai' };
 const B = { nick: '緋爾', id: 'fenrir' };
 
 // 兩個頁面：A（角色 A、對方是 B）與 B（角色 B、對方是 A）；overrides 可改各自的設定
-async function pair({ scripts = [SCRIPT, OTHER], a = {}, b = {} } = {}) {
+async function pair({ scripts = [SCRIPT, OTHER], a = {}, b = {}, storeA = {}, storeB = {} } = {}) {
   const respond = message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts } : {});
   const setting = (role, partner, partnerName, extra) => ({ chatScript: { enabled: true, role, partner, partnerName, ...extra } });
-  const pageA = await boot({ scale: 20, respond, initialStore: setting('A', B.id, B.nick, a) });
-  const pageB = await boot({ scale: 20, respond, initialStore: setting('B', A.id, A.nick, b) });
+  const pageA = await boot({ scale: 20, respond, initialStore: { ...setting('A', B.id, B.nick, a), ...storeA } });
+  const pageB = await boot({ scale: 20, respond, initialStore: { ...setting('B', A.id, A.nick, b), ...storeB } });
   pageA.w.document.title = `${A.nick} - CatWorld`;
   pageB.w.document.title = `${B.nick} - CatWorld`;
   const told = [];
@@ -193,6 +193,66 @@ ui('turning the feature off while A waits for the scripts cancels the start', as
     assert.equal(result.ok, false);
     await sleep(300);
     assert.equal(page.sent.length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 與聊天回覆隔離（票 02） ----
+const PLAIN = {
+  id: 't4',
+  lines: [
+    { who: 'A', text: '今天要不要去吃飯' },
+    { who: 'B', text: '好啊去哪裡吃' },
+    { who: 'A', text: '那就吃拉麵吧' },
+    { who: 'B', text: '好喔我也想吃' },
+  ],
+};
+const AUTO_REPLY = { enabled: true, threshold: 0.5, cooldownSec: 600, perHour: 1, delayMin: 0, delayMax: 0 };
+const HISTORY = [{ said: '吃飯了嗎你', reply: '還沒啦', at: 1 }];
+const whisperTexts = page => [...page.hosts()[0].shadowRoot.querySelectorAll('.whisper-item')].map(item => item.textContent);
+
+ui('a full play puts nothing in chatPairs and nothing in the whisper block, even when the partner had said something real just before', async () => {
+  const both = await pair({ scripts: [SCRIPT] });
+  try {
+    both.pageB.output('<span>[P]阿凱(akai)告訴你：最近好嗎\n</span>');
+    assert.ok(await waitFor(() => whisperTexts(both.pageB).length === 1), 'a real message is still shown');
+    assert.equal((await start(both.pageA)).ok, true);
+    assert.ok(await waitFor(() => both.told.length === 6, 8000));
+    await sleep(600);
+    [both.pageA, both.pageB].forEach(page => assert.equal((page.store.chatPairs ?? []).length, 0, JSON.stringify(page.store.chatPairs)));
+    assert.equal(whisperTexts(both.pageA).length, 0, 'the script lines never reach A whisper block');
+    assert.equal(whisperTexts(both.pageB).length, 1, 'and B only has the real message from before');
+  } finally {
+    both.close();
+  }
+});
+
+ui('with auto reply on, a script adds no extra command and does not use up the reply cooldown or hourly quota', async () => {
+  const both = await pair({ scripts: [SCRIPT], storeB: { chatReply: AUTO_REPLY, chatPairs: [...HISTORY, { said: '欸緋爾 你今天有上線喔', reply: '嗯嗯', at: 2 }] } });
+  try {
+    assert.equal((await start(both.pageA)).ok, true);
+    assert.ok(await waitFor(() => both.told.length === 6, 8000));
+    await sleep(300);
+    assert.ok(both.pageB.sent.every(command => command.startsWith('tell ')), `B sent only script lines: ${JSON.stringify(both.pageB.sent)}`);
+    both.pageB.output('<span>[P]阿凱(akai)告訴你：吃飯了嗎你\n</span>');
+    assert.ok(await waitFor(() => both.pageB.sent.includes('reply 還沒啦'), 5000), 'the one allowed auto reply is still available');
+  } finally {
+    both.close();
+  }
+});
+
+ui('a real message from the partner that matches no script line is handled as usual in the middle of a session, and the script carries on', async () => {
+  const respond = message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {});
+  const page = await boot({ scale: 20, respond, initialStore: { chatScript: { enabled: true, role: 'B', partner: A.id, partnerName: A.nick }, chatReply: AUTO_REPLY, chatPairs: HISTORY } });
+  try {
+    page.output('<span>[P]阿凱(akai)告訴你：今天要不要去吃飯\n</span>');
+    assert.ok(await waitFor(() => page.sent.includes('tell akai 好啊去哪裡吃'), 5000));
+    page.output('<span>[P]阿凱(akai)告訴你：吃飯了嗎你\n</span>');
+    assert.ok(await waitFor(() => page.sent.includes('reply 還沒啦'), 5000), 'answered by the normal chat reply');
+    assert.ok(await waitFor(() => whisperTexts(page).length === 1), 'and shown in the whisper block');
+    page.output('<span>[P]阿凱(akai)告訴你：那就吃拉麵吧\n</span>');
+    assert.ok(await waitFor(() => page.sent.includes('tell akai 好喔我也想吃'), 5000), 'the script went on');
   } finally {
     page.close();
   }
