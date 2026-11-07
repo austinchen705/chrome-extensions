@@ -1,5 +1,6 @@
 // 劇本對話：兩個遊戲頁（A 開場、B 接話）只靠 tell 的內容同步，照一份劇本一人一輪地聊完。
 // 整個 content script 在 jsdom 裡跑；中繼把一頁送出的 tell 變成另一頁的私聊來訊（和我方的回印行），假的 background 回劇本。
+const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ui, boot, waitFor, sleep } = require('./helpers/game-page');
 
@@ -632,6 +633,53 @@ ui('a line starting with * from the partner is an ordinary whisper when no scrip
     page.output('<span>[P]阿凱(akai)告訴你：*的\n</span>');
     await sleep(400);
     assert.equal(whisperTexts(page).length, 1, 'with no script going, a line starting with * is an ordinary whisper');
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 錯字設定與更正視窗的邊界 ----
+test('the typo rate is clamped to 0-100, and a blank or non-numeric value falls back to 3', () => {
+  require('../catworld-auto-command/chat-script.js');
+  const rate = typoRate => globalThis.CatworldChatScript.normalizeSettings({ typoRate }).typoRate;
+  assert.deepEqual([-5, 0, 7, '7', 100, 250].map(rate), [0, 0, 7, 7, 100, 100]);
+  assert.deepEqual(['abc', '', null, undefined, NaN, Infinity].map(rate), [3, 3, 3, 3, 3, 3]);
+  assert.equal(globalThis.CatworldChatScript.normalizeSettings(undefined).typoRate, 3);
+});
+
+// A 走完整份劇本（最後一輪是 B 的），回傳頁面；此時這一場已經結束
+async function finishedAsA() {
+  const page = await soloPage('A');
+  page.w.document.title = `${A.nick} - CatWorld`;
+  const hear = text => page.output(`<span>[P]${B.nick}(${B.id})告訴你：${text}\n</span>`);
+  assert.equal((await start(page)).ok, true);
+  assert.ok(await waitFor(() => tells(page).length === 1, 5000));
+  hear('好啊去哪裡吃');
+  assert.ok(await waitFor(() => tells(page).length === 2, 5000));
+  hear('好喔我也想吃');
+  assert.ok(await waitFor(async () => (await status(page)).chatScript === null, 3000), 'the script is finished');
+  return { page, hear };
+}
+
+ui('a correction that arrives right after the script has ended is still taken in, not shown as a whisper', async () => {
+  const { page, hear } = await finishedAsA();
+  try {
+    hear('*的');
+    await sleep(400);
+    assert.equal(whisperTexts(page).length, 0);
+    assert.equal(tells(page).length, 2, 'and nothing was answered');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a line starting with * long after the script has ended is an ordinary whisper again', async () => {
+  const { page, hear } = await finishedAsA();
+  try {
+    const realNow = page.w.Date.now.bind(page.w.Date);
+    page.w.Date.now = () => realNow() + 16000; // 過了 15 秒的視窗
+    hear('*的');
+    assert.ok(await waitFor(() => whisperTexts(page).length === 1, 3000));
   } finally {
     page.close();
   }
