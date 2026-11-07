@@ -231,6 +231,7 @@ let scriptCache = { scripts: [], at: 0 };
 let scriptLoading = null;
 let scriptSession = null;
 let scriptWaitTimer = null; // 等對方下一輪的逾時
+let scriptState = CatworldChatScript.normalizeState(undefined); // 今天開了幾場、最近用過的劇本（存在 chatScriptState）
 const scriptTimers = new Set();
 const SCRIPT_CACHE_MS = 5 * 60 * 1000;
 const SCRIPT_WAIT_MS = 3 * 60 * 1000; // 等對方下一輪等這麼久就放棄這一場
@@ -257,6 +258,17 @@ function loadScripts() {
     }
   })().finally(() => { scriptLoading = null; });
   return scriptLoading;
+}
+const scriptToday = () => CatworldChatScript.dayKey(Date.now());
+const scriptPlayedToday = () => CatworldChatScript.todayCount(scriptState, scriptToday());
+// 開了一場（A 開場、B 開始接話）就記一場，連同用的劇本
+function recordScriptStart(scriptId) {
+  scriptState = CatworldChatScript.recordStart(scriptState, scriptToday(), scriptId);
+  try {
+    chrome.storage.local.set({ [CatworldChatScript.STATE_KEY]: scriptState }).catch(() => {});
+  } catch {
+    // 連不上儲存（孤兒程式）：這一頁的記憶體裡還是有計數
+  }
 }
 // 一輪的每一則各排一個計時器（出錯字時那一則後面多一則更正）：第一則等「思考加打字」的時間，之後每則再隔一小段才送；finalTurn：這是我說的最後一輪，
 // 最後一則送出之後這一場才算結束（等待送出的這段時間場次還在，不會被當成沒有進行中）
@@ -295,13 +307,16 @@ function hearScript({ name, text }) {
   if (Date.now() - scriptCache.at > SCRIPT_CACHE_MS) loadScripts();
   const ownName = characterName();
   let session = scriptSession;
+  const isNew = !session;
   if (!session) {
+    if (scriptPlayedToday() >= chatScript.perDay) return false; // 今天的場數用完了：不接新場
     const script = chatScript.role === 'B' ? CatworldChatScript.bestStart(scriptCache.scripts, chatScript.role, text, ownName) : null;
     if (!script) return false;
     session = CatworldChatScript.createSession({ script, role: chatScript.role, ownName });
   }
   const step = session.hear(text);
   if (!step) return false;
+  if (isNew) recordScriptStart(session.scriptId);
   scriptHeardAt = Date.now();
   clearTimeout(scriptWaitTimer);
   if (step.partial) {
@@ -319,7 +334,9 @@ function startBlock() {
   if (!chatScript.enabled) return '劇本對話沒有開';
   if (chatScript.role !== 'A') return '這台的角色不是 A（開場）';
   if (!chatScript.partner) return '還沒填對方的英文 ID';
-  return scriptSession ? '已經有一場在進行' : null;
+  if (scriptSession) return '已經有一場在進行';
+  const played = scriptPlayedToday();
+  return played >= chatScript.perDay ? `今天已經開了 ${played} 場，到上限了（每天 ${chatScript.perDay} 場）` : null;
 }
 async function startScript() {
   let blocked = startBlock();
@@ -329,7 +346,8 @@ async function startScript() {
   if (blocked) return { ok: false, error: blocked };
   const choices = scriptCache.scripts.filter(script => script.lines[0].who === 'A');
   if (!choices.length) return { ok: false, error: '沒有可用的劇本' };
-  const script = choices[Math.floor(Math.random() * choices.length)];
+  const script = CatworldChatScript.pickScript(choices, scriptState.recent);
+  recordScriptStart(script.id);
   const session = CatworldChatScript.createSession({ script, role: 'A', ownName: characterName() });
   const step = session.start();
   scriptSession = session;
@@ -1815,7 +1833,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       nextRandomCommand,
       macros: macroRuns.size,
       hunt: hunt.snapshot(),
-      chatScript: scriptSession ? scriptSession.status() : null,
+      chatScript: scriptSession ? { ...scriptSession.status(), phase: scriptTimers.size ? 'say' : 'wait' } : null,
       stats: readAllStats(),
       triggerGroups: Object.fromEntries(groupList.map(item => [item.id, { on: item.on, note: item.note, rules: item.on ? item.engine.snapshot().rules : [] }])),
     });
@@ -1847,16 +1865,18 @@ chrome.storage.onChanged?.addListener((changes, area) => {
     if (!chatScript.enabled || chatScript.role !== before.role || chatScript.partner.toLowerCase() !== before.partner.toLowerCase()) cancelScript();
     if (chatScript.enabled) loadScripts();
   }
+  if (area === 'local' && changes[CatworldChatScript.STATE_KEY]) scriptState = CatworldChatScript.normalizeState(changes[CatworldChatScript.STATE_KEY].newValue); // 別的遊戲分頁開了一場
   if (area === 'local' && changes.autoReward) {
     autoReward = changes.autoReward.newValue !== false;
     if (!autoReward) cancelReward();
   }
 });
 
-chrome.storage.local.get(['running', 'randomRunning', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, CatworldChatScript.SETTINGS_KEY]).then(data => {
+chrome.storage.local.get(['running', 'randomRunning', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, CatworldChatScript.SETTINGS_KEY, CatworldChatScript.STATE_KEY]).then(data => {
   persistentAlert = data.persistentAlert === true;
   chatReply = CatworldChatReply.normalizeSettings(data[CatworldChatReply.SETTINGS_KEY]);
   chatScript = CatworldChatScript.normalizeSettings(data[CatworldChatScript.SETTINGS_KEY]);
+  scriptState = CatworldChatScript.normalizeState(data[CatworldChatScript.STATE_KEY]);
   if (chatScript.enabled) loadScripts();
   stopKeywords = CatworldStopKeywords.normalize(data[CatworldStopKeywords.KEY]);
   autoReward = data.autoReward !== false;

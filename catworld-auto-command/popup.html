@@ -268,11 +268,13 @@
       <div><label for="scriptRole">這台電腦的角色</label><select id="scriptRole"><option value="A">A（開場）</option><option value="B">B（接話）</option></select></div>
       <div><label for="scriptPartner">對方的英文 ID（tell 用）</label><input id="scriptPartner" type="text" maxlength="30"></div>
       <div><label for="scriptPartnerName">對方的角色名（選填）</label><input id="scriptPartnerName" type="text" maxlength="20"></div>
+      <div><label for="scriptPerDay">每天最多幾場（0～99）</label><input id="scriptPerDay" type="number" min="0" max="99" step="1"></div>
       <div><label for="scriptTypoRate">錯字機率（每一輪，0～100%）</label><input id="scriptTypoRate" type="number" min="0" max="100" step="1"></div>
     </div>
+    <div id="scriptStatus" class="hint tight"></div>
     <button id="scriptStart">現在開一場</button>
     <div id="scriptMsg" class="hint tight"></div>
-    <p class="hint tight">預設關閉。A 按「現在開一場」先說第一輪；B 看到對方傳來的 tell 像劇本的第一輪就接話，之後一人一輪。劇本裡的 {對方} 會換成這裡填的角色名，請填遊戲頁標題「角色名 - …」那個名字，不然對方認不出來。每一輪會以「錯字機率」在其中一則（至少 6 個字）打錯一個字，緊接著補一則「*正確的字」更正；填 0 就不打錯字，超出範圍會限制在範圍內，留白或不是數字則退回預設 3。</p>
+    <p class="hint tight">預設關閉。A 按「現在開一場」先說第一輪；B 看到對方傳來的 tell 像劇本的第一輪就接話，之後一人一輪。劇本裡的 {對方} 會換成這裡填的角色名，請填遊戲頁標題「角色名 - …」那個名字，不然對方認不出來。每一輪會以「錯字機率」在其中一則（至少 6 個字）打錯一個字，緊接著補一則「*正確的字」更正；每天場數：A 開場、B 開始接話都算一場，依這台電腦的日期計數，隔天歸零，用完 A 不能開場、B 不接新場；A 挑劇本會避開最近用過的 5 份。填 0 就不打錯字，超出範圍會限制在範圍內，留白或不是數字則退回預設 3。</p>
   </details>
   <details class="alertbox fold" id="sec-reward">
     <summary>在線獎勵</summary>

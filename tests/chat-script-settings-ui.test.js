@@ -26,6 +26,7 @@ const waitFor = async (condition, ms = 3000) => {
 // gameReply：遊戲分頁對 START_CHAT_SCRIPT 的回覆（Error 就當成送不出去）；sentToGame 記下送給遊戲分頁的訊息
 async function boot(store = {}, gameReply = { ok: true, scriptId: 'x' }) {
   const sentToGame = [];
+  const changeListeners = [];
   const dom = await JSDOM.fromFile(path.join(root, 'popup.html'), {
     runScripts: 'dangerously',
     resources: 'usable',
@@ -41,7 +42,7 @@ async function boot(store = {}, gameReply = { ok: true, scriptId: 'x' }) {
           },
           sync: { get: async () => ({}), set: async () => {} },
           session: { get: async () => ({}), set: async () => {} },
-          onChanged: { addListener() {} },
+          onChanged: { addListener: listener => changeListeners.push(listener) },
         },
         tabs: {
           query: async () => [{ id: 7, url: 'https://catworld.muds.tw/web' }],
@@ -49,7 +50,7 @@ async function boot(store = {}, gameReply = { ok: true, scriptId: 'x' }) {
           sendMessage: async (id, message) => {
             sentToGame.push({ id, message });
             if (gameReply instanceof Error) throw gameReply;
-            return gameReply;
+            return typeof gameReply === 'function' ? gameReply(message) : gameReply;
           },
           create: async () => {},
           update: async () => {},
@@ -69,7 +70,7 @@ async function boot(store = {}, gameReply = { ok: true, scriptId: 'x' }) {
     input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
   };
   const click = id => doc.getElementById(id).dispatchEvent(new dom.window.Event('click', { bubbles: true }));
-  return { dom, doc, store, change, click, sentToGame };
+  return { dom, doc, store, change, click, sentToGame, changeListeners };
 }
 
 const AS_A = { chatScript: { enabled: true, role: 'A', partner: 'fenrir', partnerName: '' } };
@@ -97,7 +98,7 @@ ui('stored settings are shown, and a change is saved as one chatScript object', 
     assert.equal(doc.getElementById('scriptStart').disabled, false);
     change('scriptPartner', ' akai ');
     assert.ok(await waitFor(() => store.chatScript?.partner === 'akai'));
-    assert.deepEqual(store.chatScript, { enabled: true, role: 'A', partner: 'akai', partnerName: '緋爾', typoRate: 3 });
+    assert.deepEqual(store.chatScript, { enabled: true, role: 'A', partner: 'akai', partnerName: '緋爾', perDay: 3, typoRate: 3 });
     change('scriptRole', 'B');
     assert.ok(await waitFor(() => store.chatScript.role === 'B'));
     assert.equal(doc.getElementById('scriptStart').disabled, true);
@@ -156,7 +157,7 @@ ui('the typo rate shows 3 by default, is saved with the other chatScript fields,
     assert.equal(doc.getElementById('scriptTypoRate').value, '3');
     change('scriptTypoRate', '40');
     assert.ok(await waitFor(() => store.chatScript?.typoRate === 40));
-    assert.deepEqual(store.chatScript, { enabled: false, role: 'B', partner: '', partnerName: '', typoRate: 40 });
+    assert.deepEqual(store.chatScript, { enabled: false, role: 'B', partner: '', partnerName: '', perDay: 3, typoRate: 40 });
     change('scriptTypoRate', '0');
     assert.ok(await waitFor(() => store.chatScript.typoRate === 0));
     assert.equal(doc.getElementById('scriptTypoRate').value, '0', 'zero is kept, not turned back into the default');
@@ -177,5 +178,52 @@ ui('a stored typo rate is shown in the field', async () => {
     assert.equal(doc.getElementById('scriptTypoRate').value, '12');
   } finally {
     dom.window.close();
+  }
+});
+
+ui('the daily count field shows 3 by default and is saved with the other chatScript fields, clamped and with blank falling back to 3', async () => {
+  const { dom, doc, store, change } = await boot();
+  try {
+    assert.equal(doc.getElementById('scriptPerDay').value, '3');
+    change('scriptPerDay', '5');
+    assert.ok(await waitFor(() => store.chatScript?.perDay === 5));
+    change('scriptPerDay', '0');
+    assert.ok(await waitFor(() => store.chatScript.perDay === 0));
+    assert.equal(doc.getElementById('scriptPerDay').value, '0', 'zero is kept');
+    change('scriptPerDay', '500');
+    assert.ok(await waitFor(() => store.chatScript.perDay === 99));
+    assert.equal(doc.getElementById('scriptPerDay').value, '99');
+    change('scriptPerDay', '');
+    assert.ok(await waitFor(() => store.chatScript.perDay === 3));
+    assert.equal(doc.getElementById('scriptPerDay').value, '3');
+  } finally {
+    dom.window.close();
+  }
+});
+
+const TODAY_KEY = () => {
+  require('../catworld-auto-command/chat-script.js');
+  return globalThis.CatworldChatScript.dayKey(Date.now());
+};
+
+ui('the status line shows the count of today and the round being played, and says so when nothing is going or the game page does not answer', async () => {
+  let reply = { ok: true, chatScript: null };
+  const page = await boot({ chatScript: { enabled: true, role: 'A', partner: 'fenrir', partnerName: '', perDay: 4 }, chatScriptState: { date: TODAY_KEY(), count: 2, recent: [] } }, message => (message.type === 'STATUS' ? reply : { ok: true }));
+  const text = () => page.doc.getElementById('scriptStatus').textContent;
+  try {
+    assert.ok(await waitFor(() => text() === '今天 2/4 場；目前沒有進行中的一場'), text());
+    reply = { ok: true, chatScript: { scriptId: 'x', turn: 3, total: 8, phase: 'wait' } };
+    assert.ok(await waitFor(() => text() === '今天 2/4 場；進行中：劇本 x，已演 3/8 輪，等對方回'), text());
+    page.store.chatScriptState = { date: TODAY_KEY(), count: 3, recent: ['x'] };
+    page.changeListeners.forEach(listener => listener({ chatScriptState: { newValue: page.store.chatScriptState } }, 'local'));
+    assert.ok(await waitFor(() => text().startsWith('今天 3/4 場')), text());
+  } finally {
+    page.dom.window.close();
+  }
+  const gone = await boot({ chatScript: { enabled: true, role: 'A', partner: 'fenrir', partnerName: '' } }, new Error('no game page'));
+  try {
+    assert.ok(await waitFor(() => gone.doc.getElementById('scriptStatus').textContent === '今天 0/3 場；遊戲頁沒有回應'), gone.doc.getElementById('scriptStatus').textContent);
+  } finally {
+    gone.dom.window.close();
   }
 });

@@ -292,12 +292,25 @@ function showChatReply(settings) {
 }
 ['chatReplyOn', 'chatThreshold', 'chatCooldown', 'chatPerHour', 'chatDelayMin', 'chatDelayMax'].forEach(id => $(id).addEventListener('change', saveChatReply));
 // 劇本對話：欄位讀存 chrome.storage.local.chatScript；「現在開一場」只有遊戲頁的角色是 A 才開得成
+// 狀態行：今天幾場（儲存裡的 chatScriptState，遊戲頁寫）加目前這場（STATUS 的 chatScript；undefined＝遊戲頁沒回應）
+let scriptSettings = CatworldChatScript.normalizeSettings(undefined);
+let scriptDay = CatworldChatScript.normalizeState(undefined);
+let scriptSession = undefined;
+function renderScriptStatus() {
+  $('scriptStatus').textContent = CatworldChatScript.describeStatus({ session: scriptSession, state: scriptDay, perDay: scriptSettings.perDay, today: CatworldChatScript.dayKey(Date.now()) });
+}
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes[CatworldChatScript.STATE_KEY]) return;
+  scriptDay = CatworldChatScript.normalizeState(changes[CatworldChatScript.STATE_KEY].newValue);
+  renderScriptStatus();
+});
 const saveChatScript = () => {
   const settings = CatworldChatScript.normalizeSettings({
     enabled: $('scriptOn').checked,
     role: $('scriptRole').value,
     partner: $('scriptPartner').value,
     partnerName: $('scriptPartnerName').value,
+    perDay: $('scriptPerDay').value,
     typoRate: $('scriptTypoRate').value,
   });
   showChatScript(settings);
@@ -308,10 +321,13 @@ function showChatScript(settings) {
   $('scriptRole').value = settings.role;
   $('scriptPartner').value = settings.partner;
   $('scriptPartnerName').value = settings.partnerName;
+  $('scriptPerDay').value = settings.perDay;
   $('scriptTypoRate').value = settings.typoRate;
+  scriptSettings = settings;
+  renderScriptStatus();
   $('scriptStart').disabled = settings.role !== 'A';
 }
-['scriptOn', 'scriptRole', 'scriptPartner', 'scriptPartnerName', 'scriptTypoRate'].forEach(id => $(id).addEventListener('change', saveChatScript));
+['scriptOn', 'scriptRole', 'scriptPartner', 'scriptPartnerName', 'scriptPerDay', 'scriptTypoRate'].forEach(id => $(id).addEventListener('change', saveChatScript));
 function scriptMessage(text, level) { $('scriptMsg').textContent = text; markLevel($('scriptMsg'), level); }
 $('scriptStart').addEventListener('click', async () => {
   try {
@@ -1082,6 +1098,8 @@ async function refreshLive() {
   if (status) lastRandomRunning = Boolean(status.randomRunning);
   if (status && lastIdle !== null && Boolean(status.idle) !== lastIdle && !status.idle) setIdleStatus(status.stopReason && !status.running && !status.randomRunning ? status.stopReason : '已停止', 'info');
   if (status) lastIdle = Boolean(status.idle);
+  scriptSession = status ? status.chatScript ?? null : undefined;
+  renderScriptStatus();
   renderCountdown(status);
   Object.values(panes).forEach(pane => pane.refresh(status));
 }
@@ -1127,7 +1145,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 });
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'idleSettings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, CatworldChatScript.SETTINGS_KEY, 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
+  const data = await chrome.storage.local.get(['settings', 'idleSettings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, CatworldChatScript.SETTINGS_KEY, CatworldChatScript.STATE_KEY, 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
   huntSettings = CatworldMapHunt.normalizeSettings(data[CatworldMapHunt.SETTINGS_KEY]);
   showHuntSettings();
   $('shopSkipNames').value = typeof data[CatworldShopCollect.SKIP_NAMES_KEY] === 'string' ? data[CatworldShopCollect.SKIP_NAMES_KEY] : CatworldShopCollect.DEFAULT_SKIP_NAMES;
@@ -1146,6 +1164,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   $('stopKeywordsOn').checked = stopKeywords.enabled;
   $('stopKeywordsList').value = stopKeywords.words;
   showChatReply(CatworldChatReply.normalizeSettings(data[CatworldChatReply.SETTINGS_KEY]));
+  scriptDay = CatworldChatScript.normalizeState(data[CatworldChatScript.STATE_KEY]);
   showChatScript(CatworldChatScript.normalizeSettings(data[CatworldChatScript.SETTINGS_KEY]));
   $('mainWeapon').value = weaponValue(data.mainWeapon);
   equipmentKeep = CatworldZapEquipment.normalizeKeepRule(data.equipmentKeep);

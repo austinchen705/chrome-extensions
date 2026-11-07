@@ -684,3 +684,142 @@ ui('a line starting with * long after the script has ended is an ordinary whispe
     page.close();
   }
 });
+
+// ---- 每日場數、避開重複、狀態 ----
+const todayKey = (offsetMs = 0) => {
+  require('../catworld-auto-command/chat-script.js');
+  return globalThis.CatworldChatScript.dayKey(Date.now() + offsetMs);
+};
+const DAY_MS = 24 * 60 * 60 * 1000;
+const soloMany = (scripts, role, state, settings = {}) => boot({
+  scale: 20,
+  respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts } : {}),
+  initialStore: {
+    chatScript: { enabled: true, typoRate: 0, role, partner: role === 'A' ? B.id : A.id, partnerName: role === 'A' ? B.nick : A.nick, ...settings },
+    ...(state ? { chatScriptState: state } : {}),
+  },
+});
+const opener = (id, text) => ({ id, lines: [{ who: 'A', text }, { who: 'B', text: '好啊沒問題' }] });
+
+ui('A refuses to open once today is at the daily cap, says why, and sends nothing', async () => {
+  const page = await soloMany([PLAIN], 'A', { date: todayKey(), count: 3 });
+  try {
+    const reply = await start(page);
+    assert.equal(reply.ok, false);
+    assert.match(reply.error, /今天已經開了 3 場.*每天 3 場/);
+    await sleep(300);
+    assert.equal(tells(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('below the cap A opens and the day count and the script used are stored; a changed local date starts the count over', async () => {
+  const page = await soloMany([PLAIN], 'A', { date: todayKey(), count: 2 });
+  try {
+    assert.equal((await start(page)).ok, true);
+    assert.ok(await waitFor(() => page.store.chatScriptState?.count === 3));
+    assert.equal(page.store.chatScriptState.date, todayKey());
+    assert.equal(JSON.stringify(page.store.chatScriptState.recent), '["t4"]');
+  } finally {
+    page.close();
+  }
+  const nextDay = await soloMany([PLAIN], 'A', { date: todayKey(-2 * DAY_MS), count: 3 });
+  try {
+    assert.equal((await start(nextDay)).ok, true, 'yesterday\'s full count does not carry over');
+    assert.ok(await waitFor(() => nextDay.store.chatScriptState?.date === todayKey()));
+    assert.equal(nextDay.store.chatScriptState.count, 1);
+  } finally {
+    nextDay.close();
+  }
+});
+
+ui('the cap follows the perDay setting, and a perDay of 0 allows no opening at all', async () => {
+  const one = await soloMany([PLAIN], 'A', { date: todayKey(), count: 1 }, { perDay: 1 });
+  try {
+    const reply = await start(one);
+    assert.equal(reply.ok, false);
+    assert.match(reply.error, /每天 1 場/);
+  } finally {
+    one.close();
+  }
+  const none = await soloMany([PLAIN], 'A', undefined, { perDay: 0 });
+  try {
+    assert.equal((await start(none)).ok, false);
+  } finally {
+    none.close();
+  }
+});
+
+ui('B counts a script when it starts one, and at the cap it no longer takes a new one: the opener is an ordinary whisper', async () => {
+  const both = await pair({ scripts: [PLAIN] });
+  try {
+    assert.equal((await start(both.pageA)).ok, true);
+    assert.ok(await waitFor(() => both.told.length === 4, 15000));
+    assert.equal(both.pageA.store.chatScriptState.count, 1);
+    assert.equal(both.pageB.store.chatScriptState.count, 1, 'B was counted once for the whole script');
+  } finally {
+    both.close();
+  }
+  const full = await pair({ scripts: [PLAIN], storeB: { chatScriptState: { date: todayKey(), count: 3 } } });
+  try {
+    assert.equal((await start(full.pageA)).ok, true);
+    assert.ok(await waitFor(() => full.told.length >= 1, 8000));
+    await sleep(800);
+    assert.equal(tells(full.pageB).length, 0, 'B did not answer');
+    assert.equal(whisperTexts(full.pageB).length, 1, 'the opener went through the ordinary chat flow');
+    assert.equal(full.pageB.store.chatScriptState.count, 3);
+  } finally {
+    full.close();
+  }
+});
+
+ui('A picks a script that is not among the last 5 used, and when every script was used recently it takes the one used longest ago', async () => {
+  const six = ['s1', 's2', 's3', 's4', 's5', 's6'].map(id => opener(id, `今天${id}想聊聊天好不好`));
+  const fresh = await soloMany(six, 'A', { date: todayKey(), count: 0, recent: ['s1', 's2', 's3', 's4', 's5'] });
+  try {
+    assert.equal((await start(fresh)).scriptId, 's6');
+  } finally {
+    fresh.close();
+  }
+  const used = await soloMany(six.slice(0, 3), 'A', { date: todayKey(), count: 0, recent: ['s3', 's1', 's2'] });
+  try {
+    const reply = await start(used);
+    assert.equal(reply.ok, true, 'it does not give up when everything was used recently');
+    assert.equal(reply.scriptId, 's3');
+  } finally {
+    used.close();
+  }
+});
+
+ui('status says whether the round is being said or waiting for the other side, with the script and the round', async () => {
+  const page = await soloPage('A');
+  try {
+    assert.equal((await status(page)).chatScript, null, 'nothing going before the start');
+    assert.equal((await start(page)).ok, true);
+    const saying = (await status(page)).chatScript;
+    assert.deepEqual([saying.scriptId, saying.turn, saying.total, saying.phase], ['t4', 1, 4, 'say']);
+    assert.ok(await waitFor(() => tells(page).length === 1, 5000));
+    assert.equal((await status(page)).chatScript.phase, 'wait');
+  } finally {
+    page.close();
+  }
+});
+
+test('the daily count, the recent list and the status text are worked out by the module', () => {
+  require('../catworld-auto-command/chat-script.js');
+  const C = globalThis.CatworldChatScript;
+  assert.equal(C.normalizeSettings(undefined).perDay, 3);
+  assert.deepEqual([-1, 0, 5, '7', 250, 2.9].map(perDay => C.normalizeSettings({ perDay }).perDay), [0, 0, 5, 7, 99, 2]);
+  assert.deepEqual(['abc', '', null, NaN].map(perDay => C.normalizeSettings({ perDay }).perDay), [3, 3, 3, 3]);
+  assert.equal(C.todayCount({ date: '2026-11-07', count: 2, recent: [] }, '2026-11-07'), 2);
+  assert.equal(C.todayCount({ date: '2026-11-06', count: 2, recent: [] }, '2026-11-07'), 0);
+  assert.equal(C.todayCount(C.normalizeState({ date: 5, count: 'x', recent: 'y' }), '2026-11-07'), 0, 'damaged data counts as nothing');
+  const after = ['a', 'b', 'c', 'd', 'e', 'f', 'a'].reduce((state, id) => C.recordStart(state, '2026-11-07', id), C.normalizeState(undefined));
+  assert.deepEqual(after.recent, ['c', 'd', 'e', 'f', 'a'], 'only the last 5, and a repeat moves to the end');
+  assert.equal(after.count, 7);
+  assert.equal(C.describeStatus({ session: null, state: { date: '2026-11-07', count: 1, recent: [] }, perDay: 3, today: '2026-11-07' }), '今天 1/3 場；目前沒有進行中的一場');
+  assert.equal(C.describeStatus({ session: { scriptId: 'x', turn: 2, total: 6, phase: 'wait' }, state: C.normalizeState(undefined), perDay: 3, today: '2026-11-07' }), '今天 0/3 場；進行中：劇本 x，已演 2/6 輪，等對方回');
+  assert.equal(C.describeStatus({ session: { scriptId: 'x', turn: 1, total: 6, phase: 'say' }, state: C.normalizeState(undefined), perDay: 3, today: '2026-11-07' }), '今天 0/3 場；進行中：劇本 x，已演 1/6 輪，正在說');
+  assert.equal(C.describeStatus({ session: undefined, state: C.normalizeState(undefined), perDay: 3, today: '2026-11-07' }), '今天 0/3 場；遊戲頁沒有回應');
+});

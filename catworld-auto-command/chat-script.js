@@ -6,6 +6,7 @@
 if (globalThis.CatworldChatScript) return;
 
 const SETTINGS_KEY = 'chatScript';
+const STATE_KEY = 'chatScriptState'; // { date, count, recent }：今天開了幾場、最近用過的劇本
 const MATCH_THRESHOLD = 0.8; // 來訊和預期台詞的相似度要達到多少才算「是劇本的下一句」
 const ID_PATTERN = /^[A-Za-z0-9_.'-]{1,30}$/; // 放進 tell 指令的英文 ID：只收這些字元
 const PLACEHOLDER = '{對方}';
@@ -14,6 +15,9 @@ const THINK_MS = [1000, 4000];
 const PER_CHAR_MS = [300, 600];
 const TURN_LIMITS_MS = [3000, 45000];
 const SPLIT_GAP_MS = [1000, 3000];
+const PER_DAY_DEFAULT = 3; // 每天最多幾場
+const PER_DAY_MAX = 99;
+const RECENT_LIMIT = 5; // A 挑劇本時避開最近用過的幾份
 const TYPO_RATE_DEFAULT = 3; // 每一輪出錯字的機率（%）
 const TYPO_MIN_LENGTH = 6; // 一則至少幾個字才會被打錯
 // 常見的誤用字：打錯時優先換成它的另一半，沒有的字換成同一則裡的另一個字
@@ -25,10 +29,10 @@ const safeText = text => typeof text === 'string' && text.trim().length > 0 && !
 
 // 設定（chrome.storage.local.chatScript）：預設關；role 是 A（開場）或 B（接話），預設 B；
 // partner 是對方的英文 ID（tell 用，也用來認出來訊），不合格當沒填；partnerName 是對方暱稱（只給台詞裡的 {對方} 代入，選填）；
-// typoRate 是每一輪出錯字的機率（0～100 的百分比），留白或不是數字退回預設
-function normalizeRate(value) {
-  const rate = value === '' || value == null ? NaN : Number(value);
-  return Number.isFinite(rate) ? Math.min(100, Math.max(0, rate)) : TYPO_RATE_DEFAULT;
+// perDay 是每天最多幾場（0～PER_DAY_MAX 的整數，0 就是不開也不接），typoRate 是每一輪出錯字的機率（0～100 的百分比）；留白或不是數字退回預設
+function normalizeNumber(value, [min, max], fallback) {
+  const number = value === '' || value == null ? NaN : Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
 }
 function normalizeSettings(raw) {
   const partner = typeof raw?.partner === 'string' ? raw.partner.trim() : '';
@@ -38,7 +42,8 @@ function normalizeSettings(raw) {
     role: raw?.role === 'A' ? 'A' : 'B',
     partner: ID_PATTERN.test(partner) ? partner : '',
     partnerName: name.length <= 20 && (name === '' || safeText(name)) ? name : '',
-    typoRate: normalizeRate(raw?.typoRate),
+    perDay: Math.floor(normalizeNumber(raw?.perDay, [0, PER_DAY_MAX], PER_DAY_DEFAULT)),
+    typoRate: normalizeNumber(raw?.typoRate, [0, 100], TYPO_RATE_DEFAULT),
   };
 }
 
@@ -171,8 +176,39 @@ function addTypo(texts, rate, random = Math.random, similarity = globalThis.Catw
   result.splice(pick.index, 1, pick.typed, pick.correction);
   return result;
 }
+// 每日場數與最近用過的劇本（STATE_KEY）：date 是本機日期（dayKey），跨日 count 歸零；recent 舊的在前、最多 RECENT_LIMIT 個
+const dayKey = ms => {
+  const day = new Date(ms);
+  return [day.getFullYear(), day.getMonth() + 1, day.getDate()].map((part, index) => String(part).padStart(index ? 2 : 4, '0')).join('-');
+};
+const normalizeState = raw => ({
+  date: typeof raw?.date === 'string' ? raw.date : '',
+  count: Number.isInteger(raw?.count) && raw.count > 0 ? raw.count : 0,
+  recent: Array.isArray(raw?.recent) ? raw.recent.filter(id => typeof id === 'string').slice(-RECENT_LIMIT) : [],
+});
+const todayCount = (state, today) => (state.date === today ? state.count : 0);
+const recordStart = (state, today, scriptId) => ({
+  date: today,
+  count: todayCount(state, today) + 1,
+  recent: [...state.recent.filter(id => id !== scriptId), scriptId].slice(-RECENT_LIMIT),
+});
+// 從可開場的劇本挑一份：避開 recent；全都在 recent 裡（劇本不足 6 份）就挑最久以前用過的
+function pickScript(choices, recent, random = Math.random) {
+  const fresh = choices.filter(script => !recent.includes(script.id));
+  const oldest = Math.min(...choices.map(script => recent.indexOf(script.id)));
+  const pool = fresh.length ? fresh : choices.filter(script => recent.indexOf(script.id) === oldest);
+  return pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))];
+}
+// 設定頁的狀態行；session 是 STATUS 回的 chatScript（沒有進行中是 null，遊戲頁沒回應是 undefined）
+function describeStatus({ session, state, perDay, today }) {
+  const day = '今天 ' + todayCount(state, today) + '/' + perDay + ' 場';
+  if (session === undefined) return day + '；遊戲頁沒有回應';
+  if (!session) return day + '；目前沒有進行中的一場';
+  return day + '；進行中：劇本 ' + session.scriptId + '，已演 ' + session.turn + '/' + session.total + ' 輪，' + (session.phase === 'say' ? '正在說' : '等對方回');
+}
+
 // 對方更正錯字的那一則（「*字」）：不是劇本的台詞，但屬於這一場，收下就好
 const isCorrection = text => /^[*＊]\S{1,4}$/u.test(String(text ?? '').trim());
 
-globalThis.CatworldChatScript = { SETTINGS_KEY, MATCH_THRESHOLD, normalizeSettings, partnerIdOf, fill, tellCommand, usableScripts, toTurns, bestStart, createSession, turnDelayMs, splitGapMs, addTypo, isCorrection };
+globalThis.CatworldChatScript = { SETTINGS_KEY, STATE_KEY, MATCH_THRESHOLD, normalizeSettings, partnerIdOf, fill, tellCommand, usableScripts, toTurns, bestStart, createSession, turnDelayMs, splitGapMs, addTypo, isCorrection, dayKey, normalizeState, todayCount, recordStart, pickScript, describeStatus };
 })();
