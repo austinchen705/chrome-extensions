@@ -1729,8 +1729,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
   if (message.type === 'START_CHAT_SCRIPT') {
-    // 只有擴充功能自己的頁面（設定頁）會送這個訊息，沒有 tab
-    if (sender.id !== chrome.runtime.id || sender.tab) { sendResponse({ ok: false, error: '不接受這個來源的訊息' }); return; }
+    // 只接受擴充功能自己的頁面（設定頁是開成分頁的，所以看 sender.id 與 sender.url，不能看 sender.tab）
+    if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(''))) { sendResponse({ ok: false, error: '不接受這個來源的訊息' }); return; }
     startScript().then(sendResponse);
     return true;
   }

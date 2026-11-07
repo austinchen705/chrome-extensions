@@ -81,7 +81,7 @@ async function boot({ scale = 1, builtin = false, preload = '', initialStore = {
   install(builtin ? SCRIPTS : SCRIPTS.filter(file => !/^(map|shop|mentor)-data.js$/.test(file)));
   await sleep(80);
   const ask = message => new Promise(resolve => {
-    const handled = messageListeners.map(listener => listener(message, { id: 'ext' }, resolve)).some(result => result === true);
+    const handled = messageListeners.map(listener => listener(message, { id: 'ext', url: 'popup.html' }, resolve)).some(result => result === true);
     if (!handled) resolve(undefined);
   });
   const hosts = () => [...w.document.documentElement.children].filter(element => element.shadowRoot?.querySelector('.label'));

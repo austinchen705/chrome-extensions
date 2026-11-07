@@ -123,6 +123,8 @@ ui('A cannot start a second script while one is going, and a message from a page
     assert.equal(again.ok, false);
     const fromPage = await new Promise(resolve => both.pageB.messageListeners.forEach(listener => listener({ type: 'START_CHAT_SCRIPT' }, { id: 'someone-else' }, resolve)));
     assert.equal(fromPage.ok, false);
+    const noUrl = await new Promise(resolve => both.pageB.messageListeners.forEach(listener => listener({ type: 'START_CHAT_SCRIPT' }, { id: 'ext' }, resolve)));
+    assert.equal(noUrl.ok, false, 'the extension id alone is not enough, the sender has to be one of its pages');
   } finally {
     both.close();
   }
