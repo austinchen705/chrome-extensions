@@ -277,6 +277,7 @@ ui('A gives up when B does not answer within 3 minutes, sends nothing more, and 
   try {
     assert.equal((await start(page)).ok, true);
     assert.ok(await waitFor(() => tells(page).length === 1, 5000));
+    assert.notEqual((await status(page)).chatScript, null, 'the session is still alive right after the round went out, long before the timeout');
     assert.ok(await waitFor(async () => (await status(page)).chatScript === null, 5000), 'the session ends by itself');
     page.output('<span>[P]緋爾(fenrir)告訴你：好啊去哪裡吃\n</span>');
     await sleep(300);
@@ -309,6 +310,7 @@ ui('stopping everything cancels a round that is waiting to be sent', async () =>
     await sleep(600);
     assert.equal(tells(page).length, 0);
     assert.equal((await status(page)).chatScript, null);
+    assert.equal((await start(page)).ok, true, 'a new script can start afterwards');
   } finally {
     page.close();
   }
@@ -367,6 +369,23 @@ ui('an orphaned page (the extension was reloaded) sends nothing more', async () 
     page.output('<span>有東西出現了\n</span>');
     await sleep(600);
     assert.equal(tells(page).length, 0);
+    assert.equal((await status(page)).chatScript, null, 'the retired page has no session left');
+  } finally {
+    page.close();
+  }
+});
+
+ui('an answer inside the 3 minutes restarts the wait, so a live session is not cut off by the first timer', async () => {
+  const page = await boot({ scale: 200, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {}), initialStore: { chatScript: { enabled: true, role: 'A', partner: B.id, partnerName: B.nick } } });
+  try {
+    assert.equal((await start(page)).ok, true);
+    assert.ok(await waitFor(() => tells(page).length === 1, 5000));
+    await sleep(500); // 等待 900 毫秒的一半
+    page.output('<span>[P]緋爾(fenrir)告訴你：好啊去哪裡吃\n</span>');
+    assert.ok(await waitFor(() => tells(page).length === 2, 5000), 'the answer is recognised in time and the next round goes out');
+    await sleep(600); // 距離第一個計時器的期限已經過了，但新的計時從這一輪送出才開始
+    assert.notEqual((await status(page)).chatScript, null, 'the first timer did not cut the session off');
+    assert.ok(await waitFor(async () => (await status(page)).chatScript === null, 5000), 'it still ends when the other side stays silent');
   } finally {
     page.close();
   }
