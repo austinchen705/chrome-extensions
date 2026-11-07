@@ -31,7 +31,8 @@ const waitFor = async (condition, ms = 3000) => {
 // builtin: true 才載入內建資料（map-data.js、shop-data.js、mentor-data.js）；其他測試要自己決定房間、商品與導師，不能被真實資料影響
 // initialStore：腳本啟動前就已經存在 chrome.storage.local 的內容（啟動時讀一次的設定要靠它）
 // preload：在所有腳本之前先在頁面執行的程式（測試自己放假的內建資料，例如 globalThis.CatworldMentorData = […]）
-async function boot({ scale = 1, builtin = false, preload = '', initialStore = {} } = {}) {
+// respond：假的 background，收到 chrome.runtime.sendMessage 的訊息就回它的回傳值（沒給就一律回 {}）
+async function boot({ scale = 1, builtin = false, preload = '', initialStore = {}, respond = null } = {}) {
   const dom = new JSDOM('<html><body><div id="main"><div id="content"><span id="message"></span></div></div><div id="buttons"><div id="uptime">00:00</div></div><form id="f"><input id="input"></form></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   const sent = [];
@@ -62,7 +63,7 @@ async function boot({ scale = 1, builtin = false, preload = '', initialStore = {
   w.chrome = {
     runtime: {
       id: 'ext',
-      sendMessage: message => { messages.push(message); return Promise.resolve({}); },
+      sendMessage: message => { messages.push(message); return Promise.resolve(respond ? respond(message) : {}); },
       onMessage: { addListener: fn => messageListeners.push(fn) },
       getURL: file => file,
     },

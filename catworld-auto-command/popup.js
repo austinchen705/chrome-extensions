@@ -101,7 +101,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'whisper-block.js', 'skill-moves.js', 'force-cap.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'chat-script.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'whisper-block.js', 'skill-moves.js', 'force-cap.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -292,6 +292,34 @@ function showChatReply(settings) {
 }
 ['chatReplyOn', 'chatThreshold', 'chatCooldown', 'chatPerHour', 'chatDelayMin', 'chatDelayMax'].forEach(id => $(id).addEventListener('change', saveChatReply));
 // 聊天回覆的資料集：遊戲頁寫進 storage，這裡顯示筆數與清單、刪單筆、清除、匯出與匯入
+// 劇本對話：欄位讀存 chrome.storage.local.chatScript；「現在開一場」只有遊戲頁的角色是 A 才開得成
+const saveChatScript = () => {
+  const settings = CatworldChatScript.normalizeSettings({
+    enabled: $('scriptOn').checked,
+    role: $('scriptRole').value,
+    partner: $('scriptPartner').value,
+    partnerName: $('scriptPartnerName').value,
+  });
+  showChatScript(settings);
+  chrome.storage.local.set({ [CatworldChatScript.SETTINGS_KEY]: settings });
+};
+function showChatScript(settings) {
+  $('scriptOn').checked = settings.enabled;
+  $('scriptRole').value = settings.role;
+  $('scriptPartner').value = settings.partner;
+  $('scriptPartnerName').value = settings.partnerName;
+  $('scriptStart').disabled = settings.role !== 'A';
+}
+['scriptOn', 'scriptRole', 'scriptPartner', 'scriptPartnerName'].forEach(id => $(id).addEventListener('change', saveChatScript));
+function scriptMessage(text, level) { $('scriptMsg').textContent = text; markLevel($('scriptMsg'), level); }
+$('scriptStart').addEventListener('click', async () => {
+  try {
+    const reply = await send({ type: 'START_CHAT_SCRIPT' });
+    if (reply?.ok) scriptMessage(`開場了（劇本 ${reply.scriptId}）`);
+    else scriptMessage(`沒有開場：${reply?.error ?? '遊戲頁沒有回應'}`, 'error');
+  } catch (e) { scriptMessage(`沒有開場：${e.message}`, 'error'); }
+});
+
 const CHAT_PAIRS_KEY = CatworldChatReply.KEY;
 const readChatPairs = async () => {
   const stored = (await chrome.storage.local.get(CHAT_PAIRS_KEY))[CHAT_PAIRS_KEY];
@@ -1097,7 +1125,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 });
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'idleSettings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
+  const data = await chrome.storage.local.get(['settings', 'idleSettings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, CatworldChatScript.SETTINGS_KEY, 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
   huntSettings = CatworldMapHunt.normalizeSettings(data[CatworldMapHunt.SETTINGS_KEY]);
   showHuntSettings();
   $('shopSkipNames').value = typeof data[CatworldShopCollect.SKIP_NAMES_KEY] === 'string' ? data[CatworldShopCollect.SKIP_NAMES_KEY] : CatworldShopCollect.DEFAULT_SKIP_NAMES;
@@ -1116,6 +1144,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   $('stopKeywordsOn').checked = stopKeywords.enabled;
   $('stopKeywordsList').value = stopKeywords.words;
   showChatReply(CatworldChatReply.normalizeSettings(data[CatworldChatReply.SETTINGS_KEY]));
+  showChatScript(CatworldChatScript.normalizeSettings(data[CatworldChatScript.SETTINGS_KEY]));
   $('mainWeapon').value = weaponValue(data.mainWeapon);
   equipmentKeep = CatworldZapEquipment.normalizeKeepRule(data.equipmentKeep);
   showEquipmentKeep();

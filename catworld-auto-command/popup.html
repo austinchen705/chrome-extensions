@@ -261,6 +261,18 @@
     <div id="chatPairsMsg" class="hint tight"></div>
     <p class="hint tight">預設關閉。只回別人對你說的私聊（[P]暱稱回答你：…），在資料集裡找最相似的一句，相似度達到門檻才回，隔 3～10 秒隨機延遲後用 reply 送出。同一個人冷卻中、同一個人 10 分鐘內重複說同一句、或超過每小時上限都不回；驗證碼處理中或按了停止也不送。資料集是你自己的對話（對方說一句、你在 2 分鐘內回一句），一律自動記錄，不受這個開關影響。數字超出範圍會限制在範圍內，留白或不是數字則退回預設值。匯出／匯入是一行一筆「對方說 Tab 我回」，舊的在前；匯入先檢查整份，有一行不合格就整份不收，合格的接在現有資料後面當最新的（同樣的一組不重複，超過 500 筆丟最舊的）。</p>
   </details>
+  <details class="alertbox fold" id="sec-script">
+    <summary>劇本對話</summary>
+    <label class="check"><input id="scriptOn" type="checkbox"> 開啟劇本對話（兩個帳號用 tell 照劇本聊天）</label>
+    <div class="row">
+      <div><label for="scriptRole">這台電腦的角色</label><select id="scriptRole"><option value="A">A（開場）</option><option value="B">B（接話）</option></select></div>
+      <div><label for="scriptPartner">對方的英文 ID（tell 用）</label><input id="scriptPartner" type="text" maxlength="30"></div>
+      <div><label for="scriptPartnerName">對方的角色名（選填）</label><input id="scriptPartnerName" type="text" maxlength="20"></div>
+    </div>
+    <button id="scriptStart">現在開一場</button>
+    <div id="scriptMsg" class="hint tight"></div>
+    <p class="hint tight">預設關閉。A 按「現在開一場」先說第一輪；B 看到對方傳來的 tell 像劇本的第一輪就接話，之後一人一輪。劇本裡的 {對方} 會換成這裡填的角色名，請填遊戲頁標題「角色名 - …」那個名字，不然對方認不出來。</p>
+  </details>
   <details class="alertbox fold" id="sec-reward">
     <summary>在線獎勵</summary>
     <label class="check"><input id="autoReward" type="checkbox"> 在線獎勵自動領取</label>
@@ -396,6 +408,7 @@
   <script src="map-hunt.js"></script>
   <script src="stop-keywords.js"></script>
   <script src="chat-reply.js"></script>
+  <script src="chat-script.js"></script>
   <script src="macro-wait.js"></script>
   <script src="mentor-data.js"></script>
   <script src="mentor-search.js"></script>

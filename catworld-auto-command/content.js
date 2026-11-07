@@ -45,6 +45,7 @@ function retire() {
   hunt?.stop('');
   cancelMacros();
   cancelChatReplies();
+  cancelScript();
   queue.length = 0;
   if (watchdogTimer) clearTimeout(watchdogTimer);
   cancelReward();
@@ -173,6 +174,7 @@ const chatLimiter = CatworldChatReply.createLimiter();
 let whisperBlock = null;
 const onIncomingChat = info => {
   console.log('[catworld] 密語：收到私聊', info.name);
+  if (hearScript(info)) return;
   try {
     whisperBlock?.add(info);
   } catch (error) {
@@ -221,6 +223,72 @@ const feedChat = text => {
   clearTimeout(chatQuietTimer);
   chatQuietTimer = setTimeout(() => recordChat(chatRecorder.flush()), CHAT_QUIET_MS);
 };
+// 劇本對話（chat-script.js，設定 chatScript，預設關）：A 按「現在開一場」先說第一輪，B 看到對方傳來的 tell 像某份劇本的第一輪就接話，之後一人一輪。
+// 劇本由 background 回（共用加內建），這裡快取 SCRIPT_CACHE_MS；每一輪用 tell 送出，走 startMacro（來源 script，算 active()、遵守指令間隔、
+// 驗證碼與停止一切會取消）。被劇本認領的來訊不再當一般私聊（不進密語區、不觸發自動回覆）。
+let chatScript = CatworldChatScript.normalizeSettings(undefined);
+let scriptCache = { scripts: [], at: 0 };
+let scriptSession = null;
+const scriptTimers = new Set();
+const SCRIPT_CACHE_MS = 5 * 60 * 1000;
+const SCRIPT_TURN_MS = 2000; // 一輪台詞送出前等的時間（之後的票換成依字數算的擬真計時）
+const characterName = () => (/ - /.test(document.title) ? document.title.split(' - ')[0].trim() : '');
+function cancelScript() {
+  scriptTimers.forEach(clearTimeout);
+  scriptTimers.clear();
+  scriptSession = null;
+}
+async function loadScripts() {
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: 'CHAT_SCRIPTS' });
+    scriptCache = { scripts: CatworldChatScript.usableScripts(reply?.scripts), at: Date.now() };
+  } catch {
+    // 連不上背景（孤兒程式）：沒有劇本就不開場也不接話
+  }
+}
+function sayTurn(parts) {
+  const timer = setTimeout(() => {
+    scriptTimers.delete(timer);
+    const name = chatScript.partnerName || chatScript.partner;
+    const commands = parts.map(part => CatworldChatScript.tellCommand(chatScript.partner, CatworldChatScript.fill(part, name)));
+    // 驗證碼辨識中、或因驗證停止：這一輪過時了，整場放棄
+    if (captcha || /驗證/.test(stopReason) || !startMacro(commands.join(';'), 'script')) cancelScript();
+  }, SCRIPT_TURN_MS);
+  scriptTimers.add(timer);
+}
+// 這句來訊是不是劇本的下一句：是就回 true（並排好我要說的下一輪）；不是（或功能沒開、不是對方）回 false，交給一般私聊的流程
+function hearScript({ name, text }) {
+  if (!chatScript.enabled || !chatScript.partner || CatworldChatScript.partnerIdOf(name) !== chatScript.partner.toLowerCase()) return false;
+  if (Date.now() - scriptCache.at > SCRIPT_CACHE_MS) loadScripts();
+  const ownName = characterName();
+  let session = scriptSession;
+  if (!session) {
+    const script = chatScript.role === 'B' ? CatworldChatScript.bestStart(scriptCache.scripts, chatScript.role, text, ownName) : null;
+    if (!script) return false;
+    session = CatworldChatScript.createSession({ script, role: chatScript.role, ownName });
+  }
+  const step = session.hear(text);
+  if (!step) return false;
+  scriptSession = step.done ? null : session;
+  if (step.send.length) sayTurn(step.send);
+  return true;
+}
+async function startScript() {
+  if (!chatScript.enabled) return { ok: false, error: '劇本對話沒有開' };
+  if (chatScript.role !== 'A') return { ok: false, error: '這台的角色不是 A（開場）' };
+  if (!chatScript.partner) return { ok: false, error: '還沒填對方的英文 ID' };
+  if (scriptSession) return { ok: false, error: '已經有一場在進行' };
+  if (!scriptCache.scripts.length || Date.now() - scriptCache.at > SCRIPT_CACHE_MS) await loadScripts();
+  const choices = scriptCache.scripts.filter(script => script.lines[0].who === 'A');
+  if (!choices.length) return { ok: false, error: '沒有可用的劇本' };
+  if (scriptSession) return { ok: false, error: '已經有一場在進行' };
+  const script = choices[Math.floor(Math.random() * choices.length)];
+  const session = CatworldChatScript.createSession({ script, role: 'A', ownName: characterName() });
+  const step = session.start();
+  scriptSession = step.done ? null : session;
+  sayTurn(step.send);
+  return { ok: true, scriptId: script.id };
+}
 let watchdogTimer = null;
 let lastCommand = '';
 // 驗證碼自動辨識（閒置時也作用，手動打 reward 領獎也會幫忙輸入）：偵測到圖或提示後暫停送出佇列，等圖印完（CAPTCHA_QUIET_MS 內沒有新輸出）
@@ -937,6 +1005,7 @@ function stopEverything(reason) {
   hunt?.stop(reason);
   cancelMacros();
   cancelChatReplies();
+  cancelScript();
   stopRandom(reason);
   return stop(reason);
 }
@@ -1659,6 +1728,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true });
     return;
   }
+  if (message.type === 'START_CHAT_SCRIPT') {
+    // 只有擴充功能自己的頁面（設定頁）會送這個訊息，沒有 tab
+    if (sender.id !== chrome.runtime.id || sender.tab) { sendResponse({ ok: false, error: '不接受這個來源的訊息' }); return; }
+    startScript().then(sendResponse);
+    return true;
+  }
   // 觸發相關的訊息都要帶 group（combat／practice）
   const group = triggerGroups[message.group];
   if (message.type === 'START_TRIGGER') {
@@ -1692,6 +1767,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       nextRandomCommand,
       macros: macroRuns.size,
       hunt: hunt.snapshot(),
+      chatScript: scriptSession ? scriptSession.status() : null,
       stats: readAllStats(),
       triggerGroups: Object.fromEntries(groupList.map(item => [item.id, { on: item.on, note: item.note, rules: item.on ? item.engine.snapshot().rules : [] }])),
     });
@@ -1716,15 +1792,22 @@ chrome.storage.onChanged?.addListener((changes, area) => {
     chatReply = CatworldChatReply.normalizeSettings(changes[CatworldChatReply.SETTINGS_KEY].newValue);
     if (!chatReply.enabled) cancelChatReplies();
   }
+  if (area === 'local' && changes[CatworldChatScript.SETTINGS_KEY]) {
+    chatScript = CatworldChatScript.normalizeSettings(changes[CatworldChatScript.SETTINGS_KEY].newValue);
+    if (chatScript.enabled) loadScripts();
+    else cancelScript();
+  }
   if (area === 'local' && changes.autoReward) {
     autoReward = changes.autoReward.newValue !== false;
     if (!autoReward) cancelReward();
   }
 });
 
-chrome.storage.local.get(['running', 'randomRunning', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY]).then(data => {
+chrome.storage.local.get(['running', 'randomRunning', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, CatworldChatScript.SETTINGS_KEY]).then(data => {
   persistentAlert = data.persistentAlert === true;
   chatReply = CatworldChatReply.normalizeSettings(data[CatworldChatReply.SETTINGS_KEY]);
+  chatScript = CatworldChatScript.normalizeSettings(data[CatworldChatScript.SETTINGS_KEY]);
+  if (chatScript.enabled) loadScripts();
   stopKeywords = CatworldStopKeywords.normalize(data[CatworldStopKeywords.KEY]);
   autoReward = data.autoReward !== false;
   if (data.settings) settings = { ...settings, ...data.settings };
