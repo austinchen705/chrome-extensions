@@ -291,7 +291,6 @@ function showChatReply(settings) {
   $('chatDelayMax').value = settings.delayMax;
 }
 ['chatReplyOn', 'chatThreshold', 'chatCooldown', 'chatPerHour', 'chatDelayMin', 'chatDelayMax'].forEach(id => $(id).addEventListener('change', saveChatReply));
-// 聊天回覆的資料集：遊戲頁寫進 storage，這裡顯示筆數與清單、刪單筆、清除、匯出與匯入
 // 劇本對話：欄位讀存 chrome.storage.local.chatScript；「現在開一場」只有遊戲頁的角色是 A 才開得成
 const saveChatScript = () => {
   const settings = CatworldChatScript.normalizeSettings({
@@ -320,6 +319,7 @@ $('scriptStart').addEventListener('click', async () => {
   } catch (e) { scriptMessage(`沒有開場：${e.message}`, 'error'); }
 });
 
+// 聊天回覆的資料集：遊戲頁寫進 storage，這裡顯示筆數與清單、刪單筆、清除、匯出與匯入
 const CHAT_PAIRS_KEY = CatworldChatReply.KEY;
 const readChatPairs = async () => {
   const stored = (await chrome.storage.local.get(CHAT_PAIRS_KEY))[CHAT_PAIRS_KEY];

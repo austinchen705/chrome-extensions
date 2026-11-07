@@ -41,7 +41,7 @@ const tellCommand = (id, text) => `tell ${id} ${text}`;
 
 // 劇本的一句：{ who: 'A' | 'B', text }，台詞要通過 safeText
 const validLine = line => (line?.who === 'A' || line?.who === 'B') && safeText(line.text);
-// 從背景拿到的劇本只留形狀對、每一句都安全的（完整的檢查在試算表解析那一票）
+// 從背景拿到的劇本只留形狀對、每一句都安全的
 const usableScripts = raw => (Array.isArray(raw) ? raw : []).filter(script => typeof script?.id === 'string'
   && Array.isArray(script.lines) && script.lines.length >= 2 && script.lines.every(validLine));
 

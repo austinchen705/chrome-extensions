@@ -129,3 +129,71 @@ ui('A cannot start a second script while one is going, and a message from a page
     both.close();
   }
 });
+
+ui('the session lasts until the last round has actually gone out: the status still shows it and a second script cannot start in the gap', async () => {
+  const lastIsA = { id: 't3', lines: [{ who: 'A', text: '今天要不要去吃飯' }, { who: 'B', text: '好啊去哪裡吃' }, { who: 'A', text: '那就吃拉麵吧' }] };
+  const respond = message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [lastIsA] } : {});
+  const page = await boot({ scale: 5, respond, initialStore: { chatScript: { enabled: true, role: 'A', partner: B.id, partnerName: B.nick } } });
+  try {
+    assert.equal((await start(page)).ok, true);
+    assert.ok(await waitFor(() => page.sent.length === 1, 5000));
+    page.output('<span>[P]緋爾(fenrir)告訴你：好啊去哪裡吃\n</span>');
+    assert.ok(await waitFor(async () => (await page.ask({ type: 'STATUS' })).chatScript?.done === true, 3000), 'while my last round waits to be sent the status still shows the session');
+    assert.equal((await start(page)).ok, false, 'no second script in the gap');
+    assert.ok(await waitFor(() => page.sent.length === 2, 5000));
+    assert.equal(page.sent[1], 'tell fenrir 那就吃拉麵吧');
+    assert.ok(await waitFor(async () => (await page.ask({ type: 'STATUS' })).chatScript === null));
+    assert.equal((await start(page)).ok, true, 'a new script can start once the last round has gone out');
+  } finally {
+    page.close();
+  }
+});
+
+ui('an expired script cache is refreshed once however many lines arrive meanwhile, and the old scripts keep working', async () => {
+  const asked = [];
+  const respond = async message => {
+    if (message.type !== 'CHAT_SCRIPTS') return {};
+    asked.push(message);
+    await sleep(150);
+    return { ok: true, scripts: [OTHER] };
+  };
+  const page = await boot({ scale: 20, respond, initialStore: { chatScript: { enabled: true, role: 'B', partner: A.id, partnerName: A.nick } } });
+  try {
+    assert.ok(await waitFor(() => asked.length === 1));
+    await sleep(300);
+    const realNow = page.w.Date.now.bind(page.w.Date);
+    page.w.Date.now = () => realNow() + 6 * 60 * 1000;
+    page.output('<span>[P]阿凱(akai)告訴你：完全不相干的話題一\n</span>');
+    page.output('<span>[P]阿凱(akai)告訴你：完全不相干的話題二\n</span>');
+    page.output('<span>[P]阿凱(akai)告訴你：晚餐吃什麼好呢\n</span>');
+    assert.ok(await waitFor(() => page.sent.length === 1, 5000), 'the stale cache still answers the opener');
+    assert.equal(page.sent[0], 'tell akai 我想吃牛肉麵');
+    await sleep(400);
+    assert.equal(asked.length, 2, 'one refresh, not one per line');
+  } finally {
+    page.close();
+  }
+});
+
+ui('turning the feature off while A waits for the scripts cancels the start', async () => {
+  let calls = 0;
+  const respond = async message => {
+    if (message.type !== 'CHAT_SCRIPTS') return {};
+    calls += 1;
+    if (calls === 1) return { ok: true, scripts: [] };
+    await sleep(150);
+    return { ok: true, scripts: [SCRIPT] };
+  };
+  const page = await boot({ scale: 20, respond, initialStore: { chatScript: { enabled: true, role: 'A', partner: B.id, partnerName: B.nick } } });
+  try {
+    const pending = start(page);
+    await sleep(30);
+    page.changeListeners.forEach(listener => listener({ chatScript: { newValue: { enabled: false, role: 'A', partner: B.id, partnerName: B.nick } } }, 'local'));
+    const result = await pending;
+    assert.equal(result.ok, false);
+    await sleep(300);
+    assert.equal(page.sent.length, 0);
+  } finally {
+    page.close();
+  }
+});

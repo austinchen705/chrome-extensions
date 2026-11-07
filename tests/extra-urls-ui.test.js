@@ -88,12 +88,17 @@ async function boot({ stored, granted = [], allow = true, tab = null, gone = fal
   const $ = id => doc.getElementById(id);
   const rows = () => [...doc.querySelectorAll('#extraList .extra-item')];
   const message = () => ({ text: $('extraMessage').textContent, error: $('extraMessage').querySelector('.msg-error') !== null, warn: $('extraMessage').querySelector('.msg-warn') !== null });
+  // 授權詢問（或被擋下的訊息）要經過幾個非同步步驟，機器忙的時候固定等 40 毫秒不夠：等到問過 Chrome 或訊息變了才往下
   const add = async text => {
+    const asked = calls.request.length;
+    const shown = $('extraMessage').textContent;
     $('extraUrl').value = text;
     $('extraAdd').click();
+    await waitFor(() => calls.request.length > asked || $('extraMessage').textContent !== shown, 2000);
     await sleep(40);
   };
-  if (!await waitFor(() => $('extraAdd'), 1500)) {
+  // popup.js 第一行就寫版本，寫了代表整支腳本的同步部分（含按鈕的監聽）已經跑完
+  if (!await waitFor(() => $('extraAdd') && $('version').textContent, 1500)) {
     dom.window.close(); // 設定頁的計時器會讓程序一直活著，失敗時也要關掉
     assert.fail('the settings page has the extra sites section');
   }

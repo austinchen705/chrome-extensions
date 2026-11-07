@@ -347,7 +347,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true, skills: CatworldSkillMoves.lookup(SKILLS_DATA, message.names.filter(name => typeof name === 'string')) });
     return;
   }
-  // 劇本對話：回共用加內建的可用劇本（目前只有內建）
+  // 劇本對話：回遊戲頁可用的劇本
   if (message?.type === 'CHAT_SCRIPTS') {
     sendResponse({ ok: true, scripts: CatworldChatScriptData.scripts });
     return;

@@ -228,31 +228,38 @@ const feedChat = text => {
 // 驗證碼與停止一切會取消）。被劇本認領的來訊不再當一般私聊（不進密語區、不觸發自動回覆）。
 let chatScript = CatworldChatScript.normalizeSettings(undefined);
 let scriptCache = { scripts: [], at: 0 };
+let scriptLoading = null;
 let scriptSession = null;
 const scriptTimers = new Set();
 const SCRIPT_CACHE_MS = 5 * 60 * 1000;
-const SCRIPT_TURN_MS = 2000; // 一輪台詞送出前等的時間（之後的票換成依字數算的擬真計時）
+const SCRIPT_TURN_MS = 2000; // 一輪台詞送出前等的時間
 const characterName = () => (/ - /.test(document.title) ? document.title.split(' - ')[0].trim() : '');
 function cancelScript() {
   scriptTimers.forEach(clearTimeout);
   scriptTimers.clear();
   scriptSession = null;
 }
-async function loadScripts() {
-  try {
-    const reply = await chrome.runtime.sendMessage({ type: 'CHAT_SCRIPTS' });
-    scriptCache = { scripts: CatworldChatScript.usableScripts(reply?.scripts), at: Date.now() };
-  } catch {
-    // 連不上背景（孤兒程式）：沒有劇本就不開場也不接話
-  }
+// 向 background 要劇本；同時只有一個請求在跑（快取過期時一句接一句的來訊不會每句都要一次）
+function loadScripts() {
+  scriptLoading ??= (async () => {
+    try {
+      const reply = await chrome.runtime.sendMessage({ type: 'CHAT_SCRIPTS' });
+      scriptCache = { scripts: CatworldChatScript.usableScripts(reply?.scripts), at: Date.now() };
+    } catch {
+      // 連不上背景（孤兒程式）：沒有劇本就不開場也不接話
+    }
+  })().finally(() => { scriptLoading = null; });
+  return scriptLoading;
 }
-function sayTurn(parts) {
+// last：這是我說的最後一輪，送出之後這一場才算結束（等待送出的這段時間場次還在，不會被當成沒有進行中）
+function sayTurn(parts, last) {
   const timer = setTimeout(() => {
     scriptTimers.delete(timer);
     const name = chatScript.partnerName || chatScript.partner;
     const commands = parts.map(part => CatworldChatScript.tellCommand(chatScript.partner, CatworldChatScript.fill(part, name)));
     // 驗證碼辨識中、或因驗證停止：這一輪過時了，整場放棄
     if (captcha || /驗證/.test(stopReason) || !startMacro(commands.join(';'), 'script')) cancelScript();
+    else if (last) scriptSession = null;
   }, SCRIPT_TURN_MS);
   scriptTimers.add(timer);
 }
@@ -269,24 +276,30 @@ function hearScript({ name, text }) {
   }
   const step = session.hear(text);
   if (!step) return false;
-  scriptSession = step.done ? null : session;
-  if (step.send.length) sayTurn(step.send);
+  scriptSession = step.send.length ? session : null;
+  if (step.send.length) sayTurn(step.send, step.done);
   return true;
 }
+// 現在不能開場的原因（可以開回 null）
+function startBlock() {
+  if (!chatScript.enabled) return '劇本對話沒有開';
+  if (chatScript.role !== 'A') return '這台的角色不是 A（開場）';
+  if (!chatScript.partner) return '還沒填對方的英文 ID';
+  return scriptSession ? '已經有一場在進行' : null;
+}
 async function startScript() {
-  if (!chatScript.enabled) return { ok: false, error: '劇本對話沒有開' };
-  if (chatScript.role !== 'A') return { ok: false, error: '這台的角色不是 A（開場）' };
-  if (!chatScript.partner) return { ok: false, error: '還沒填對方的英文 ID' };
-  if (scriptSession) return { ok: false, error: '已經有一場在進行' };
+  let blocked = startBlock();
+  if (blocked) return { ok: false, error: blocked };
   if (!scriptCache.scripts.length || Date.now() - scriptCache.at > SCRIPT_CACHE_MS) await loadScripts();
+  blocked = startBlock(); // 等劇本的時候設定或場次可能變了
+  if (blocked) return { ok: false, error: blocked };
   const choices = scriptCache.scripts.filter(script => script.lines[0].who === 'A');
   if (!choices.length) return { ok: false, error: '沒有可用的劇本' };
-  if (scriptSession) return { ok: false, error: '已經有一場在進行' };
   const script = choices[Math.floor(Math.random() * choices.length)];
   const session = CatworldChatScript.createSession({ script, role: 'A', ownName: characterName() });
   const step = session.start();
-  scriptSession = step.done ? null : session;
-  sayTurn(step.send);
+  scriptSession = session;
+  sayTurn(step.send, step.done);
   return { ok: true, scriptId: script.id };
 }
 let watchdogTimer = null;
