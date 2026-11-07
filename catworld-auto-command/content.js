@@ -256,9 +256,9 @@ function loadScripts() {
   })().finally(() => { scriptLoading = null; });
   return scriptLoading;
 }
-// 一輪的每一則各排一個計時器：第一則等「思考加打字」的時間，之後每則再隔一小段才送；last：這是我說的最後一輪，
+// 一輪的每一則各排一個計時器：第一則等「思考加打字」的時間，之後每則再隔一小段才送；finalTurn：這是我說的最後一輪，
 // 最後一則送出之後這一場才算結束（等待送出的這段時間場次還在，不會被當成沒有進行中）
-function sayTurn(parts, last) {
+function sayTurn(parts, finalTurn) {
   const name = chatScript.partnerName || chatScript.partner;
   const texts = parts.map(part => CatworldChatScript.fill(part, name));
   let at = CatworldChatScript.turnDelayMs(texts[0]);
@@ -266,20 +266,20 @@ function sayTurn(parts, last) {
     if (index) at += CatworldChatScript.splitGapMs();
     const timer = setTimeout(() => {
       scriptTimers.delete(timer);
-      sendPart(text, index === texts.length - 1, last);
+      sendPart(text, index === texts.length - 1, finalTurn);
     }, at);
     scriptTimers.add(timer);
   });
 }
-function sendPart(text, endsTurn, last) {
+function sendPart(text, lastPart, finalTurn) {
   // 驗證碼辨識中、或因驗證停止：這一輪過時了，整場放棄
   if (captcha || /驗證/.test(stopReason) || !startMacro(CatworldChatScript.tellCommand(chatScript.partner, text), 'script')) {
     cancelScript();
     return;
   }
   chatLimiter.noteSent(text);
-  if (!endsTurn) return;
-  if (last) {
+  if (!lastPart) return;
+  if (finalTurn) {
     scriptSession = null;
     return;
   }

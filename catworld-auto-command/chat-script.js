@@ -9,6 +9,11 @@ const SETTINGS_KEY = 'chatScript';
 const MATCH_THRESHOLD = 0.8; // 來訊和預期台詞的相似度要達到多少才算「是劇本的下一句」
 const ID_PATTERN = /^[A-Za-z0-9_.'-]{1,30}$/; // 放進 tell 指令的英文 ID：只收這些字元
 const PLACEHOLDER = '{對方}';
+// 擬真計時用的範圍 [最小, 最大]（毫秒）：思考時間、每個字的打字時間、一輪等待的上下限、同一輪拆開的兩則之間
+const THINK_MS = [1000, 4000];
+const PER_CHAR_MS = [300, 600];
+const TURN_LIMITS_MS = [3000, 45000];
+const SPLIT_GAP_MS = [1000, 3000];
 
 // 台詞會原樣送出（走巨集）：空的、含分號（巨集分隔）、@等待、換行的不收
 const hasBreak = text => text.includes(String.fromCharCode(10)) || text.includes(String.fromCharCode(13));
@@ -81,12 +86,14 @@ function bestStart(scripts, role, text, ownName = '', similarity = globalThis.Ca
 }
 
 // 進行中的一場：index 是下一個要處理的輪（已經送出或收到的都越過了）。
-// start()（A 開場）回第一輪要送的台詞；hear(text) 收到對方的來訊：對上預期那一輪的最後一則就換我說下一輪，回 { send, done }；
-// 對上的是前面的某一則（對方這一輪還沒說完）就收下、不前進，回 { send: [], done: false, partial: true }；都對不上回 null。
+// start()（A 開場）回第一輪要送的台詞；hear(text) 收到對方的來訊：先和對方這一輪預期的下一則比，比不上才和這一輪的其他則比（掉了一則也跟得上）；
+// 對上最後一則就換我說下一輪，回 { send, done }；對上前面的某一則（這一輪還沒說完）就收下、不前進，回 { send: [], done: false, partial: true }；都對不上回 null。
+// 這一輪有幾則很像時，靠「下一則」的位置分辨先後。
 // done 是整份劇本走完了（我說了最後一輪，或對方的最後一輪到了）。
 function createSession({ script, role, ownName = '', similarity = globalThis.CatworldChatReply.similarity }) {
   const turns = toTurns(script);
   let index = 0;
+  let received = 0; // 對方這一輪已經收到的則數，也就是下一則預期的位置
   const take = () => {
     const send = turns[index].parts;
     index += 1;
@@ -100,9 +107,14 @@ function createSession({ script, role, ownName = '', similarity = globalThis.Cat
     },
     hear(text) {
       if (index >= turns.length || turns[index].who === role) return null;
-      const heard = closestPart(turns[index], ownName, text, similarity);
+      const parts = expectedParts(turns[index], ownName);
+      const heard = similarity(parts[received], text) >= MATCH_THRESHOLD ? { index: received, score: 1 } : closestPart(turns[index], ownName, text, similarity);
       if (heard.score < MATCH_THRESHOLD) return null;
-      if (heard.index < turns[index].parts.length - 1) return { send: [], done: false, partial: true };
+      if (heard.index < parts.length - 1) {
+        received = Math.max(received, heard.index + 1);
+        return { send: [], done: false, partial: true };
+      }
+      received = 0;
       index += 1;
       const send = index < turns.length ? take() : [];
       return { send, done: index >= turns.length };
@@ -111,11 +123,7 @@ function createSession({ script, role, ownName = '', similarity = globalThis.Cat
   };
 }
 
-// 擬真計時（毫秒）：一輪送出前等「思考時間加依字數算的打字時間」，夾在 TURN_LIMITS_MS 之內；同一輪拆開的兩則之間隔 SPLIT_GAP_MS。random 可注入
-const THINK_MS = [1000, 4000];
-const PER_CHAR_MS = [300, 600];
-const TURN_LIMITS_MS = [3000, 45000];
-const SPLIT_GAP_MS = [1000, 3000];
+// 一輪送出前等「思考時間加依字數算的打字時間」，夾在 TURN_LIMITS_MS 之內；同一輪拆開的兩則之間隔 SPLIT_GAP_MS（毫秒）。random 可注入
 const between = ([min, max], random) => min + (max - min) * random();
 const turnDelayMs = (text, random = Math.random) => {
   const waited = between(THINK_MS, random) + [...text].length * between(PER_CHAR_MS, random);

@@ -406,12 +406,12 @@ function recordDelays(page) {
 ui('the wait before a round is a thinking time plus typing time per character, kept between 3 and 45 seconds', async () => {
   // random 0：思考 1 秒，每字 0.3 秒；random 趨近 1：思考 4 秒，每字 0.6 秒
   const cases = [
-    { text: '在嗎在嗎', random: 0, expected: 3000 }, // 1000 + 4 × 300 = 2200，不到下限
+    { text: '在嗎在嗎', random: 0, expected: 3000, unclamped: 2200 }, // 1000 + 4 × 300 = 2200，不到下限
     { text: '好'.repeat(20), random: 0, expected: 7000 }, // 1000 + 20 × 300
     { text: '好'.repeat(20), random: 0.999999, expected: 16000 }, // 4000 + 20 × 600
-    { text: '好'.repeat(100), random: 0.999999, expected: 45000 }, // 4000 + 100 × 600 = 64000，超過上限
+    { text: '好'.repeat(100), random: 0.999999, expected: 45000, unclamped: 64000 }, // 4000 + 100 × 600 = 64000，超過上限
   ];
-  for (const { text, random, expected } of cases) {
+  for (const { text, random, expected, unclamped } of cases) {
     const script = { id: 'len', lines: [{ who: 'A', text }, { who: 'B', text: '好' }] };
     const page = await boot({ scale: 20, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [script] } : {}), initialStore: { chatScript: { enabled: true, role: 'A', partner: B.id, partnerName: B.nick } } });
     try {
@@ -419,6 +419,7 @@ ui('the wait before a round is a thinking time plus typing time per character, k
       const delays = recordDelays(page);
       assert.equal((await start(page)).ok, true);
       assert.ok(delays.includes(expected), `${text.length} characters with random ${random} should wait ${expected} ms, timers set: ${JSON.stringify(delays)}`);
+      if (unclamped) assert.ok(!delays.includes(unclamped), `the unclamped ${unclamped} ms must not be used`);
     } finally {
       page.close();
     }
@@ -445,5 +446,83 @@ ui('a line with ／ goes out as separate tells a random 1 to 3 seconds apart, an
     assert.equal((both.pageB.store.chatPairs ?? []).length, 0, 'nor recorded as chat data');
   } finally {
     both.close();
+  }
+});
+
+const soloWith = (script, role, scale = 20) => boot({
+  scale,
+  respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [script] } : {}),
+  initialStore: { chatScript: { enabled: true, role, partner: role === 'A' ? B.id : A.id, partnerName: role === 'A' ? B.nick : A.nick } },
+});
+
+ui('the gap between two parts is 1 second at the lowest, and the first part waits thinking plus typing time', async () => {
+  const split = { id: 't5', lines: [{ who: 'A', text: '欸你看到新聞沒／那個真的很扯' }, { who: 'B', text: '有啊我看到了' }] };
+  const page = await soloWith(split, 'A');
+  try {
+    page.w.Math.random = () => 0;
+    const delays = recordDelays(page);
+    assert.equal((await start(page)).ok, true);
+    // 第一則 7 個字：1000 + 7 × 300 = 3100；第二則再隔 1000
+    const first = delays.indexOf(3100);
+    assert.ok(first >= 0 && delays[first + 1] === 4100, `parts are scheduled at 3100 and 4100 ms: ${JSON.stringify(delays)}`);
+  } finally {
+    page.close();
+  }
+});
+
+ui('when the other side splits its round, the waiting side takes the first part in and carries on only after the last one', async () => {
+  const split = { id: 't6', lines: [{ who: 'A', text: '今天要不要去吃飯' }, { who: 'B', text: '好啊／去哪裡吃' }, { who: 'A', text: '拉麵吧好不好' }] };
+  const both = await pair({ scripts: [split], scale: 5 });
+  try {
+    assert.equal((await start(both.pageA)).ok, true);
+    assert.ok(await waitFor(() => both.told.length === 2, 20000), 'A said its round and B answered with the first part');
+    const during = await status(both.pageA);
+    assert.notEqual(during.chatScript, null);
+    assert.equal(during.chatScript.turn, 1, 'A is still waiting for the rest of B round');
+    assert.equal(both.pageA.sent.length, 1, 'and has not carried on');
+    assert.ok(await waitFor(() => both.told.length === 4, 30000));
+    assert.deepEqual(both.told.map(item => item.text), ['今天要不要去吃飯', '好啊', '去哪裡吃', '拉麵吧好不好']);
+  } finally {
+    both.close();
+  }
+});
+
+ui('two parts that look alike are taken in one after the other, the second one being the last', async () => {
+  const twins = { id: 't7', lines: [{ who: 'A', text: '哈哈哈哈／哈哈哈哈' }, { who: 'B', text: '好喔' }] };
+  const page = await soloWith(twins, 'B');
+  try {
+    page.output('<span>[P]阿凱(akai)告訴你：哈哈哈哈\n</span>');
+    assert.ok(await waitFor(async () => (await status(page)).chatScript !== null, 3000));
+    await sleep(400);
+    assert.equal(tells(page).length, 0, 'the first part alone is not answered');
+    page.output('<span>[P]阿凱(akai)告訴你：哈哈哈哈\n</span>');
+    assert.ok(await waitFor(() => tells(page).length === 1, 5000), 'the second one completes the round');
+    assert.equal(tells(page)[0], 'tell akai 好喔');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a session that only got the first part of a round gives up when the rest never comes', async () => {
+  const split = { id: 't5', lines: [{ who: 'A', text: '欸你看到新聞沒／那個真的很扯' }, { who: 'B', text: '有啊我看到了' }] };
+  const page = await soloWith(split, 'B', 200);
+  try {
+    page.output('<span>[P]阿凱(akai)告訴你：欸你看到新聞沒\n</span>');
+    assert.ok(await waitFor(async () => (await status(page)).chatScript !== null, 3000));
+    assert.ok(await waitFor(async () => (await status(page)).chatScript === null, 5000), 'the wait for the other parts ends');
+    assert.equal(tells(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a script whose line has nothing but a slash is not usable', async () => {
+  const page = await soloWith({ id: 'bad', lines: [{ who: 'A', text: '／' }, { who: 'B', text: '好' }] }, 'A');
+  try {
+    const result = await start(page);
+    assert.equal(result.ok, false);
+    assert.match(result.error, /沒有可用的劇本/);
+  } finally {
+    page.close();
   }
 });
