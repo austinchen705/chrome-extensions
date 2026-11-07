@@ -22,7 +22,7 @@ const B = { nick: '緋爾', id: 'fenrir' };
 // 兩個頁面：A（角色 A、對方是 B）與 B（角色 B、對方是 A）；overrides 可改各自的設定
 async function pair({ scripts = [SCRIPT, OTHER], a = {}, b = {}, storeA = {}, storeB = {}, scale = 20 } = {}) {
   const respond = message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts } : {});
-  const setting = (role, partner, partnerName, extra) => ({ chatScript: { enabled: true, role, partner, partnerName, ...extra } });
+  const setting = (role, partner, partnerName, extra) => ({ chatScript: { enabled: true, typoRate: 0, role, partner, partnerName, ...extra } });
   const pageA = await boot({ scale, respond, initialStore: { ...setting('A', B.id, B.nick, a), ...storeA } });
   const pageB = await boot({ scale, respond, initialStore: { ...setting('B', A.id, A.nick, b), ...storeB } });
   pageA.w.document.title = `${A.nick} - CatWorld`;
@@ -133,7 +133,7 @@ ui('A cannot start a second script while one is going, and a message from a page
 ui('the session lasts until the last round has actually gone out: the status still shows it and a second script cannot start in the gap', async () => {
   const lastIsA = { id: 't3', lines: [{ who: 'A', text: '今天要不要去吃飯' }, { who: 'B', text: '好啊去哪裡吃' }, { who: 'A', text: '那就吃拉麵吧' }] };
   const respond = message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [lastIsA] } : {});
-  const page = await boot({ scale: 5, respond, initialStore: { chatScript: { enabled: true, role: 'A', partner: B.id, partnerName: B.nick } } });
+  const page = await boot({ scale: 5, respond, initialStore: { chatScript: { enabled: true, typoRate: 0, role: 'A', partner: B.id, partnerName: B.nick } } });
   try {
     assert.equal((await start(page)).ok, true);
     assert.ok(await waitFor(() => page.sent.length === 1, 5000));
@@ -157,7 +157,7 @@ ui('an expired script cache is refreshed once however many lines arrive meanwhil
     await sleep(150);
     return { ok: true, scripts: [OTHER] };
   };
-  const page = await boot({ scale: 20, respond, initialStore: { chatScript: { enabled: true, role: 'B', partner: A.id, partnerName: A.nick } } });
+  const page = await boot({ scale: 20, respond, initialStore: { chatScript: { enabled: true, typoRate: 0, role: 'B', partner: A.id, partnerName: A.nick } } });
   try {
     assert.ok(await waitFor(() => asked.length === 1));
     await sleep(300);
@@ -184,7 +184,7 @@ ui('turning the feature off while A waits for the scripts cancels the start', as
     await sleep(150);
     return { ok: true, scripts: [SCRIPT] };
   };
-  const page = await boot({ scale: 20, respond, initialStore: { chatScript: { enabled: true, role: 'A', partner: B.id, partnerName: B.nick } } });
+  const page = await boot({ scale: 20, respond, initialStore: { chatScript: { enabled: true, typoRate: 0, role: 'A', partner: B.id, partnerName: B.nick } } });
   try {
     const pending = start(page);
     await sleep(30);
@@ -248,7 +248,7 @@ ui('with auto reply on, a script adds no extra command and does not use up the r
 
 ui('a real message from the partner that matches no script line is handled as usual in the middle of a session, and the script carries on', async () => {
   const respond = message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {});
-  const page = await boot({ scale: 20, respond, initialStore: { chatScript: { enabled: true, role: 'B', partner: A.id, partnerName: A.nick }, chatReply: AUTO_REPLY, chatPairs: HISTORY } });
+  const page = await boot({ scale: 20, respond, initialStore: { chatScript: { enabled: true, typoRate: 0, role: 'B', partner: A.id, partnerName: A.nick }, chatReply: AUTO_REPLY, chatPairs: HISTORY } });
   try {
     page.output('<span>[P]阿凱(akai)告訴你：今天要不要去吃飯\n</span>');
     assert.ok(await waitFor(() => page.sent.includes('tell akai 好啊去哪裡吃'), 5000));
@@ -267,13 +267,13 @@ const SPRITE = require('./helpers/game-page').fixture('sprite-62044.html');
 const soloPage = (role, extra = {}) => boot({
   scale: 20,
   respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {}),
-  initialStore: { chatScript: { enabled: true, role, partner: role === 'A' ? B.id : A.id, partnerName: role === 'A' ? B.nick : A.nick }, ...extra },
+  initialStore: { chatScript: { enabled: true, typoRate: 0, role, partner: role === 'A' ? B.id : A.id, partnerName: role === 'A' ? B.nick : A.nick }, ...extra },
 });
 const status = page => page.ask({ type: 'STATUS' });
 const tells = page => page.sent.filter(command => command.startsWith('tell '));
 
 ui('A gives up when B does not answer within 3 minutes, sends nothing more, and can start again', async () => {
-  const page = await boot({ scale: 200, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {}), initialStore: { chatScript: { enabled: true, role: 'A', partner: B.id, partnerName: B.nick } } });
+  const page = await boot({ scale: 200, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {}), initialStore: { chatScript: { enabled: true, typoRate: 0, role: 'A', partner: B.id, partnerName: B.nick } } });
   try {
     assert.equal((await start(page)).ok, true);
     assert.ok(await waitFor(() => tells(page).length === 1, 5000));
@@ -289,7 +289,7 @@ ui('A gives up when B does not answer within 3 minutes, sends nothing more, and 
 });
 
 ui('B gives up when A does not carry on within 3 minutes, and a late line from A does not revive the session', async () => {
-  const page = await boot({ scale: 200, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {}), initialStore: { chatScript: { enabled: true, role: 'B', partner: A.id, partnerName: A.nick } } });
+  const page = await boot({ scale: 200, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {}), initialStore: { chatScript: { enabled: true, typoRate: 0, role: 'B', partner: A.id, partnerName: A.nick } } });
   try {
     page.output('<span>[P]阿凱(akai)告訴你：今天要不要去吃飯\n</span>');
     assert.ok(await waitFor(() => tells(page).length === 1, 5000));
@@ -379,7 +379,7 @@ ui('an orphaned page (the extension was reloaded) sends nothing more', async () 
 });
 
 ui('an answer inside the 3 minutes restarts the wait, so a live session is not cut off by the first timer', async () => {
-  const page = await boot({ scale: 200, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {}), initialStore: { chatScript: { enabled: true, role: 'A', partner: B.id, partnerName: B.nick } } });
+  const page = await boot({ scale: 200, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {}), initialStore: { chatScript: { enabled: true, typoRate: 0, role: 'A', partner: B.id, partnerName: B.nick } } });
   try {
     assert.equal((await start(page)).ok, true);
     assert.ok(await waitFor(() => tells(page).length === 1, 5000));
@@ -413,7 +413,7 @@ ui('the wait before a round is a thinking time plus typing time per character, k
   ];
   for (const { text, random, expected, unclamped } of cases) {
     const script = { id: 'len', lines: [{ who: 'A', text }, { who: 'B', text: '好' }] };
-    const page = await boot({ scale: 20, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [script] } : {}), initialStore: { chatScript: { enabled: true, role: 'A', partner: B.id, partnerName: B.nick } } });
+    const page = await boot({ scale: 20, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [script] } : {}), initialStore: { chatScript: { enabled: true, typoRate: 0, role: 'A', partner: B.id, partnerName: B.nick } } });
     try {
       page.w.Math.random = () => random;
       const delays = recordDelays(page);
@@ -449,10 +449,10 @@ ui('a line with ／ goes out as separate tells a random 1 to 3 seconds apart, an
   }
 });
 
-const soloWith = (script, role, scale = 20) => boot({
+const soloWith = (script, role, scale = 20, settings = {}) => boot({
   scale,
   respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [script] } : {}),
-  initialStore: { chatScript: { enabled: true, role, partner: role === 'A' ? B.id : A.id, partnerName: role === 'A' ? B.nick : A.nick } },
+  initialStore: { chatScript: { enabled: true, typoRate: 0, role, partner: role === 'A' ? B.id : A.id, partnerName: role === 'A' ? B.nick : A.nick, ...settings } },
 });
 
 ui('the gap between two parts is 1 second at the lowest, and the first part waits thinking plus typing time', async () => {
@@ -522,6 +522,116 @@ ui('a script whose line has nothing but a slash is not usable', async () => {
     const result = await start(page);
     assert.equal(result.ok, false);
     assert.match(result.error, /沒有可用的劇本/);
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 錯字與更正 ----
+const LONG = {
+  id: 'long',
+  lines: [
+    { who: 'A', text: '欸你看到這週的新聞了沒有啊' },
+    { who: 'B', text: '有啊我早上就看到了真的很扯' },
+    { who: 'A', text: '對啊我整個傻眼不知道怎麼說' },
+    { who: 'B', text: '我也是啦不過還是要上班啊' },
+  ],
+};
+const differences = (original, typed) => [...original].map((char, at) => [char, [...typed][at]]).filter(([a, b]) => a !== b);
+
+ui('with a typo rate of 0 nothing is ever misspelled', async () => {
+  const both = await pair({ scripts: [LONG], a: { typoRate: 0 }, b: { typoRate: 0 } });
+  try {
+    assert.equal((await start(both.pageA)).ok, true);
+    assert.ok(await waitFor(() => both.told.length === 4, 15000));
+    await sleep(300);
+    assert.deepEqual(both.told.map(item => item.text), LONG.lines.map(line => line.text));
+  } finally {
+    both.close();
+  }
+});
+
+ui('with a typo rate of 100 every round has one misspelled character followed right away by a correction, and the other side still follows the script', async () => {
+  const both = await pair({ scripts: [LONG], a: { typoRate: 100 }, b: { typoRate: 100 } });
+  try {
+    assert.equal((await start(both.pageA)).ok, true);
+    assert.ok(await waitFor(() => both.told.length === 8, 30000), `told so far: ${JSON.stringify(both.told.map(item => item.text))}`);
+    await sleep(300);
+    LONG.lines.forEach((line, round) => {
+      const typed = both.told[round * 2].text;
+      const correction = both.told[round * 2 + 1].text;
+      const changed = differences(line.text, typed);
+      assert.equal([...typed].length, [...line.text].length, `round ${round} keeps its length`);
+      assert.equal(changed.length, 1, `round ${round} has exactly one wrong character: ${typed}`);
+      assert.equal(correction, `*${changed[0][0]}`, `round ${round} is corrected with the right character`);
+      assert.equal(both.told[round * 2 + 1].from, both.told[round * 2].from);
+    });
+    for (const page of [both.pageA, both.pageB]) {
+      assert.equal(whisperTexts(page).length, 0, 'neither the typos nor the corrections show as ordinary whispers');
+      assert.equal((page.store.chatPairs ?? []).length, 0, 'nor are they recorded as chat data');
+      assert.equal(tells(page).length, 4, 'and nobody answered a correction');
+    }
+    assert.equal((await status(both.pageA)).chatScript, null, 'the session ended normally');
+  } finally {
+    both.close();
+  }
+});
+
+ui('a line under 6 characters is never misspelled, even at a rate of 100', async () => {
+  const shortScript = { id: 'short', lines: [{ who: 'A', text: '在嗎在嗎好' }, { who: 'B', text: '在啊怎麼了' }] };
+  const both = await pair({ scripts: [shortScript], a: { typoRate: 100 }, b: { typoRate: 100 } });
+  try {
+    assert.equal((await start(both.pageA)).ok, true);
+    assert.ok(await waitFor(() => both.told.length === 2, 10000));
+    await sleep(500);
+    assert.deepEqual(both.told.map(item => item.text), ['在嗎在嗎好', '在啊怎麼了']);
+  } finally {
+    both.close();
+  }
+});
+
+ui('a 6 character line can be misspelled only where the other side still recognises it', async () => {
+  const sixes = { id: 'six', lines: [{ who: 'A', text: '你吃飯了沒有' }, { who: 'B', text: '還沒啦你呢啊' }] };
+  const both = await pair({ scripts: [sixes], a: { typoRate: 100 }, b: { typoRate: 100 } });
+  try {
+    both.pageA.w.Math.random = () => 0.5;
+    both.pageB.w.Math.random = () => 0.5;
+    assert.equal((await start(both.pageA)).ok, true);
+    assert.ok(await waitFor(() => both.told.length === 4, 15000), `told so far: ${JSON.stringify(both.told.map(item => item.text))}`);
+    const changed = differences('你吃飯了沒有', both.told[0].text);
+    assert.equal(changed.length, 1);
+    assert.ok([0, 5].includes([...'你吃飯了沒有'].indexOf(changed[0][0])), 'only an end character, the only places a 6 character line stays similar enough');
+    assert.equal(both.told[1].text, `*${changed[0][0]}`);
+    assert.match(both.told[2].text, /^.{6}$/u, 'B answered, so it recognised the misspelled line');
+  } finally {
+    both.close();
+  }
+});
+
+ui('the typo rate is a probability per round: no typo when the draw is at or above it, one when below', async () => {
+  const cases = [{ random: 0.6, expected: 1 }, { random: 0.4, expected: 2 }];
+  for (const { random, expected } of cases) {
+    const script = { id: 'p', lines: [{ who: 'A', text: '欸你看到這週的新聞了沒有啊' }, { who: 'B', text: '好' }] };
+    const page = await soloWith(script, 'A', 20, { typoRate: 50 });
+    try {
+      page.w.Math.random = () => random;
+      assert.equal((await start(page)).ok, true);
+      assert.ok(await waitFor(() => tells(page).length >= 1, 8000));
+      await sleep(600);
+      assert.equal(tells(page).length, expected, `random ${random} at a rate of 50`);
+      if (expected === 2) assert.match(tells(page)[1], /^tell fenrir \*.$/u);
+    } finally {
+      page.close();
+    }
+  }
+});
+
+ui('a line starting with * from the partner is an ordinary whisper when no script is going', async () => {
+  const page = await soloPage('B');
+  try {
+    page.output('<span>[P]阿凱(akai)告訴你：*的\n</span>');
+    await sleep(400);
+    assert.equal(whisperTexts(page).length, 1, 'with no script going, a line starting with * is an ordinary whisper');
   } finally {
     page.close();
   }

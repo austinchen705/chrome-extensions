@@ -97,7 +97,7 @@ ui('stored settings are shown, and a change is saved as one chatScript object', 
     assert.equal(doc.getElementById('scriptStart').disabled, false);
     change('scriptPartner', ' akai ');
     assert.ok(await waitFor(() => store.chatScript?.partner === 'akai'));
-    assert.deepEqual(store.chatScript, { enabled: true, role: 'A', partner: 'akai', partnerName: '緋爾' });
+    assert.deepEqual(store.chatScript, { enabled: true, role: 'A', partner: 'akai', partnerName: '緋爾', typoRate: 3 });
     change('scriptRole', 'B');
     assert.ok(await waitFor(() => store.chatScript.role === 'B'));
     assert.equal(doc.getElementById('scriptStart').disabled, true);
@@ -147,5 +147,35 @@ ui('a refusal from the game page, or a game page that cannot be reached, is show
     assert.equal(broken.doc.getElementById('scriptMsg').classList.contains('msg-error'), true);
   } finally {
     broken.dom.window.close();
+  }
+});
+
+ui('the typo rate shows 3 by default, is saved with the other chatScript fields, and is clamped, in the field and in storage', async () => {
+  const { dom, doc, store, change } = await boot();
+  try {
+    assert.equal(doc.getElementById('scriptTypoRate').value, '3');
+    change('scriptTypoRate', '40');
+    assert.ok(await waitFor(() => store.chatScript?.typoRate === 40));
+    assert.deepEqual(store.chatScript, { enabled: false, role: 'B', partner: '', partnerName: '', typoRate: 40 });
+    change('scriptTypoRate', '0');
+    assert.ok(await waitFor(() => store.chatScript.typoRate === 0));
+    assert.equal(doc.getElementById('scriptTypoRate').value, '0', 'zero is kept, not turned back into the default');
+    change('scriptTypoRate', '250');
+    assert.ok(await waitFor(() => store.chatScript.typoRate === 100));
+    assert.equal(doc.getElementById('scriptTypoRate').value, '100');
+    change('scriptTypoRate', '');
+    assert.ok(await waitFor(() => store.chatScript.typoRate === 3));
+    assert.equal(doc.getElementById('scriptTypoRate').value, '3', 'blank falls back to the default');
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('a stored typo rate is shown in the field', async () => {
+  const { dom, doc } = await boot({ chatScript: { enabled: true, role: 'A', partner: 'fenrir', partnerName: '', typoRate: 12 } });
+  try {
+    assert.equal(doc.getElementById('scriptTypoRate').value, '12');
+  } finally {
+    dom.window.close();
   }
 });

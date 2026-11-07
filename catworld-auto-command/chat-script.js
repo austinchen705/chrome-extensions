@@ -14,13 +14,22 @@ const THINK_MS = [1000, 4000];
 const PER_CHAR_MS = [300, 600];
 const TURN_LIMITS_MS = [3000, 45000];
 const SPLIT_GAP_MS = [1000, 3000];
+const TYPO_RATE_DEFAULT = 3; // 每一輪出錯字的機率（%）
+const TYPO_MIN_LENGTH = 6; // 一則至少幾個字才會被打錯
+// 常見的誤用字：打錯時優先換成它的另一半，沒有的字換成同一則裡的另一個字
+const CONFUSABLE = { 的: '得', 得: '的', 他: '她', 她: '他', 在: '再', 再: '在', 做: '作', 作: '做', 嗎: '嘛', 嘛: '嗎', 哪: '那', 那: '哪', 吧: '把', 把: '吧', 已: '以', 以: '已' };
 
 // 台詞會原樣送出（走巨集）：空的、含分號（巨集分隔）、@等待、換行的不收
 const hasBreak = text => text.includes(String.fromCharCode(10)) || text.includes(String.fromCharCode(13));
 const safeText = text => typeof text === 'string' && text.trim().length > 0 && !text.includes(';') && !text.includes('；') && !text.includes('@等待') && !hasBreak(text);
 
 // 設定（chrome.storage.local.chatScript）：預設關；role 是 A（開場）或 B（接話），預設 B；
-// partner 是對方的英文 ID（tell 用，也用來認出來訊），不合格當沒填；partnerName 是對方暱稱（只給台詞裡的 {對方} 代入，選填）
+// partner 是對方的英文 ID（tell 用，也用來認出來訊），不合格當沒填；partnerName 是對方暱稱（只給台詞裡的 {對方} 代入，選填）；
+// typoRate 是每一輪出錯字的機率（0～100 的百分比），留白或不是數字退回預設
+function normalizeRate(value) {
+  const rate = value === '' || value == null ? NaN : Number(value);
+  return Number.isFinite(rate) ? Math.min(100, Math.max(0, rate)) : TYPO_RATE_DEFAULT;
+}
 function normalizeSettings(raw) {
   const partner = typeof raw?.partner === 'string' ? raw.partner.trim() : '';
   const name = typeof raw?.partnerName === 'string' ? raw.partnerName.trim() : '';
@@ -29,6 +38,7 @@ function normalizeSettings(raw) {
     role: raw?.role === 'A' ? 'A' : 'B',
     partner: ID_PATTERN.test(partner) ? partner : '',
     partnerName: name.length <= 20 && (name === '' || safeText(name)) ? name : '',
+    typoRate: normalizeRate(raw?.typoRate),
   };
 }
 
@@ -131,5 +141,38 @@ const turnDelayMs = (text, random = Math.random) => {
 };
 const splitGapMs = (random = Math.random) => Math.round(between(SPLIT_GAP_MS, random));
 
-globalThis.CatworldChatScript = { SETTINGS_KEY, MATCH_THRESHOLD, normalizeSettings, partnerIdOf, fill, tellCommand, usableScripts, toTurns, bestStart, createSession, turnDelayMs, splitGapMs };
+// 錯字：以 rate（%）的機率在這一輪的某一則（至少 TYPO_MIN_LENGTH 個字）換掉一個字，緊接著那一則補一則「*正確的字」。
+// 只換「換了之後對方仍認得（相似度達 MATCH_THRESHOLD）」的位置：長的一則哪裡都行，6～10 個字的只剩頭尾；沒有合適的位置就不出錯字。
+// 空白與標點不換。回新的陣列（沒出錯字時就是原本那一個）；random、similarity 可注入
+const isLetter = char => /[\p{L}\p{N}]/u.test(char);
+function wrongChar(chars, at) {
+  const right = chars[at];
+  if (CONFUSABLE[right]) return CONFUSABLE[right];
+  const others = chars.filter(char => char !== right && isLetter(char));
+  return others.length ? others[at % others.length] : null;
+}
+function addTypo(texts, rate, random = Math.random, similarity = globalThis.CatworldChatReply.similarity) {
+  if (!(rate > 0) || random() * 100 >= rate) return texts;
+  const candidates = [];
+  texts.forEach((text, index) => {
+    const chars = [...text];
+    if (chars.length < TYPO_MIN_LENGTH) return;
+    chars.forEach((right, at) => {
+      if (!isLetter(right)) return;
+      const wrong = wrongChar(chars, at);
+      const typed = wrong && chars.map((char, position) => (position === at ? wrong : char)).join('');
+      const correction = `*${right}`;
+      if (typed && safeText(typed) && safeText(correction) && similarity(text, typed) >= MATCH_THRESHOLD) candidates.push({ index, typed, correction });
+    });
+  });
+  if (!candidates.length) return texts;
+  const pick = candidates[Math.min(candidates.length - 1, Math.floor(random() * candidates.length))];
+  const result = [...texts];
+  result.splice(pick.index, 1, pick.typed, pick.correction);
+  return result;
+}
+// 對方更正錯字的那一則（「*字」）：不是劇本的台詞，但屬於這一場，收下就好
+const isCorrection = text => /^[*＊]\S{1,4}$/u.test(String(text ?? '').trim());
+
+globalThis.CatworldChatScript = { SETTINGS_KEY, MATCH_THRESHOLD, normalizeSettings, partnerIdOf, fill, tellCommand, usableScripts, toTurns, bestStart, createSession, turnDelayMs, splitGapMs, addTypo, isCorrection };
 })();

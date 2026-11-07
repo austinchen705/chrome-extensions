@@ -234,6 +234,8 @@ let scriptWaitTimer = null; // 等對方下一輪的逾時
 const scriptTimers = new Set();
 const SCRIPT_CACHE_MS = 5 * 60 * 1000;
 const SCRIPT_WAIT_MS = 3 * 60 * 1000; // 等對方下一輪等這麼久就放棄這一場
+const CORRECTION_WINDOW_MS = 15 * 1000; // 劇本剛收到對方一則的這段時間內，對方的「*字」更正算這一場的
+let scriptHeardAt = 0;
 const characterName = () => (/ - /.test(document.title) ? document.title.split(' - ')[0].trim() : '');
 // 靜默結束這一場：清掉等待中的計時器、排在佇列裡還沒送出的台詞，不補送任何收尾
 function cancelScript() {
@@ -256,11 +258,11 @@ function loadScripts() {
   })().finally(() => { scriptLoading = null; });
   return scriptLoading;
 }
-// 一輪的每一則各排一個計時器：第一則等「思考加打字」的時間，之後每則再隔一小段才送；finalTurn：這是我說的最後一輪，
+// 一輪的每一則各排一個計時器（出錯字時那一則後面多一則更正）：第一則等「思考加打字」的時間，之後每則再隔一小段才送；finalTurn：這是我說的最後一輪，
 // 最後一則送出之後這一場才算結束（等待送出的這段時間場次還在，不會被當成沒有進行中）
 function sayTurn(parts, finalTurn) {
   const name = chatScript.partnerName || chatScript.partner;
-  const texts = parts.map(part => CatworldChatScript.fill(part, name));
+  const texts = CatworldChatScript.addTypo(parts.map(part => CatworldChatScript.fill(part, name)), chatScript.typoRate);
   let at = CatworldChatScript.turnDelayMs(texts[0]);
   texts.forEach((text, index) => {
     if (index) at += CatworldChatScript.splitGapMs();
@@ -288,6 +290,8 @@ function sendPart(text, lastPart, finalTurn) {
 // 這句來訊是不是劇本的下一句：是就回 true（並排好我要說的下一輪）；不是（或功能沒開、不是對方）回 false，交給一般私聊的流程
 function hearScript({ name, text }) {
   if (!chatScript.enabled || !chatScript.partner || CatworldChatScript.partnerIdOf(name) !== chatScript.partner.toLowerCase()) return false;
+  // 對方的更正（*字）：這一場進行中、或剛收到對方一則的幾秒內，收下就好（不回、不動計時）
+  if (CatworldChatScript.isCorrection(text) && (scriptSession || Date.now() - scriptHeardAt < CORRECTION_WINDOW_MS)) return true;
   if (Date.now() - scriptCache.at > SCRIPT_CACHE_MS) loadScripts();
   const ownName = characterName();
   let session = scriptSession;
@@ -298,6 +302,7 @@ function hearScript({ name, text }) {
   }
   const step = session.hear(text);
   if (!step) return false;
+  scriptHeardAt = Date.now();
   clearTimeout(scriptWaitTimer);
   if (step.partial) {
     // 對方這一輪還沒說完的前幾則：收下、不回，繼續等後面的
