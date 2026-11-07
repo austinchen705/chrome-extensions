@@ -198,7 +198,7 @@ ui('turning the feature off while A waits for the scripts cancels the start', as
   }
 });
 
-// ---- 與聊天回覆隔離（票 02） ----
+// ---- 與聊天回覆隔離 ----
 const PLAIN = {
   id: 't4',
   lines: [
@@ -223,6 +223,10 @@ ui('a full play puts nothing in chatPairs and nothing in the whisper block, even
     [both.pageA, both.pageB].forEach(page => assert.equal((page.store.chatPairs ?? []).length, 0, JSON.stringify(page.store.chatPairs)));
     assert.equal(whisperTexts(both.pageA).length, 0, 'the script lines never reach A whisper block');
     assert.equal(whisperTexts(both.pageB).length, 1, 'and B only has the real message from before');
+    // 劇本送出的台詞回印時，那則還沒回的真人來訊也算處理過了：之後我手動回的話不會和它配成一筆
+    both.pageB.output('<span>[P]你告訴阿凱：還好啦\n</span>');
+    await sleep(600);
+    assert.equal((both.pageB.store.chatPairs ?? []).length, 0, 'no pending real message is left to pair with a later manual reply');
   } finally {
     both.close();
   }
