@@ -234,7 +234,6 @@ let scriptWaitTimer = null; // 等對方下一輪的逾時
 const scriptTimers = new Set();
 const SCRIPT_CACHE_MS = 5 * 60 * 1000;
 const SCRIPT_WAIT_MS = 3 * 60 * 1000; // 等對方下一輪等這麼久就放棄這一場
-const SCRIPT_TURN_MS = 2000; // 一輪台詞送出前等的時間
 const characterName = () => (/ - /.test(document.title) ? document.title.split(' - ')[0].trim() : '');
 // 靜默結束這一場：清掉等待中的計時器、排在佇列裡還沒送出的台詞，不補送任何收尾
 function cancelScript() {
@@ -257,25 +256,34 @@ function loadScripts() {
   })().finally(() => { scriptLoading = null; });
   return scriptLoading;
 }
-// last：這是我說的最後一輪，送出之後這一場才算結束（等待送出的這段時間場次還在，不會被當成沒有進行中）
+// 一輪的每一則各排一個計時器：第一則等「思考加打字」的時間，之後每則再隔一小段才送；last：這是我說的最後一輪，
+// 最後一則送出之後這一場才算結束（等待送出的這段時間場次還在，不會被當成沒有進行中）
 function sayTurn(parts, last) {
-  const timer = setTimeout(() => {
-    scriptTimers.delete(timer);
-    const name = chatScript.partnerName || chatScript.partner;
-    const texts = parts.map(part => CatworldChatScript.fill(part, name));
-    // 驗證碼辨識中、或因驗證停止：這一輪過時了，整場放棄
-    if (captcha || /驗證/.test(stopReason) || !startMacro(texts.map(text => CatworldChatScript.tellCommand(chatScript.partner, text)).join(';'), 'script')) {
-      cancelScript();
-      return;
-    }
-    texts.forEach(text => chatLimiter.noteSent(text));
-    if (last) {
-      scriptSession = null;
-      return;
-    }
-    scriptWaitTimer = setTimeout(cancelScript, SCRIPT_WAIT_MS);
-  }, SCRIPT_TURN_MS);
-  scriptTimers.add(timer);
+  const name = chatScript.partnerName || chatScript.partner;
+  const texts = parts.map(part => CatworldChatScript.fill(part, name));
+  let at = CatworldChatScript.turnDelayMs(texts[0]);
+  texts.forEach((text, index) => {
+    if (index) at += CatworldChatScript.splitGapMs();
+    const timer = setTimeout(() => {
+      scriptTimers.delete(timer);
+      sendPart(text, index === texts.length - 1, last);
+    }, at);
+    scriptTimers.add(timer);
+  });
+}
+function sendPart(text, endsTurn, last) {
+  // 驗證碼辨識中、或因驗證停止：這一輪過時了，整場放棄
+  if (captcha || /驗證/.test(stopReason) || !startMacro(CatworldChatScript.tellCommand(chatScript.partner, text), 'script')) {
+    cancelScript();
+    return;
+  }
+  chatLimiter.noteSent(text);
+  if (!endsTurn) return;
+  if (last) {
+    scriptSession = null;
+    return;
+  }
+  scriptWaitTimer = setTimeout(cancelScript, SCRIPT_WAIT_MS);
 }
 // 這句來訊是不是劇本的下一句：是就回 true（並排好我要說的下一輪）；不是（或功能沒開、不是對方）回 false，交給一般私聊的流程
 function hearScript({ name, text }) {
@@ -291,6 +299,12 @@ function hearScript({ name, text }) {
   const step = session.hear(text);
   if (!step) return false;
   clearTimeout(scriptWaitTimer);
+  if (step.partial) {
+    // 對方這一輪還沒說完的前幾則：收下、不回，繼續等後面的
+    scriptSession = session;
+    scriptWaitTimer = setTimeout(cancelScript, SCRIPT_WAIT_MS);
+    return true;
+  }
   scriptSession = step.send.length ? session : null;
   if (step.send.length) sayTurn(step.send, step.done);
   return true;

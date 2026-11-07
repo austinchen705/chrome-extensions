@@ -20,11 +20,11 @@ const A = { nick: '阿凱', id: 'akai' };
 const B = { nick: '緋爾', id: 'fenrir' };
 
 // 兩個頁面：A（角色 A、對方是 B）與 B（角色 B、對方是 A）；overrides 可改各自的設定
-async function pair({ scripts = [SCRIPT, OTHER], a = {}, b = {}, storeA = {}, storeB = {} } = {}) {
+async function pair({ scripts = [SCRIPT, OTHER], a = {}, b = {}, storeA = {}, storeB = {}, scale = 20 } = {}) {
   const respond = message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts } : {});
   const setting = (role, partner, partnerName, extra) => ({ chatScript: { enabled: true, role, partner, partnerName, ...extra } });
-  const pageA = await boot({ scale: 20, respond, initialStore: { ...setting('A', B.id, B.nick, a), ...storeA } });
-  const pageB = await boot({ scale: 20, respond, initialStore: { ...setting('B', A.id, A.nick, b), ...storeB } });
+  const pageA = await boot({ scale, respond, initialStore: { ...setting('A', B.id, B.nick, a), ...storeA } });
+  const pageB = await boot({ scale, respond, initialStore: { ...setting('B', A.id, A.nick, b), ...storeB } });
   pageA.w.document.title = `${A.nick} - CatWorld`;
   pageB.w.document.title = `${B.nick} - CatWorld`;
   const told = [];
@@ -318,13 +318,15 @@ ui('stopping everything cancels a round that is waiting to be sent', async () =>
 
 ui('a captcha cancels the script, including a round already queued, and nothing is sent after the captcha is passed', async () => {
   const page = await soloPage('A');
+  let keepAlive = null;
   try {
+    // 沒有遊戲輸出的話，無回應看門狗會在 sc 送出後約 8 秒（這裡縮小後 400 毫秒）停掉所有功能：持續餵一點輸出
+    keepAlive = setInterval(() => page.output('<span>遊戲輸出\n</span>'), 80);
     // 別的功能一直在送指令，間隔很長：劇本這一輪排進佇列後要排在它們後面，過一陣子才會送出
     await page.ask({ type: 'START', settings: { commands: ['ps'], minSeconds: 1, maxSeconds: 1, commandDelayMs: 20000 } });
     assert.ok(await waitFor(() => page.sent.includes('sc'), 4000), 'starting sends sc first, the following commands wait for the long gap');
     assert.equal((await start(page)).ok, true);
-    await sleep(250);
-    assert.equal((await status(page)).macros, 1, 'the round is queued behind the other commands');
+    assert.ok(await waitFor(async () => (await status(page)).macros === 1, 4000), 'the round is queued behind the other commands');
     page.output(SPRITE);
     await sleep(100);
     const during = await status(page);
@@ -336,6 +338,7 @@ ui('a captcha cancels the script, including a round already queued, and nothing 
     assert.equal(tells(page).length, 0, 'the queued round was cancelled, not sent after the captcha');
     assert.equal((await status(page)).chatScript, null);
   } finally {
+    clearInterval(keepAlive);
     page.close();
   }
 });
@@ -388,5 +391,59 @@ ui('an answer inside the 3 minutes restarts the wait, so a live session is not c
     assert.ok(await waitFor(async () => (await status(page)).chatScript === null, 5000), 'it still ends when the other side stays silent');
   } finally {
     page.close();
+  }
+});
+
+// ---- 擬真計時與拆兩則 ----
+// 記下頁面裡之後每個 setTimeout 的毫秒數（縮小之前的）；隨機數用頁面自己的 Math.random 換成固定值
+function recordDelays(page) {
+  const delays = [];
+  const inner = page.w.setTimeout;
+  page.w.setTimeout = (fn, ms, ...args) => { delays.push(ms); return inner(fn, ms, ...args); };
+  return delays;
+}
+
+ui('the wait before a round is a thinking time plus typing time per character, kept between 3 and 45 seconds', async () => {
+  // random 0：思考 1 秒，每字 0.3 秒；random 趨近 1：思考 4 秒，每字 0.6 秒
+  const cases = [
+    { text: '在嗎在嗎', random: 0, expected: 3000 }, // 1000 + 4 × 300 = 2200，不到下限
+    { text: '好'.repeat(20), random: 0, expected: 7000 }, // 1000 + 20 × 300
+    { text: '好'.repeat(20), random: 0.999999, expected: 16000 }, // 4000 + 20 × 600
+    { text: '好'.repeat(100), random: 0.999999, expected: 45000 }, // 4000 + 100 × 600 = 64000，超過上限
+  ];
+  for (const { text, random, expected } of cases) {
+    const script = { id: 'len', lines: [{ who: 'A', text }, { who: 'B', text: '好' }] };
+    const page = await boot({ scale: 20, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [script] } : {}), initialStore: { chatScript: { enabled: true, role: 'A', partner: B.id, partnerName: B.nick } } });
+    try {
+      page.w.Math.random = () => random;
+      const delays = recordDelays(page);
+      assert.equal((await start(page)).ok, true);
+      assert.ok(delays.includes(expected), `${text.length} characters with random ${random} should wait ${expected} ms, timers set: ${JSON.stringify(delays)}`);
+    } finally {
+      page.close();
+    }
+  }
+});
+
+ui('a line with ／ goes out as separate tells a random 1 to 3 seconds apart, and B takes the earlier parts in without answering until the last one', async () => {
+  const split = { id: 't5', lines: [{ who: 'A', text: '欸你看到新聞沒／那個真的很扯' }, { who: 'B', text: '有啊我看到了' }] };
+  const both = await pair({ scripts: [split], scale: 5 });
+  try {
+    both.pageA.w.Math.random = () => 0.999; // 兩則之間間隔 1000 + 2000 × 0.999 = 2998 毫秒
+    const delays = recordDelays(both.pageA);
+    assert.equal((await start(both.pageA)).ok, true);
+    assert.ok(delays.some((delay, index) => delays[index + 1] - delay === 2998), `the two parts are scheduled 2998 ms apart: ${JSON.stringify(delays)}`);
+    assert.ok(await waitFor(() => both.told.length === 1, 12000), 'the first part goes out alone');
+    const during = await status(both.pageB);
+    assert.notEqual(during.chatScript, null, 'B recognised the first part as the start of the script');
+    assert.equal(during.chatScript.turn, 0, 'but it is still waiting for the rest of the round');
+    assert.equal(both.pageB.sent.length, 0, 'and has not answered');
+    assert.ok(await waitFor(() => both.told.length === 3, 20000));
+    assert.deepEqual(both.told.map(item => item.text), ['欸你看到新聞沒', '那個真的很扯', '有啊我看到了']);
+    await sleep(600);
+    assert.equal(whisperTexts(both.pageB).length, 0, 'the parts are not shown as ordinary whispers');
+    assert.equal((both.pageB.store.chatPairs ?? []).length, 0, 'nor recorded as chat data');
+  } finally {
+    both.close();
   }
 });

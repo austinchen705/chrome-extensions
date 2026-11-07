@@ -39,8 +39,10 @@ function partnerIdOf(name) {
 const fill = (text, name) => String(text).split(PLACEHOLDER).join(name);
 const tellCommand = (id, text) => `tell ${id} ${text}`;
 
-// 劇本的一句：{ who: 'A' | 'B', text }，台詞要通過 safeText
-const validLine = line => (line?.who === 'A' || line?.who === 'B') && safeText(line.text);
+// 台詞裡用全形斜線 ／ 分開的幾段，每段各送一則 tell
+const splitParts = text => text.split('／').map(part => part.trim()).filter(Boolean);
+// 劇本的一句：{ who: 'A' | 'B', text }，台詞要通過 safeText，而且至少有一段
+const validLine = line => (line?.who === 'A' || line?.who === 'B') && safeText(line.text) && splitParts(line.text).length > 0;
 // 從背景拿到的劇本只留形狀對、每一句都安全的
 const usableScripts = raw => (Array.isArray(raw) ? raw : []).filter(script => typeof script?.id === 'string'
   && Array.isArray(script.lines) && script.lines.length >= 2 && script.lines.every(validLine));
@@ -50,30 +52,37 @@ function toTurns(script) {
   const turns = [];
   script.lines.forEach(line => {
     const last = turns[turns.length - 1];
-    if (last && last.who === line.who) last.parts.push(line.text);
-    else turns.push({ who: line.who, parts: [line.text] });
+    if (last && last.who === line.who) last.parts.push(...splitParts(line.text));
+    else turns.push({ who: line.who, parts: splitParts(line.text) });
   });
   return turns;
 }
 
-// 對方這一輪預期會看到的字：它的最後一句，{對方} 是對方在送出時換成「我的暱稱」的，所以這裡換成我自己的角色名（不知道就拿掉）
-const expectedText = (turn, ownName) => fill(turn.parts[turn.parts.length - 1], ownName);
+// 對方這一輪預期會看到的每一則：{對方} 是對方在送出時換成「我的暱稱」的，所以這裡換成我自己的角色名（不知道就拿掉）
+const expectedParts = (turn, ownName) => turn.parts.map(part => fill(part, ownName));
+// 來訊和這一輪的哪一則最像：{ index, score }
+const closestPart = (turn, ownName, text, similarity) => {
+  const scores = expectedParts(turn, ownName).map(part => similarity(part, text));
+  const score = Math.max(...scores);
+  return { index: scores.indexOf(score), score };
+};
 
-// 沒有進行中的一場時，來訊像哪一份劇本的第一輪（必須是對方的一輪）：回相似度最高且達門檻的劇本，沒有回 null
+// 沒有進行中的一場時，來訊像哪一份劇本的第一輪（必須是對方的一輪，像其中任何一則都算）：回相似度最高且達門檻的劇本，沒有回 null
 function bestStart(scripts, role, text, ownName = '', similarity = globalThis.CatworldChatReply.similarity) {
   let best = null;
   let bestScore = 0;
   scripts.forEach(script => {
     const first = toTurns(script)[0];
     if (first.who === role) return;
-    const score = similarity(expectedText(first, ownName), text);
+    const { score } = closestPart(first, ownName, text, similarity);
     if (score >= MATCH_THRESHOLD && score > bestScore) { best = script; bestScore = score; }
   });
   return best;
 }
 
 // 進行中的一場：index 是下一個要處理的輪（已經送出或收到的都越過了）。
-// start()（A 開場）回第一輪要送的台詞；hear(text) 收到對方的來訊：對上預期的那一輪就換我說下一輪，回 { send, done }，對不上回 null。
+// start()（A 開場）回第一輪要送的台詞；hear(text) 收到對方的來訊：對上預期那一輪的最後一則就換我說下一輪，回 { send, done }；
+// 對上的是前面的某一則（對方這一輪還沒說完）就收下、不前進，回 { send: [], done: false, partial: true }；都對不上回 null。
 // done 是整份劇本走完了（我說了最後一輪，或對方的最後一輪到了）。
 function createSession({ script, role, ownName = '', similarity = globalThis.CatworldChatReply.similarity }) {
   const turns = toTurns(script);
@@ -91,7 +100,9 @@ function createSession({ script, role, ownName = '', similarity = globalThis.Cat
     },
     hear(text) {
       if (index >= turns.length || turns[index].who === role) return null;
-      if (similarity(expectedText(turns[index], ownName), text) < MATCH_THRESHOLD) return null;
+      const heard = closestPart(turns[index], ownName, text, similarity);
+      if (heard.score < MATCH_THRESHOLD) return null;
+      if (heard.index < turns[index].parts.length - 1) return { send: [], done: false, partial: true };
       index += 1;
       const send = index < turns.length ? take() : [];
       return { send, done: index >= turns.length };
@@ -100,5 +111,17 @@ function createSession({ script, role, ownName = '', similarity = globalThis.Cat
   };
 }
 
-globalThis.CatworldChatScript = { SETTINGS_KEY, MATCH_THRESHOLD, normalizeSettings, partnerIdOf, fill, tellCommand, usableScripts, toTurns, bestStart, createSession };
+// 擬真計時（毫秒）：一輪送出前等「思考時間加依字數算的打字時間」，夾在 TURN_LIMITS_MS 之內；同一輪拆開的兩則之間隔 SPLIT_GAP_MS。random 可注入
+const THINK_MS = [1000, 4000];
+const PER_CHAR_MS = [300, 600];
+const TURN_LIMITS_MS = [3000, 45000];
+const SPLIT_GAP_MS = [1000, 3000];
+const between = ([min, max], random) => min + (max - min) * random();
+const turnDelayMs = (text, random = Math.random) => {
+  const waited = between(THINK_MS, random) + [...text].length * between(PER_CHAR_MS, random);
+  return Math.round(Math.min(TURN_LIMITS_MS[1], Math.max(TURN_LIMITS_MS[0], waited)));
+};
+const splitGapMs = (random = Math.random) => Math.round(between(SPLIT_GAP_MS, random));
+
+globalThis.CatworldChatScript = { SETTINGS_KEY, MATCH_THRESHOLD, normalizeSettings, partnerIdOf, fill, tellCommand, usableScripts, toTurns, bestStart, createSession, turnDelayMs, splitGapMs };
 })();
