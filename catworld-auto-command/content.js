@@ -230,14 +230,20 @@ let chatScript = CatworldChatScript.normalizeSettings(undefined);
 let scriptCache = { scripts: [], at: 0 };
 let scriptLoading = null;
 let scriptSession = null;
+let scriptWaitTimer = null; // 等對方下一輪的逾時
 const scriptTimers = new Set();
 const SCRIPT_CACHE_MS = 5 * 60 * 1000;
+const SCRIPT_WAIT_MS = 3 * 60 * 1000; // 等對方下一輪等這麼久就放棄這一場
 const SCRIPT_TURN_MS = 2000; // 一輪台詞送出前等的時間
 const characterName = () => (/ - /.test(document.title) ? document.title.split(' - ')[0].trim() : '');
+// 靜默結束這一場：清掉等待中的計時器、排在佇列裡還沒送出的台詞，不補送任何收尾
 function cancelScript() {
+  clearTimeout(scriptWaitTimer);
+  scriptWaitTimer = null;
   scriptTimers.forEach(clearTimeout);
   scriptTimers.clear();
   scriptSession = null;
+  cancelMacros('script');
 }
 // 向 background 要劇本；同時只有一個請求在跑（快取過期時一句接一句的來訊不會每句都要一次）
 function loadScripts() {
@@ -263,7 +269,11 @@ function sayTurn(parts, last) {
       return;
     }
     texts.forEach(text => chatLimiter.noteSent(text));
-    if (last) scriptSession = null;
+    if (last) {
+      scriptSession = null;
+      return;
+    }
+    scriptWaitTimer = setTimeout(cancelScript, SCRIPT_WAIT_MS);
   }, SCRIPT_TURN_MS);
   scriptTimers.add(timer);
 }
@@ -280,6 +290,7 @@ function hearScript({ name, text }) {
   }
   const step = session.hear(text);
   if (!step) return false;
+  clearTimeout(scriptWaitTimer);
   scriptSession = step.send.length ? session : null;
   if (step.send.length) sayTurn(step.send, step.done);
   return true;
@@ -468,6 +479,7 @@ function checkCaptcha() {
 // 只有偵測器又看到一張圖（newImage）才取消送出、重新辨識
 // 畫面上的提示數量在這裡就當成新基準，答案送出後遊戲回應時 checkCaptcha 才不會把同一個提示再當成新的驗證碼
 function beginCaptcha(html, { newImage = false } = {}) {
+  cancelScript();
   captchaCount = countCaptcha();
   if (captcha?.answer) {
     captcha.html = '';
@@ -1810,9 +1822,11 @@ chrome.storage.onChanged?.addListener((changes, area) => {
     if (!chatReply.enabled) cancelChatReplies();
   }
   if (area === 'local' && changes[CatworldChatScript.SETTINGS_KEY]) {
+    const before = chatScript;
     chatScript = CatworldChatScript.normalizeSettings(changes[CatworldChatScript.SETTINGS_KEY].newValue);
+    // 關掉、換角色、換對方：進行中的一場作廢
+    if (!chatScript.enabled || chatScript.role !== before.role || chatScript.partner.toLowerCase() !== before.partner.toLowerCase()) cancelScript();
     if (chatScript.enabled) loadScripts();
-    else cancelScript();
   }
   if (area === 'local' && changes.autoReward) {
     autoReward = changes.autoReward.newValue !== false;

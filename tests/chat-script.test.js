@@ -261,3 +261,113 @@ ui('a real message from the partner that matches no script line is handled as us
     page.close();
   }
 });
+
+// ---- 中止條件 ----
+const SPRITE = require('./helpers/game-page').fixture('sprite-62044.html');
+const soloPage = (role, extra = {}) => boot({
+  scale: 20,
+  respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {}),
+  initialStore: { chatScript: { enabled: true, role, partner: role === 'A' ? B.id : A.id, partnerName: role === 'A' ? B.nick : A.nick }, ...extra },
+});
+const status = page => page.ask({ type: 'STATUS' });
+const tells = page => page.sent.filter(command => command.startsWith('tell '));
+
+ui('A gives up when B does not answer within 3 minutes, sends nothing more, and can start again', async () => {
+  const page = await boot({ scale: 200, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {}), initialStore: { chatScript: { enabled: true, role: 'A', partner: B.id, partnerName: B.nick } } });
+  try {
+    assert.equal((await start(page)).ok, true);
+    assert.ok(await waitFor(() => tells(page).length === 1, 5000));
+    assert.ok(await waitFor(async () => (await status(page)).chatScript === null, 5000), 'the session ends by itself');
+    page.output('<span>[P]緋爾(fenrir)告訴你：好啊去哪裡吃\n</span>');
+    await sleep(300);
+    assert.equal(tells(page).length, 1, 'a late answer is not continued, and no closing line is sent');
+    assert.equal((await start(page)).ok, true, 'the next start is not affected');
+  } finally {
+    page.close();
+  }
+});
+
+ui('B gives up when A does not carry on within 3 minutes, and a late line from A does not revive the session', async () => {
+  const page = await boot({ scale: 200, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {}), initialStore: { chatScript: { enabled: true, role: 'B', partner: A.id, partnerName: A.nick } } });
+  try {
+    page.output('<span>[P]阿凱(akai)告訴你：今天要不要去吃飯\n</span>');
+    assert.ok(await waitFor(() => tells(page).length === 1, 5000));
+    assert.ok(await waitFor(async () => (await status(page)).chatScript === null, 5000));
+    page.output('<span>[P]阿凱(akai)告訴你：那就吃拉麵吧\n</span>');
+    await sleep(300);
+    assert.equal(tells(page).length, 1);
+  } finally {
+    page.close();
+  }
+});
+
+ui('stopping everything cancels a round that is waiting to be sent', async () => {
+  const page = await soloPage('A');
+  try {
+    assert.equal((await start(page)).ok, true);
+    page.output('<span>jrealm 出現了\n</span>');
+    await sleep(600);
+    assert.equal(tells(page).length, 0);
+    assert.equal((await status(page)).chatScript, null);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a captcha cancels the script, including a round already queued, and nothing is sent after the captcha is passed', async () => {
+  const page = await soloPage('A');
+  try {
+    // 別的功能一直在送指令，間隔很長：劇本這一輪排進佇列後要排在它們後面，過一陣子才會送出
+    await page.ask({ type: 'START', settings: { commands: ['ps'], minSeconds: 1, maxSeconds: 1, commandDelayMs: 20000 } });
+    assert.ok(await waitFor(() => page.sent.includes('sc'), 4000), 'starting sends sc first, the following commands wait for the long gap');
+    assert.equal((await start(page)).ok, true);
+    await sleep(250);
+    assert.equal((await status(page)).macros, 1, 'the round is queued behind the other commands');
+    page.output(SPRITE);
+    await sleep(100);
+    const during = await status(page);
+    assert.equal(during.chatScript, null, 'the captcha ends the session at once');
+    assert.equal(during.macros, 0, 'and takes the queued round out of the queue');
+    assert.ok(await waitFor(() => page.sent.includes('62044'), 4000), 'the captcha answer is sent');
+    page.output('<span class="H3">驗證成功。\n</span>&gt; ');
+    await sleep(2800);
+    assert.equal(tells(page).length, 0, 'the queued round was cancelled, not sent after the captcha');
+    assert.equal((await status(page)).chatScript, null);
+  } finally {
+    page.close();
+  }
+});
+
+for (const [name, next] of [
+  ['the switch is turned off', { enabled: false, role: 'A', partner: B.id, partnerName: B.nick }],
+  ['the role is changed', { enabled: true, role: 'B', partner: B.id, partnerName: B.nick }],
+  ['the partner ID is changed', { enabled: true, role: 'A', partner: 'someoneelse', partnerName: B.nick }],
+]) {
+  ui(`the session is cancelled when ${name}`, async () => {
+    const page = await soloPage('A');
+    try {
+      assert.equal((await start(page)).ok, true);
+      assert.ok(await waitFor(() => tells(page).length === 1, 5000));
+      page.changeListeners.forEach(listener => listener({ chatScript: { newValue: next } }, 'local'));
+      assert.equal((await status(page)).chatScript, null);
+      page.output('<span>[P]緋爾(fenrir)告訴你：好啊去哪裡吃\n</span>');
+      await sleep(400);
+      assert.equal(tells(page).length, 1, 'nothing carries on');
+    } finally {
+      page.close();
+    }
+  });
+}
+
+ui('an orphaned page (the extension was reloaded) sends nothing more', async () => {
+  const page = await soloPage('A');
+  try {
+    assert.equal((await start(page)).ok, true);
+    page.w.chrome.runtime.id = undefined;
+    page.output('<span>有東西出現了\n</span>');
+    await sleep(600);
+    assert.equal(tells(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
