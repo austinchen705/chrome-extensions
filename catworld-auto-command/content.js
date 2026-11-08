@@ -252,6 +252,8 @@ function loadScripts() {
   scriptLoading ??= (async () => {
     try {
       const reply = await chrome.runtime.sendMessage({ type: 'CHAT_SCRIPTS' });
+      // 背景沒答好（沒回應、ok 不是 true）：沿用手上的、時間不更新，下一句來訊會再問；不能把「沒拿到」記成「沒有劇本」
+      if (reply?.ok !== true) return;
       scriptCache = { scripts: CatworldChatScript.usableScripts(reply?.scripts), at: Date.now() };
     } catch {
       // 連不上背景（孤兒程式）：沒有劇本就不開場也不接話

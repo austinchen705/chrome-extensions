@@ -842,3 +842,22 @@ ui('when the background cannot be reached A does not open and B does not answer'
     b.close();
   }
 });
+
+ui('a background that answers badly is asked again on the next message, not remembered as having no scripts', async () => {
+  let calls = 0;
+  const respond = message => {
+    if (message.type !== 'CHAT_SCRIPTS') return {};
+    calls += 1;
+    return calls === 1 ? { ok: false, error: 'busy' } : { ok: true, scripts: [PLAIN] };
+  };
+  const page = await boot({ scale: 20, respond, initialStore: { chatScript: { enabled: true, typoRate: 0, role: 'B', partner: A.id, partnerName: A.nick } } });
+  try {
+    page.output('<span>[P]阿凱(akai)告訴你：今天要不要去吃飯\n</span>');
+    await sleep(150);
+    page.output('<span>[P]阿凱(akai)告訴你：今天要不要去吃飯\n</span>');
+    assert.ok(await waitFor(() => tells(page).length === 1, 5000), 'the scripts were fetched again and the opener was recognised');
+    assert.ok(calls >= 2);
+  } finally {
+    page.close();
+  }
+});

@@ -482,10 +482,13 @@ function reportEntries(report, max = 30) {
 const reportLines = (report, max) => reportEntries(report, max).map(entry => entry.text);
 
 // 設定頁每個分頁的標題與單位：生效的是「隻」怪物或「步」，對不到的是怪物或謎／步驟
+// 怪物與解謎兩個分頁的說明相同
+const ZAP_OFF = '怪物查詢與解謎都關著，不會抓取';
+const ZAP_WAITING = '尚未抓取（怪物查詢或解謎要開著；開著的話查一次，或按「立即更新」）';
 // off：功能沒開不抓時的說明、waiting：開著但還沒抓過、dropped：被丟掉的單位、missed：對不到（劇本是不在適用週）的說法
 const SHEET_LABELS = {
-  mob: { title: '怪物路線', used: '隻', dropped: '列', missed: n => `對不到怪物 ${n} 筆`, off: '怪物查詢與解謎都關著，不會抓取', waiting: '尚未抓取（怪物查詢或解謎要開著；開著的話查一次，或按「立即更新」）' },
-  riddle: { title: '解謎指令', used: '步', dropped: '列', missed: n => `對不到謎或步驟 ${n} 筆`, off: '怪物查詢與解謎都關著，不會抓取', waiting: '尚未抓取（怪物查詢或解謎要開著；開著的話查一次，或按「立即更新」）' },
+  mob: { title: '怪物路線', used: '隻', dropped: '列', missed: n => `對不到怪物 ${n} 筆`, off: ZAP_OFF, waiting: ZAP_WAITING },
+  riddle: { title: '解謎指令', used: '步', dropped: '列', missed: n => `對不到謎或步驟 ${n} 筆`, off: ZAP_OFF, waiting: ZAP_WAITING },
   chat: { title: '劇本對話', used: '份', dropped: '筆', missed: n => `不在適用週 ${n} 份`, off: '功能沒開，不會抓取', waiting: '尚未抓取（劇本對話要開著；開著的話等一下會抓，或按「立即更新」）' },
 };
 // 這個分頁現在會不會被抓：怪物與解謎看那兩個功能開關，劇本看劇本對話自己的開關（features 是 { mobs, riddles, chat }）

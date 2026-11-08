@@ -520,8 +520,7 @@ async function showShared() {
   const data = await chrome.storage.local.get(['sharedSources', 'sharedCache', 'zapFeatures', 'chatScript']);
   // 功能都關著時 background 不會抓，說明一下，不然看起來像壞掉
   const features = { mobs: data.zapFeatures?.mobs === true, riddles: data.zapFeatures?.riddles === true, chat: data.chatScript?.enabled === true };
-  const enabled = features.mobs || features.riddles;
-  $('sharedOff').hidden = enabled;
+  $('sharedOff').hidden = CatworldSharedData.sheetEnabled('mob', features);
   Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
     const url = data.sharedSources?.[kind] ?? '';
     if (document.activeElement !== $(field.input)) $(field.input).value = url;
