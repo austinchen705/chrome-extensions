@@ -31,3 +31,9 @@
 - 紀錄只增不減：房間裡的怪會移動，所以只代表「曾經在這間看過」，不保證現在還在。
 - 只涵蓋作者走過的區域，不是完整清單。
 - 這份資料已經內建進 extension（`catworld-auto-command/map-data.js`，由 `node tools/gen-map-data.js` 產生），更新 extension 就會用到；改了這個檔要重新產生並升版本。
+
+## chat-scripts-w45.csv
+
+劇本對話的第一批劇本，12 份（科技、體育、天氣、娛樂、美食、遊戲各 2 份），依 2026 年第 45 週（11/2～11/8）的時事寫成，欄位和 `docs/templates/shared-chat.csv` 一樣，可以直接整份貼進共用試算表的劇本分頁。每份第一列的「備註」寫了新聞來源與日期，「週」是 `2026-11-02`（從那天起 14 天內才會用）。亞冠賽那份的事件在 11/12，之後請從試算表拿掉。
+
+內建的 3 份備援劇本不含時事，直接寫在 `catworld-auto-command/chat-script-data.js`。`tests/chat-script-content.test.js` 檢查這 12 份與內建劇本：通過驗證規則、7～8 輪、題材分佈、來源註明、不碰禁區字眼、開場句彼此分得開。

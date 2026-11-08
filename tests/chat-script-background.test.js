@@ -31,5 +31,6 @@ test('CHAT_SCRIPTS answers with built-in scripts the game page accepts, and ever
   const usable = globalThis.CatworldChatScript.usableScripts(reply.scripts);
   assert.ok(usable.length >= 1, 'at least one built-in script');
   assert.equal(usable.length, reply.scripts.length, 'none of them is thrown away by the game page');
+  assert.deepEqual(reply.scripts.map(script => script.id), ['builtin-1', 'builtin-2', 'builtin-3'], 'the three general built-in scripts, and nothing else without a shared sheet');
   usable.forEach(script => assert.equal(script.lines[0].who, 'A', script.id));
 });
