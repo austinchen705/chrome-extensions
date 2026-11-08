@@ -100,3 +100,124 @@ ui('when every row goes through the summary is plain and there is no detail list
     dom.window.close();
   }
 });
+
+// ---- 劇本對話的試算表連結與結果 ----
+const URL_CHAT = 'https://docs.google.com/spreadsheets/d/e/2PACX-abc/pub?gid=88&single=true&output=csv';
+const chatEntry = lines => {
+  const built = S.buildChatScripts(['劇本ID,順序,誰,台詞,備註,週', ...lines].join('\n'), new Date(2026, 10, 10).getTime());
+  return { url: URL_CHAT, at: Date.now(), scripts: built.scripts, report: built.report };
+};
+const GOOD = ['s1,1,A,嗨,,', 's1,2,B,嗨嗨,,'];
+
+async function bootChat(lines, { chatOn = true, sources = { mob: URL_MOB, riddle: '', chat: URL_CHAT } } = {}) {
+  const store = { sharedSources: sources, chatScript: { enabled: chatOn }, zapFeatures: { mobs: true } };
+  if (lines) store.sharedCache = { chat: chatEntry(lines) };
+  const sent = [];
+  const dom = await JSDOM.fromFile(path.join(root, 'popup.html'), {
+    runScripts: 'dangerously',
+    resources: 'usable',
+    url: `file://${root.split(path.sep).join('/')}/popup.html`,
+    beforeParse(window) {
+      window.chrome = {
+        runtime: { getManifest: () => ({ version: '0.0.0' }), getURL: file => file, onMessage: { addListener() {} }, sendMessage: async message => { sent.push(message.type); return {}; } },
+        storage: {
+          local: {
+            get: async keys => Object.fromEntries([].concat(keys).filter(key => key in store).map(key => [key, JSON.parse(JSON.stringify(store[key]))])),
+            set: async values => { Object.assign(store, JSON.parse(JSON.stringify(values))); },
+          },
+          sync: { get: async () => ({}), set: async () => {} },
+          session: { get: async () => ({}), set: async () => {} },
+          onChanged: { addListener() {} },
+        },
+        tabs: { query: async () => [], get: async () => { throw new Error('no tab'); }, sendMessage: async () => { throw new Error('no tab'); }, create: async () => {}, update: async () => {} },
+        permissions: { contains: async () => true, request: async () => true, remove: async () => true, onAdded: { addListener() {} }, onRemoved: { addListener() {} } },
+        scripting: {},
+        windows: { update: async () => {} },
+      };
+    },
+  });
+  const doc = dom.window.document;
+  const rows = id => [...doc.getElementById(id).children].map(node => ({ text: node.textContent, error: node.classList.contains('msg-error'), warn: node.classList.contains('msg-warn') }));
+  const resultId = 'sharedChatResult';
+  assert.ok(await waitFor(() => doc.getElementById(resultId).children.length > 0), 'the settings page showed the chat result');
+  const change = value => {
+    doc.getElementById('sharedChatUrl').value = value;
+    doc.getElementById('sharedChatUrl').dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  };
+  return { dom, doc, store, sent, change, summary: () => rows(resultId), detail: () => rows('sharedChatDetail'), hidden: () => doc.getElementById('sharedChatDetail').hidden };
+}
+
+ui('the script section shows its own link, the summary with amber and red lines for expired scripts and dropped ones', async () => {
+  const { dom, doc, summary, detail } = await bootChat([...GOOD, 'old,1,A,嗨,,2026-01-05', 'old,2,B,好,,', 'bad,1,A,有;分號,,', 'bad,2,B,好,,']);
+  try {
+    assert.equal(doc.getElementById('sharedChatUrl').value, URL_CHAT);
+    const [line] = summary();
+    assert.match(line.text, /^劇本對話：上次更新 .*共 6 列，生效 1 份，丟掉 1 筆，不在適用週 1 份$/);
+    assert.deepEqual([line.error, line.warn], [false, true]);
+    assert.deepEqual(detail().map(item => [item.error, item.warn]), [[false, true], [true, false]]);
+    assert.match(detail()[0].text, /^第 4 列：old　已過期/);
+    assert.match(detail()[1].text, /^第 6 列：丟掉（劇本 bad 整份丟掉：台詞不能有分號/);
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('with every script good the summary is plain and there is no detail list', async () => {
+  const { dom, summary, hidden } = await bootChat(GOOD);
+  try {
+    assert.deepEqual([summary()[0].error, summary()[0].warn, hidden()], [false, false, true]);
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('with the script feature off the chat result says it is not fetched, and shows no list', async () => {
+  const { dom, summary, hidden } = await bootChat(['bad,1,A,有;分號,,', 'bad,2,B,好,,'], { chatOn: false });
+  try {
+    assert.equal(summary()[0].text, '劇本對話：功能沒開，不會抓取');
+    assert.equal(hidden(), true);
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('a chat link that was never set shows "not set"', async () => {
+  const { dom, summary } = await bootChat(null, { sources: { mob: URL_MOB, riddle: '' } });
+  try {
+    assert.equal(summary()[0].text, '劇本對話：尚未設定');
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('saving the chat link keeps the mob and riddle links, asks for an update, and a bad link is refused without saving', async () => {
+  const { dom, doc, store, sent, change, summary } = await bootChat(null, { sources: { mob: URL_MOB, riddle: URL_MOB } });
+  try {
+    change('https://example.com/x.csv');
+    assert.ok(await waitFor(() => summary()[0].error), 'a refusal in red');
+    assert.deepEqual(store.sharedSources, { mob: URL_MOB, riddle: URL_MOB }, 'nothing was saved');
+    change(URL_CHAT);
+    assert.ok(await waitFor(() => store.sharedSources.chat === URL_CHAT));
+    assert.deepEqual(store.sharedSources, { mob: URL_MOB, riddle: URL_MOB, chat: URL_CHAT }, 'the other two links stay');
+    assert.ok(await waitFor(() => sent.includes('SHARED_REFRESH')), 'an update is asked for');
+    doc.getElementById('sharedChatRefresh').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    assert.ok(await waitFor(() => sent.filter(type => type === 'SHARED_REFRESH').length === 2), 'the button next to it updates too');
+    // 更新的回覆（這裡的假 background 沒有回應）處理完才結束，視窗關掉後才跑的畫面更新會丟例外
+    assert.ok(await waitFor(() => summary()[0]?.text.includes('更新失敗')));
+    await new Promise(resolve => setTimeout(resolve, 50));
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('saving the mob link from the other section keeps the chat link', async () => {
+  const { dom, doc, store } = await bootChat(GOOD);
+  try {
+    doc.getElementById('sharedMobUrl').value = '';
+    doc.getElementById('sharedMobUrl').dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert.ok(await waitFor(() => store.sharedSources.mob === ''));
+    assert.equal(store.sharedSources.chat, URL_CHAT);
+  } finally {
+    dom.window.close();
+  }
+});

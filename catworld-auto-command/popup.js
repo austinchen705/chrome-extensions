@@ -508,17 +508,18 @@ Object.values(FEATURE_BOXES).forEach(id => $(id).addEventListener('change', () =
   chrome.storage.local.set({ zapFeatures: Object.fromEntries(Object.entries(FEATURE_BOXES).map(([key, box]) => [key, $(box).checked])) });
 }));
 
-// 共用資料（Google 試算表）：兩個分頁的連結只存本機（sharedSources：{ mob, riddle }，不進匯出），抓取由 background 做，結果在 sharedCache。
+// 共用資料（Google 試算表）：各分頁的連結只存本機（sharedSources：{ mob, riddle, chat }，不進匯出；劇本的欄位放在「劇本對話」區塊），抓取由 background 做，結果在 sharedCache。
 // 結果文字與逐列清單的內容都由 shared-data.js 產生（有測試），這裡只負責放進畫面
 const SHARED_FIELDS = {
   mob: { input: 'sharedMobUrl', result: 'sharedMobResult', detail: 'sharedMobDetail' },
   riddle: { input: 'sharedRiddleUrl', result: 'sharedRiddleResult', detail: 'sharedRiddleDetail' },
+  chat: { input: 'sharedChatUrl', result: 'sharedChatResult', detail: 'sharedChatDetail' },
 };
 const timeText = at => new Date(at).toLocaleString('zh-TW', { hour12: false });
 async function showShared() {
-  const data = await chrome.storage.local.get(['sharedSources', 'sharedCache', 'zapFeatures']);
-  // 怪物查詢與解謎都關著時 background 不會抓，說明一下，不然看起來像壞掉
-  const features = { mobs: data.zapFeatures?.mobs === true, riddles: data.zapFeatures?.riddles === true };
+  const data = await chrome.storage.local.get(['sharedSources', 'sharedCache', 'zapFeatures', 'chatScript']);
+  // 功能都關著時 background 不會抓，說明一下，不然看起來像壞掉
+  const features = { mobs: data.zapFeatures?.mobs === true, riddles: data.zapFeatures?.riddles === true, chat: data.chatScript?.enabled === true };
   const enabled = features.mobs || features.riddles;
   $('sharedOff').hidden = enabled;
   Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
@@ -527,7 +528,7 @@ async function showShared() {
     const entry = data.sharedCache?.[kind]?.url === url ? data.sharedCache[kind] : null;
     showParts($(field.result), CatworldSharedData.describeSheetParts(kind, url, entry, timeText, features));
     // 被丟掉與對不到的列逐列列出，填錯的人自己看得出要改表上哪一列
-    const lines = url && enabled ? CatworldSharedData.reportEntries(entry?.report) : [];
+    const lines = url && CatworldSharedData.sheetEnabled(kind, features) ? CatworldSharedData.reportEntries(entry?.report) : [];
     $(field.detail).hidden = !lines.length;
     showParts($(field.detail), lines);
   });
@@ -567,8 +568,9 @@ Object.entries(SHARED_FIELDS).forEach(([kind, field]) => {
   });
 });
 $('sharedRefresh').addEventListener('click', refreshShared);
+$('sharedChatRefresh').addEventListener('click', refreshShared);
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.sharedSources || changes.sharedCache || changes.zapFeatures)) showShared();
+  if (area === 'local' && (changes.sharedSources || changes.sharedCache || changes.zapFeatures || changes.chatScript)) showShared();
 });
 showShared();
 

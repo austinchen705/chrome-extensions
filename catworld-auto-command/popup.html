@@ -271,10 +271,15 @@
       <div><label for="scriptPerDay">每天最多幾場（0～99）</label><input id="scriptPerDay" type="number" min="0" max="99" step="1"></div>
       <div><label for="scriptTypoRate">錯字機率（每一輪，0～100%）</label><input id="scriptTypoRate" type="number" min="0" max="100" step="1"></div>
     </div>
+    <label for="sharedChatUrl">劇本試算表分頁的 CSV 連結（選填，沒填只用內建劇本）</label>
+    <input id="sharedChatUrl" type="text" autocomplete="off" placeholder="https://docs.google.com/spreadsheets/…output=csv">
+    <div id="sharedChatResult" class="hint tight">尚未設定</div>
+    <div id="sharedChatDetail" class="hint tight detail" hidden></div>
+    <button id="sharedChatRefresh">立即更新</button>
     <div id="scriptStatus" class="hint tight"></div>
     <button id="scriptStart">現在開一場</button>
     <div id="scriptMsg" class="hint tight"></div>
-    <p class="hint tight">預設關閉。A 按「現在開一場」先說第一輪；B 看到對方傳來的 tell 像劇本的第一輪就接話，之後一人一輪。劇本裡的 {對方} 會換成這裡填的角色名，請填遊戲頁標題「角色名 - …」那個名字，不然對方認不出來。每一輪會以「錯字機率」在其中一則（至少 6 個字）打錯一個字，緊接著補一則「*正確的字」更正；每天場數：A 開場、B 開始接話都算一場，依這台電腦的日期計數，隔天歸零，用完 A 不能開場、B 不接新場；A 挑劇本會避開最近用過的 5 份。填 0 就不打錯字，超出範圍會限制在範圍內，留白或不是數字則退回預設 3。</p>
+    <p class="hint tight">預設關閉。A 按「現在開一場」先說第一輪；B 看到對方傳來的 tell 像劇本的第一輪就接話，之後一人一輪。劇本裡的 {對方} 會換成這裡填的角色名，請填遊戲頁標題「角色名 - …」那個名字，不然對方認不出來。每一輪會以「錯字機率」在其中一則（至少 6 個字）打錯一個字，緊接著補一則「*正確的字」更正；每天場數：A 開場、B 開始接話都算一場，依這台電腦的日期計數，隔天歸零，用完 A 不能開場、B 不接新場；A 挑劇本會避開最近用過的 5 份。劇本來自上面的試算表連結（共用的在前、內建的補在後面，兩台電腦要填同一份）；整份劇本只要有一處不合規定就整份不採用，逐列列在連結下面。填 0 就不打錯字，超出範圍會限制在範圍內，留白或不是數字則退回預設 3。</p>
   </details>
   <details class="alertbox fold" id="sec-reward">
     <summary>在線獎勵</summary>

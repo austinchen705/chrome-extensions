@@ -193,7 +193,7 @@ function loadZapData() {
   return zapDataPromise;
 }
 
-// 共用資料：設定頁貼的 Google 試算表連結（sharedSources：{ mob, riddle }）抓下來的共用層放在 sharedCache（存本機），兩個分頁各自快取。
+// 共用資料：設定頁貼的 Google 試算表連結（sharedSources：{ mob, riddle, chat }，缺哪個就是沒填）抓下來的共用層放在 sharedCache（存本機），各分頁各自快取。
 // 一小時內不重抓；抓失敗就保留舊的並記下原因，幾分鐘內不再試（不然離線時每次查詢都要等逾時）；連結改了就丟掉舊快取。
 // 怪物查詢的回覆在這裡套上共用路線，面板（content script）完全不碰共用層，只顯示回覆裡的 shared 標記；解謎的共用步驟由 ZAP_RIDDLE_SHARED 另外給
 const SHARED_SOURCES_KEY = 'sharedSources';
@@ -202,9 +202,12 @@ const SHARED_FRESH_MS = 60 * 60 * 1000;
 const SHARED_RETRY_MS = 5 * 60 * 1000;
 const SHARED_TIMEOUT_MS = 15000;
 // layers 是快取裡存共用層的欄位名稱（第一個是主要的）：怪物路線分頁有路線（routes）、共用表新增的怪（mobs）與修正內建怪強度（fixes）
+// zap：解析時要不要怪物與解謎資料（劇本不要，所以資料載入失敗不會牽連它）；enabled：這個分頁現在要不要抓（storage 讀到的 zapFeatures 與 chatScript）
+const zapFeaturesOn = stored => stored.zapFeatures?.mobs === true || stored.zapFeatures?.riddles === true;
 const SHARED_SHEETS = {
-  mob: { layers: ['routes', 'mobs', 'fixes'], build: (csv, data) => CatworldSharedData.buildMobRoutes(csv, data.mobs ?? []) },
-  riddle: { layers: ['steps'], build: (csv, data) => CatworldSharedData.buildRiddleSteps(csv, data.riddles ?? [], data.pages ?? {}) },
+  mob: { layers: ['routes', 'mobs', 'fixes'], zap: true, enabled: zapFeaturesOn, build: (csv, data) => CatworldSharedData.buildMobRoutes(csv, data.mobs ?? []) },
+  riddle: { layers: ['steps'], zap: true, enabled: zapFeaturesOn, build: (csv, data) => CatworldSharedData.buildRiddleSteps(csv, data.riddles ?? [], data.pages ?? {}) },
+  chat: { layers: ['scripts'], zap: false, enabled: stored => stored.chatScript?.enabled === true, build: csv => CatworldSharedData.buildChatScripts(csv, Date.now()) },
 };
 let sharedInflight = null;
 
@@ -222,12 +225,12 @@ async function fetchSharedCsv(url) {
 
 // 抓一個分頁，回新的快取項目（成功或失敗都回；失敗保留同一個連結的舊資料並記下原因）
 async function fetchSheet(kind, url, entry, now) {
-  const { layers, build } = SHARED_SHEETS[kind];
+  const { layers, build, zap } = SHARED_SHEETS[kind];
   const fail = reason => ({ url, at: null, ...Object.fromEntries(layers.map(layer => [layer, {}])), report: null, ...entry, error: { at: now, reason } });
   const checked = CatworldSharedData.checkUrl(url);
   if (!checked.ok) return fail(checked.error);
   try {
-    const built = build(await fetchSharedCsv(url), await loadZapData());
+    const built = build(await fetchSharedCsv(url), zap ? await loadZapData() : {});
     return built.ok ? { url, at: now, ...Object.fromEntries(layers.map(layer => [layer, built[layer]])), report: built.report } : fail(built.error);
   } catch (error) {
     return fail(error.name === 'AbortError' ? `逾時（${SHARED_TIMEOUT_MS / 1000} 秒）` : error.message);
@@ -235,13 +238,12 @@ async function fetchSheet(kind, url, entry, now) {
 }
 
 async function refreshShared(force) {
-  const stored = await chrome.storage.local.get([SHARED_SOURCES_KEY, SHARED_CACHE_KEY, 'zapFeatures']);
+  const stored = await chrome.storage.local.get([SHARED_SOURCES_KEY, SHARED_CACHE_KEY, 'zapFeatures', 'chatScript']);
   const cache = { ...stored[SHARED_CACHE_KEY] };
-  const features = stored.zapFeatures ?? {};
-  if (features.mobs !== true && features.riddles !== true) return cache;
   const now = Date.now();
   let changed = false;
   for (const kind of Object.keys(SHARED_SHEETS)) {
+    if (!SHARED_SHEETS[kind].enabled(stored)) continue;
     const url = String(stored[SHARED_SOURCES_KEY]?.[kind] ?? '').trim();
     if (!url) {
       if (cache[kind]) {
@@ -347,10 +349,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true, skills: CatworldSkillMoves.lookup(SKILLS_DATA, message.names.filter(name => typeof name === 'string')) });
     return;
   }
-  // 劇本對話：回遊戲頁可用的劇本
+  // 劇本對話：回遊戲頁可用的劇本（共用的在前、內建的補在後面；共用層讀不到時只有內建的）
   if (message?.type === 'CHAT_SCRIPTS') {
-    sendResponse({ ok: true, scripts: CatworldChatScriptData.scripts });
-    return;
+    sharedLayer('chat').then(shared => sendResponse({ ok: true, scripts: CatworldSharedData.pickChatScripts(shared, CatworldChatScriptData.scripts, Date.now()) }));
+    return true;
   }
   if (!String(message?.type).startsWith('ZAP_')) return;
   if (message.type === 'ZAP_RIDDLE_SHARED') {

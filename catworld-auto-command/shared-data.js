@@ -415,12 +415,18 @@ function chatScriptProblem(rows) {
   return null;
 }
 
-// 週欄（週一的日期）起算 14 天內才採用：回不能用的說明，可用回 null；沒填永遠可用
-function chatSeasonProblem(week, now) {
+// 週欄（週一的日期）適用的時間：{ start, end }（end 不含，起算 14 天），沒填回 null＝永遠可用
+function chatWeekSpan(week) {
   if (!week) return null;
   const at = new Date(parseTime(week));
   const start = new Date(at.getFullYear(), at.getMonth(), at.getDate());
-  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + CHAT_WEEK_DAYS);
+  return { start, end: new Date(start.getFullYear(), start.getMonth(), start.getDate() + CHAT_WEEK_DAYS) };
+}
+// 回不能用的說明，可用回 null
+function chatSeasonProblem(week, now) {
+  const span = chatWeekSpan(week);
+  if (!span) return null;
+  const { start, end } = span;
   if (now < start.getTime()) return `還沒到適用的週（${ymd(start)} 起 ${CHAT_WEEK_DAYS} 天）`;
   if (now >= end.getTime()) return `已過期（適用到 ${ymd(new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1))}）`;
   return null;
@@ -441,12 +447,22 @@ function buildChatScripts(csvText, now = Date.now()) {
   groups.forEach((rows, id) => {
     const problem = chatScriptProblem(rows);
     if (problem) return report.dropped.push({ row: problem.row, reason: `劇本 ${id} 整份丟掉：${problem.reason}` });
-    const season = chatSeasonProblem(rows.find(item => item.week)?.week, now);
+    const week = rows.find(item => item.week)?.week;
+    const season = chatSeasonProblem(week, now);
     if (season) return report.unmatched.push({ row: rows[0].row, name: id, reason: season });
-    scripts.push({ id, lines: rows.map(({ who, text }) => ({ who, text })) });
+    // until：適用期間結束的時間（毫秒，不含）；快取會放超過一小時，所以回給遊戲頁時還要再看一次（pickChatScripts）
+    scripts.push({ id, until: chatWeekSpan(week)?.end.getTime() ?? null, lines: rows.map(({ who, text }) => ({ who, text })) });
   });
   report.used = scripts.length;
   return { ok: true, scripts, report };
+}
+
+// background 回給遊戲頁的劇本：共用的在前（適用期間已過的不給），內建的補在後面，同一個 id 以共用的為準；只給 id 與 lines
+function pickChatScripts(shared, builtin, now) {
+  const live = (Array.isArray(shared) ? shared : []).filter(script => script.until == null || now < script.until);
+  const taken = new Set(live.map(script => script.id));
+  const extra = (Array.isArray(builtin) ? builtin : []).filter(script => !taken.has(script.id));
+  return [...live, ...extra].map(({ id, lines }) => ({ id, lines }));
 }
 
 // 設定頁用：報告變成一行一行的訊息（被丟掉的、對不到的、超過上限沒讀的），最多 max 行，其餘寫「還有 N 筆」。
@@ -466,10 +482,14 @@ function reportEntries(report, max = 30) {
 const reportLines = (report, max) => reportEntries(report, max).map(entry => entry.text);
 
 // 設定頁每個分頁的標題與單位：生效的是「隻」怪物或「步」，對不到的是怪物或謎／步驟
+// off：功能沒開不抓時的說明、waiting：開著但還沒抓過、dropped：被丟掉的單位、missed：對不到（劇本是不在適用週）的說法
 const SHEET_LABELS = {
-  mob: { title: '怪物路線', used: '隻', unmatched: '怪物' },
-  riddle: { title: '解謎指令', used: '步', unmatched: '謎或步驟' },
+  mob: { title: '怪物路線', used: '隻', dropped: '列', missed: n => `對不到怪物 ${n} 筆`, off: '怪物查詢與解謎都關著，不會抓取', waiting: '尚未抓取（怪物查詢或解謎要開著；開著的話查一次，或按「立即更新」）' },
+  riddle: { title: '解謎指令', used: '步', dropped: '列', missed: n => `對不到謎或步驟 ${n} 筆`, off: '怪物查詢與解謎都關著，不會抓取', waiting: '尚未抓取（怪物查詢或解謎要開著；開著的話查一次，或按「立即更新」）' },
+  chat: { title: '劇本對話', used: '份', dropped: '筆', missed: n => `不在適用週 ${n} 份`, off: '功能沒開，不會抓取', waiting: '尚未抓取（劇本對話要開著；開著的話等一下會抓，或按「立即更新」）' },
 };
+// 這個分頁現在會不會被抓：怪物與解謎看那兩個功能開關，劇本看劇本對話自己的開關（features 是 { mobs, riddles, chat }）
+const sheetEnabled = (kind, features) => (kind === 'chat' ? Boolean(features.chat) : Boolean(features.mobs || features.riddles));
 
 // 設定頁每個分頁的結果文字：尚未設定／尚未抓取／上次更新的筆數（超過上限沒讀的另外說明）／更新失敗的原因與目前還在用的資料。
 // timeText 把時間戳轉成文字（由呼叫端給，這裡不碰時區）
@@ -485,19 +505,19 @@ const lacksGid = url => {
 const OWN_FEATURE = { mob: { key: 'mobs', name: '怪物查詢', what: '路線' }, riddle: { key: 'riddles', name: '解謎清單', what: '指令' } };
 function describeSheetParts(kind, url, entry, timeText, features = { mobs: true, riddles: true }) {
   if (!url) return [{ level: 'info', text: `${SHEET_LABELS[kind].title}：尚未設定` }];
-  const enabled = Boolean(features.mobs || features.riddles);
+  const enabled = sheetEnabled(kind, features);
   const notes = [];
   const own = OWN_FEATURE[kind];
-  if (enabled && !features[own.key]) notes.push(`注意：「${own.name}」沒勾，面板不會用到這份${own.what}（另一個功能開著，所以還是會抓）`);
+  if (enabled && own && !features[own.key]) notes.push(`注意：「${own.name}」沒勾，面板不會用到這份${own.what}（另一個功能開著，所以還是會抓）`);
   // 沒有 gid 的連結讀到的是試算表的第一個分頁，貼到第二個分頁的欄位會讀錯；連結本身仍然收（單一分頁的表沒有問題）
   if (enabled && lacksGid(url)) notes.push('注意：這條連結沒有 gid，讀到的是試算表的第一個分頁（發布時要選那個分頁，連結才會有 gid）');
   return [...describeFetched(kind, entry, timeText, enabled), ...notes.map(text => ({ level: 'warn', text }))];
 }
 function describeFetched(kind, entry, timeText, enabled) {
-  const { title, used, unmatched } = SHEET_LABELS[kind];
-  // 怪物查詢與解謎都關著時 background 不抓，上次的結果已經沒有意義，不能繼續顯示得像現在還在用
-  if (!enabled) return [{ level: 'warn', text: `${title}：怪物查詢與解謎都關著，不會抓取` }];
-  if (!entry) return [{ level: 'info', text: `${title}：尚未抓取（怪物查詢或解謎要開著；開著的話查一次，或按「立即更新」）` }];
+  const { title, used, dropped, missed, off, waiting } = SHEET_LABELS[kind];
+  // 功能都關著時 background 不抓，上次的結果已經沒有意義，不能繼續顯示得像現在還在用
+  if (!enabled) return [{ level: 'warn', text: `${title}：${off}` }];
+  if (!entry) return [{ level: 'info', text: `${title}：${waiting}` }];
   const report = entry.report;
   const rows = report?.overflow > 0 ? `共 ${report.rows} 列（其中 ${report.overflow} 列超過上限沒有讀）` : `共 ${report?.rows} 列`;
   const usable = Boolean(entry.at && report);
@@ -506,7 +526,7 @@ function describeFetched(kind, entry, timeText, enabled) {
   if (kind === 'mob' && report?.created > 0) added.push(`新增 ${report.created} ${used}`);
   if (kind === 'mob' && report?.fixed > 0) added.push(`修正強度 ${report.fixed} ${used}`);
   const ok = usable
-    ? `上次更新 ${timeText(entry.at)}：${rows}，生效 ${report.used} ${used}，${added.length ? `${added.join('、')}，` : ''}丟掉 ${report.dropped.length} 列，對不到${unmatched} ${report.unmatched.length} 筆`
+    ? `上次更新 ${timeText(entry.at)}：${rows}，生效 ${report.used} ${used}，${added.length ? `${added.join('、')}，` : ''}丟掉 ${report.dropped.length} ${dropped}，${missed(report.unmatched.length)}`
     : '沒有可用的資料';
   // 有被丟掉或對不到的列、超過上限、或根本沒有可用的資料，都是需要使用者留意的
   const level = !usable || report.dropped.length || report.unmatched.length || report.overflow > 0 ? 'warn' : 'info';
@@ -534,5 +554,5 @@ function overlayReply(reply, shared) {
   return { ...reply, items: reply.items.map(item => (item.candidates ? { ...item, candidates: item.candidates.map(apply) } : apply(item))) };
 }
 
-globalThis.CatworldSharedData = { parseStrength, applySharedMobs, DEFAULT_SOURCES, MAX_SEGMENT, MAX_ROWS, ALLOWED_VERBS, SHEET_LABELS, describeSheet, describeSheetParts, describeRejectedUrl, reportEntries, reportLines, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, buildChatScripts, overlayReply };
+globalThis.CatworldSharedData = { parseStrength, applySharedMobs, DEFAULT_SOURCES, MAX_SEGMENT, MAX_ROWS, ALLOWED_VERBS, SHEET_LABELS, sheetEnabled, pickChatScripts, describeSheet, describeSheetParts, describeRejectedUrl, reportEntries, reportLines, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, buildChatScripts, overlayReply };
 })();

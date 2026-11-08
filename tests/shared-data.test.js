@@ -1213,3 +1213,39 @@ test('the chat sheet template and README carry the same tab-separated header, an
   const built = S.buildChatScripts(template.join('\n'), NOW);
   assert.deepEqual([built.ok, built.report.dropped.length, built.scripts.length, built.report.unmatched.length], [true, 0, 0, 1], 'the example is a valid script that is always out of season, so importing it adds nothing');
 });
+
+// ---- 劇本對話的共用來源：給遊戲頁的劇本與設定頁摘要 ----
+test('scripts built from the sheet carry when their week ends, and none when they are always usable', () => {
+  const result = chatBuild([...goodScript('open'), ...goodScript('week', { week: '2026-11-09' })]);
+  assert.deepEqual(result.scripts.map(script => script.until), [null, new Date(2026, 10, 23).getTime()]);
+});
+
+const SHARED_A = { id: 'shared-a', until: null, lines: [{ who: 'A', text: '嗨' }, { who: 'B', text: '嗨嗨' }] };
+const SHARED_WEEK = { id: 'shared-w', until: 1000, lines: [{ who: 'A', text: '本週' }, { who: 'B', text: '好' }] };
+const BUILTIN_A = { id: 'builtin-1', lines: [{ who: 'A', text: '內建' }, { who: 'B', text: '好' }] };
+
+test('the scripts the game page gets: shared ones first without the expired, then the built-in ones, a shared id replacing a built-in one', () => {
+  const ids = (shared, builtin, now = 500) => S.pickChatScripts(shared, builtin, now).map(script => script.id);
+  assert.deepEqual(ids([SHARED_A, SHARED_WEEK], [BUILTIN_A]), ['shared-a', 'shared-w', 'builtin-1']);
+  assert.deepEqual(ids([SHARED_A, SHARED_WEEK], [BUILTIN_A], 1000), ['shared-a', 'builtin-1'], 'a week that ended is dropped at answer time, even from the cache');
+  assert.deepEqual(ids([{ ...SHARED_A, id: 'builtin-1' }], [BUILTIN_A, { ...BUILTIN_A, id: 'builtin-2' }]), ['builtin-1', 'builtin-2']);
+  assert.equal(S.pickChatScripts([{ ...SHARED_A, id: 'builtin-1' }], [BUILTIN_A], 0)[0].lines[0].text, '嗨', 'and it is the shared lines that win');
+  assert.deepEqual(ids({}, [BUILTIN_A]), ['builtin-1'], 'no shared layer is not an error');
+  assert.deepEqual(ids(undefined, undefined), []);
+  assert.equal('until' in S.pickChatScripts([SHARED_A], [], 0)[0], false, 'the game page gets only id and lines');
+});
+
+test('the chat summary reads like the other sheets, and is only about the script feature', () => {
+  const entry = (extra = {}) => ({ url: 'u', at: 5, scripts: [], report: { rows: 8, used: 2, overflow: 0, dropped: [{ row: 3, reason: 'x' }], unmatched: [{ row: 6, name: 'w', reason: 'y' }] }, ...extra });
+  const on = { mobs: false, riddles: false, chat: true };
+  assert.equal(S.describeSheet('chat', '', null, at, on), '劇本對話：尚未設定');
+  assert.match(S.describeSheet('chat', 'u', null, at, on), /^劇本對話：尚未抓取/);
+  assert.equal(S.describeSheet('chat', 'u', entry(), at, on), '劇本對話：上次更新 <5>：共 8 列，生效 2 份，丟掉 1 筆，不在適用週 1 份');
+  assert.equal(S.describeSheet('chat', 'u', entry(), at, { mobs: true, riddles: true }), '劇本對話：功能沒開，不會抓取', 'the mob and riddle switches do not turn it on');
+  assert.match(S.describeSheet('mob', 'u', entry(), at, on), /怪物查詢與解謎都關著/, 'and the script switch does not turn the mob sheet on');
+  const parts = S.describeSheetParts('chat', 'u', entry({ error: { at: 9, reason: 'HTTP 403' } }), at, on);
+  assert.deepEqual(parts.map(part => part.level), ['error', 'info']);
+  assert.equal(S.sheetEnabled('chat', on), true);
+  assert.equal(S.sheetEnabled('mob', on), false);
+  assert.equal(S.sheetEnabled('riddle', { riddles: true }), true);
+});

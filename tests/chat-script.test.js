@@ -823,3 +823,22 @@ test('the daily count, the recent list and the status text are worked out by the
   assert.equal(C.describeStatus({ session: { scriptId: 'x', turn: 1, total: 6, phase: 'say' }, state: C.normalizeState(undefined), perDay: 3, today: '2026-11-07' }), '今天 0/3 場；進行中：劇本 x，已演 1/6 輪，正在說');
   assert.equal(C.describeStatus({ session: undefined, state: C.normalizeState(undefined), perDay: 3, today: '2026-11-07' }), '今天 0/3 場；遊戲頁沒有回應');
 });
+
+ui('when the background cannot be reached A does not open and B does not answer', async () => {
+  const respond = message => {
+    if (message.type === 'CHAT_SCRIPTS') throw new Error('Extension context invalidated');
+    return {};
+  };
+  const settings = (role, partner, partnerName) => ({ chatScript: { enabled: true, typoRate: 0, role, partner, partnerName } });
+  const a = await boot({ scale: 20, respond, initialStore: settings('A', B.id, B.nick) });
+  const b = await boot({ scale: 20, respond, initialStore: settings('B', A.id, A.nick) });
+  try {
+    assert.equal((await start(a)).ok, false);
+    b.output('<span>[P]阿凱(akai)告訴你：欸緋爾 你今天有上線喔\n</span>');
+    await sleep(400);
+    assert.equal(tells(a).length + tells(b).length, 0);
+  } finally {
+    a.close();
+    b.close();
+  }
+});

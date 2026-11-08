@@ -7,6 +7,7 @@ const path = require('node:path');
 const extensionDir = path.join(__dirname, '..', 'catworld-auto-command');
 const SHEET = 'https://docs.google.com/spreadsheets/d/e/2PACX-abc/pub?gid=0&single=true&output=csv';
 const RIDDLE_SHEET = 'https://docs.google.com/spreadsheets/d/e/2PACX-abc/pub?gid=77&single=true&output=csv';
+const CHAT_SHEET = 'https://docs.google.com/spreadsheets/d/e/2PACX-abc/pub?gid=88&single=true&output=csv';
 const OTHER_SHEET = 'https://docs.google.com/spreadsheets/d/e/2PACX-other/pub?gid=0&single=true&output=csv';
 const HEADER = '怪物名稱,指令,備註,更新者,更新時間';
 const HOUR = 60 * 60 * 1000;
@@ -21,6 +22,7 @@ const installedListeners = [];
 const csvCalls = [];
 const DEFAULT_CSV = `${HEADER}\n白猿(white ape),run e;push stone,先買貂皮衣,小明,2026-10-21 14:30\n`;
 let csvBody = DEFAULT_CSV;
+let chatBody = '';
 let csvFailure = null;
 let failOnly = null;
 let clock = Date.parse('2026-10-21T12:00:00Z');
@@ -38,7 +40,7 @@ globalThis.fetch = async (url, options) => {
   }
   if (failing && csvFailure === 'network') throw new Error('network down');
   if (failing && csvFailure === 'http') return { ok: false, status: 403, text: async () => 'denied' };
-  return { ok: true, status: 200, text: async () => (url === RIDDLE_SHEET ? RIDDLE_CSV : csvBody) };
+  return { ok: true, status: 200, text: async () => (url === RIDDLE_SHEET ? RIDDLE_CSV : url === CHAT_SHEET ? chatBody : csvBody) };
 };
 const noop = { addListener() {} };
 globalThis.chrome = {
@@ -76,6 +78,7 @@ const reset = (sources = { mob: SHEET }, features = { mobs: true }) => {
   csvFailure = null;
   failOnly = null;
   csvBody = DEFAULT_CSV;
+  chatBody = '';
   clock = Date.parse('2026-10-21T12:00:00Z');
 };
 
@@ -440,4 +443,145 @@ test('a route row with a location the new mob does not have still gives the new 
   csvBody = [STR_HEADER, `${KING},,250000,,,甲,2026-10-20 09:00`, `${KING},蒙古,,run new,,乙,2026-10-21 09:00`].join('\n') + '\n';
   const entry = (await suitable()).items.find(item => item.mob.name === KING);
   assert.deepEqual([entry.mob.by, entry.route.route.command, entry.route.shared.by], ['甲', 'run new', '乙']);
+});
+
+// ---- 劇本對話的共用來源（chat）----
+const CHAT_HEAD = '劇本ID,順序,誰,台詞,備註,週';
+const shared1 = week => [`s1,1,A,共用的開場,,${week}`, 's1,2,B,共用的回答,,', 's1,3,A,再聊一句,,', 's1,4,B,好喔,,'];
+const chatOn = (enabled = true) => { store.chatScript = { enabled }; };
+const chatScripts = () => ask({ type: 'CHAT_SCRIPTS' }).then(reply => reply.scripts);
+const idsOf = scripts => scripts.map(script => script.id);
+const isBuiltin = id => id.startsWith('builtin-');
+
+test('with the script feature on the chat sheet is fetched, and its scripts come before the built-in ones', async () => {
+  reset({ chat: CHAT_SHEET }, {});
+  chatOn();
+  chatBody = [CHAT_HEAD, ...shared1('')].join('\n');
+  const scripts = await chatScripts();
+  assert.deepEqual(csvCalls.map(call => call.url), [CHAT_SHEET], 'nothing else is configured');
+  assert.equal(scripts[0].id, 's1');
+  assert.deepEqual(scripts[0].lines.map(line => line.who), ['A', 'B', 'A', 'B']);
+  assert.ok(scripts.slice(1).length >= 1 && scripts.slice(1).every(script => isBuiltin(script.id)), 'the built-in ones follow');
+  assert.equal('until' in scripts[0], false);
+  assert.deepEqual([store.sharedCache.chat.url, store.sharedCache.chat.report.used, store.sharedCache.chat.scripts.length], [CHAT_SHEET, 1, 1]);
+});
+
+test('with the script feature off nothing is fetched, even with a link, and only the built-in scripts are given', async () => {
+  reset({ chat: CHAT_SHEET }, {});
+  chatOn(false);
+  assert.ok((await chatScripts()).every(script => isBuiltin(script.id)));
+  assert.equal(csvCalls.length, 0);
+  reset({ chat: CHAT_SHEET }, { mobs: true, riddles: true });
+  await chatScripts();
+  assert.equal(csvCalls.length, 0, 'the mob and riddle switches do not make it fetch the chat sheet');
+});
+
+test('stored links without a chat key mean no chat sheet, and the mob and riddle links still work', async () => {
+  reset({ mob: SHEET, riddle: RIDDLE_SHEET }, { mobs: true });
+  chatOn();
+  assert.ok((await chatScripts()).every(script => isBuiltin(script.id)));
+  assert.equal(csvCalls.length, 2, 'only the mob and riddle sheets, fetched along the way');
+  assert.equal(store.sharedCache.chat, undefined);
+  assert.equal(routeOf(await lookup()).route.command, 'run e;push stone');
+});
+
+test('the chat sheet is cached for an hour, refetched after, and "update now" fetches it with the others', async () => {
+  reset({ mob: SHEET, chat: CHAT_SHEET }, { mobs: true });
+  chatOn();
+  chatBody = [CHAT_HEAD, ...shared1('')].join('\n');
+  await chatScripts();
+  assert.equal(csvCalls.filter(call => call.url === CHAT_SHEET).length, 1);
+  clock += HOUR - 1000;
+  await chatScripts();
+  assert.equal(csvCalls.filter(call => call.url === CHAT_SHEET).length, 1, 'still fresh');
+  clock += 2000;
+  await chatScripts();
+  assert.equal(csvCalls.filter(call => call.url === CHAT_SHEET).length, 2, 'stale');
+  const reply = await ask({ type: 'SHARED_REFRESH' }, settingsPage);
+  assert.equal(csvCalls.filter(call => call.url === CHAT_SHEET).length, 3);
+  assert.equal(reply.cache.chat.report.used, 1);
+});
+
+test('changing the chat link drops the old cache, and clearing it leaves only the built-in scripts', async () => {
+  reset({ chat: CHAT_SHEET }, {});
+  chatOn();
+  chatBody = [CHAT_HEAD, ...shared1('')].join('\n');
+  await chatScripts();
+  store.sharedSources = { chat: '' };
+  assert.ok((await chatScripts()).every(script => isBuiltin(script.id)));
+  assert.equal(store.sharedCache.chat, undefined);
+});
+
+test('a failed fetch keeps the old scripts and says why, does not retry for 5 minutes, and never costs the built-in ones', async () => {
+  reset({ chat: CHAT_SHEET }, {});
+  chatOn();
+  chatBody = [CHAT_HEAD, ...shared1('')].join('\n');
+  await chatScripts();
+  clock += HOUR + 1000;
+  csvFailure = 'network';
+  csvCalls.length = 0;
+  const scripts = await chatScripts();
+  assert.equal(scripts[0].id, 's1', 'the old shared script is still there');
+  assert.ok(scripts.some(script => isBuiltin(script.id)));
+  assert.match(store.sharedCache.chat.error.reason, /network down/);
+  await chatScripts();
+  assert.equal(csvCalls.length, 1, 'no second try within the back-off');
+});
+
+test('an unreachable sheet from the start gives the built-in scripts alone', async () => {
+  reset({ chat: CHAT_SHEET }, {});
+  chatOn();
+  csvFailure = 'http';
+  const scripts = await chatScripts();
+  assert.ok(scripts.length >= 1 && scripts.every(script => isBuiltin(script.id)));
+  assert.match(store.sharedCache.chat.error.reason, /HTTP 403/);
+});
+
+test('a script whose week ends is dropped when answering, even if the refresh that would have removed it failed', async () => {
+  reset({ chat: CHAT_SHEET }, {});
+  chatOn();
+  chatBody = [CHAT_HEAD, ...shared1('2026-10-19')].join('\n');
+  assert.equal(idsOf(await chatScripts())[0], 's1', 'in its week');
+  clock = Date.parse('2026-11-05T12:00:00Z');
+  csvFailure = 'network';
+  assert.ok((await chatScripts()).every(script => isBuiltin(script.id)), 'ended, and the cache still holds it');
+  assert.equal(store.sharedCache.chat.scripts.length, 1);
+});
+
+test('a script that is not in its week yet is reported, not used, and the bad rows are in the report', async () => {
+  reset({ chat: CHAT_SHEET }, {});
+  chatOn();
+  chatBody = [CHAT_HEAD, ...shared1('2026-12-07'), 'bad,1,A,有;分號', 'bad,2,B,好'].join('\n');
+  assert.ok((await chatScripts()).every(script => isBuiltin(script.id)));
+  const report = store.sharedCache.chat.report;
+  assert.deepEqual([report.used, report.dropped.length, report.unmatched.length], [0, 1, 1]);
+});
+
+test('the chat sheet failing does not take the mob layer away, and the mob sheet failing does not take the chat one', async () => {
+  reset({ mob: SHEET, chat: CHAT_SHEET }, { mobs: true });
+  chatOn();
+  chatBody = [CHAT_HEAD, ...shared1('')].join('\n');
+  failOnly = CHAT_SHEET;
+  csvFailure = 'network';
+  assert.equal(routeOf(await lookup()).route.command, 'run e;push stone');
+  assert.match(store.sharedCache.chat.error.reason, /network down/);
+  csvFailure = null;
+  clock += HOUR + 1000;
+  failOnly = SHEET;
+  csvFailure = 'network';
+  assert.equal((await chatScripts())[0].id, 's1');
+  assert.match(store.sharedCache.mob.error.reason, /network down/);
+});
+
+test('the chat sheet is answered even when the mob data cannot be loaded', async () => {
+  reset({ chat: CHAT_SHEET }, {});
+  chatOn();
+  chatBody = [CHAT_HEAD, ...shared1('')].join('\n');
+  const before = globalThis.fetch;
+  globalThis.fetch = (url, options) => (String(url).endsWith('zap-data.json') ? Promise.reject(new Error('no data')) : before(url, options));
+  try {
+    assert.equal((await chatScripts())[0].id, 's1', 'it never needed the mob and riddle data');
+  } finally {
+    globalThis.fetch = before;
+  }
 });
