@@ -1076,6 +1076,19 @@ test('what the sheet gives is accepted by the chat script module and has the rou
   assert.equal(C.toTurns(result.scripts[0]).length, 4);
 });
 
+test('the line rules the sheet enforces are at least as strict as the chat script module, and its limits pass through', () => {
+  require(path.join(__dirname, '..', 'catworld-auto-command', 'chat-reply.js'));
+  require(path.join(__dirname, '..', 'catworld-auto-command', 'chat-script.js'));
+  const C = globalThis.CatworldChatScript;
+  ['好;好', '好；好', '好@等待好', '"好\n好"'].forEach(text => {
+    const script = { id: 'x', lines: [{ who: 'A', text: text.replace(/^"|"$/g, '') }, { who: 'B', text: '好' }] };
+    assert.equal(C.usableScripts([script]).length, 0, `the module rejects ${JSON.stringify(text)}`);
+    assert.equal(chatBuild(['x,1,A,' + text, 'x,2,B,好']).scripts.length, 0, `and so does the sheet`);
+  });
+  const edge = Array.from({ length: 30 }, (_, i) => `e,${i + 1},${i % 2 ? 'B' : 'A'},${'字'.repeat(60)}／${'字'.repeat(60)}`);
+  assert.equal(C.usableScripts(chatBuild(edge).scripts).length, 1, 'a script at every limit is accepted by both');
+});
+
 test('a missing required column is a format error, and the optional ones (note, week) may be absent', () => {
   assert.match(S.buildChatScripts('劇本ID,順序,誰\ns1,1,A,x', NOW).error, /缺少欄位「台詞」/);
   const bare = S.buildChatScripts(['劇本ID,順序,誰,台詞', ...goodScript('s1').map(line => line.split(',').slice(0, 4).join(','))].join('\n'), NOW);
@@ -1172,6 +1185,9 @@ test('the week may be filled on one row only, but two different weeks or a bad d
   const bad = chatBuild(['w,1,A,嗨,,下週', 'w,2,B,嗨嗨,,']);
   assert.deepEqual(dropOf(bad), [[2, '劇本 w 整份丟掉：週要寫成 YYYY-MM-DD（週一的日期），這裡是「下週」']]);
   assert.equal(chatBuild(['w,1,A,嗨,,2026-02-31', 'w,2,B,嗨嗨,,']).scripts.length, 0, 'a date that is not on the calendar');
+  ['2026/11/09', '2026-11-9', '2026-11-09 12:00'].forEach(week => {
+    assert.equal(chatBuild([`w,1,A,嗨,,${week}`, 'w,2,B,嗨嗨,,']).scripts.length, 0, `${week} is not written as YYYY-MM-DD`);
+  });
 });
 
 test('the report lines are readable: dropped ones are errors, out-of-season ones are warnings', () => {

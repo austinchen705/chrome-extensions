@@ -411,12 +411,12 @@ function chatScriptProblem(rows) {
   const weeks = rows.filter(item => item.week);
   const different = weeks.find(item => item.week !== weeks[0].week);
   if (different) return { row: different.row, reason: '同一份劇本的週不一致' };
-  if (weeks.length && !Number.isFinite(parseTime(weeks[0].week))) return { row: weeks[0].row, reason: `週要寫成 YYYY-MM-DD（週一的日期），這裡是「${weeks[0].week}」` };
+  if (weeks.length && !(/^\d{4}-\d{2}-\d{2}$/.test(weeks[0].week) && Number.isFinite(parseTime(weeks[0].week)))) return { row: weeks[0].row, reason: `週要寫成 YYYY-MM-DD（週一的日期），這裡是「${weeks[0].week}」` };
   return null;
 }
 
-// 週欄（週一的日期）起算 14 天內才採用：回 null（可用）或不能用的說明；沒填永遠可用
-function chatSeason(week, now) {
+// 週欄（週一的日期）起算 14 天內才採用：回不能用的說明，可用回 null；沒填永遠可用
+function chatSeasonProblem(week, now) {
   if (!week) return null;
   const at = new Date(parseTime(week));
   const start = new Date(at.getFullYear(), at.getMonth(), at.getDate());
@@ -441,7 +441,7 @@ function buildChatScripts(csvText, now = Date.now()) {
   groups.forEach((rows, id) => {
     const problem = chatScriptProblem(rows);
     if (problem) return report.dropped.push({ row: problem.row, reason: `劇本 ${id} 整份丟掉：${problem.reason}` });
-    const season = chatSeason(rows.find(item => item.week)?.week, now);
+    const season = chatSeasonProblem(rows.find(item => item.week)?.week, now);
     if (season) return report.unmatched.push({ row: rows[0].row, name: id, reason: season });
     scripts.push({ id, lines: rows.map(({ who, text }) => ({ who, text })) });
   });
