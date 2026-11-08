@@ -28,7 +28,7 @@ const hasBreak = text => text.includes(String.fromCharCode(10)) || text.includes
 const safeText = text => typeof text === 'string' && text.trim().length > 0 && !text.includes(';') && !text.includes('；') && !text.includes('@等待') && !hasBreak(text);
 
 // 設定（chrome.storage.local.chatScript）：預設關；role 是 A（開場）或 B（接話），預設 B；
-// partner 是對方的英文 ID（tell 用，也用來認出來訊），不合格當沒填；partnerName 是對方暱稱（只給台詞裡的 {對方} 代入，選填）；
+// partner 是對方的英文 ID（tell 用，也用來認出來訊），不合格當沒填；partnerName 是對方的角色名（只給台詞裡的 {對方} 代入，選填；沒填代入 ID）；
 // perDay 是每天最多幾場（0～PER_DAY_MAX 的整數，0 就是不開也不接），typoRate 是每一輪出錯字的機率（0～100 的百分比）；留白或不是數字退回預設
 function normalizeNumber(value, [min, max], fallback) {
   const number = value === '' || value == null ? NaN : Number(value);
