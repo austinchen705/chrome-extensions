@@ -1042,3 +1042,158 @@ test('the sheet templates carry the same header row as README, plus one harmless
   assert.deepEqual([builtRiddle.ok, builtRiddle.report.dropped.length, Object.keys(builtRiddle.steps).length], [true, 0, 0], 'the example row reaches no real riddle');
   assert.ok(readmeSection.includes('docs/templates/shared-mobs.csv') && readmeSection.includes('docs/templates/shared-riddles.csv'), 'README points at the templates');
 });
+
+// ---- 劇本對話的試算表：CSV → 劇本與報告 ----
+const CHAT_HEADER = '劇本ID,順序,誰,台詞,備註,週';
+const NOW = new Date(2026, 10, 10, 12, 0, 0).getTime(); // 2026-11-10 中午
+const chatBuild = (lines, now = NOW) => S.buildChatScripts([CHAT_HEADER, ...lines].join('\n'), now);
+// 一份合法的劇本：A、B 交替四輪
+const goodScript = (id, extra = {}) => [
+  `${id},1,A,欸你昨天有看球賽嗎,,${extra.week ?? ''}`,
+  `${id},2,B,有啊 最後那球太誇張了,,`,
+  `${id},3,A,對吧／我整個跳起來,,`,
+  `${id},4,B,哈哈哈 鄰居大概被你吵到,,`,
+];
+const dropOf = result => result.report.dropped.map(item => [item.row, item.reason]);
+
+test('a valid sheet becomes scripts of who-and-text lines, in the order of the order column', () => {
+  const result = chatBuild([...goodScript('s1'), ...goodScript('s2')]);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.scripts.map(script => script.id), ['s1', 's2']);
+  assert.deepEqual(result.scripts[0].lines, [
+    { who: 'A', text: '欸你昨天有看球賽嗎' }, { who: 'B', text: '有啊 最後那球太誇張了' },
+    { who: 'A', text: '對吧／我整個跳起來' }, { who: 'B', text: '哈哈哈 鄰居大概被你吵到' },
+  ]);
+  assert.deepEqual([result.report.rows, result.report.used, result.report.dropped.length, result.report.unmatched.length], [8, 2, 0, 0]);
+});
+
+test('what the sheet gives is accepted by the chat script module and has the rounds the sheet shows', () => {
+  require(path.join(__dirname, '..', 'catworld-auto-command', 'chat-reply.js'));
+  require(path.join(__dirname, '..', 'catworld-auto-command', 'chat-script.js'));
+  const C = globalThis.CatworldChatScript;
+  const result = chatBuild(goodScript('s1'));
+  assert.equal(C.usableScripts(result.scripts).length, 1);
+  assert.equal(C.toTurns(result.scripts[0]).length, 4);
+});
+
+test('a missing required column is a format error, and the optional ones (note, week) may be absent', () => {
+  assert.match(S.buildChatScripts('劇本ID,順序,誰\ns1,1,A,x', NOW).error, /缺少欄位「台詞」/);
+  const bare = S.buildChatScripts(['劇本ID,順序,誰,台詞', ...goodScript('s1').map(line => line.split(',').slice(0, 4).join(','))].join('\n'), NOW);
+  assert.equal(bare.scripts.length, 1);
+});
+
+test('a script without both speakers or not opened by A is dropped whole, with the reason and the row of its first line', () => {
+  const result = chatBuild([
+    's1,1,A,一個人說話', 's1,2,A,還是一個人',
+    's2,1,B,我先說', 's2,2,A,你好', 's2,3,B,好',
+    ...goodScript('ok'),
+  ]);
+  assert.deepEqual(result.scripts.map(script => script.id), ['ok']);
+  assert.deepEqual(dropOf(result), [
+    [2, '劇本 s1 整份丟掉：A 與 B 都要有台詞'],
+    [4, '劇本 s2 整份丟掉：第一輪要是 A'],
+  ]);
+  const two = chatBuild(['s3,1,A,嗨', 's3,2,B,嗨嗨']);
+  assert.deepEqual(two.scripts.map(script => script.id), ['s3'], 'exactly two rounds is enough');
+});
+
+test('each rule on a line drops the whole script and names the row that broke it', () => {
+  const long = '字'.repeat(61);
+  const ok60 = '字'.repeat(60);
+  const cases = [
+    ['an empty line', 's1,2,B,   ', '台詞是空的'],
+    ['a part that is empty after the slash split', 's1,2,B,好／／嗯', '台詞裡有空的一段'],
+    ['a part over 60 characters', `s1,2,B,短／${long}`, '超過 60 字'],
+    ['a half-width semicolon', 's1,2,B,好;好', '不能有分號'],
+    ['a full-width semicolon', 's1,2,B,好；好', '不能有分號'],
+    ['the wait word', 's1,2,B,好@等待好', '@等待'],
+    ['a line break inside the quoted cell', 's1,2,B,"好\n好"', '換行'],
+    ['an unknown speaker', 's1,2,C,好', '「誰」要寫 A 或 B'],
+  ];
+  cases.forEach(([name, line, reason]) => {
+    const result = chatBuild(['s1,1,A,開場', line, 's1,3,A,收尾', 's1,4,B,好', ...goodScript('ok')]);
+    assert.deepEqual(result.scripts.map(script => script.id), ['ok'], name);
+    assert.equal(result.report.dropped.length, 1, name);
+    assert.equal(result.report.dropped[0].row, 3, name);
+    assert.ok(result.report.dropped[0].reason.startsWith('劇本 s1 整份丟掉：'), name);
+    assert.ok(result.report.dropped[0].reason.includes(reason), `${name}: ${result.report.dropped[0].reason}`);
+  });
+  assert.equal(chatBuild([`s1,1,A,${ok60}`, 's1,2,B,好']).scripts.length, 1, 'exactly 60 is fine');
+  assert.equal(chatBuild([`s1,1,A,${ok60}／${ok60}`, 's1,2,B,好']).scripts.length, 1, 'the limit is per part, not per line');
+});
+
+test('a script of more than 30 lines is dropped, 30 is fine', () => {
+  const lines = count => Array.from({ length: count }, (_, i) => `big,${i + 1},${i % 2 ? 'B' : 'A'},第${i + 1}句`);
+  assert.equal(chatBuild(lines(30)).scripts.length, 1);
+  const over = chatBuild(lines(31));
+  assert.equal(over.scripts.length, 0);
+  assert.deepEqual(dropOf(over), [[2, '劇本 big 整份丟掉：有 31 句，最多 30 句']]);
+});
+
+test('the order column must run 1, 2, 3 … in the sheet; a gap, a repeat or a shuffle drops the script and says which row', () => {
+  const gap = chatBuild(['g,1,A,一', 'g,2,B,二', 'g,4,A,四']);
+  const repeat = chatBuild(['r,1,A,一', 'r,2,B,二', 'r,2,A,又二']);
+  const shuffled = chatBuild(['u,2,B,二', 'u,1,A,一']);
+  const notNumber = chatBuild(['n,1,A,一', 'n,二,B,二']);
+  [gap, repeat, shuffled, notNumber].forEach(result => assert.equal(result.scripts.length, 0));
+  assert.deepEqual(dropOf(gap), [[4, '劇本 g 整份丟掉：順序要從 1 開始連續遞增，這一列是 4，應該是 3']]);
+  assert.deepEqual(dropOf(repeat), [[4, '劇本 r 整份丟掉：順序要從 1 開始連續遞增，這一列是 2，應該是 3']]);
+  assert.deepEqual(dropOf(shuffled), [[2, '劇本 u 整份丟掉：順序要從 1 開始連續遞增，這一列是 2，應該是 1']]);
+  assert.deepEqual(dropOf(notNumber), [[3, '劇本 n 整份丟掉：順序要從 1 開始連續遞增，這一列是 二，應該是 2']]);
+});
+
+test('lines of one script may be spread across the sheet, and a row without a script id is dropped alone', () => {
+  const result = chatBuild(['s1,1,A,嗨', ',1,A,孤兒', 's2,1,A,你好', 's1,2,B,嗨嗨', 's2,2,B,你好嗎']);
+  assert.deepEqual(result.scripts.map(script => [script.id, script.lines.length]), [['s1', 2], ['s2', 2]]);
+  assert.deepEqual(dropOf(result), [[3, '劇本ID 是空的']]);
+});
+
+test('a week limits a script to 14 days from that Monday; blank is always usable', () => {
+  const at = (y, m, d) => new Date(y, m - 1, d, 12, 0, 0).getTime();
+  const sheet = [...goodScript('open'), ...goodScript('week', { week: '2026-11-09' })];
+  const ids = now => chatBuild(sheet, now).scripts.map(script => script.id);
+  assert.deepEqual(ids(at(2026, 11, 8)), ['open'], 'not yet started');
+  assert.deepEqual(ids(at(2026, 11, 9)), ['open', 'week'], 'the day itself');
+  assert.deepEqual(ids(at(2026, 11, 22)), ['open', 'week'], 'the 14th day (the 13th after the start) is the last');
+  assert.deepEqual(ids(at(2026, 11, 23)), ['open'], 'expired');
+  const expired = chatBuild(sheet, at(2026, 11, 23));
+  assert.equal(expired.report.unmatched[0].name, 'week');
+  assert.equal(expired.report.unmatched[0].row, 6);
+  assert.match(expired.report.unmatched[0].reason, /過期/);
+  assert.match(chatBuild(sheet, at(2026, 11, 8)).report.unmatched[0].reason, /還沒到/);
+  assert.deepEqual([expired.report.used, expired.report.dropped.length], [1, 0], 'neither case counts as dropped');
+});
+
+test('the week may be filled on one row only, but two different weeks or a bad date drop the script', () => {
+  const once = chatBuild(['w,1,A,嗨,,2026-11-09', 'w,2,B,嗨嗨,,']);
+  assert.equal(once.scripts.length, 1);
+  const twice = chatBuild(['w,1,A,嗨,,2026-11-09', 'w,2,B,嗨嗨,,2026-11-16']);
+  assert.deepEqual(dropOf(twice), [[3, '劇本 w 整份丟掉：同一份劇本的週不一致']]);
+  const bad = chatBuild(['w,1,A,嗨,,下週', 'w,2,B,嗨嗨,,']);
+  assert.deepEqual(dropOf(bad), [[2, '劇本 w 整份丟掉：週要寫成 YYYY-MM-DD（週一的日期），這裡是「下週」']]);
+  assert.equal(chatBuild(['w,1,A,嗨,,2026-02-31', 'w,2,B,嗨嗨,,']).scripts.length, 0, 'a date that is not on the calendar');
+});
+
+test('the report lines are readable: dropped ones are errors, out-of-season ones are warnings', () => {
+  const result = chatBuild([...goodScript('week', { week: '2026-01-05' }), 's1,1,A,嗨;嗨', 's1,2,B,好']);
+  const entries = S.reportEntries(result.report);
+  assert.deepEqual(entries.map(entry => entry.level), ['warn', 'error']);
+  assert.match(entries[1].text, /^第 6 列：丟掉（劇本 s1 整份丟掉：.*分號.*）$/);
+  assert.match(entries[0].text, /^第 2 列：week　/);
+});
+
+test('an empty sheet is a format error, a header-only one is fine but has nothing to use', () => {
+  assert.equal(S.buildChatScripts('', NOW).error, '內容是空的，不是 CSV');
+  const empty = chatBuild([]);
+  assert.deepEqual([empty.ok, empty.scripts.length, empty.report.used], [true, 0, 0]);
+});
+
+test('the chat sheet template and README carry the same tab-separated header, and the example is a valid script that never gets used', () => {
+  const header = readmeHeader('劇本ID\t');
+  assert.equal(header, CHAT_HEADER);
+  const template = readTemplate('shared-chat.csv').trimEnd().split('\n');
+  assert.equal(template[0], header);
+  assert.ok(readmeSection.includes('docs/templates/shared-chat.csv'), 'README points at the template');
+  const built = S.buildChatScripts(template.join('\n'), NOW);
+  assert.deepEqual([built.ok, built.report.dropped.length, built.scripts.length, built.report.unmatched.length], [true, 0, 0, 1], 'the example is a valid script that is always out of season, so importing it adds nothing');
+});

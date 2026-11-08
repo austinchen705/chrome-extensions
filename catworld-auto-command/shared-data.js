@@ -373,6 +373,82 @@ function buildRiddleSteps(csvText, riddles, pages) {
   return { ok: true, steps, report };
 }
 
+// 劇本對話的試算表（欄位：劇本ID、順序、誰、台詞、備註、週，一列一句）：同一個劇本ID 的列湊成一份劇本，整份通過檢查才採用，
+// 有任何一處不合就整份丟掉、在報告寫原因（共用資料由互信的朋友填，但劇本會原樣送進遊戲，所以台詞的限制和 chat-script.js 的 safeText 一樣嚴）。
+// 回 { ok, scripts: [{ id, lines: [{ who, text }] }], report }；report 的 dropped 一份劇本一筆（列號是出問題的那一列），
+// 不在適用週的劇本不算丟掉，記在 unmatched（name 是劇本ID）。now 由呼叫端給（毫秒），這裡不讀時鐘
+const CHAT_MAX_LINES = 30;
+const CHAT_MAX_PART = 60; // 用 ／ 拆開的每一段最多幾個字
+const CHAT_WEEK_DAYS = 14;
+const pad2 = number => String(number).padStart(2, '0');
+const ymd = date => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+
+// 一句台詞的問題（沒有就回 null）
+function chatLineProblem(text) {
+  if (!text) return '台詞是空的';
+  if (/[;；]/.test(text)) return '台詞不能有分號（；或 ;）';
+  if (text.includes('@等待')) return '台詞不能有「@等待」';
+  if (/[\r\n]/.test(text)) return '台詞不能換行';
+  const parts = text.split('／').map(part => part.trim());
+  if (parts.some(part => !part)) return '台詞裡有空的一段（／ 的前後要有字）';
+  if (parts.some(part => [...part].length > CHAT_MAX_PART)) return `台詞有一段超過 ${CHAT_MAX_PART} 字`;
+  return null;
+}
+
+// 一份劇本（同一個劇本ID 的列，照試算表上的順序）的第一個問題：{ row, reason } 或 null
+function chatScriptProblem(rows) {
+  for (let i = 0; i < rows.length; i += 1) {
+    const { row, order, who, text } = rows[i];
+    if (Number(order) !== i + 1) return { row, reason: `順序要從 1 開始連續遞增，這一列是 ${order || '空白'}，應該是 ${i + 1}` };
+    if (who !== 'A' && who !== 'B') return { row, reason: `「誰」要寫 A 或 B，這一列是「${who}」` };
+    const bad = chatLineProblem(text);
+    if (bad) return { row, reason: bad };
+  }
+  const first = rows[0].row;
+  if (rows.length > CHAT_MAX_LINES) return { row: first, reason: `有 ${rows.length} 句，最多 ${CHAT_MAX_LINES} 句` };
+  if (!rows.some(item => item.who === 'A') || !rows.some(item => item.who === 'B')) return { row: first, reason: 'A 與 B 都要有台詞' };
+  if (rows[0].who !== 'A') return { row: first, reason: '第一輪要是 A' };
+  const weeks = rows.filter(item => item.week);
+  const different = weeks.find(item => item.week !== weeks[0].week);
+  if (different) return { row: different.row, reason: '同一份劇本的週不一致' };
+  if (weeks.length && !Number.isFinite(parseTime(weeks[0].week))) return { row: weeks[0].row, reason: `週要寫成 YYYY-MM-DD（週一的日期），這裡是「${weeks[0].week}」` };
+  return null;
+}
+
+// 週欄（週一的日期）起算 14 天內才採用：回 null（可用）或不能用的說明；沒填永遠可用
+function chatSeason(week, now) {
+  if (!week) return null;
+  const at = new Date(parseTime(week));
+  const start = new Date(at.getFullYear(), at.getMonth(), at.getDate());
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + CHAT_WEEK_DAYS);
+  if (now < start.getTime()) return `還沒到適用的週（${ymd(start)} 起 ${CHAT_WEEK_DAYS} 天）`;
+  if (now >= end.getTime()) return `已過期（適用到 ${ymd(new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1))}）`;
+  return null;
+}
+
+function buildChatScripts(csvText, now = Date.now()) {
+  const sheet = readSheet(csvText, ['劇本ID', '順序', '誰', '台詞']);
+  if (sheet.error) return { ok: false, error: sheet.error };
+  const report = newReport(sheet);
+  const groups = new Map();
+  sheet.rows.forEach(({ row, cell }) => {
+    const id = cell('劇本ID');
+    if (!id) return report.dropped.push({ row, reason: '劇本ID 是空的' });
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push({ row, order: cell('順序'), who: cell('誰').toUpperCase(), text: cell('台詞'), week: cell('週') });
+  });
+  const scripts = [];
+  groups.forEach((rows, id) => {
+    const problem = chatScriptProblem(rows);
+    if (problem) return report.dropped.push({ row: problem.row, reason: `劇本 ${id} 整份丟掉：${problem.reason}` });
+    const season = chatSeason(rows.find(item => item.week)?.week, now);
+    if (season) return report.unmatched.push({ row: rows[0].row, name: id, reason: season });
+    scripts.push({ id, lines: rows.map(({ who, text }) => ({ who, text })) });
+  });
+  report.used = scripts.length;
+  return { ok: true, scripts, report };
+}
+
 // 設定頁用：報告變成一行一行的訊息（被丟掉的、對不到的、超過上限沒讀的），最多 max 行，其餘寫「還有 N 筆」。
 // 每一行帶等級讓畫面上色：被丟掉的是 error、對不到與超過上限是 warn、「還有 N 筆」是 info
 function reportEntries(report, max = 30) {
@@ -458,5 +534,5 @@ function overlayReply(reply, shared) {
   return { ...reply, items: reply.items.map(item => (item.candidates ? { ...item, candidates: item.candidates.map(apply) } : apply(item))) };
 }
 
-globalThis.CatworldSharedData = { parseStrength, applySharedMobs, DEFAULT_SOURCES, MAX_SEGMENT, MAX_ROWS, ALLOWED_VERBS, SHEET_LABELS, describeSheet, describeSheetParts, describeRejectedUrl, reportEntries, reportLines, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, overlayReply };
+globalThis.CatworldSharedData = { parseStrength, applySharedMobs, DEFAULT_SOURCES, MAX_SEGMENT, MAX_ROWS, ALLOWED_VERBS, SHEET_LABELS, describeSheet, describeSheetParts, describeRejectedUrl, reportEntries, reportLines, checkCommand, checkUrl, parseCsv, parseTime, buildMobRoutes, buildRiddleSteps, buildChatScripts, overlayReply };
 })();
