@@ -16,7 +16,7 @@ const C = globalThis.CatworldChatScript;
 const BUILTIN = globalThis.CatworldChatScriptData.scripts;
 
 const CSV = fs.readFileSync(path.join(__dirname, '..', 'docs', 'data', 'chat-scripts-w45.csv'), 'utf8').replace(/\r\n/g, '\n');
-const IN_WEEK = new Date(2026, 10, 8, 12, 0, 0).getTime(); // 2026-11-08（這一批寫成的那天）
+const IN_WEEK = new Date(2026, 10, 8, 12, 0, 0).getTime(); // 2026-11-08
 const built = S.buildChatScripts(CSV, IN_WEEK);
 const turnCount = script => C.toTurns(script).length;
 const textOf = script => script.lines.map(line => line.text);
@@ -49,11 +49,15 @@ test('two scripts for each of the six topics, and every script says where its ne
   });
 });
 
+// 劇本會用兩個禮拜：新聞的時間要寫絕對日期，不能寫「這禮拜」「下禮拜」
+const relativeWeek = ['這禮拜', '這個禮拜', '下禮拜', '下個禮拜', '上禮拜', '上個禮拜', '這週', '下週', '上週'];
+
 test('the lines are short and colloquial, not every turn ends as a question, and nothing touches politics, casualties or disasters', () => {
   const forbidden = ['政治', '選舉', '總統', '政府', '戰爭', '死', '傷', '災', '颱風', '地震', '火災', '車禍', '事故'];
   built.scripts.forEach(script => {
     const lines = textOf(script);
     lines.forEach(text => {
+      relativeWeek.forEach(word => assert.ok(!text.includes(word), `${script.id} says ${word}, which is wrong a few days later: ${text}`));
       assert.ok(text.split('／').every(part => [...part].length <= 40), `${script.id}: a part is long: ${text}`);
       forbidden.forEach(word => assert.ok(!text.includes(word), `${script.id} mentions ${word}: ${text}`));
     });
@@ -82,6 +86,8 @@ test('the built-in scripts are three general ones with no news, no placeholder, 
     assert.equal(script.lines[0].who, 'A', script.id);
     script.lines.forEach(line => {
       assert.ok(!line.text.includes('{對方}'), `${script.id} has the placeholder`);
+      // 備援劇本在任何時候開場都要自然：不綁週末、深夜、星期幾
+      ['週末', '這麼晚', '半夜', '晚安', '早安', '禮拜'].forEach(word => assert.ok(!line.text.includes(word), `${script.id} is tied to a time (${word}): ${line.text}`));
       assert.ok(!/\d/.test(line.text), `${script.id} has a number, which smells like news: ${line.text}`);
     });
   });
