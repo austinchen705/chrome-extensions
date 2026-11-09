@@ -392,6 +392,21 @@
     <button id="backupDownload">下載檔案</button>
     <textarea id="backupFallback" rows="4" readonly hidden></textarea>
     <div id="backupMsg" class="hint tight"></div>
+    <div class="hint">匯入（貼上匯出的文字，或選檔）：</div>
+    <textarea id="backupImportText" rows="4" placeholder="貼上匯出的設定 JSON"></textarea>
+    <input type="file" id="backupImportFile" accept=".json,application/json">
+    <div id="backupImportMsg" class="hint tight"></div>
+    <div id="backupImportPlan" hidden>
+      <div class="hint tight">將覆蓋這些區塊（取消勾選的不動）：</div>
+      <div id="backupImportBlocks"></div>
+      <div id="backupImportSecretsRow" hidden>
+        <label><input type="checkbox" id="backupImportSecrets"> LINE 憑證與樣本收集網址（檔案裡有）</label>
+        <div class="msg-warn">勾選後，現有的這兩項會被檔案裡的取代，檔案裡沒有的會被清掉。</div>
+      </div>
+      <div class="hint tight">被覆蓋的區塊，現有設定會整個被取代，檔案裡沒有的項目會被清掉。</div>
+      <button id="backupImportApply">確認匯入</button>
+      <button id="backupImportCancel">取消</button>
+    </div>
     <p class="hint tight">把設定與累積資料（地圖怪物、商人裝備、個人路線、聊天配對…）匯出成一份 JSON。預設不含 LINE 憑證與樣本收集網址；執行狀態、快取與各裝置自己的版面（面板位置、視窗大小）不會匯出。遊戲的巨集有自己的匯入匯出，不在這裡。</p>
   </details>
   <details class="alertbox fold" id="sec-line">

@@ -109,3 +109,94 @@ test('every storage key the source uses is classified (block, secret or excluded
   const missing = [...usedKeys()].filter(([key]) => !known.has(key)).map(([key, file]) => `${key} (${file})`);
   assert.deepEqual(missing, [], '新增的儲存鍵要放進 settings-backup.js 的區塊、機密或排除清單');
 });
+
+// ---- 匯入：整份檢查與覆蓋計畫 ----
+const exported = (extra = {}) => ({ format: 'catworld-settings', version: 1, exportedWith: '1.0.0', exportedAt: '2026-11-10T00:00:00.000Z', blocks: {}, ...extra });
+const check = value => B.checkImport(typeof value === 'string' ? value : JSON.stringify(value));
+
+test('checkImport rejects text that is not a settings backup, saying what is wrong', () => {
+  assert.match(check('not json').error, /JSON/);
+  assert.match(check('[]').error, /物件/);
+  assert.match(check('null').error, /物件/);
+  assert.match(check({ version: 1, blocks: {} }).error, /不是設定備份/);
+  assert.match(check({ format: 'catworld-macros', version: 1, blocks: {} }).error, /不是設定備份/);
+  assert.match(check(exported({ version: 2 })).error, /更新擴充功能/);
+  assert.match(check(exported({ version: 0 })).error, /version/);
+  assert.match(check(exported({ blocks: [] })).error, /blocks/);
+  assert.match(check(exported({ blocks: 'x' })).error, /blocks/);
+  assert.equal(check('x'.repeat(B.MAX_TEXT + 1)).ok, false);
+});
+
+test('checkImport rejects the whole file when any known block or key is malformed, naming the block and key', () => {
+  const bad = check(exported({ blocks: { timer: { settings: {} }, trigger: [] } }));
+  assert.equal(bad.ok, false);
+  assert.match(bad.error, /觸發/);
+  const nullValue = check(exported({ blocks: { timer: { settings: null } } }));
+  assert.equal(nullValue.ok, false);
+  assert.match(nullValue.error, /定時與隨機.*settings/);
+  const badSecrets = check(exported({ secrets: 'x' }));
+  assert.equal(badSecrets.ok, false);
+  assert.match(badSecrets.error, /secrets/);
+});
+
+test('checkImport ignores unknown blocks and keys, and refuses a file with nothing to import', () => {
+  const result = check(exported({ blocks: { timer: { settings: { a: 1 }, evil: 1, running: true }, nope: { x: 1 } } }));
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.blocks, ['timer']);
+  assert.deepEqual(result.data.blocks.timer, { settings: { a: 1 } }, 'only the keys the block owns survive');
+  assert.equal(result.hasSecrets, false);
+  assert.equal(check(exported({ blocks: { nope: { x: 1 } } })).ok, false);
+  assert.match(check(exported()).error, /沒有任何/);
+  assert.equal(check(exported({ secrets: {} })).ok, true, 'a secrets section alone is something to import');
+});
+
+test('checkImport keeps only the secret keys from the secrets section', () => {
+  const result = check(exported({ blocks: { timer: { settings: {} } }, secrets: { lineNotify: { token: 't' }, settings: { sneaky: 1 } } }));
+  assert.equal(result.hasSecrets, true);
+  assert.deepEqual(Object.keys(result.data.secrets), ['lineNotify']);
+});
+
+test('planImport replaces a whole block: keys in the file are written, the block\'s other keys are removed, other blocks are untouched', () => {
+  const current = { settings: { old: 1 }, idleSettings: { old: 1 }, triggerGroupSettings: { keep: 1 }, running: true };
+  const parsed = check(exported({ blocks: { timer: { settings: { fresh: 1 } }, trigger: { triggerGroupSettings: { fresh: 2 } } } }));
+  const plan = B.planImport(current, parsed.data, { blocks: ['timer'] });
+  assert.deepEqual(plan.set, { settings: { fresh: 1 } });
+  assert.deepEqual(plan.remove, ['idleSettings'], 'in the block, absent from the file, present now');
+  assert.deepEqual(plan.blocks, ['timer']);
+  assert.ok(!('triggerGroupSettings' in plan.set), 'an unticked block is left alone');
+  assert.ok(!plan.remove.includes('running'), 'excluded keys are never touched');
+});
+
+test('planImport only offers blocks that are in the file, and secrets only when asked for', () => {
+  const parsed = check(exported({ blocks: { timer: { settings: { a: 1 } } }, secrets: { lineNotify: { token: 'new' } } }));
+  const current = { lineNotify: { token: 'old' }, captchaSampleUrl: 'u' };
+  const without = B.planImport(current, parsed.data, { blocks: ['timer', 'trigger'] });
+  assert.deepEqual(without.blocks, ['timer'], 'trigger is not in the file');
+  assert.ok(!('lineNotify' in without.set) && !without.remove.includes('lineNotify'));
+  const withSecrets = B.planImport(current, parsed.data, { blocks: [], secrets: true });
+  assert.deepEqual(withSecrets.set, { lineNotify: { token: 'new' } });
+  assert.deepEqual(withSecrets.remove, ['captchaSampleUrl'], 'the secrets section replaces both secret keys');
+  assert.equal(withSecrets.secrets, true);
+});
+
+test('planImport copies the values so the plan cannot alias the parsed file', () => {
+  const parsed = check(exported({ blocks: { timer: { settings: { n: [1] } } } }));
+  const plan = B.planImport({}, parsed.data, { blocks: ['timer'] });
+  plan.set.settings.n.push(2);
+  assert.deepEqual(parsed.data.blocks.timer.settings.n, [1]);
+});
+
+test('round trip: exporting a store and importing it into an empty one gives the same classified keys', () => {
+  const full = {
+    settings: { a: 1 }, idleSettings: { b: 2 }, triggerGroupSettings: { c: 3 }, zapFeatures: { mobs: true },
+    mapMonsters: { 'a/1': { mobs: ['x(1)'] } }, chatPairs: [{ said: 'a', reply: 'b' }], extraGameUrls: ['https://x.test/*'],
+    lineNotify: { token: 't' }, captchaSampleUrl: 'https://script.google.com/macros/s/a/exec', running: true,
+  };
+  const text = B.exportText(full, { version: '1', secrets: true, now: FIXED_NOW });
+  const parsed = B.checkImport(text);
+  assert.equal(parsed.ok, true);
+  const plan = B.planImport({}, parsed.data, { blocks: parsed.blocks, secrets: true });
+  const { running, ...expected } = full;
+  assert.deepEqual(plan.set, expected);
+  assert.deepEqual(plan.remove, []);
+});

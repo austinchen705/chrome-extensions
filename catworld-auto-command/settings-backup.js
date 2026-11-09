@@ -5,6 +5,7 @@
 (() => {
 const FORMAT = 'catworld-settings';
 const VERSION = 1;
+const MAX_TEXT = 10 * 1024 * 1024; // 匯入文字最多這麼多字元（儲存空間本來就只有 10 MB）
 
 const BLOCKS = [
   { id: 'timer', label: '定時與隨機', keys: ['settings', 'idleSettings'] },
@@ -47,5 +48,66 @@ function exportData(store, { blocks, secrets = false, version = '', now = Date.n
 }
 const exportText = (store, options) => JSON.stringify(exportData(store, options), null, 2);
 
-globalThis.CatworldSettingsBackup = { FORMAT, VERSION, BLOCKS, SECRET_KEYS, EXCLUDED_KEYS, exportData, exportText };
+const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+// 整份檢查匯入的文字。通過回 { ok: true, data, blocks, hasSecrets }：data 只留認得的區塊與鍵（檔案裡其他的忽略，
+// 所以白名單外的鍵絕不會被寫入）；任何一處不合就整份拒絕，回 { ok: false, error } 說明哪裡不對。
+function checkImport(text) {
+  if (typeof text !== 'string' || !text.trim()) return { ok: false, error: '沒有內容' };
+  if (text.length > MAX_TEXT) return { ok: false, error: '檔案太大，不像是設定備份' };
+  let file;
+  try { file = JSON.parse(text); } catch (e) { return { ok: false, error: `不是有效的 JSON：${e.message}` }; }
+  if (!isObject(file)) return { ok: false, error: '內容要是一個物件（{ … }）' };
+  if (file.format !== FORMAT) return { ok: false, error: `這不是設定備份檔（format 要是 ${FORMAT}）` };
+  if (!Number.isInteger(file.version) || file.version < 1) return { ok: false, error: 'version 要是 1 以上的整數' };
+  if (file.version > VERSION) return { ok: false, error: `這份檔案是較新的格式（version ${file.version}），請先更新擴充功能` };
+  if (!isObject(file.blocks)) return { ok: false, error: 'blocks 要是物件' };
+
+  const data = { blocks: {}, secrets: null };
+  const section = (label, source, keys) => {
+    if (!isObject(source)) return `${label}的內容不是物件`;
+    const kept = {};
+    for (const key of keys) {
+      if (!(key in source)) continue;
+      if (source[key] === null || source[key] === undefined) return `${label}的 ${key} 是空值`;
+      kept[key] = source[key];
+    }
+    return kept;
+  };
+  for (const block of BLOCKS) {
+    if (!(block.id in file.blocks)) continue;
+    const kept = section(`區塊「${block.label}」`, file.blocks[block.id], block.keys);
+    if (typeof kept === 'string') return { ok: false, error: kept };
+    if (Object.keys(kept).length) data.blocks[block.id] = kept;
+  }
+  if ('secrets' in file) {
+    const kept = section('secrets', file.secrets, SECRET_KEYS);
+    if (typeof kept === 'string') return { ok: false, error: kept };
+    data.secrets = kept;
+  }
+  const blocks = Object.keys(data.blocks);
+  if (!blocks.length && !data.secrets) return { ok: false, error: '檔案裡沒有任何可匯入的區塊' };
+  return { ok: true, data, blocks, hasSecrets: Boolean(data.secrets), version: file.version, exportedWith: String(file.exportedWith ?? ''), exportedAt: String(file.exportedAt ?? '') };
+}
+
+// 把檢查過的檔案變成寫入計畫：選到的區塊整個取代（檔案有的鍵寫入，區塊裡檔案沒有、現在有的鍵移除），沒選的區塊不動；
+// 機密要 secrets 為 true 才處理。只算計畫、不寫儲存；blocks 是真的會處理的區塊 id（檔案裡沒有的區塊不會出現）
+function planImport(current, data, { blocks = [], secrets = false } = {}) {
+  const set = {};
+  const remove = [];
+  const replace = (source, keys) => keys.forEach(key => {
+    if (source[key] !== undefined) set[key] = copy(source[key]);
+    else if (current?.[key] !== undefined) remove.push(key);
+  });
+  const done = [];
+  BLOCKS.filter(block => blocks.includes(block.id) && data.blocks[block.id]).forEach(block => {
+    replace(data.blocks[block.id], block.keys);
+    done.push(block.id);
+  });
+  const withSecrets = Boolean(secrets && data.secrets);
+  if (withSecrets) replace(data.secrets, SECRET_KEYS);
+  return { set, remove, blocks: done, secrets: withSecrets };
+}
+
+globalThis.CatworldSettingsBackup = { FORMAT, VERSION, MAX_TEXT, BLOCKS, SECRET_KEYS, EXCLUDED_KEYS, exportData, exportText, checkImport, planImport };
 })();

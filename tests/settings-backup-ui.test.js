@@ -24,6 +24,7 @@ const waitFor = async (condition, ms = 3000) => {
 
 async function boot(store = {}, { clipboardFails = false, readFails = false } = {}) {
   const listeners = [];
+  const flags = { writeFails: false }; // 設定頁載入時自己也會寫儲存，所以寫入失敗要在載入完成後才打開
   const copied = [];
   const downloads = [];
   const dom = await JSDOM.fromFile(path.join(root, 'popup.html'), {
@@ -44,8 +45,8 @@ async function boot(store = {}, { clipboardFails = false, readFails = false } = 
               if (readFails && Array.isArray(keys) && keys.includes('mapMonsters')) throw new Error('quota');
               return Object.fromEntries([].concat(keys).filter(key => key in store).map(key => [key, JSON.parse(JSON.stringify(store[key]))]));
             },
-            set: async values => { Object.assign(store, JSON.parse(JSON.stringify(values))); },
-            remove: async key => { delete store[key]; },
+            set: async values => { if (flags.writeFails) throw new Error('disk full'); Object.assign(store, JSON.parse(JSON.stringify(values))); },
+            remove: async keys => { if (flags.writeFails) throw new Error('disk full'); [].concat(keys).forEach(key => { delete store[key]; }); },
           },
           sync: { get: async () => ({}), set: async () => {} },
           session: { get: async () => ({}), set: async () => {} },
@@ -71,7 +72,7 @@ async function boot(store = {}, { clipboardFails = false, readFails = false } = 
     input.checked = value;
     input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
   };
-  return { dom, doc, copied, downloads, click, check, text: id => doc.getElementById(id).textContent };
+  return { dom, doc, copied, downloads, flags, click, check, text: id => doc.getElementById(id).textContent };
 }
 
 const STORE = {
@@ -217,6 +218,151 @@ ui('unticking the secrets box clears a hand-copy box that holds secrets, and the
     page.check('backupSecrets', false);
     assert.equal(page.doc.getElementById('backupFallback').hidden, true);
     assert.equal(page.doc.getElementById('backupFallback').value, '');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+// ---- 匯入 ----
+const backupFile = (blocks, extra = {}) => JSON.stringify({ format: 'catworld-settings', version: 1, exportedWith: '1.0.0', exportedAt: '2026-11-10T00:00:00.000Z', blocks, ...extra });
+const paste = (page, text) => {
+  const box = page.doc.getElementById('backupImportText');
+  box.value = text;
+  box.dispatchEvent(new page.dom.window.Event('input', { bubbles: true }));
+};
+const userKeys = store => Object.fromEntries(Object.entries(store).filter(([key]) => key !== 'popupTab')); // 設定頁載入時自己會存 popupTab
+const planShown = page => !page.doc.getElementById('backupImportPlan').hidden;
+const level = (page, id) => page.doc.getElementById(id).classList.contains('msg-error') ? 'error' : page.doc.getElementById(id).classList.contains('msg-warn') ? 'warn' : 'info';
+
+ui('a valid file shows which blocks it will overwrite, ticked, and writes nothing yet', async () => {
+  const store = { settings: { old: 1 } };
+  const page = await boot(store);
+  try {
+    paste(page, backupFile({ timer: { settings: { fresh: 1 } }, chat: { chatReply: { enabled: true } } }));
+    assert.ok(await waitFor(() => planShown(page)));
+    const boxes = [...page.doc.querySelectorAll('#backupImportBlocks input')];
+    assert.deepEqual(boxes.map(box => box.id), ['backupImportBlock-timer', 'backupImportBlock-chat']);
+    assert.ok(boxes.every(box => box.checked));
+    assert.match(page.text('backupImportBlocks'), /定時與隨機/);
+    assert.equal(page.doc.getElementById('backupImportSecretsRow').hidden, true);
+    assert.deepEqual(userKeys(store), { settings: { old: 1 } }, 'nothing is written before the confirmation');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('a bad file is refused whole, in red, with the reason, and nothing is offered', async () => {
+  const store = { settings: { old: 1 } };
+  const page = await boot(store);
+  try {
+    paste(page, '{"format":"nope"}');
+    assert.ok(await waitFor(() => /不是設定備份/.test(page.text('backupImportMsg'))));
+    assert.equal(level(page, 'backupImportMsg'), 'error');
+    assert.equal(planShown(page), false);
+    paste(page, backupFile({ timer: [] }));
+    assert.ok(await waitFor(() => /定時與隨機/.test(page.text('backupImportMsg'))));
+    assert.equal(planShown(page), false);
+    assert.deepEqual(userKeys(store), { settings: { old: 1 } });
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('confirming replaces the ticked blocks, removes their leftovers, leaves other blocks alone and tells to refresh', async () => {
+  const store = { settings: { old: 1 }, idleSettings: { old: 1 }, triggerGroupSettings: { keep: 1 }, chatReply: { old: 1 }, running: true };
+  const page = await boot(store);
+  try {
+    paste(page, backupFile({ timer: { settings: { fresh: 1 } }, chat: { chatReply: { fresh: 1 } } }));
+    assert.ok(await waitFor(() => planShown(page)));
+    page.check('backupImportBlock-chat', false);
+    page.click('backupImportApply');
+    assert.ok(await waitFor(() => store.settings?.fresh === 1));
+    assert.ok(!('idleSettings' in store), 'a key of the block that the file does not have is removed');
+    assert.deepEqual(store.chatReply, { old: 1 }, 'an unticked block is left alone');
+    assert.deepEqual(store.triggerGroupSettings, { keep: 1 }, 'a block not in the file is left alone');
+    assert.equal(store.running, true);
+    assert.ok(await waitFor(() => /重新整理遊戲分頁/.test(page.text('backupImportMsg'))));
+    assert.match(page.text('backupImportMsg'), /已匯入 1 個區塊/);
+    assert.equal(level(page, 'backupImportMsg'), 'info');
+    assert.equal(planShown(page), false);
+    assert.equal(page.doc.getElementById('backupImportText').value, '');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('editing the text drops a pending check, and cancel clears everything', async () => {
+  const store = { settings: { old: 1 } };
+  const page = await boot(store);
+  try {
+    paste(page, backupFile({ timer: { settings: { fresh: 1 } } }));
+    assert.ok(await waitFor(() => planShown(page)));
+    paste(page, 'oops');
+    assert.equal(planShown(page), false, 'the old result must not be confirmable against new text');
+    paste(page, backupFile({ timer: { settings: { fresh: 1 } } }));
+    assert.ok(await waitFor(() => planShown(page)));
+    page.click('backupImportCancel');
+    assert.equal(planShown(page), false);
+    assert.equal(page.doc.getElementById('backupImportText').value, '');
+    assert.deepEqual(userKeys(store), { settings: { old: 1 } });
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('secrets in the file are offered but left unticked; only a ticked box replaces them', async () => {
+  const store = { lineNotify: { token: 'old' }, captchaSampleUrl: 'https://old.test', settings: {} };
+  const page = await boot(store);
+  try {
+    const text = backupFile({ timer: { settings: { fresh: 1 } } }, { secrets: { lineNotify: { token: 'new' } } });
+    paste(page, text);
+    assert.ok(await waitFor(() => planShown(page)));
+    assert.equal(page.doc.getElementById('backupImportSecretsRow').hidden, false);
+    assert.equal(page.doc.getElementById('backupImportSecrets').checked, false);
+    page.click('backupImportApply');
+    assert.ok(await waitFor(() => store.settings.fresh === 1));
+    assert.deepEqual(store.lineNotify, { token: 'old' }, 'secrets untouched without the tick');
+    paste(page, text);
+    assert.ok(await waitFor(() => planShown(page)));
+    page.check('backupImportSecrets', true);
+    page.click('backupImportApply');
+    assert.ok(await waitFor(() => store.lineNotify?.token === 'new'));
+    assert.ok(!('captchaSampleUrl' in store), 'the secrets section replaces both secret keys');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('picking a file loads its text into the box and runs the same check', async () => {
+  const page = await boot({});
+  try {
+    const input = page.doc.getElementById('backupImportFile');
+    const file = new page.dom.window.File([backupFile({ timer: { settings: { a: 1 } } })], 'backup.json', { type: 'application/json' });
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    input.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
+    assert.ok(await waitFor(() => planShown(page)));
+    assert.match(page.doc.getElementById('backupImportText').value, /catworld-settings/);
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('nothing ticked is a warning, and a failed write is shown in red and keeps the plan', async () => {
+  const store = { settings: { old: 1 } };
+  const page = await boot(store);
+  try {
+    page.flags.writeFails = true;
+    paste(page, backupFile({ timer: { settings: { fresh: 1 } } }));
+    assert.ok(await waitFor(() => planShown(page)));
+    page.check('backupImportBlock-timer', false);
+    page.click('backupImportApply');
+    assert.ok(await waitFor(() => /至少勾選/.test(page.text('backupImportMsg'))));
+    assert.equal(level(page, 'backupImportMsg'), 'warn');
+    page.check('backupImportBlock-timer', true);
+    page.click('backupImportApply');
+    assert.ok(await waitFor(() => /匯入失敗：disk full/.test(page.text('backupImportMsg'))));
+    assert.equal(level(page, 'backupImportMsg'), 'error');
+    assert.equal(planShown(page), true, 'the plan stays so it can be retried');
   } finally {
     page.dom.window.close();
   }
