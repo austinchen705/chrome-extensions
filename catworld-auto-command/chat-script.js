@@ -10,11 +10,11 @@ const STATE_KEY = 'chatScriptState'; // { date, count, recent }：今天開了�
 const MATCH_THRESHOLD = 0.8; // 來訊和預期台詞的相似度要達到多少才算「是劇本的下一句」
 const ID_PATTERN = /^[A-Za-z0-9_.'-]{1,30}$/; // 放進 tell 指令的英文 ID：只收這些字元
 const PLACEHOLDER = '{對方}';
-// 擬真計時用的範圍 [最小, 最大]（毫秒）：思考時間、每個字的打字時間、一輪等待的上下限、同一輪拆開的兩則之間
-const THINK_MS = [1000, 4000];
-const PER_CHAR_MS = [300, 600];
-const TURN_LIMITS_MS = [3000, 45000];
-const SPLIT_GAP_MS = [1000, 3000];
+// 擬真計時：每一則送出前都等這個範圍 [最小, 最大]（毫秒）的隨機時間，模擬「想怎麼回、再打字」；不看字數。
+// 第一則從收到對方的訊息（或 A 按開場）算起，同一輪拆開的後面幾則從上一則送出算起
+const SEND_DELAY_MS = [5000, 10000];
+// 錯字後補的更正：打錯字會馬上發現，所以只比錯字那一則晚這麼久；一定要比對方最快的回覆（SEND_DELAY_MS 的下限）早，不然會變成「錯字、對方回話、更正」
+const CORRECTION_DELAY_MS = [1000, 3000];
 const PER_DAY_DEFAULT = 3; // 每天最多幾場
 const PER_DAY_MAX = 99;
 const RECENT_LIMIT = 5; // A 挑劇本時避開最近用過的幾份
@@ -138,13 +138,10 @@ function createSession({ script, role, ownName = '', similarity = globalThis.Cat
   };
 }
 
-// 一輪送出前等「思考時間加依字數算的打字時間」，夾在 TURN_LIMITS_MS 之內；同一輪拆開的兩則之間隔 SPLIT_GAP_MS（毫秒）。random 可注入
-const between = ([min, max], random) => min + (max - min) * random();
-const turnDelayMs = (text, random = Math.random) => {
-  const waited = between(THINK_MS, random) + [...text].length * between(PER_CHAR_MS, random);
-  return Math.round(Math.min(TURN_LIMITS_MS[1], Math.max(TURN_LIMITS_MS[0], waited)));
-};
-const splitGapMs = (random = Math.random) => Math.round(between(SPLIT_GAP_MS, random));
+// 一則送出前要等多久（毫秒），random 可注入
+const between = ([min, max], random) => Math.round(min + (max - min) * random());
+const sendDelayMs = (random = Math.random) => between(SEND_DELAY_MS, random);
+const correctionDelayMs = (random = Math.random) => between(CORRECTION_DELAY_MS, random);
 
 // 錯字：以 rate（%）的機率在這一輪的某一則（至少 TYPO_MIN_LENGTH 個字）換掉一個字，緊接著那一則補一則「*正確的字」。
 // 只換「換了之後對方仍認得（相似度達 MATCH_THRESHOLD）」的位置：長的一則哪裡都行，6～10 個字的只剩頭尾；沒有合適的位置就不出錯字。
@@ -210,5 +207,5 @@ function describeStatus({ session, state, perDay, today }) {
 // 對方更正錯字的那一則（「*字」）：不是劇本的台詞，但屬於這一場，收下就好
 const isCorrection = text => /^[*＊]\S{1,4}$/u.test(String(text ?? '').trim());
 
-globalThis.CatworldChatScript = { SETTINGS_KEY, STATE_KEY, MATCH_THRESHOLD, normalizeSettings, partnerIdOf, fill, tellCommand, usableScripts, toTurns, bestStart, createSession, turnDelayMs, splitGapMs, addTypo, isCorrection, dayKey, normalizeState, todayCount, recordStart, pickScript, describeStatus };
+globalThis.CatworldChatScript = { SETTINGS_KEY, STATE_KEY, MATCH_THRESHOLD, normalizeSettings, partnerIdOf, fill, tellCommand, usableScripts, toTurns, bestStart, createSession, sendDelayMs, correctionDelayMs, addTypo, isCorrection, dayKey, normalizeState, todayCount, recordStart, pickScript, describeStatus };
 })();

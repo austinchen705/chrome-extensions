@@ -273,14 +273,14 @@ function recordScriptStart(scriptId) {
     // 連不上儲存（孤兒程式）：這一頁的記憶體裡還是有計數
   }
 }
-// 一輪的每一則各排一個計時器（出錯字時那一則後面多一則更正）：第一則等「思考加打字」的時間，之後每則再隔一小段才送；finalTurn：這是我說的最後一輪，
+// 一輪的每一則各排一個計時器（出錯字時那一則後面多一則更正）：每一則都比前一個動作（收到對方的訊息、或上一則送出）晚 sendDelayMs 才送，錯字後補的更正只晚 correctionDelayMs；finalTurn：這是我說的最後一輪，
 // 最後一則送出之後這一場才算結束（等待送出的這段時間場次還在，不會被當成沒有進行中）
 function sayTurn(parts, finalTurn) {
   const name = chatScript.partnerName || chatScript.partner;
   const texts = CatworldChatScript.addTypo(parts.map(part => CatworldChatScript.fill(part, name)), chatScript.typoRate);
-  let at = CatworldChatScript.turnDelayMs(texts[0]);
+  let at = 0;
   texts.forEach((text, index) => {
-    if (index) at += CatworldChatScript.splitGapMs();
+    at += index > 0 && CatworldChatScript.isCorrection(text) ? CatworldChatScript.correctionDelayMs() : CatworldChatScript.sendDelayMs();
     const timer = setTimeout(() => {
       scriptTimers.delete(timer);
       sendPart(text, index === texts.length - 1, finalTurn);

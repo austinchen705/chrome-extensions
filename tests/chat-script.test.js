@@ -404,15 +404,15 @@ function recordDelays(page) {
   return delays;
 }
 
-ui('the wait before a round is a thinking time plus typing time per character, kept between 3 and 45 seconds', async () => {
-  // random 0：思考 1 秒，每字 0.3 秒；random 趨近 1：思考 4 秒，每字 0.6 秒
+ui('every message waits a random 5 to 10 seconds before it goes out, however short or long the line is', async () => {
+  // random 0：5 秒；random 趨近 1：10 秒。字數不影響
   const cases = [
-    { text: '在嗎在嗎', random: 0, expected: 3000, unclamped: 2200 }, // 1000 + 4 × 300 = 2200，不到下限
-    { text: '好'.repeat(20), random: 0, expected: 7000 }, // 1000 + 20 × 300
-    { text: '好'.repeat(20), random: 0.999999, expected: 16000 }, // 4000 + 20 × 600
-    { text: '好'.repeat(100), random: 0.999999, expected: 45000, unclamped: 64000 }, // 4000 + 100 × 600 = 64000，超過上限
+    { text: '在嗎在嗎', random: 0, expected: 5000 },
+    { text: '好'.repeat(100), random: 0, expected: 5000 },
+    { text: '在嗎在嗎', random: 0.999999, expected: 10000 },
+    { text: '好'.repeat(100), random: 0.999999, expected: 10000 },
   ];
-  for (const { text, random, expected, unclamped } of cases) {
+  for (const { text, random, expected } of cases) {
     const script = { id: 'len', lines: [{ who: 'A', text }, { who: 'B', text: '好' }] };
     const page = await boot({ scale: 20, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [script] } : {}), initialStore: { chatScript: { enabled: true, typoRate: 0, role: 'A', partner: B.id, partnerName: B.nick } } });
     try {
@@ -420,21 +420,20 @@ ui('the wait before a round is a thinking time plus typing time per character, k
       const delays = recordDelays(page);
       assert.equal((await start(page)).ok, true);
       assert.ok(delays.includes(expected), `${text.length} characters with random ${random} should wait ${expected} ms, timers set: ${JSON.stringify(delays)}`);
-      if (unclamped) assert.ok(!delays.includes(unclamped), `the unclamped ${unclamped} ms must not be used`);
     } finally {
       page.close();
     }
   }
 });
 
-ui('a line with ／ goes out as separate tells a random 1 to 3 seconds apart, and B takes the earlier parts in without answering until the last one', async () => {
+ui('a line with ／ goes out as separate tells a random 5 to 10 seconds apart, and B takes the earlier parts in without answering until the last one', async () => {
   const split = { id: 't5', lines: [{ who: 'A', text: '欸你看到新聞沒／那個真的很扯' }, { who: 'B', text: '有啊我看到了' }] };
   const both = await pair({ scripts: [split], scale: 5 });
   try {
-    both.pageA.w.Math.random = () => 0.999; // 兩則之間間隔 1000 + 2000 × 0.999 = 2998 毫秒
+    both.pageA.w.Math.random = () => 0.999; // 每一則前都等 5000 + 5000 × 0.999 = 9995 毫秒，所以兩則之間隔 9995
     const delays = recordDelays(both.pageA);
     assert.equal((await start(both.pageA)).ok, true);
-    assert.ok(delays.some((delay, index) => delays[index + 1] - delay === 2998), `the two parts are scheduled 2998 ms apart: ${JSON.stringify(delays)}`);
+    assert.ok(delays.some((delay, index) => delays[index + 1] - delay === 9995), `the two parts are scheduled 9995 ms apart: ${JSON.stringify(delays)}`);
     assert.ok(await waitFor(() => both.told.length === 1, 12000), 'the first part goes out alone');
     const during = await status(both.pageB);
     assert.notEqual(during.chatScript, null, 'B recognised the first part as the start of the script');
@@ -456,18 +455,33 @@ const soloWith = (script, role, scale = 20, settings = {}) => boot({
   initialStore: { chatScript: { enabled: true, typoRate: 0, role, partner: role === 'A' ? B.id : A.id, partnerName: role === 'A' ? B.nick : A.nick, ...settings } },
 });
 
-ui('the gap between two parts is 1 second at the lowest, and the first part waits thinking plus typing time', async () => {
+ui('the first part waits 5 seconds at the lowest and the next part another 5 seconds after it', async () => {
   const split = { id: 't5', lines: [{ who: 'A', text: '欸你看到新聞沒／那個真的很扯' }, { who: 'B', text: '有啊我看到了' }] };
   const page = await soloWith(split, 'A');
   try {
     page.w.Math.random = () => 0;
     const delays = recordDelays(page);
     assert.equal((await start(page)).ok, true);
-    // 第一則 7 個字：1000 + 7 × 300 = 3100；第二則再隔 1000
-    const first = delays.indexOf(3100);
-    assert.ok(first >= 0 && delays[first + 1] === 4100, `parts are scheduled at 3100 and 4100 ms: ${JSON.stringify(delays)}`);
+    const first = delays.indexOf(5000);
+    assert.ok(first >= 0 && delays[first + 1] === 10000, `parts are scheduled at 5000 and 10000 ms: ${JSON.stringify(delays)}`);
   } finally {
     page.close();
+  }
+});
+
+ui('a correction comes 1 to 3 seconds after its typo, not another 5 to 10, so the other side cannot answer in between', async () => {
+  const line = { id: 't7', lines: [{ who: 'A', text: '今天天氣真的很不錯啊' }, { who: 'B', text: '對啊' }] };
+  for (const { random, typoAt, correctionAt } of [{ random: 0, typoAt: 5000, correctionAt: 6000 }, { random: 0.999, typoAt: 9995, correctionAt: 12993 }]) {
+    const page = await soloWith(line, 'A', 20, { typoRate: 100 });
+    try {
+      page.w.Math.random = () => random;
+      const delays = recordDelays(page);
+      assert.equal((await start(page)).ok, true);
+      const typo = delays.indexOf(typoAt);
+      assert.ok(typo >= 0 && delays[typo + 1] === correctionAt, `the typo is scheduled at ${typoAt} and its correction at ${correctionAt} ms: ${JSON.stringify(delays)}`);
+    } finally {
+      page.close();
+    }
   }
 });
 
