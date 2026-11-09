@@ -65,12 +65,40 @@ ui('a second check alerts again, but other class changes on the element and a re
   }
 });
 
-ui('a page without the presence element still works', async () => {
-  const page = await boot({ scale: SCALE });
+ui('a page that has no presence element at all still works', async () => {
+  const page = await boot({ scale: SCALE, preload: "document.getElementById('presence').remove()" });
   try {
-    presence(page).remove();
     await page.ask(START);
     assert.ok(await waitFor(() => page.sent.length >= 1, 4000));
+    assert.equal(alerts(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a check already open when the page loads is not announced, but nothing is sent while it is open, and sending works once it is closed', async () => {
+  const page = await boot({ scale: SCALE, preload: "document.getElementById('presence').classList.remove('invisible')" });
+  try {
+    await sleep(100);
+    assert.equal(alerts(page).length, 0, 'not a new appearance');
+    await page.ask(START);
+    await sleep(1500 / SCALE * 3);
+    assert.equal(page.sent.length, 0, 'nothing is sent while the check is open');
+    assert.equal(await page.running(), false, 'start is refused');
+    hide(page);
+    await page.ask(START);
+    assert.ok(await waitFor(() => page.sent.length >= 1, 4000), 'start works once the check is closed');
+  } finally {
+    page.close();
+  }
+});
+
+ui('an orphaned page that sees the check does not alert', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.w.chrome.runtime.id = undefined; // 擴充功能重新載入後，舊頁面裡的 chrome.runtime.id 會失效
+    show(page);
+    await sleep(100);
     assert.equal(alerts(page).length, 0);
   } finally {
     page.close();

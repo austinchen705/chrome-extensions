@@ -687,8 +687,10 @@ const captchaObserver = new MutationObserver(allRecords => {
 });
 // 遊戲的「真人驗證」（點選和左側範例相同的圖形，60 秒內）：伺服器推 presence.challenge 後，遊戲把 #presence 的 invisible 拿掉。
 // 圖在 #content 之外、也不會出現在文字輸出裡，而且是要真人點的（遊戲會檢查點擊是不是真的滑鼠事件、答題時間與 Turnstile），所以不辨識、不代點，
-// 只在它出現的那一刻停下一切並警報（原因含「驗證」，之後要玩家手動按開始才會再送指令）；解除後不自動恢復。只看從隱藏變成顯示，其他 class 變動或重複顯示不再警報。
+// 只在它出現的那一刻停下一切並警報（原因含「驗證」，之後要玩家手動按開始才會再送指令）；解除後不自動恢復。只看從隱藏變成顯示，其他 class 變動或重複顯示不再警報；
+// 載入時就顯示著的不算「出現」、不警報，但開著的期間 sendCommand 一律不送（見 presenceOpen）。
 const presenceElement = document.getElementById('presence');
+const presenceOpen = () => !!presenceElement && !presenceElement.classList.contains('invisible');
 let presenceShown = false;
 const presenceObserver = presenceElement ? new MutationObserver(() => {
   if (!contextAlive(chrome)) {
@@ -724,6 +726,8 @@ function sendCommand(command, { answer = false } = {}) {
   }
   if (!answer && (captcha || checkCaptcha())) return { ok: false, error: '驗證碼自動辨識中，先不送出指令' };
   if (!answer && /驗證/.test(stopReason)) return { ok: false, error: stopReason };
+  // 真人驗證還開著（例如驗證倒數中重新整理頁面、載入時就顯示著，不會有「出現」的那一刻）：任何入口都不送，送出被拒會讓 pumpQueue 停下一切
+  if (!answer && presenceOpen()) return { ok: false, error: '遊戲正在要求真人驗證，先不送出指令；請完成驗證後再按開始' };
   const input = document.querySelector('#input');
   if (!input || !input.form) {
     return { ok: false, error: '找不到 CatWorld 指令輸入框 #input' };
