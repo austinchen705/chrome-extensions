@@ -50,6 +50,7 @@ function retire() {
   if (watchdogTimer) clearTimeout(watchdogTimer);
   cancelReward();
   captchaObserver.disconnect();
+  presenceObserver?.disconnect();
   stopRepeatBeep();
   try {
     globalThis.documentPictureInPicture?.window?.close();
@@ -684,6 +685,24 @@ const captchaObserver = new MutationObserver(allRecords => {
   // 驗證碼檢查放在前面：同一批含驗證碼時已交給自動辨識（送出佇列暫停），不會再比對關鍵字或送指令
   if (anyTriggerOn()) feedKeywords(records);
 });
+// 遊戲的「真人驗證」（點選和左側範例相同的圖形，60 秒內）：伺服器推 presence.challenge 後，遊戲把 #presence 的 invisible 拿掉。
+// 圖在 #content 之外、也不會出現在文字輸出裡，而且是要真人點的（遊戲會檢查點擊是不是真的滑鼠事件、答題時間與 Turnstile），所以不辨識、不代點，
+// 只在它出現的那一刻停下一切並警報（原因含「驗證」，之後要玩家手動按開始才會再送指令）；解除後不自動恢復。只看從隱藏變成顯示，其他 class 變動或重複顯示不再警報。
+const presenceElement = document.getElementById('presence');
+let presenceShown = false;
+const presenceObserver = presenceElement ? new MutationObserver(() => {
+  if (!contextAlive(chrome)) {
+    retire();
+    return;
+  }
+  const shown = !presenceElement.classList.contains('invisible');
+  if (shown && !presenceShown) stopAndAlert('遊戲要求點選圖形的真人驗證（60 秒內），已全部停止；請自己完成驗證後再按開始');
+  presenceShown = shown;
+}) : null;
+if (presenceElement) {
+  presenceShown = !presenceElement.classList.contains('invisible'); // 載入時就顯示著的不算新出現
+  presenceObserver.observe(presenceElement, { attributes: true, attributeFilter: ['class'] });
+}
 // 歷史紀錄裡已有的提示不是新的驗證碼：先以載入時畫面上的數量當基準
 captchaCount = countCaptcha();
 captchaObserver.observe(document.body, {

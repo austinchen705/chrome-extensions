@@ -33,7 +33,7 @@ const waitFor = async (condition, ms = 3000) => {
 // preload：在所有腳本之前先在頁面執行的程式（測試自己放假的內建資料，例如 globalThis.CatworldMentorData = […]）
 // respond：假的 background，收到 chrome.runtime.sendMessage 的訊息就回它的回傳值（沒給就一律回 {}）
 async function boot({ scale = 1, builtin = false, preload = '', initialStore = {}, respond = null } = {}) {
-  const dom = new JSDOM('<html><body><div id="main"><div id="content"><span id="message"></span></div></div><div id="buttons"><div id="uptime">00:00</div></div><form id="f"><input id="input"></form></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
+  const dom = new JSDOM('<html><body><div id="main"><div id="content"><span id="message"></span></div></div><div id="buttons"><div id="uptime">00:00</div></div><div class="invisible" id="presence"><div id="presence_header">驗證</div><div id="presence_prompt"></div><img id="presence_image"></div><form id="f"><input id="input"></form></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   const sent = [];
   w.document.getElementById('f').addEventListener('submit', event => {
