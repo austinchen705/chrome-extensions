@@ -382,6 +382,18 @@
     <div id="extraMessage" class="hint tight"></div>
     <div id="extraList"></div>
   </details>
+  <details class="alertbox fold" id="sec-backup">
+    <summary>設定備份</summary>
+    <div class="hint tight">匯出哪些區塊：</div>
+    <div id="backupBlocks"></div>
+    <label><input type="checkbox" id="backupSecrets"> 連同 LINE 憑證與樣本收集網址一起匯出</label>
+    <div id="backupSecretWarn" class="msg-warn" hidden>這份檔案含有 LINE token 與 userId，等於密碼：不要傳給別人、不要貼到公開的地方。</div>
+    <button id="backupCopy">複製</button>
+    <button id="backupDownload">下載檔案</button>
+    <textarea id="backupFallback" rows="4" readonly hidden></textarea>
+    <div id="backupMsg" class="hint tight"></div>
+    <p class="hint tight">把設定與累積資料（地圖怪物、商人裝備、個人路線、聊天配對…）匯出成一份 JSON。預設不含 LINE 憑證與樣本收集網址；執行狀態、快取與各裝置自己的版面（面板位置、視窗大小）不會匯出。遊戲的巨集有自己的匯入匯出，不在這裡。</p>
+  </details>
   <details class="alertbox fold" id="sec-line">
     <summary>手機通知（LINE）</summary>
     <label for="lineToken">Channel access token</label>
@@ -429,6 +441,7 @@
   <script src="macro-wait.js"></script>
   <script src="mentor-data.js"></script>
   <script src="mentor-search.js"></script>
+  <script src="settings-backup.js"></script>
   <script src="update-check.js"></script>
   <script src="popup.js"></script>
 </body>

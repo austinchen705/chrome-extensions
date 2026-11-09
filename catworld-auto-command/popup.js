@@ -1206,6 +1206,55 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   setInterval(refreshLive, 1000);
 })();
 
+// 設定備份：匯出（區塊與機密的清單、格式在 settings-backup.js）
+function backupMessage(text, level) { $('backupMsg').textContent = text; markLevel($('backupMsg'), level); }
+$('backupBlocks').append(...CatworldSettingsBackup.BLOCKS.map(block => element('label', { style: 'display:block' },
+  element('input', { type: 'checkbox', checked: true, id: `backupBlock-${block.id}` }), ` ${block.label}`)));
+$('backupSecrets').addEventListener('change', () => { $('backupSecretWarn').hidden = !$('backupSecrets').checked; });
+async function buildBackup() {
+  const blocks = CatworldSettingsBackup.BLOCKS.filter(block => $(`backupBlock-${block.id}`).checked).map(block => block.id);
+  const secrets = $('backupSecrets').checked;
+  if (!blocks.length && !secrets) { backupMessage('請至少勾選一個區塊', 'warn'); return null; }
+  const keys = [...CatworldSettingsBackup.BLOCKS.flatMap(block => block.keys), ...CatworldSettingsBackup.SECRET_KEYS];
+  try {
+    const store = await chrome.storage.local.get(keys);
+    return CatworldSettingsBackup.exportText(store, { blocks, secrets, version: chrome.runtime.getManifest().version });
+  } catch (e) { backupMessage(`讀取設定失敗：${e.message}`, 'error'); return null; }
+}
+const backupSummary = () => `${CatworldSettingsBackup.BLOCKS.filter(block => $(`backupBlock-${block.id}`).checked).length} 個區塊${$('backupSecrets').checked ? '（含機密）' : ''}`;
+$('backupCopy').addEventListener('click', async () => {
+  $('backupFallback').hidden = true;
+  const text = await buildBackup();
+  if (text === null) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    backupMessage(`已複製 ${backupSummary()}`, $('backupSecrets').checked ? 'warn' : undefined);
+  } catch (e) {
+    // 複製失敗：把文字放進可手動複製的框
+    $('backupFallback').value = text;
+    $('backupFallback').hidden = false;
+    backupMessage(`複製失敗：${e.message}，請從下面的框手動複製`, 'error');
+  }
+});
+$('backupDownload').addEventListener('click', async () => {
+  $('backupFallback').hidden = true;
+  const text = await buildBackup();
+  if (text === null) return;
+  try {
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const link = element('a', { href: url, download: `catworld-settings-${new Date().toISOString().slice(0, 10)}.json` });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    backupMessage(`已下載 ${backupSummary()}`, $('backupSecrets').checked ? 'warn' : undefined);
+  } catch (e) {
+    $('backupFallback').value = text;
+    $('backupFallback').hidden = false;
+    backupMessage(`下載失敗：${e.message}，請從下面的框手動複製`, 'error');
+  }
+});
+
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes.stopReason?.newValue) setStatus(changes.stopReason.newValue, stopLevel(changes.stopReason.newValue));
