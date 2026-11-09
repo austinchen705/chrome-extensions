@@ -153,3 +153,14 @@ test('the background answers SKILL_MOVES from the real data, and the files are w
   assert.match(popupHtml, /id="featureSkills"/);
   assert.match(fs.readFileSync(path.join(root, 'popup.js'), 'utf8'), /skills: 'featureSkills'/);
 });
+
+test('打蛇隨棍 carries the game\'s per-character colours, other moves do not', () => {
+  const snake = S.lookup(SKILLS_DATA, ['牛蛇生死搏'])['牛蛇生死搏'];
+  const info = S.describe(snake, 2);
+  assert.deepEqual(info.moves[0].chars, ['#ff00ff', '#00ff00', '#ff0000', '#e5e5e5']); // H5 H2 H1 N7
+  assert.equal(info.moves[1].chars, undefined, '對牛彈琴 keeps the tier colours');
+});
+
+test('打隨棍 (three characters) also gets the game colours', () => {
+  assert.deepEqual(S.MOVE_NAME_COLORS['打隨棍'], ['#ff00ff', '#ff0000', '#e5e5e5']); // H5 H1 N7
+});

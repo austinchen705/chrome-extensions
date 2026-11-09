@@ -42,6 +42,11 @@ const FORCE_COLOR = '#6cc4ff';
 const FORCE_SECOND = '#a5d8ff';
 // 招式名兩個字一個顏色、輪流換（雁行斜擊＝雁行／斜擊），同一級有兩個色系；其他文字用第一個顏色
 const nameChunks = name => String(name ?? '').match(/[\s\S]{1,2}/g) ?? [];
+// 指定逐字配色的招式（遊戲自己印這一招時每個字的顏色，ansi.css 的 XTerm 色碼）：打隨棍＝H5、H1、N7
+const MOVE_NAME_COLORS = {
+  打隨棍: ['#ff00ff', '#ff0000', '#e5e5e5'],
+  打蛇隨棍: ['#ff00ff', '#00ff00', '#ff0000', '#e5e5e5'], // 技能資料裡的寫法多一個蛇
+};
 const tierOf = damage => TIERS.find(tier => damage >= tier.min) ?? TIERS.at(-1);
 // 傷害類型欄有時混著一長段說明（「傷勢。\n本來無效的一招…」），只留第一句
 const cleanType = text => String(text ?? '').split(/。|\\n|\n/)[0].trim();
@@ -59,6 +64,7 @@ function describe(skill, count) {
       effect: move.extra?.effect ?? null,
       color: hasDamage ? tierOf(move.damage).color : FORCE_COLOR,
       second: hasDamage ? tierOf(move.damage).second : FORCE_SECOND,
+      ...(MOVE_NAME_COLORS[move.name] ? { chars: MOVE_NAME_COLORS[move.name] } : {}),
     };
   });
   const next = skill.moves[count];
@@ -81,7 +87,7 @@ function moveDetail(move) {
 }
 const moveText = move => `${move.no}. ${move.name}${moveDetail(move)}`;
 
-globalThis.CatworldSkillMoves = { parseLearned, lookup, describe, moveText, tierOf, cleanType, nameChunks, TIERS, FORCE_COLOR, FORCE_SECOND };
+globalThis.CatworldSkillMoves = { parseLearned, lookup, describe, moveText, tierOf, cleanType, nameChunks, MOVE_NAME_COLORS, TIERS, FORCE_COLOR, FORCE_SECOND };
 
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.chrome?.runtime?.sendMessage || !globalThis.CatworldZapMobs) return;
@@ -110,10 +116,11 @@ function moveRow(box, move) {
   row.style.paddingLeft = '1.5em';
   row.style.color = move.color;
   row.append(`${move.no}. `);
-  nameChunks(move.name).forEach((chunk, i) => {
+  const pieces = move.chars ? [...move.name] : nameChunks(move.name);
+  pieces.forEach((chunk, i) => {
     const span = document.createElement('span');
     span.textContent = chunk;
-    span.style.color = i % 2 ? move.second : move.color;
+    span.style.color = move.chars?.[i] ?? (i % 2 ? move.second : move.color);
     row.append(span);
   });
   row.append(moveDetail(move));
