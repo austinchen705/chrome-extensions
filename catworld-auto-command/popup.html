@@ -199,9 +199,8 @@
         <label for="globalPerMinute-__G__">每分鐘最多（個）</label>
         <input id="globalPerMinute-__G__" type="number" min="1" value="6">
         <p class="hint tight">超過只是延後，不停用規則。</p>
-        <label class="check"><input id="requireNormal-__G__" type="checkbox" checked> 角色狀態不在下面「允許的狀態」裡時不觸發（昏迷、死亡等）</label>
         <div class="statuses" id="statuses-__G__">
-          <p class="hint tight">允許觸發的角色狀態（遊戲狀態列的字；沒勾的、沒列出的狀態一律不觸發，讀不到狀態也不觸發）：</p>
+          <p class="hint tight">允許觸發的角色狀態（遊戲狀態列的字）：有勾才允許，沒勾、沒列出的狀態（昏迷、死亡等）一律不觸發，讀不到狀態也不觸發。</p>
           <label class="check"><input type="checkbox" checked disabled> 正常（一定允許）</label>
           <label class="check"><input type="checkbox" data-status="忙碌"> 忙碌</label>
           <label class="check"><input type="checkbox" data-status="中毒"> 中毒</label>

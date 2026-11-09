@@ -193,3 +193,35 @@ ui('ticking presets and typing other statuses is saved as one list, normal first
     page.dom.window.close();
   }
 });
+
+ui('the settings page has no master checkbox any more: only ticked statuses may trigger, and saving writes no requireNormal', async () => {
+  const store = { triggerGroupSettings: { practice: { rules: [keyword('口渴', ['pw'])], delayMax: 0 } } };
+  const page = await bootPopup(store);
+  try {
+    assert.equal(page.doc.getElementById('requireNormal-practice'), null);
+    assert.equal(page.doc.getElementById('requireNormal-combat'), null);
+    preset(page, 'practice', '中毒').checked = true;
+    change(page, preset(page, 'practice', '中毒'));
+    assert.ok(await page.waitUntil(() => store.triggerGroupSettings.practice.allowedStatuses?.includes('中毒')));
+    assert.equal('requireNormal' in store.triggerGroupSettings.practice, false, 'the old switch is no longer written');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('a config saved with the old switch turned off comes back with the known statuses ticked, so it stays close to what it did', async () => {
+  const store = { triggerGroupSettings: { practice: { rules: [keyword('口渴', ['pw'])], delayMax: 0, requireNormal: false } } };
+  const page = await bootPopup(store);
+  try {
+    assert.deepEqual(['忙碌', '中毒', '酒醉'].map(name => preset(page, 'practice', name).checked), [true, true, true]);
+    const stay = { triggerGroupSettings: { practice: { rules: [keyword('口渴', ['pw'])], delayMax: 0, requireNormal: false, allowedStatuses: ['正常', '中毒'] } } };
+    const other = await bootPopup(stay);
+    try {
+      assert.deepEqual(['忙碌', '中毒', '酒醉'].map(name => preset(other, 'practice', name).checked), [false, true, false], 'a list that was already chosen is kept as it is');
+    } finally {
+      other.dom.window.close();
+    }
+  } finally {
+    page.dom.window.close();
+  }
+});

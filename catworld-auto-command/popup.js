@@ -982,7 +982,6 @@ function createTriggerPane(group) {
       maxIneffective: Number($g('maxIneffective').value),
       globalPerMinute: Number($g('globalPerMinute').value),
       delayMax: $g('delayMax').value.trim() === '' ? D.delayMax : Number($g('delayMax').value),
-      requireNormal: $g('requireNormal').checked,
       // 允許的狀態：勾的內建選項加上自己填的（、 , ， 或換行分開），整理（去空白、去重、正常一定在最前面）交給引擎
       allowedStatuses: Engine.cleanStatuses([
         ...Engine.STATUS_PRESETS.filter(name => $g('statuses').querySelector(`input[data-status="${name}"]`).checked),
@@ -1015,8 +1014,9 @@ function createTriggerPane(group) {
     $g('maxIneffective').value = config.maxIneffective ?? D.maxIneffective;
     $g('globalPerMinute').value = config.globalPerMinute ?? D.globalPerMinute;
     $g('delayMax').value = config.delayMax ?? D.delayMax;
-    $g('requireNormal').checked = config.requireNormal !== false;
-    const allowed = Engine.cleanStatuses(config.allowedStatuses);
+    // 以前有個總開關 requireNormal：關掉過（而且還沒選過清單）的，讓內建的狀態都勾起來，盡量接近它原本「不擋」的行為；選過清單的照清單
+    const legacyOff = config.requireNormal === false && !Array.isArray(config.allowedStatuses);
+    const allowed = Engine.cleanStatuses(legacyOff ? Engine.STATUS_PRESETS : config.allowedStatuses);
     Engine.STATUS_PRESETS.forEach(name => { $g('statuses').querySelector(`input[data-status="${name}"]`).checked = allowed.includes(name); });
     $g('statusCustom').value = allowed.filter(name => name !== Engine.NORMAL_STATUS && !Engine.STATUS_PRESETS.includes(name)).join('、');
   }
