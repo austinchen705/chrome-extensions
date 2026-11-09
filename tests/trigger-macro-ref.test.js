@@ -52,6 +52,17 @@ test('a slot whose text the validator rejects is dropped with the reason, and th
   assert.deepEqual(M.expandMacroRefs(['@巨集 1'], raw).commands, ['look;@等待 abc'], 'without a validator the text is passed on as it is');
 });
 
+test('empty pieces in a row (a trailing ; or ;;) are dropped, an <enter> piece is kept, and a row with nothing else is empty', () => {
+  const raw = slots(['65', 'run s;'], ['66', 'look ; ; pw;;'], ['67', 'eat;<enter>;drink'], ['68', ' ; ; '], ['69', 'a;@等待 2;']);
+  assert.deepEqual(M.expandMacroRefs(['@巨集 1'], raw).commands, ['run s']);
+  assert.deepEqual(M.expandMacroRefs(['@巨集 2'], raw).commands, ['look;pw']);
+  assert.deepEqual(M.expandMacroRefs(['@巨集 3'], raw).commands, ['eat;<enter>;drink'], 'a deliberate blank line is written <enter>');
+  assert.deepEqual(M.expandMacroRefs(['@巨集 5'], raw).commands, ['a;@等待 2'], 'a wait stays, the empty piece after it goes');
+  const empty = M.expandMacroRefs(['@巨集 4'], raw);
+  assert.deepEqual([empty.commands, empty.used], [[], 0]);
+  assert.match(empty.errors[0], /第 4 列.*沒有指令/);
+});
+
 test('a reference inside the slot text is not expanded again', () => {
   const raw = slots(['65', '@巨集 2;look'], ['66', 'pw']);
   assert.deepEqual(M.expandMacroRefs(['@巨集 1'], raw).commands, ['@巨集 2;look']);
@@ -229,6 +240,21 @@ ui('a group without any @巨集 shows no warning and reads no macros', async () 
     await sleep(500);
     assert.equal((await page.ask({ type: 'STATUS' })).triggerGroups.practice.warning, '');
     assert.equal(reads, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a row that ends in a semicolon sends its commands and no blank line', async () => {
+  const { boot, waitFor, sleep } = gamePage;
+  const page = await boot({ scale: SCALE, preload: MEMORY_STORAGE });
+  try {
+    setMacros(page, slots(['65', 'run s;']));
+    await page.ask({ type: 'START_TRIGGER', group: 'practice', config: config([keyword('口渴', ['@巨集 1'])]) });
+    page.output('<span>你覺得口渴。</span>');
+    assert.ok(await waitFor(() => page.sent.includes('run s'), 2000));
+    await sleep(300);
+    assert.deepEqual(page.sent, ['run s'], 'no empty line after it');
   } finally {
     page.close();
   }
