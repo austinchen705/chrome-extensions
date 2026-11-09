@@ -125,7 +125,7 @@ function normalizeRule(raw = {}) {
 // 安全機制的「角色狀態」：requireNormal 開著時，角色狀態（遊戲的 #status）要在 allowedStatuses 裡才觸發。
 // 「正常」一定在（不能拿掉）；內建選項 STATUS_PRESETS 之外的狀態由使用者自己加。名稱要和遊戲狀態列的字一模一樣
 const NORMAL_STATUS = '正常';
-const STATUS_PRESETS = Object.freeze(['忙碌', '中毒', '酒醉']);
+const STATUS_PRESETS = Object.freeze(['忙碌', '中毒', '酒醉', '包紮']);
 const MAX_STATUSES = 20;
 const MAX_STATUS_LENGTH = 20;
 function cleanStatuses(raw) {
@@ -149,7 +149,8 @@ function normalizeConfig(raw = {}) {
     globalPerMinute: positive(raw.globalPerMinute, DEFAULTS.globalPerMinute, 1),
     delayMax: positive(raw.delayMax, DEFAULTS.delayMax, 0),
     requireNormal: raw.requireNormal !== false,
-    allowedStatuses: cleanStatuses(raw.allowedStatuses),
+    // 沒存過清單（新設定、舊的儲存）時，內建選項預設都允許；存過的照清單
+    allowedStatuses: cleanStatuses(Array.isArray(raw.allowedStatuses) ? raw.allowedStatuses : STATUS_PRESETS),
   };
 }
 
@@ -246,7 +247,9 @@ function createEngine(rawConfig, io) {
   function statusBlock() {
     if (!config.requireNormal) return null;
     if (io.status) {
-      const status = io.status();
+      // 有些狀態後面帶數字（遊戲的 #status 寫「包紮:27」），比對時拿掉「:數字」，只看名稱
+      const raw = io.status();
+      const status = typeof raw === 'string' ? raw.replace(/\s*[:：]\s*\d+\s*$/, '').trim() : raw;
       if (typeof status === 'string' && config.allowedStatuses.includes(status)) return null;
       return status ? `角色狀態「${status}」不在允許的狀態裡，暫不觸發` : '讀不到角色狀態，暫不觸發';
     }

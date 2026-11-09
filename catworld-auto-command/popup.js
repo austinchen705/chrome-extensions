@@ -1016,7 +1016,7 @@ function createTriggerPane(group) {
     $g('delayMax').value = config.delayMax ?? D.delayMax;
     // 以前有個總開關 requireNormal：關掉過（而且還沒選過清單）的，讓內建的狀態都勾起來，盡量接近它原本「不擋」的行為；選過清單的照清單
     const legacyOff = config.requireNormal === false && !Array.isArray(config.allowedStatuses);
-    const allowed = Engine.cleanStatuses(legacyOff ? Engine.STATUS_PRESETS : config.allowedStatuses);
+    const allowed = Engine.cleanStatuses(legacyOff || !Array.isArray(config.allowedStatuses) ? Engine.STATUS_PRESETS : config.allowedStatuses);
     Engine.STATUS_PRESETS.forEach(name => { $g('statuses').querySelector(`input[data-status="${name}"]`).checked = allowed.includes(name); });
     $g('statusCustom').value = allowed.filter(name => name !== Engine.NORMAL_STATUS && !Engine.STATUS_PRESETS.includes(name)).join('、');
   }

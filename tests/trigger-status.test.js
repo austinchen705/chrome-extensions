@@ -9,8 +9,8 @@ require('../catworld-auto-command/trigger-engine.js');
 const E = globalThis.CatworldTriggerEngine;
 const norm = raw => E.normalizeConfig({ rules: [], ...raw }).allowedStatuses;
 
-test('allowed statuses default to normal only, and normal can never be taken out', () => {
-  assert.deepEqual(norm({}), ['正常']);
+test('allowed statuses default to normal plus every built-in status, an explicit list is kept, and normal can never be taken out', () => {
+  assert.deepEqual(norm({}), ['正常', '忙碌', '中毒', '酒醉', '包紮']);
   assert.deepEqual(norm({ allowedStatuses: [] }), ['正常']);
   assert.deepEqual(norm({ allowedStatuses: ['忙碌'] }), ['正常', '忙碌']);
   assert.deepEqual(norm({ allowedStatuses: ['忙碌', '正常'] }), ['正常', '忙碌']);
@@ -20,8 +20,8 @@ test('the list is cleaned: trimmed, no blanks, no repeats, no non-text, short na
   assert.deepEqual(norm({ allowedStatuses: ['  中毒 ', '', '   ', '中毒', 5, null, {}, '酒醉'] }), ['正常', '中毒', '酒醉']);
   assert.deepEqual(norm({ allowedStatuses: ['x'.repeat(21), 'x'.repeat(20)] }), ['正常', 'x'.repeat(20)]);
   assert.equal(norm({ allowedStatuses: Array.from({ length: 50 }, (_, i) => `狀態${i}`) }).length, 21, 'normal plus at most 20 more');
-  assert.deepEqual(norm({ allowedStatuses: '忙碌' }), ['正常'], 'not a list: ignored');
-  assert.deepEqual(E.STATUS_PRESETS, ['忙碌', '中毒', '酒醉']);
+  assert.deepEqual(norm({ allowedStatuses: '忙碌' }), ['正常', '忙碌', '中毒', '酒醉', '包紮'], 'not a list: same as never chosen');
+  assert.deepEqual(E.STATUS_PRESETS, ['忙碌', '中毒', '酒醉', '包紮']);
 });
 
 const keyword = (pattern, commands, extra) => ({ kind: 'keyword', enabled: true, pattern, commands, cooldown: 1, ...extra });
@@ -32,6 +32,19 @@ function engine(config, status) {
   const created = E.createEngine({ delayMax: 0, ...config }, io);
   return { created, sent, tick: ms => { clock += ms; } };
 }
+
+test('a status that carries a number after a colon is matched by its name only', () => {
+  const status = { value: ' 包紮:27' };
+  const { created, sent } = engine({ rules: [keyword('口渴', ['drink'])], requireNormal: true, allowedStatuses: ['正常', '包紮'] }, status);
+  created.onText('你覺得口渴。\n');
+  assert.deepEqual(sent, [['drink']], 'name before the colon is on the list');
+  status.value = '昏迷:3';
+  created.onText('你又覺得口渴。\n');
+  assert.equal(sent.length, 1, 'a name that is not on the list is still held back');
+  const drunk = engine({ rules: [keyword('口渴', ['drink'])], requireNormal: true, allowedStatuses: ['正常', '酒醉'] }, { value: ' 酒醉:4' });
+  drunk.created.onText('你覺得口渴。\n');
+  assert.equal(drunk.sent.length, 1, 'drunk with a number too');
+});
 
 test('a keyword rule fires only while the status is on the allowed list', () => {
   const status = { value: '正常' };
@@ -104,11 +117,11 @@ ui('in the game page a rule fires in an allowed status and not in the others, an
   }
 });
 
-ui('an old saved config without the list behaves as before: only normal passes', async () => {
+ui('a config without the list lets the built-in statuses through but still holds back the others', async () => {
   const { boot, waitFor, sleep } = gamePage;
   const page = await boot({ scale: SCALE });
   try {
-    page.w.document.body.insertAdjacentHTML('beforeend', '<div id="status">忙碌</div>');
+    page.w.document.body.insertAdjacentHTML('beforeend', '<div id="status">昏迷</div>');
     await page.ask({ type: 'START_TRIGGER', group: 'practice', config: config([keyword('口渴', ['drink'])]) });
     page.output('<span>你覺得口渴。</span>');
     await sleep(400);
@@ -169,17 +182,17 @@ ui('the settings page shows the stored list: presets ticked, anything else in th
   const store = { triggerGroupSettings: { practice: { rules: [keyword('口渴', ['pw'])], delayMax: 0, allowedStatuses: ['正常', '中毒', '昏迷', '發呆'] } } };
   const page = await bootPopup(store);
   try {
-    assert.deepEqual(['忙碌', '中毒', '酒醉'].map(name => preset(page, 'practice', name).checked), [false, true, false]);
+    assert.deepEqual(['忙碌', '中毒', '酒醉', '包紮'].map(name => preset(page, 'practice', name).checked), [false, true, false, false]);
     assert.equal(page.doc.getElementById('statusCustom-practice').value, '昏迷、發呆');
     assert.equal(page.doc.querySelector('#statuses-practice input:disabled').checked, true, 'normal is shown ticked and locked');
-    assert.equal(preset(page, 'combat', '中毒').checked, false, 'the combat tab has its own, still the default');
+    assert.deepEqual(['忙碌', '中毒', '酒醉', '包紮'].map(name => preset(page, 'combat', name).checked), [true, true, true, true], 'the combat tab has its own, still the default: all ticked');
   } finally {
     page.dom.window.close();
   }
 });
 
 ui('ticking presets and typing other statuses is saved as one list, normal first', async () => {
-  const store = { triggerGroupSettings: { practice: { rules: [keyword('口渴', ['pw'])], delayMax: 0 } } };
+  const store = { triggerGroupSettings: { practice: { rules: [keyword('口渴', ['pw'])], delayMax: 0, allowedStatuses: ['正常'] } } };
   const page = await bootPopup(store);
   try {
     preset(page, 'practice', '酒醉').checked = true;
@@ -195,7 +208,7 @@ ui('ticking presets and typing other statuses is saved as one list, normal first
 });
 
 ui('the settings page has no master checkbox any more: only ticked statuses may trigger, and saving writes no requireNormal', async () => {
-  const store = { triggerGroupSettings: { practice: { rules: [keyword('口渴', ['pw'])], delayMax: 0 } } };
+  const store = { triggerGroupSettings: { practice: { rules: [keyword('口渴', ['pw'])], delayMax: 0, allowedStatuses: ['正常'] } } };
   const page = await bootPopup(store);
   try {
     assert.equal(page.doc.getElementById('requireNormal-practice'), null);
@@ -213,7 +226,7 @@ ui('a config saved with the old switch turned off comes back with the known stat
   const store = { triggerGroupSettings: { practice: { rules: [keyword('口渴', ['pw'])], delayMax: 0, requireNormal: false } } };
   const page = await bootPopup(store);
   try {
-    assert.deepEqual(['忙碌', '中毒', '酒醉'].map(name => preset(page, 'practice', name).checked), [true, true, true]);
+    assert.deepEqual(['忙碌', '中毒', '酒醉', '包紮'].map(name => preset(page, 'practice', name).checked), [true, true, true, true]);
     const stay = { triggerGroupSettings: { practice: { rules: [keyword('口渴', ['pw'])], delayMax: 0, requireNormal: false, allowedStatuses: ['正常', '中毒'] } } };
     const other = await bootPopup(stay);
     try {
