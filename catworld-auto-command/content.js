@@ -764,8 +764,9 @@ function sendCommand(command, { answer = false } = {}) {
     input.setSelectionRange(selection[0], selection[1]);
   }
   lastCommand = command.trim();
-  // 驗證碼答案閒置時也送，看門狗同樣要上（沒回應＝答錯）
-  if (active() || answer) armWatchdog();
+  // 驗證碼答案閒置時也送，看門狗同樣要上（沒回應＝答錯）。送出的是空白行（Enter：指令結尾多的 ;、<enter>）時不上：
+  // 遊戲對空白行只回一個「> 」回聲，沒有真正的回應，上了會在 8 秒後誤判成需要驗證而停掉一切
+  if ((active() || answer) && CatworldTimer.commandText(command).trim() !== '') armWatchdog();
   return { ok: true };
 }
 
