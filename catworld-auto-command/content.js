@@ -711,6 +711,62 @@ const captchaObserver = new MutationObserver(allRecords => {
 // 載入時就顯示著的不算「出現」、不警報，但開著的期間 sendCommand 一律不送（見 presenceOpen）。
 const presenceElement = document.getElementById('presence');
 const presenceOpen = () => !!presenceElement && !presenceElement.classList.contains('invisible');
+// 真人驗證一出現，把那一塊（#presence）的內容收進樣本表（結果欄 presence，和驗證碼樣本同一個收集網址與分頁）：只存檔，不辨識、不代點。
+// 圖的格式沒有樣本：<img> 或 <canvas> 能轉成 data URL 就嵌進去（圖是遊戲另外要的，只存網址事後多半打不開），轉不了（跨來源）就留原本的網址；
+// 試算表一格最多 50000 字，太大就退回不嵌圖的版本。遊戲是先拿掉 invisible、圖才載入，所以等圖載好（最多 PRESENCE_IMAGE_WAIT_MS）再收。
+const PRESENCE_SAMPLE_MAX = 45000;
+const PRESENCE_IMAGE_WAIT_MS = 5000;
+function presenceSampleHtml(embed) {
+  const clone = presenceElement.cloneNode(true);
+  if (!embed) return clone.outerHTML;
+  const copies = [...clone.querySelectorAll('img, canvas')];
+  [...presenceElement.querySelectorAll('img, canvas')].forEach((node, index) => {
+    try {
+      let url;
+      if (node.tagName === 'CANVAS') {
+        url = node.toDataURL('image/png');
+        copies[index].setAttribute('data-catworld-image', url);
+        return;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = node.naturalWidth;
+      canvas.height = node.naturalHeight;
+      canvas.getContext('2d').drawImage(node, 0, 0);
+      url = canvas.toDataURL('image/png');
+      if (typeof url === 'string' && url.startsWith('data:')) {
+        copies[index].setAttribute('data-catworld-src', node.getAttribute('src') ?? '');
+        copies[index].setAttribute('src', url);
+      }
+    } catch (error) {
+      console.log('[catworld] 真人驗證樣本：圖轉不成資料網址，留原本的網址', error?.name ?? error);
+    }
+  });
+  return clone.outerHTML;
+}
+function reportPresenceSample() {
+  const started = Date.now();
+  const imagesReady = () => [...presenceElement.querySelectorAll('img')].every(img => img.getAttribute('src') && img.complete && img.naturalWidth > 0);
+  const attempt = () => {
+    if (!contextAlive(chrome)) return;
+    if (!imagesReady() && Date.now() - started < PRESENCE_IMAGE_WAIT_MS) {
+      setTimeout(attempt, 200);
+      return;
+    }
+    let html = presenceSampleHtml(true);
+    if (html.length > PRESENCE_SAMPLE_MAX) html = presenceSampleHtml(false);
+    if (html.length > PRESENCE_SAMPLE_MAX) {
+      console.log(`[catworld] 真人驗證樣本太大（${html.length} 字），不收`);
+      return;
+    }
+    console.log(`[catworld] 真人驗證樣本：送出 ${html.length} 字`);
+    try {
+      chrome.runtime.sendMessage({ type: 'CAPTCHA_SAMPLE', sample: { outcome: 'presence', answer: '', attempts: 0, html } }).catch(() => {});
+    } catch {
+      // 擴充功能剛重新載入，孤兒 content script 送不出訊息
+    }
+  };
+  attempt();
+}
 let presenceShown = false;
 const presenceObserver = presenceElement ? new MutationObserver(() => {
   if (!contextAlive(chrome)) {
@@ -718,7 +774,10 @@ const presenceObserver = presenceElement ? new MutationObserver(() => {
     return;
   }
   const shown = !presenceElement.classList.contains('invisible');
-  if (shown && !presenceShown) stopAndAlert('遊戲要求點選圖形的真人驗證（60 秒內），已全部停止；請自己完成驗證後再按開始');
+  if (shown && !presenceShown) {
+    stopAndAlert('遊戲要求點選圖形的真人驗證（60 秒內），已全部停止；請自己完成驗證後再按開始');
+    reportPresenceSample(); // 警報之後才收樣本，收不到也不影響停止
+  }
   presenceShown = shown;
 }) : null;
 if (presenceElement) {

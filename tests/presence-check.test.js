@@ -104,3 +104,78 @@ ui('an orphaned page that sees the check does not alert', async () => {
     page.close();
   }
 });
+
+// 樣本收集：圖的真實格式沒有樣本，jsdom 也不載入圖，所以用假的圖尺寸與 canvas 輸出
+const stubImage = url => `
+  Object.defineProperty(HTMLImageElement.prototype, 'naturalWidth', { get() { return 4; } });
+  Object.defineProperty(HTMLImageElement.prototype, 'naturalHeight', { get() { return 3; } });
+  Object.defineProperty(HTMLImageElement.prototype, 'complete', { get() { return true; } });
+  HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {} });
+  HTMLCanvasElement.prototype.toDataURL = () => ${url};
+`;
+const samples = page => page.messages.filter(message => message.type === 'CAPTCHA_SAMPLE');
+
+ui('when the presence check appears its content is sent as a presence sample with the image embedded, and the alert still goes out', async () => {
+  const page = await boot({ scale: SCALE, preload: stubImage(`'data:image/png;base64,AAAA'`) });
+  try {
+    page.w.document.getElementById('presence_image').setAttribute('src', '/presence?x=1');
+    show(page);
+    assert.ok(await waitFor(() => samples(page).length === 1, 2000), 'one sample');
+    assert.equal(alerts(page).length, 1, 'the alert is not affected');
+    const { sample } = samples(page)[0];
+    assert.equal(sample.outcome, 'presence');
+    assert.equal(sample.answer, '');
+    assert.match(sample.html, /presence_header/, 'the whole block is included');
+    assert.match(sample.html, /src="data:image\/png;base64,AAAA"/, 'the picture is embedded');
+    assert.match(sample.html, /data-catworld-src="\/presence\?x=1"/, 'the original address is kept');
+    assert.doesNotMatch(sample.html, /class="invisible"/, 'it was captured while shown');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a picture too big for one spreadsheet cell is left out and the original address is kept', async () => {
+  const page = await boot({ scale: SCALE, preload: stubImage(`'data:image/png;base64,' + 'A'.repeat(50000)`) });
+  try {
+    page.w.document.getElementById('presence_image').setAttribute('src', '/presence?x=2');
+    show(page);
+    assert.ok(await waitFor(() => samples(page).length === 1, 2000), 'one sample');
+    const { sample } = samples(page)[0];
+    assert.ok(sample.html.length < 45000, 'fits in a cell');
+    assert.match(sample.html, /src="\/presence\?x=2"/, 'original address, no embedded picture');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a picture that cannot be turned into a data URL still gives a sample with the original address', async () => {
+  const page = await boot({ scale: SCALE, preload: stubImage(`(() => { throw new Error('tainted'); })()`) });
+  try {
+    page.w.document.getElementById('presence_image').setAttribute('src', '/presence?x=3');
+    show(page);
+    assert.ok(await waitFor(() => samples(page).length === 1, 2000), 'one sample');
+    assert.match(samples(page)[0].sample.html, /src="\/presence\?x=3"/);
+    assert.equal(alerts(page).length, 1);
+  } finally {
+    page.close();
+  }
+});
+
+ui('no sample is sent when the check was already open at load, or by an orphaned page', async () => {
+  const open = await boot({ scale: SCALE, preload: "document.getElementById('presence').classList.remove('invisible')" });
+  try {
+    await sleep(200);
+    assert.equal(samples(open).length, 0);
+  } finally {
+    open.close();
+  }
+  const orphan = await boot({ scale: SCALE });
+  try {
+    orphan.w.chrome.runtime.id = undefined;
+    show(orphan);
+    await sleep(200);
+    assert.equal(samples(orphan).length, 0);
+  } finally {
+    orphan.close();
+  }
+});
