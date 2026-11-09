@@ -122,6 +122,21 @@ function normalizeRule(raw = {}) {
   };
 }
 
+// 安全機制的「角色狀態」：requireNormal 開著時，角色狀態（遊戲的 #status）要在 allowedStatuses 裡才觸發。
+// 「正常」一定在（不能拿掉）；內建選項 STATUS_PRESETS 之外的狀態由使用者自己加。名稱要和遊戲狀態列的字一模一樣
+const NORMAL_STATUS = '正常';
+const STATUS_PRESETS = Object.freeze(['忙碌', '中毒', '酒醉']);
+const MAX_STATUSES = 20;
+const MAX_STATUS_LENGTH = 20;
+function cleanStatuses(raw) {
+  const extra = [];
+  (Array.isArray(raw) ? raw : []).forEach(item => {
+    const name = typeof item === 'string' ? item.trim() : '';
+    if (name && name.length <= MAX_STATUS_LENGTH && name !== NORMAL_STATUS && !extra.includes(name) && extra.length < MAX_STATUSES) extra.push(name);
+  });
+  return [NORMAL_STATUS, ...extra];
+}
+
 function normalizeConfig(raw = {}) {
   return {
     rules: (raw.rules || []).map(normalizeRule),
@@ -134,6 +149,7 @@ function normalizeConfig(raw = {}) {
     globalPerMinute: positive(raw.globalPerMinute, DEFAULTS.globalPerMinute, 1),
     delayMax: positive(raw.delayMax, DEFAULTS.delayMax, 0),
     requireNormal: raw.requireNormal !== false,
+    allowedStatuses: cleanStatuses(raw.allowedStatuses),
   };
 }
 
@@ -161,7 +177,7 @@ const meets = (rule, current) => (isUpper(rule) ? current >= rule.value : curren
 const recovered = (rule, current) => (isUpper(rule) ? current < rearmLevel(rule) : current > rearmLevel(rule));
 const improved = (rule, current, from) => (isUpper(rule) ? current < from : current > from);
 
-// io: { now(), readStat(name) → { value, max } | null, isNormal() → true | false | null, send(commands, index), onDisable(index, label, reason), random?() }
+// io: { now(), readStat(name) → { value, max } | null, status() → 角色狀態的文字 | null（讀不到；舊的 isNormal() → true | false | null 沒給 status 時才用）, send(commands, index), onDisable(index, label, reason), random?() }
 function createEngine(rawConfig, io) {
   const config = normalizeConfig(rawConfig);
   // 關鍵字規則看的最近文字（每批一段，seq 遞增）；每條規則的 consumed 是它已經用過的最後一段
@@ -226,13 +242,24 @@ function createEngine(rawConfig, io) {
     }
   }
 
-  // 到時間的延遲指令才真的送出；這時角色狀態不是「正常」（預設會擋）就略過這一次
+  // 角色狀態擋住時回原因（要寫進規則的狀態文字），沒擋住回 null：requireNormal 關著不看；開著時狀態要在 allowedStatuses 裡，讀不到一律擋
+  function statusBlock() {
+    if (!config.requireNormal) return null;
+    if (io.status) {
+      const status = io.status();
+      if (typeof status === 'string' && config.allowedStatuses.includes(status)) return null;
+      return status ? `角色狀態「${status}」不在允許的狀態裡，暫不觸發` : '讀不到角色狀態，暫不觸發';
+    }
+    return io.isNormal() === true ? null : '角色狀態不是「正常」，暫不觸發';
+  }
+
+  // 到時間的延遲指令才真的送出；這時角色狀態不在允許的清單（預設只有「正常」）就略過這一次
   function runPending(now) {
     const due = pending.filter(item => item.at <= now);
     pending = pending.filter(item => item.at > now);
     due.forEach(item => {
       runtime[item.index].pendingUntil = null;
-      if (config.requireNormal && io.isNormal() !== true) return;
+      if (statusBlock()) return;
       io.send(config.rules[item.index].commands, item.index);
     });
   }
@@ -251,7 +278,7 @@ function createEngine(rawConfig, io) {
   function onText(text) {
     const now = io.now();
     sent = sent.filter(time => now - time < 60 * 1000);
-    if (config.requireNormal && io.isNormal() !== true) return;
+    if (statusBlock()) return;
     const lines = String(text ?? '').split('\n').filter(line => !/^\s*>/.test(line));
     if (!lines.length) return;
     // 遊戲會把長句子在固定寬度硬斷行，所以比對時忽略換行與空白（關鍵字也一樣），跨行的句子才對得到
@@ -279,8 +306,9 @@ function createEngine(rawConfig, io) {
     sent = sent.filter(time => now - time < 60 * 1000);
     runPending(now);
     releaseKeywordRules(now);
-    if (config.requireNormal && io.isNormal() !== true) {
-      runtime.forEach(state => { if (state.phase !== 'off' && state.phase !== 'disabled') state.note = '角色狀態不是「正常」，暫不觸發'; });
+    const blocked = statusBlock();
+    if (blocked) {
+      runtime.forEach(state => { if (state.phase !== 'off' && state.phase !== 'disabled') state.note = blocked; });
       return;
     }
     config.rules.forEach((rule, index) => {
@@ -346,5 +374,5 @@ function createEngine(rawConfig, io) {
   return { tick, onText, rearm, snapshot };
 }
 
-globalThis.CatworldTriggerEngine = { STATS, MIN_COOLDOWN_SEC, DEFAULTS, GROUPS, loadGroupSettings, normalizeConfig, hasActiveRules, rearmLevel, rearmText, createEngine, cleanNumber, withNumber };
+globalThis.CatworldTriggerEngine = { STATS, MIN_COOLDOWN_SEC, DEFAULTS, GROUPS, loadGroupSettings, normalizeConfig, hasActiveRules, rearmLevel, rearmText, createEngine, cleanNumber, withNumber, NORMAL_STATUS, STATUS_PRESETS, cleanStatuses };
 })();

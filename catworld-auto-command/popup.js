@@ -983,6 +983,11 @@ function createTriggerPane(group) {
       globalPerMinute: Number($g('globalPerMinute').value),
       delayMax: $g('delayMax').value.trim() === '' ? D.delayMax : Number($g('delayMax').value),
       requireNormal: $g('requireNormal').checked,
+      // 允許的狀態：勾的內建選項加上自己填的（、 , ， 或換行分開），整理（去空白、去重、正常一定在最前面）交給引擎
+      allowedStatuses: Engine.cleanStatuses([
+        ...Engine.STATUS_PRESETS.filter(name => $g('statuses').querySelector(`input[data-status="${name}"]`).checked),
+        ...$g('statusCustom').value.split(/[、,，\n]/),
+      ]),
     };
   }
 
@@ -1011,6 +1016,9 @@ function createTriggerPane(group) {
     $g('globalPerMinute').value = config.globalPerMinute ?? D.globalPerMinute;
     $g('delayMax').value = config.delayMax ?? D.delayMax;
     $g('requireNormal').checked = config.requireNormal !== false;
+    const allowed = Engine.cleanStatuses(config.allowedStatuses);
+    Engine.STATUS_PRESETS.forEach(name => { $g('statuses').querySelector(`input[data-status="${name}"]`).checked = allowed.includes(name); });
+    $g('statusCustom').value = allowed.filter(name => name !== Engine.NORMAL_STATUS && !Engine.STATUS_PRESETS.includes(name)).join('、');
   }
 
   root.querySelector('.safety').addEventListener('change', syncLimitInputs);

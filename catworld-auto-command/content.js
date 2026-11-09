@@ -1046,10 +1046,10 @@ function readMonitorTheme() {
 function readAllStats() {
   return Object.fromEntries(Object.keys(CatworldTriggerEngine.STATS).map(name => [name, readStat(name)]));
 }
-// 角色狀態（#status）是「正常」才回 true；讀不到回 null，引擎一律當作不能觸發
-function isStatusNormal() {
+// 角色狀態（#status）的文字；讀不到回 null，引擎一律當作不能觸發。哪些狀態可以觸發由規則組的 allowedStatuses 決定（預設只有「正常」）
+function readStatus() {
   const element = document.getElementById('status');
-  return element ? element.textContent.trim() === '正常' : null;
+  return element ? element.textContent.trim() : null;
 }
 
 // 遊戲存的巨集原文（localStorage.MACROS）；讀不到（沒有權限、頁面剛換）當作沒存過
@@ -1086,7 +1086,7 @@ async function startTriggers(group, config) {
   group.engine = CatworldTriggerEngine.createEngine(config, {
     now: () => Date.now(),
     readStat,
-    isNormal: isStatusNormal,
+    status: readStatus,
     send: (rawCommands, index) => {
       // 指令欄的「@巨集 N」在命中的當下才讀遊戲存的那一格換成它的指令（讀不到的拿掉、在面板的巨集列說明原因，其他指令照送）；隨機數字加在換完之後的最後一個指令
       const expanded = CatworldMacroIO.expandMacroRefs(rawCommands, readGameMacros(), macroProblem);
