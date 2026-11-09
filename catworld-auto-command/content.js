@@ -69,12 +69,13 @@ function notifyStateChanged() {
 }
 function active() { return running || randomRunning || anyTriggerOn() || macroRuns.size > 0 || (hunt?.on() ?? false); }
 
-// 在線獎勵：看到「在線獎勵： N分鐘後可領取」（自己打 sc 的輸出）就排一個 N+1 分鐘後送 reward 的計時，已經排著的就不再排。
+// 在線獎勵：看到「在線獎勵： N分鐘後可領取」（自己打 sc 的輸出）就排一個 N+1 分鐘後的計時，已經排著的就不再排；時間到先下 sc，隔 REWARD_AFTER_SC_MS 的隨機時間才下 reward。
 // 閒置時也作用（不走送出佇列，佇列只在 active() 時送）；開關是設定頁的 autoReward（缺值＝開）。
-// 送不出去（驗證碼辨識中、因驗證停止）隔 REWARD_RETRY_MS 再試，最多 REWARD_TRIES 次，之後放棄；等的期間 rewardTimer 一直有值，所以再打 sc 也不會重複排
+// 送不出去（驗證碼辨識中、因驗證停止）隔 REWARD_RETRY_MS 再試，最多 REWARD_TRIES 次，之後放棄；等的期間（含 sc 之後等 reward 的那段）rewardTimer 一直有值，所以再打 sc 也不會重複排
 const REWARD_PATTERN = /在線獎勵[：:]\s*(\d+)\s*分鐘後可領取/;
 const REWARD_RETRY_MS = 10000;
 const REWARD_TRIES = 3;
+const REWARD_AFTER_SC_MS = [5000, 10000]; // 時間到先下 sc，隔這個範圍的隨機時間才下 reward
 let autoReward = true;
 let rewardTimer = null;
 // 面板「獎勵」那一行的資料：at＝預定送出的時間，retry＝正在第幾次重試（兩者都沒有就不顯示）
@@ -91,8 +92,27 @@ function watchReward(text) {
   const match = REWARD_PATTERN.exec(text);
   if (!match) return;
   const wait = (Number(match[1]) + 1) * 60 * 1000;
-  rewardTimer = setTimeout(() => sendReward(1), wait);
+  rewardTimer = setTimeout(() => rewardDue(1), wait);
   rewardView = { at: Date.now() + wait };
+  renderPanel();
+}
+// 倒數到了：先下 sc，隨機 REWARD_AFTER_SC_MS 後才下 reward（sc 的回應若還寫著幾分鐘，因為 rewardTimer 有值，不會再排第二個）；sc 送不出去的重試規則和 reward 一樣
+function rewardDue(attempt) {
+  rewardTimer = null;
+  rewardView = null;
+  if (retired) return;
+  const result = sendCommand('sc');
+  if (result.ok) {
+    lastScAt = Date.now();
+    const gap = Math.round(REWARD_AFTER_SC_MS[0] + (REWARD_AFTER_SC_MS[1] - REWARD_AFTER_SC_MS[0]) * Math.random());
+    rewardTimer = setTimeout(() => sendReward(1), gap);
+    rewardView = { at: Date.now() + gap };
+  } else if (attempt >= REWARD_TRIES) {
+    console.info('[catworld] 在線獎勵：sc 送不出去，放棄', result.error);
+  } else {
+    rewardTimer = setTimeout(() => rewardDue(attempt + 1), REWARD_RETRY_MS);
+    rewardView = { retry: attempt + 1 };
+  }
   renderPanel();
 }
 function sendReward(attempt) {
@@ -139,7 +159,7 @@ function requestScAtStart(owner) {
 }
 function rewardSummary() {
   if (!rewardView) return '';
-  if (rewardView.retry) return `reward 送不出去，重試中（第 ${rewardView.retry} 次）`;
+  if (rewardView.retry) return `領獎指令送不出去，重試中（第 ${rewardView.retry} 次）`;
   const seconds = Math.max(0, Math.ceil((rewardView.at - Date.now()) / 1000));
   return `在線獎勵 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} 後自動領取`;
 }

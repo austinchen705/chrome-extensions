@@ -185,7 +185,7 @@ ui('after reward is sent, sc follows by itself, and its countdown schedules the 
   try {
     page.output('<span>在線獎勵： 0分鐘後可領取</span>');
     assert.ok(await waitFor(() => count(page, 'reward') === 1, 2000));
-    assert.ok(await waitFor(() => count(page, 'sc') === 1, 2000), 'sc is sent after reward');
+    assert.ok(await waitFor(() => count(page, 'sc') >= 2, 2000), 'a second sc is sent after reward (the first one went out just before it)');
     page.output('<span>在線獎勵： 1分鐘後可領取</span>');
     assert.ok(await waitFor(() => count(page, 'reward') === 2, 2000), 'the sc answer schedules the next reward');
   } finally {
@@ -195,13 +195,14 @@ ui('after reward is sent, sc follows by itself, and its countdown schedules the 
 
 ui('with the reward switch off, nothing is sent after reward and nothing is scheduled', async () => {
   const { boot, waitFor } = gamePage;
-  const page = await boot({ scale: 6000 });
+  // 縮小 100 倍：領完獎之後的 sc 要等 200 毫秒，關開關一定來得及（縮小 6000 倍時只有 3 毫秒，整套並行時會搶在前面送出）
+  const page = await boot({ scale: 100 });
   try {
     page.output('<span>在線獎勵： 0分鐘後可領取</span>');
-    assert.ok(await waitFor(() => count(page, 'reward') === 1, 2000));
+    assert.ok(await waitFor(() => count(page, 'reward') === 1, 3000));
     page.changeListeners.forEach(listener => listener({ autoReward: { newValue: false } }, 'local'));
-    await new Promise(resolve => setTimeout(resolve, 100));
-    assert.equal(count(page, 'sc'), 0, 'switching off cancels the pending sc');
+    await new Promise(resolve => setTimeout(resolve, 400));
+    assert.equal(count(page, 'sc'), 1, 'only the sc that went out before reward: switching off cancels the one that would follow it');
   } finally {
     page.close();
   }
