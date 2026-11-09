@@ -1032,6 +1032,15 @@ function isStatusNormal() {
   return element ? element.textContent.trim() === '正常' : null;
 }
 
+// 遊戲存的巨集原文（localStorage.MACROS）；讀不到（沒有權限、頁面剛換）當作沒存過
+function readGameMacros() {
+  try {
+    return window.localStorage.getItem('MACROS');
+  } catch {
+    return null;
+  }
+}
+
 // 兩組觸發各自獨立；送出佇列的來源記成 trigger:<組>，停掉某一組只丟掉那一組還沒送的指令
 async function startTriggers(group, config) {
   if (!CatworldTriggerEngine.hasActiveRules(config)) {
@@ -1048,11 +1057,20 @@ async function startTriggers(group, config) {
     readStat,
     isNormal: isStatusNormal,
     send: (rawCommands, index) => {
-      const commands = CatworldTriggerEngine.withNumber(rawCommands, config.rules[index]?.number);
+      // 指令欄的「@巨集 N」在命中的當下才讀遊戲存的那一格換成它的指令（讀不到的拿掉、在面板的巨集列說明原因，其他指令照送）；隨機數字加在換完之後的最後一個指令
+      const expanded = CatworldMacroIO.expandMacroRefs(rawCommands, readGameMacros());
+      if (expanded.errors.length) {
+        macroNote = { text: `規則「${group.engine.snapshot().rules[index]?.label ?? ''}」的指令沒有送出：${expanded.errors.join('；')}`, until: Date.now() + 8000 };
+        renderPanel();
+      }
+      const commands = CatworldTriggerEngine.withNumber(expanded.commands, config.rules[index]?.number);
+      const hasMacroRef = rawCommands.some(command => CatworldMacroIO.macroRef(command) !== null);
       const stops = config.rules[index]?.stopGroup === true;
       const priority = config.rules[index]?.priority === true;
       if (!stops && group.on) {
         if (priority && commands.length) startMacro(commands.join(';'), `trigger:${group.id}`, { priority: true });
+        // 有 @巨集 的規則整條接成一個巨集依序送（格子裡的 ; 與 @等待 才會讓後面的指令等它做完）；沒有的照舊一個指令一個指令排
+        else if (hasMacroRef) { if (commands.length) startMacro(commands.join(';'), `trigger:${group.id}`); }
         else commands.forEach(command => queueCommand(command, `trigger:${group.id}`));
         return;
       }

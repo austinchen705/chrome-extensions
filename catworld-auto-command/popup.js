@@ -885,7 +885,7 @@ function createTriggerPane(group) {
     const unit = field('unit', element('select', { title: '單位' },
       element('option', { value: 'abs', textContent: '數值', selected: rule.unit !== 'pct' }),
       element('option', { value: 'pct', textContent: '％', selected: rule.unit === 'pct' })));
-    const commands = field('commands', element('textarea', { value: (rule.commands || []).join('\n'), placeholder: '例：drink' }));
+    const commands = field('commands', element('textarea', { value: (rule.commands || []).join('\n'), placeholder: '例：drink（要跑巨集視窗第 3 列的內容就寫 @巨集 3）' }));
     const cooldown = field('cooldown', element('input', { type: 'number', min: Engine.MIN_COOLDOWN_SEC, value: rule.cooldown }));
     const buffer = field('buffer', element('input', { type: 'number', min: 0, value: rule.buffer }));
     const enabled = field('enabled', element('input', { type: 'checkbox', checked: rule.enabled !== false, title: '啟用這條規則' }));
@@ -924,7 +924,7 @@ function createTriggerPane(group) {
     const remove = element('button', { type: 'button', className: 'x', textContent: '✕', title: '刪除這條規則' });
     const pattern = field('pattern', element('textarea', { rows: 2, value: rule.pattern || '', placeholder: '例：你覺得口渴（可以貼多行）', title: '新出現的遊戲文字含這段字就觸發（不分大小寫；多行、換行與空白不影響比對）' }));
     pattern.style.minHeight = '48px';
-    const commands = field('commands', element('textarea', { value: (rule.commands || []).join('\n'), placeholder: '例：drink' }));
+    const commands = field('commands', element('textarea', { value: (rule.commands || []).join('\n'), placeholder: '例：drink（要跑巨集視窗第 3 列的內容就寫 @巨集 3）' }));
     const cooldown = field('cooldown', element('input', { type: 'number', min: Engine.MIN_COOLDOWN_SEC, value: rule.cooldown ?? D.cooldown }));
     const head = element('div', { className: 'rule-head' }, enabled, element('span', { className: 'kind', textContent: '關鍵字' }), element('span', { className: 'grow' }, pill), again, remove);
     const body = element('div', { className: 'rule-body' },

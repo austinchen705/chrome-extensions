@@ -58,6 +58,44 @@ function exportText(macros, notes) {
 
 const countFilled = macros => macros.filter(cell => cell !== 0).length;
 
+// 觸發規則的指令欄可以寫「@巨集 N」（N 是巨集視窗的第幾列，1～90）：規則命中時才讀遊戲存的那一格，把裡面的指令接在那個位置。
+// macroRef：是這種寫法就回列號（不管範圍，範圍在 expandMacroRefs 檢查，才說得出原因），不是回 null
+const macroRef = text => {
+  const match = /^@巨集\s*(\d+)$/.exec(String(text ?? '').trim());
+  return match ? Number(match[1]) : null;
+};
+// 把 commands 裡的「@巨集 N」換成那一格的指令文字（整段，含 ; 與 @等待，交給巨集執行器拆開）；讀不到、空的、列號不對的拿掉並寫原因，其他指令照留。
+// 格子裡面再寫「@巨集 N」不會再展開（避免繞圈）。raw 是 localStorage.MACROS 的原文；沒有參照時完全不讀它
+function expandMacroRefs(commands, raw) {
+  const errors = [];
+  let read = null;
+  const out = [];
+  commands.forEach(command => {
+    const row = macroRef(command);
+    if (row === null) {
+      out.push(command);
+      return;
+    }
+    if (row < 1 || row > COUNT) {
+      errors.push(`@巨集 ${row}：列號要在 1～${COUNT} 之間`);
+      return;
+    }
+    read ??= readMacros(raw);
+    if (read.status === 'missing') {
+      errors.push(`@巨集 ${row}：遊戲還沒有存過巨集`);
+      return;
+    }
+    const cell = read.macros[row - 1];
+    const text = cell === 0 ? '' : cell[1].trim();
+    if (!text) {
+      errors.push(read.status === 'damaged' && cell === 0 ? `@巨集 ${row}：遊戲存的巨集讀不懂，第 ${row} 列沒有指令` : `@巨集 ${row}：第 ${row} 列沒有指令`);
+      return;
+    }
+    out.push(text);
+  });
+  return { commands: out, errors };
+}
+
 const fail = error => ({ ok: false, error });
 
 // 匯入的 macros：回 { macros（90 格，少的補空格） } 或 { error }。
@@ -150,5 +188,5 @@ function clampWindowSize(size, available) {
 }
 
 // MAX_COMMAND、MAX_NOTE、MAX_KEY 公開出去是給 README 對照測試用的：說明裡的數字要從程式讀，不寫死在測試裡
-globalThis.CatworldMacroIO = { COUNT, VERSION, MAX_COMMAND, MAX_NOTE, MAX_KEY, MIN_WINDOW, readMacros, exportText, countFilled, parseImport, makeBackup, parseBackup, sanitizeSize, clampWindowSize };
+globalThis.CatworldMacroIO = { COUNT, VERSION, MAX_COMMAND, MAX_NOTE, MAX_KEY, MIN_WINDOW, readMacros, exportText, countFilled, macroRef, expandMacroRefs, parseImport, makeBackup, parseBackup, sanitizeSize, clampWindowSize };
 })();
