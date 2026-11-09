@@ -191,7 +191,9 @@ ui('hunt: the stop button stops it at once and drops what was queued', async () 
 ui('hunt: counts as running, so the no-reply watchdog stops it like every other feature', async () => {
   const page = await boot({ scale: SCALE });
   try {
-    page.store.mapMonsters = mobsAt('d');
+    // 好幾個目標：巡怪自己因為走不過去而放棄要連續略過 3 個才會停（約 30 秒），遠比看門狗的 8 秒慢，整套並行電腦忙時兩個計時器的先後才不會被搶；
+    // 只有一個目標時巨集自己先略過、先結束，看門狗就沒機會響了
+    page.store.mapMonsters = mobsAt('b', 'c', 'd');
     const game = world(page, { at: 'a', reply: false, stuck: true });
     await pick(page, MOB);
     click(page, '.hstart');
