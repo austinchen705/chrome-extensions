@@ -24,7 +24,7 @@ const waitFor = async (condition, ms = 3000) => {
 
 async function boot(store = {}, { clipboardFails = false, readFails = false } = {}) {
   const listeners = [];
-  const flags = { writeFails: false }; // 設定頁載入時自己也會寫儲存，所以寫入失敗要在載入完成後才打開
+  const flags = { writeFails: false, removeFails: false, hold: null }; // 設定頁載入時自己也會寫儲存，所以寫入失敗要在載入完成後才打開
   const copied = [];
   const downloads = [];
   const dom = await JSDOM.fromFile(path.join(root, 'popup.html'), {
@@ -42,11 +42,12 @@ async function boot(store = {}, { clipboardFails = false, readFails = false } = 
         storage: {
           local: {
             get: async keys => {
+              if (flags.hold) await flags.hold; // 讓測試卡在「讀現有儲存」的等待中
               if (readFails && Array.isArray(keys) && keys.includes('mapMonsters')) throw new Error('quota');
               return Object.fromEntries([].concat(keys).filter(key => key in store).map(key => [key, JSON.parse(JSON.stringify(store[key]))]));
             },
             set: async values => { if (flags.writeFails) throw new Error('disk full'); Object.assign(store, JSON.parse(JSON.stringify(values))); },
-            remove: async keys => { if (flags.writeFails) throw new Error('disk full'); [].concat(keys).forEach(key => { delete store[key]; }); },
+            remove: async keys => { if (flags.writeFails || flags.removeFails) throw new Error('disk full'); [].concat(keys).forEach(key => { delete store[key]; }); },
           },
           sync: { get: async () => ({}), set: async () => {} },
           session: { get: async () => ({}), set: async () => {} },
@@ -283,6 +284,9 @@ ui('confirming replaces the ticked blocks, removes their leftovers, leaves other
     assert.equal(store.running, true);
     assert.ok(await waitFor(() => /重新整理遊戲分頁/.test(page.text('backupImportMsg'))));
     assert.match(page.text('backupImportMsg'), /已匯入 1 個區塊/);
+    assert.ok([...page.doc.querySelectorAll('input, select, textarea, button')].every(control => control.disabled), 'every control is disabled so a stale field cannot be saved over the import');
+    await sleep(60);
+    assert.match(page.text('backupImportMsg'), /已匯入 1 個區塊/, 'the message stays');
     assert.equal(level(page, 'backupImportMsg'), 'info');
     assert.equal(planShown(page), false);
     assert.equal(page.doc.getElementById('backupImportText').value, '');
@@ -363,6 +367,64 @@ ui('nothing ticked is a warning, and a failed write is shown in red and keeps th
     assert.ok(await waitFor(() => /匯入失敗：disk full/.test(page.text('backupImportMsg'))));
     assert.equal(level(page, 'backupImportMsg'), 'error');
     assert.equal(planShown(page), true, 'the plan stays so it can be retried');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('a failure after the values were written says the import may be partial', async () => {
+  const store = { settings: { old: 1 }, idleSettings: { old: 1 } };
+  const page = await boot(store);
+  try {
+    page.flags.removeFails = true;
+    paste(page, backupFile({ timer: { settings: { fresh: 1 } } }));
+    assert.ok(await waitFor(() => planShown(page)));
+    page.click('backupImportApply');
+    assert.ok(await waitFor(() => /匯入失敗：disk full/.test(page.text('backupImportMsg'))));
+    assert.match(page.text('backupImportMsg'), /只套用了一部分/);
+    assert.equal(level(page, 'backupImportMsg'), 'error');
+    assert.equal(store.settings.fresh, 1, 'the values were written before remove failed');
+    assert.equal(page.doc.getElementById('backupImportApply').disabled, false, 'it can be retried');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('changing the text while the confirmation is reading the storage applies nothing', async () => {
+  const store = { settings: { old: 1 } };
+  const page = await boot(store);
+  try {
+    paste(page, backupFile({ timer: { settings: { fresh: 1 } } }));
+    assert.ok(await waitFor(() => planShown(page)));
+    let release;
+    page.flags.hold = new Promise(resolve => { release = resolve; });
+    page.click('backupImportApply');
+    paste(page, 'oops');
+    release();
+    assert.ok(await waitFor(() => /等待期間文字被改了/.test(page.text('backupImportMsg'))));
+    assert.equal(level(page, 'backupImportMsg'), 'warn');
+    assert.deepEqual(userKeys(store), { settings: { old: 1 } });
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('clearing the file choice discards the earlier check, and an unreadable file is shown in red', async () => {
+  const page = await boot({});
+  try {
+    paste(page, backupFile({ timer: { settings: { a: 1 } } }));
+    assert.ok(await waitFor(() => planShown(page)));
+    const input = page.doc.getElementById('backupImportFile');
+    Object.defineProperty(input, 'files', { value: [], configurable: true });
+    input.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
+    assert.equal(planShown(page), false);
+    assert.equal(page.doc.getElementById('backupImportText').value, '');
+    page.dom.window.FileReader = class { readAsText() { setTimeout(() => this.onerror(), 0); } };
+    Object.defineProperty(input, 'files', { value: [new page.dom.window.File(['x'], 'x.json')], configurable: true });
+    input.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
+    assert.ok(await waitFor(() => /讀不到這個檔案/.test(page.text('backupImportMsg'))));
+    assert.equal(level(page, 'backupImportMsg'), 'error');
+    assert.equal(planShown(page), false);
   } finally {
     page.dom.window.close();
   }

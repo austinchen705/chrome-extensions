@@ -83,7 +83,7 @@ function checkImport(text) {
   if ('secrets' in file) {
     const kept = section('secrets', file.secrets, SECRET_KEYS);
     if (typeof kept === 'string') return { ok: false, error: kept };
-    data.secrets = kept;
+    if (Object.keys(kept).length) data.secrets = kept; // 空的 secrets（匯出時勾了但什麼都沒存）沒有東西可匯入
   }
   const blocks = Object.keys(data.blocks);
   if (!blocks.length && !data.secrets) return { ok: false, error: '檔案裡沒有任何可匯入的區塊' };

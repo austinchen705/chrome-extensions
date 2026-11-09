@@ -1269,47 +1269,52 @@ function showImportPlan(result) {
 function checkImportText() {
   hideImportPlan();
   const text = $('backupImportText').value;
-  if (!text.trim()) { importMessage('', undefined); return; }
+  if (!text.trim()) { importMessage(''); return; }
   const result = CatworldSettingsBackup.checkImport(text);
   if (!result.ok) { importMessage(result.error, 'error'); return; }
   importMessage(`檢查通過：${result.blocks.length} 個區塊${result.hasSecrets ? '，另含機密' : ''}（${result.exportedWith ? `版本 ${result.exportedWith}` : '版本不明'}匯出）`, undefined);
   showImportPlan(result);
 }
 $('backupImportText').addEventListener('input', checkImportText);
+function clearImport() {
+  hideImportPlan();
+  $('backupImportText').value = '';
+  $('backupImportFile').value = '';
+}
 $('backupImportFile').addEventListener('change', () => {
   const file = $('backupImportFile').files?.[0];
-  if (!file) return;
+  if (!file) { clearImport(); importMessage(''); return; } // 清掉選擇＝上一份檢查結果也作廢
   const reader = new FileReader();
   reader.onload = () => { $('backupImportText').value = String(reader.result ?? ''); checkImportText(); };
   reader.onerror = () => { hideImportPlan(); importMessage('讀不到這個檔案', 'error'); };
   reader.readAsText(file);
 });
-$('backupImportCancel').addEventListener('click', () => {
-  hideImportPlan();
-  $('backupImportText').value = '';
-  $('backupImportFile').value = '';
-  importMessage('', undefined);
-});
+$('backupImportCancel').addEventListener('click', () => { clearImport(); importMessage(''); });
+// 匯入成功後把整個設定頁停用：頁上的欄位是舊值，再改任何一個都會把舊值存回去，蓋掉剛匯入的；要重新開啟設定頁才會讀到新的
+function freezeSettingsPage() {
+  document.querySelectorAll('input, select, textarea, button').forEach(control => { control.disabled = true; });
+}
 $('backupImportApply').addEventListener('click', async () => {
-  if (!pendingImport) return;
+  const pending = pendingImport; // 同步取下按確認當下檢查過的那一份，之後只用它
+  if (!pending) return;
   const ids = [...$('backupImportBlocks').querySelectorAll('input:checked')].map(box => box.id.replace('backupImportBlock-', ''));
-  const secrets = pendingImport.hasSecrets && $('backupImportSecrets').checked;
+  const secrets = pending.hasSecrets && $('backupImportSecrets').checked;
   if (!ids.length && !secrets) { importMessage('請至少勾選一個區塊', 'warn'); return; }
   $('backupImportApply').disabled = true;
   try {
-    const plan = CatworldSettingsBackup.planImport(await chrome.storage.local.get(BACKUP_KEYS), pendingImport.data, { blocks: ids, secrets });
+    const current = await chrome.storage.local.get(BACKUP_KEYS);
+    if (pendingImport !== pending) { importMessage('等待期間文字被改了，請重新檢查再匯入', 'warn'); return; }
+    const plan = CatworldSettingsBackup.planImport(current, pending.data, { blocks: ids, secrets });
     if (Object.keys(plan.set).length) await chrome.storage.local.set(plan.set);
     if (plan.remove.length) await chrome.storage.local.remove(plan.remove);
     const count = plan.blocks.length + (plan.secrets ? 1 : 0);
-    hideImportPlan();
-    $('backupImportText').value = '';
-    $('backupImportFile').value = '';
-    importMessage(`已匯入 ${count} 個區塊${plan.secrets ? '（含機密）' : ''}。請重新整理遊戲分頁；這個設定頁稍後會自己重新載入`, undefined);
-    setTimeout(() => location.reload(), 2000);
+    clearImport();
+    importMessage(`已匯入 ${count} 個區塊${plan.secrets ? '（含機密）' : ''}。這個設定頁已停用：請重新整理遊戲分頁，並把設定頁關掉再重新開啟`);
+    freezeSettingsPage();
   } catch (e) {
-    importMessage(`匯入失敗：${e.message}`, 'error');
+    importMessage(`匯入失敗：${e.message}。設定可能只套用了一部分，請重新檢查再匯入一次`, 'error');
   } finally {
-    $('backupImportApply').disabled = false;
+    if (!$('backupImportApply').closest('[hidden]')) $('backupImportApply').disabled = false;
   }
 });
 

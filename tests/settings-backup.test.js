@@ -147,7 +147,10 @@ test('checkImport ignores unknown blocks and keys, and refuses a file with nothi
   assert.equal(result.hasSecrets, false);
   assert.equal(check(exported({ blocks: { nope: { x: 1 } } })).ok, false);
   assert.match(check(exported()).error, /沒有任何/);
-  assert.equal(check(exported({ secrets: {} })).ok, true, 'a secrets section alone is something to import');
+  assert.equal(check(exported({ secrets: { lineNotify: { token: 't' } } })).ok, true, 'a secrets section alone is something to import');
+  assert.equal(check(exported({ secrets: {} })).ok, false, 'an empty secrets section is nothing to import');
+  const withEmptySecrets = check(exported({ blocks: { timer: { settings: { a: 1 } } }, secrets: {} }));
+  assert.equal(withEmptySecrets.hasSecrets, false, 'and it does not offer the secrets tick');
 });
 
 test('checkImport keeps only the secret keys from the secrets section', () => {
