@@ -1210,9 +1210,15 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 function backupMessage(text, level) { $('backupMsg').textContent = text; markLevel($('backupMsg'), level); }
 $('backupBlocks').append(...CatworldSettingsBackup.BLOCKS.map(block => element('label', { style: 'display:block' },
   element('input', { type: 'checkbox', checked: true, id: `backupBlock-${block.id}` }), ` ${block.label}`)));
-$('backupSecrets').addEventListener('change', () => { $('backupSecretWarn').hidden = !$('backupSecrets').checked; });
+const selectedBlocks = () => CatworldSettingsBackup.BLOCKS.filter(block => $(`backupBlock-${block.id}`).checked);
+$('backupSecrets').addEventListener('change', () => {
+  $('backupSecretWarn').hidden = !$('backupSecrets').checked;
+  // 取消勾選時，備援框裡可能還留著含機密的文字，一起收掉
+  $('backupFallback').value = '';
+  $('backupFallback').hidden = true;
+});
 async function buildBackup() {
-  const blocks = CatworldSettingsBackup.BLOCKS.filter(block => $(`backupBlock-${block.id}`).checked).map(block => block.id);
+  const blocks = selectedBlocks().map(block => block.id);
   const secrets = $('backupSecrets').checked;
   if (!blocks.length && !secrets) { backupMessage('請至少勾選一個區塊', 'warn'); return null; }
   const keys = [...CatworldSettingsBackup.BLOCKS.flatMap(block => block.keys), ...CatworldSettingsBackup.SECRET_KEYS];
@@ -1221,39 +1227,30 @@ async function buildBackup() {
     return CatworldSettingsBackup.exportText(store, { blocks, secrets, version: chrome.runtime.getManifest().version });
   } catch (e) { backupMessage(`讀取設定失敗：${e.message}`, 'error'); return null; }
 }
-const backupSummary = () => `${CatworldSettingsBackup.BLOCKS.filter(block => $(`backupBlock-${block.id}`).checked).length} 個區塊${$('backupSecrets').checked ? '（含機密）' : ''}`;
-$('backupCopy').addEventListener('click', async () => {
+const backupSummary = () => `${selectedBlocks().length} 個區塊${$('backupSecrets').checked ? '（含機密）' : ''}`;
+// 複製與下載共用：先收起備援框、取文字；做完報告，失敗就把文字放進可手動複製的框
+async function runBackup(done, failed, action) {
   $('backupFallback').hidden = true;
   const text = await buildBackup();
   if (text === null) return;
   try {
-    await navigator.clipboard.writeText(text);
-    backupMessage(`已複製 ${backupSummary()}`, $('backupSecrets').checked ? 'warn' : undefined);
-  } catch (e) {
-    // 複製失敗：把文字放進可手動複製的框
-    $('backupFallback').value = text;
-    $('backupFallback').hidden = false;
-    backupMessage(`複製失敗：${e.message}，請從下面的框手動複製`, 'error');
-  }
-});
-$('backupDownload').addEventListener('click', async () => {
-  $('backupFallback').hidden = true;
-  const text = await buildBackup();
-  if (text === null) return;
-  try {
-    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-    const link = element('a', { href: url, download: `catworld-settings-${new Date().toISOString().slice(0, 10)}.json` });
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    backupMessage(`已下載 ${backupSummary()}`, $('backupSecrets').checked ? 'warn' : undefined);
+    await action(text);
+    backupMessage(`${done} ${backupSummary()}`, $('backupSecrets').checked ? 'warn' : undefined);
   } catch (e) {
     $('backupFallback').value = text;
     $('backupFallback').hidden = false;
-    backupMessage(`下載失敗：${e.message}，請從下面的框手動複製`, 'error');
+    backupMessage(`${failed}：${e.message}，請從下面的框手動複製`, 'error');
   }
-});
+}
+$('backupCopy').addEventListener('click', () => runBackup('已複製', '複製失敗', text => navigator.clipboard.writeText(text)));
+$('backupDownload').addEventListener('click', () => runBackup('已下載', '下載失敗', text => {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const link = element('a', { href: url, download: `catworld-settings-${new Date().toISOString().slice(0, 10)}.json` });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}));
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;

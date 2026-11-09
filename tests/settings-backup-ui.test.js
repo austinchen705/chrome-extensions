@@ -205,3 +205,19 @@ ui('a storage read failure is shown in red and nothing is copied', async () => {
     page.dom.window.close();
   }
 });
+
+ui('unticking the secrets box clears a hand-copy box that holds secrets, and the warning names the sample URL', async () => {
+  const page = await boot(STORE, { clipboardFails: true });
+  try {
+    page.check('backupSecrets', true);
+    assert.match(page.text('backupSecretWarn'), /樣本收集網址/);
+    page.click('backupCopy');
+    assert.ok(await waitFor(() => !page.doc.getElementById('backupFallback').hidden));
+    assert.ok(page.doc.getElementById('backupFallback').value.includes('SECRET-TOKEN'));
+    page.check('backupSecrets', false);
+    assert.equal(page.doc.getElementById('backupFallback').hidden, true);
+    assert.equal(page.doc.getElementById('backupFallback').value, '');
+  } finally {
+    page.dom.window.close();
+  }
+});

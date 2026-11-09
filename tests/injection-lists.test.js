@@ -46,3 +46,12 @@ test('the manifest lets the extension ask for permission on any http or https si
   const required = manifest.host_permissions;
   assert.equal(required.some(host => host === '<all_urls>' || host === 'https://*/*' || host === 'http://*/*'), false, 'nothing broad is granted without asking');
 });
+
+// 設定備份是設定頁專用：只由 popup.html 載入，不進 content script 與 popup 的備援注入
+test('settings-backup.js is loaded by the settings page before popup.js and by no game page', () => {
+  const html = fs.readFileSync(path.join(root, 'popup.html'), 'utf8');
+  const tag = html.indexOf('<script src="settings-backup.js"></script>');
+  assert.ok(tag >= 0 && tag < html.indexOf('<script src="popup.js"></script>'));
+  assert.ok(!script.js.includes('settings-backup.js'), 'not a manifest content script');
+  assert.ok(!listAfter('files:').includes('settings-backup.js'), 'not in the popup fallback injection');
+});
