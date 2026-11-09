@@ -65,10 +65,13 @@ const macroRef = text => {
   return match ? Number(match[1]) : null;
 };
 // 把 commands 裡的「@巨集 N」換成那一格的指令文字（整段，含 ; 與 @等待，交給巨集執行器拆開）；讀不到、空的、列號不對的拿掉並寫原因，其他指令照留。
-// 格子裡面再寫「@巨集 N」不會再展開（避免繞圈）。raw 是 localStorage.MACROS 的原文；沒有參照時完全不讀它
-function expandMacroRefs(commands, raw) {
+// 格子裡面再寫「@巨集 N」不會再展開（避免繞圈）。raw 是 localStorage.MACROS 的原文；沒有參照時完全不讀它。
+// validate（選填）：檢查那一格的文字能不能執行，回說明（不能）或 null（可以）；不能的只丟掉這一個參照，不連累其他指令。
+// 回傳 used：成功換進去的格子數
+function expandMacroRefs(commands, raw, validate = null) {
   const errors = [];
   let read = null;
+  let used = 0;
   const out = [];
   commands.forEach(command => {
     const row = macroRef(command);
@@ -91,9 +94,15 @@ function expandMacroRefs(commands, raw) {
       errors.push(read.status === 'damaged' && cell === 0 ? `@巨集 ${row}：遊戲存的巨集讀不懂，第 ${row} 列沒有指令` : `@巨集 ${row}：第 ${row} 列沒有指令`);
       return;
     }
+    const problem = validate?.(text);
+    if (problem) {
+      errors.push(`@巨集 ${row}：第 ${row} 列的指令不能執行（${problem}）`);
+      return;
+    }
     out.push(text);
+    used += 1;
   });
-  return { commands: out, errors };
+  return { commands: out, errors, used };
 }
 
 const fail = error => ({ ok: false, error });

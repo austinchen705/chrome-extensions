@@ -18,9 +18,9 @@ test('macroRef recognises @巨集 N and nothing else', () => {
 
 test('expandMacroRefs puts the slot text where the reference was and leaves other commands alone', () => {
   const raw = slots(['65', 'look;@等待 2;pw'], ['', 'eat leg']);
-  assert.deepEqual(M.expandMacroRefs(['ps', '@巨集 1', '@巨集 2'], raw), { commands: ['ps', 'look;@等待 2;pw', 'eat leg'], errors: [] });
-  assert.deepEqual(M.expandMacroRefs(['ps'], raw), { commands: ['ps'], errors: [] }, 'no reference, nothing read');
-  assert.deepEqual(M.expandMacroRefs([], raw), { commands: [], errors: [] });
+  assert.deepEqual(M.expandMacroRefs(['ps', '@巨集 1', '@巨集 2'], raw), { commands: ['ps', 'look;@等待 2;pw', 'eat leg'], errors: [], used: 2 });
+  assert.deepEqual(M.expandMacroRefs(['ps'], raw), { commands: ['ps'], errors: [], used: 0 }, 'no reference, nothing read');
+  assert.deepEqual(M.expandMacroRefs([], raw), { commands: [], errors: [], used: 0 });
 });
 
 test('a reference that cannot be resolved is dropped with a reason, and the other commands are kept', () => {
@@ -39,7 +39,17 @@ test('the game has never saved macros, or the saved text is damaged: nothing run
   assert.match(M.expandMacroRefs(['@巨集 1'], null).errors[0], /還沒有存過巨集/);
   assert.match(M.expandMacroRefs(['@巨集 1'], 'not json').errors[0], /讀不懂/);
   assert.deepEqual(M.expandMacroRefs(['@巨集 1', 'ps'], null).commands, ['ps']);
-  assert.deepEqual(M.expandMacroRefs(['ps'], 'not json'), { commands: ['ps'], errors: [] }, 'damaged text does not matter when nothing refers to a slot');
+  assert.deepEqual(M.expandMacroRefs(['ps'], 'not json'), { commands: ['ps'], errors: [], used: 0 }, 'damaged text does not matter when nothing refers to a slot');
+});
+
+test('a slot whose text the validator rejects is dropped with the reason, and the others are kept', () => {
+  const raw = slots(['65', 'look;@等待 abc'], ['66', 'pw']);
+  const validate = text => (text.includes('abc') ? '等待要寫成 @等待 3' : null);
+  const result = M.expandMacroRefs(['eat', '@巨集 1', '@巨集 2'], raw, validate);
+  assert.deepEqual([result.commands, result.used], [['eat', 'pw'], 1]);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /第 1 列.*不能執行.*等待要寫成/);
+  assert.deepEqual(M.expandMacroRefs(['@巨集 1'], raw).commands, ['look;@等待 abc'], 'without a validator the text is passed on as it is');
 });
 
 test('a reference inside the slot text is not expanded again', () => {
@@ -128,7 +138,7 @@ ui('an empty row or macros the game never saved send nothing, and the rule keeps
   }
 });
 
-ui('a stop-group rule and a priority rule expand the reference too, and the random number goes on the last command', async () => {
+ui('a stop-group rule and a priority rule expand the reference too, and a rule that ends in the reference gets no random number', async () => {
   const { boot, waitFor } = gamePage;
   for (const extra of [{ stopGroup: true }, { priority: true }, { number: { min: 7, max: 7 } }]) {
     const page = await boot({ scale: SCALE, preload: MEMORY_STORAGE });
@@ -136,11 +146,90 @@ ui('a stop-group rule and a priority rule expand the reference too, and the rand
       setMacros(page, slots(['65', 'look;pw']));
       await page.ask({ type: 'START_TRIGGER', group: 'practice', config: config([keyword('口渴', ['@巨集 1'], extra)]) });
       page.output('<span>你覺得口渴。</span>');
-      const last = extra.number ? 'pw 7' : 'pw';
-      assert.ok(await waitFor(() => page.sent.includes(last), 3000), `${JSON.stringify(extra)}: ${JSON.stringify(page.sent)}`);
+      assert.ok(await waitFor(() => page.sent.includes('pw'), 3000), `${JSON.stringify(extra)}: ${JSON.stringify(page.sent)}`);
       assert.ok(page.sent.includes('look'));
+      assert.ok(!page.sent.includes('pw 7'), 'the number is not put on a macro row');
     } finally {
       page.close();
     }
+  }
+});
+
+ui('a rule whose last command is @巨集 gets no random number, so a row ending in @等待 still runs', async () => {
+  const { boot, waitFor, sleep } = gamePage;
+  const page = await boot({ scale: SCALE, preload: MEMORY_STORAGE });
+  try {
+    setMacros(page, slots(['65', 'attack;@等待 1']));
+    await page.ask({ type: 'START_TRIGGER', group: 'practice', config: config([keyword('口渴', ['eat', '@巨集 1'], { number: { min: 7, max: 7 } })]) });
+    page.output('<span>你覺得口渴。</span>');
+    assert.ok(await waitFor(() => page.sent.includes('attack'), 3000), JSON.stringify(page.sent));
+    await sleep(300);
+    assert.deepEqual(page.sent, ['eat', 'attack'], 'nothing got a number, and the macro was not refused');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a row with a badly written @等待 is dropped alone: the other commands of the rule still go', async () => {
+  const { boot, waitFor, sleep } = gamePage;
+  const page = await boot({ scale: SCALE, preload: MEMORY_STORAGE });
+  try {
+    setMacros(page, slots(['65', 'look;@等待 abc']));
+    await page.ask({ type: 'START_TRIGGER', group: 'practice', config: config([keyword('口渴', ['eat', '@巨集 1'])]) });
+    page.output('<span>你覺得口渴。</span>');
+    assert.ok(await waitFor(() => page.sent.includes('eat'), 2000));
+    await sleep(300);
+    assert.deepEqual(page.sent, ['eat'], 'the bad row is not sent, not even its first command');
+  } finally {
+    page.close();
+  }
+});
+
+ui('when every reference fails the plain commands still go out', async () => {
+  const { boot, waitFor } = gamePage;
+  const page = await boot({ scale: SCALE, preload: MEMORY_STORAGE });
+  try {
+    setMacros(page, slots());
+    await page.ask({ type: 'START_TRIGGER', group: 'practice', config: config([keyword('口渴', ['drink', '@巨集 99'])]) });
+    page.output('<span>你覺得口渴。</span>');
+    assert.ok(await waitFor(() => page.sent.includes('drink'), 2000));
+    assert.deepEqual(page.sent, ['drink']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a reference that cannot be read is warned about for as long as the group is on, and the warning goes away once the row is fixed', async () => {
+  const { boot, waitFor } = gamePage;
+  const page = await boot({ scale: SCALE, preload: MEMORY_STORAGE });
+  const panelText = () => page.hosts()[0].shadowRoot.querySelector('[data-group="practice"] .trigger-text').textContent;
+  try {
+    await page.ask({ type: 'START_TRIGGER', group: 'practice', config: config([keyword('口渴', ['eat', '@巨集 3']), keyword('肚子餓', ['eat'])]) });
+    assert.ok(await waitFor(() => /@巨集 3/.test(panelText()), 2000), `the panel says the reference cannot be read: ${panelText()}`);
+    assert.match(panelText(), /還沒有存過巨集/);
+    assert.match((await page.ask({ type: 'STATUS' })).triggerGroups.practice.warning, /@巨集 3/, 'STATUS carries it too');
+    await new Promise(resolve => setTimeout(resolve, 1500)); // 不是 8 秒的短提示：一直在
+    assert.match(panelText(), /@巨集 3/, 'still there well after the short note would be gone');
+    setMacros(page, slots(0, 0, ['65', 'look']));
+    assert.ok(await waitFor(() => !/@巨集/.test(panelText()), 2000), `the warning goes away when the row can be read: ${panelText()}`);
+    assert.equal((await page.ask({ type: 'STATUS' })).triggerGroups.practice.warning, '');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a group without any @巨集 shows no warning and reads no macros', async () => {
+  const { boot, sleep } = gamePage;
+  const page = await boot({ scale: SCALE, preload: MEMORY_STORAGE });
+  try {
+    let reads = 0;
+    const real = page.w.localStorage.getItem;
+    page.w.localStorage.getItem = key => { if (key === 'MACROS') reads += 1; return real(key); };
+    await page.ask({ type: 'START_TRIGGER', group: 'practice', config: config([keyword('口渴', ['eat'])]) });
+    await sleep(500);
+    assert.equal((await page.ask({ type: 'STATUS' })).triggerGroups.practice.warning, '');
+    assert.equal(reads, 0);
+  } finally {
+    page.close();
   }
 });

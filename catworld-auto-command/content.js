@@ -1041,6 +1041,17 @@ function readGameMacros() {
   }
 }
 
+// 那一格的巨集文字能不能被巨集執行器解析（例如 @等待 寫錯）：不能回說明，可以回 null
+const macroProblem = text => CatworldMacro.parseSteps(text).error ?? null;
+// 這一組現在讀不到的 @巨集 N（規則啟用中才算），給面板的觸發列一直顯示；沒有任何 @巨集 時完全不讀遊戲存的巨集
+function macroWarnings(group) {
+  if (!group.on) return [];
+  const rules = group.engine.snapshot().rules.filter(rule => rule.phase !== 'off' && rule.commands.some(command => CatworldMacroIO.macroRef(command) !== null));
+  if (!rules.length) return [];
+  const raw = readGameMacros();
+  return rules.flatMap(rule => CatworldMacroIO.expandMacroRefs(rule.commands, raw, macroProblem).errors.map(error => `規則「${rule.label}」${error}`));
+}
+
 // 兩組觸發各自獨立；送出佇列的來源記成 trigger:<組>，停掉某一組只丟掉那一組還沒送的指令
 async function startTriggers(group, config) {
   if (!CatworldTriggerEngine.hasActiveRules(config)) {
@@ -1058,13 +1069,15 @@ async function startTriggers(group, config) {
     isNormal: isStatusNormal,
     send: (rawCommands, index) => {
       // 指令欄的「@巨集 N」在命中的當下才讀遊戲存的那一格換成它的指令（讀不到的拿掉、在面板的巨集列說明原因，其他指令照送）；隨機數字加在換完之後的最後一個指令
-      const expanded = CatworldMacroIO.expandMacroRefs(rawCommands, readGameMacros());
+      const expanded = CatworldMacroIO.expandMacroRefs(rawCommands, readGameMacros(), macroProblem);
       if (expanded.errors.length) {
         macroNote = { text: `規則「${group.engine.snapshot().rules[index]?.label ?? ''}」的指令沒有送出：${expanded.errors.join('；')}`, until: Date.now() + 8000 };
         renderPanel();
       }
-      const commands = CatworldTriggerEngine.withNumber(expanded.commands, config.rules[index]?.number);
-      const hasMacroRef = rawCommands.some(command => CatworldMacroIO.macroRef(command) !== null);
+      // 最後一個指令是 @巨集 時不加隨機數字（加在整格巨集的結尾可能弄壞 @等待，要加就寫在規則自己的最後一個指令）
+      const lastIsRef = rawCommands.length > 0 && CatworldMacroIO.macroRef(rawCommands[rawCommands.length - 1]) !== null;
+      const commands = lastIsRef ? expanded.commands : CatworldTriggerEngine.withNumber(expanded.commands, config.rules[index]?.number);
+      const hasMacroRef = expanded.used > 0;
       const stops = config.rules[index]?.stopGroup === true;
       const priority = config.rules[index]?.priority === true;
       if (!stops && group.on) {
@@ -1689,7 +1702,13 @@ function initPanel() {
   renderPanel();
 }
 
+// 這一組有讀不到的 @巨集 N 時，把警告放在觸發列最前面（紅字，一直顯示；每秒重算，巨集修好就消失）
 function triggerSummary(group) {
+  const summary = triggerSummaryBase(group);
+  const warnings = macroWarnings(group);
+  return warnings.length ? { ...summary, text: `⚠ ${warnings.join('；')}\n${summary.text}`, alert: true } : summary;
+}
+function triggerSummaryBase(group) {
   if (!group.on) return { text: group.note || '未啟動', alert: false, disabled: 0 };
   const rules = group.engine.snapshot().rules.filter(rule => rule.phase !== 'off');
   const disabled = rules.filter(rule => rule.phase === 'disabled');
@@ -1878,7 +1897,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       hunt: hunt.snapshot(),
       chatScript: scriptSession ? { ...scriptSession.status(), phase: scriptTimers.size ? 'say' : 'wait' } : null,
       stats: readAllStats(),
-      triggerGroups: Object.fromEntries(groupList.map(item => [item.id, { on: item.on, note: item.note, rules: item.on ? item.engine.snapshot().rules : [] }])),
+      triggerGroups: Object.fromEntries(groupList.map(item => [item.id, { on: item.on, note: item.note, warning: macroWarnings(item).join('；'), rules: item.on ? item.engine.snapshot().rules : [] }])),
     });
   }
   if (message.type === 'TEST') {
