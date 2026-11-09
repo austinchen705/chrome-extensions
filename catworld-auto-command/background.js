@@ -280,11 +280,13 @@ const sharedLayer = kind => refreshSharedOnce(false).then(cache => cache[kind]?.
 const NO_SHARED_MOBS = Object.freeze({ routes: {}, mobs: {}, fixes: {} });
 const sharedMobData = () => refreshSharedOnce(false).then(cache => ({ routes: cache.mob?.routes ?? {}, mobs: cache.mob?.mobs ?? {}, fixes: cache.mob?.fixes ?? {} }), () => NO_SHARED_MOBS);
 
-// 安裝或更新時，共用表連結與樣本收集網址「從來沒有設定過」（儲存裡沒有這個欄位）才帶入預設的；清空過（存了空字串）或自己填過的一律不動
+// 安裝或更新時，共用表連結與樣本收集網址「從來沒有設定過」（儲存裡沒有這個欄位）才帶入預設的；清空過（存了空字串）或自己填過的一律不動。
+// 劇本分頁的連結是後來才加的：已經有 sharedSources 的人沒有 chat 這個鍵就是從來沒設定過，只補這一個鍵（怪物與解謎的連結不動）
 chrome.runtime.onInstalled?.addListener(async () => {
   const { sharedSources, captchaSampleUrl } = await chrome.storage.local.get([SHARED_SOURCES_KEY, CAPTCHA_SAMPLE_URL_KEY]);
   const defaults = {};
   if (sharedSources === undefined) defaults[SHARED_SOURCES_KEY] = { ...CatworldSharedData.DEFAULT_SOURCES };
+  else if (sharedSources && typeof sharedSources === 'object' && sharedSources.chat === undefined) defaults[SHARED_SOURCES_KEY] = { ...sharedSources, chat: CatworldSharedData.DEFAULT_SOURCES.chat };
   if (captchaSampleUrl === undefined) defaults[CAPTCHA_SAMPLE_URL_KEY] = CAPTCHA_SAMPLE_DEFAULT_URL;
   if (Object.keys(defaults).length) await chrome.storage.local.set(defaults);
 });

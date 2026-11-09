@@ -310,12 +310,26 @@ test('on install or update the default shared links are filled in only when noth
   delete store.sharedSources;
   await run();
   assert.deepEqual(store.sharedSources, DEFAULT_SOURCES);
-  reset({ mob: '', riddle: '' });
+  reset({ mob: '', riddle: '', chat: '' });
   await run();
-  assert.deepEqual(store.sharedSources, { mob: '', riddle: '' }, 'cleared on purpose stays cleared');
+  assert.deepEqual(store.sharedSources, { mob: '', riddle: '', chat: '' }, 'cleared on purpose stays cleared');
+  reset({ mob: SHEET, riddle: SHEET, chat: SHEET });
+  await run();
+  assert.deepEqual(store.sharedSources, { mob: SHEET, riddle: SHEET, chat: SHEET }, 'links the user set are never touched');
+});
+
+// 劇本分頁的連結是後來才有的：已安裝的人儲存裡沒有 chat 這個欄位，視為從來沒設定過，補上預設；怪物與解謎兩個欄位不動
+test('an install from before the scripted chat link existed gets the default chat link and nothing else changes', async () => {
+  const { DEFAULT_SOURCES } = globalThis.CatworldSharedData;
+  const run = async () => { for (const listener of installedListeners) await listener({ reason: 'update' }); };
   reset({ mob: SHEET });
   await run();
-  assert.deepEqual(store.sharedSources, { mob: SHEET }, 'existing settings are never touched');
+  assert.deepEqual(store.sharedSources, { mob: SHEET, chat: DEFAULT_SOURCES.chat }, 'only the missing chat link is filled in');
+  reset({ mob: '', riddle: '' });
+  await run();
+  assert.deepEqual(store.sharedSources, { mob: '', riddle: '', chat: DEFAULT_SOURCES.chat }, 'cleared mob and riddle links stay cleared');
+  await run();
+  assert.deepEqual(store.sharedSources, { mob: '', riddle: '', chat: DEFAULT_SOURCES.chat }, 'running it again changes nothing');
 });
 
 test('the defaults alone do not fetch anything while both features are off', async () => {

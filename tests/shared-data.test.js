@@ -605,13 +605,13 @@ test('the header rows in README code blocks keep their tabs and put every column
 });
 
 test('the default sheet links are valid published CSV links, one tab each, and the README shows the same ones', () => {
-  const { mob, riddle } = S.DEFAULT_SOURCES;
-  [mob, riddle].forEach(url => {
+  const { mob, riddle, chat } = S.DEFAULT_SOURCES;
+  [mob, riddle, chat].forEach(url => {
     assert.equal(S.checkUrl(url).ok, true, url);
     assert.ok(new URL(url).searchParams.get('gid'), 'a link with gid reads a specific tab');
   });
-  assert.notEqual(new URL(mob).searchParams.get('gid'), new URL(riddle).searchParams.get('gid'));
-  assert.ok(readmeSection.includes(mob) && readmeSection.includes(riddle), 'README lists the defaults');
+  assert.equal(new Set([mob, riddle, chat].map(url => new URL(url).searchParams.get('gid'))).size, 3, 'each link is its own tab');
+  assert.ok(readmeSection.includes(mob) && readmeSection.includes(riddle) && readmeSection.includes(chat), 'README lists the defaults');
 });
 
 // 只勾了其中一個功能時，另一個功能的那份表還是會抓（任何一個開著兩份都抓），但面板用不到它，要說明

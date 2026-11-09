@@ -10,11 +10,12 @@ const MAX_ROWS = 2000;
 const MAX_BUY = 20;
 const MAX_PAY = 100;
 const DISABLE = '停用';
-// 第一次安裝（或更新後從來沒設定過）時自動帶入的共用表連結：作者這一群朋友在用的那份（README「現在在用的共用表連結」要寫同樣兩條，測試會對照）。
+// 第一次安裝（或更新後從來沒設定過）時自動帶入的共用表連結：作者這一群朋友在用的那份（README「現在在用的共用表連結」要寫同樣三條，測試會對照）。
 // 設定頁清空後（存成空字串）不會再帶入；功能開關預設關閉，開了才會抓
 const DEFAULT_SOURCES = Object.freeze({
   mob: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQXSjhzXVd_Qy2B773sXN8tPVA1x_mTQ26xFHfkzB5F-5tWwRrvxJv9DxeHaLNrlS8uOwsNToJtRK57/pub?gid=49592298&single=true&output=csv',
   riddle: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQXSjhzXVd_Qy2B773sXN8tPVA1x_mTQ26xFHfkzB5F-5tWwRrvxJv9DxeHaLNrlS8uOwsNToJtRK57/pub?gid=65492013&single=true&output=csv',
+  chat: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRY6olUSEIbyPa5sY_gW2PdndHX7DVqmSAk1QbBrLCO7TDh0AbDcqfr2U6xTAj2IMLH_atVp12T7BqG/pub?gid=1141996570&single=true&output=csv',
 });
 const PUBLISH_HINT = '要用「檔案 → 共用 → 發布到網路」選那個分頁、格式選 CSV，再貼上產生的連結';
 
