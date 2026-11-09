@@ -64,7 +64,12 @@ const macroRef = text => {
   const match = /^@巨集\s*(\d+)$/.exec(String(text ?? '').trim());
   return match ? Number(match[1]) : null;
 };
-// 把 commands 裡的「@巨集 N」換成那一格的指令文字（整段，含 ; 與 @等待，交給巨集執行器拆開）；讀不到、空的、列號不對的拿掉並寫原因，其他指令照留。
+// 一個指令裡用 ; 接起來的段落：「edf;@巨集 18」要認得第二段是參照
+const splitPieces = text => String(text ?? '').split(/\s*;\s*/);
+// 這個指令裡有沒有「@巨集 N」（整個指令、或 ; 之間的某一段）
+const containsMacroRef = text => splitPieces(text).some(piece => macroRef(piece) !== null);
+// 把 commands 裡的「@巨集 N」（整個指令，或 ; 之間的某一段）換成那一格的指令文字（含 ; 與 @等待，交給巨集執行器拆開）；
+// 讀不到、空的、列號不對的拿掉並寫原因，同一個指令的其他段落照留，一段都不剩就整個指令丟掉；沒有參照的指令原樣不動。
 // 格子裡空的段落（結尾的 ;、;;）會被丟掉。格子裡面再寫「@巨集 N」不會再展開（避免繞圈）。raw 是 localStorage.MACROS 的原文；沒有參照時完全不讀它。
 // validate（選填）：檢查那一格的文字能不能執行，回說明（不能）或 null（可以）；不能的只丟掉這一個參照，不連累其他指令。
 // 回傳 used：成功換進去的格子數
@@ -73,35 +78,44 @@ function expandMacroRefs(commands, raw, validate = null) {
   let read = null;
   let used = 0;
   const out = [];
-  commands.forEach(command => {
-    const row = macroRef(command);
-    if (row === null) {
-      out.push(command);
-      return;
-    }
+  // 一個參照換成文字；失敗回 null 並記下原因
+  const resolve = row => {
     if (row < 1 || row > COUNT) {
       errors.push(`@巨集 ${row}：列號要在 1～${COUNT} 之間`);
-      return;
+      return null;
     }
     read ??= readMacros(raw);
     if (read.status === 'missing') {
       errors.push(`@巨集 ${row}：遊戲還沒有存過巨集`);
-      return;
+      return null;
     }
     const cell = read.macros[row - 1];
     // 格子結尾的 ; 或連續的 ;; 會留下空的段落：遊戲自己的巨集會把它當成「送出空白行（Enter）」，這裡一律忽略，只送真的指令；要送 Enter 寫 <enter>
-    const text = cell === 0 ? '' : cell[1].split(/\s*;\s*/).filter(piece => piece.trim() !== '').join(';');
+    const text = cell === 0 ? '' : splitPieces(cell[1]).filter(piece => piece.trim() !== '').join(';');
     if (!text) {
       errors.push(read.status === 'damaged' && cell === 0 ? `@巨集 ${row}：遊戲存的巨集讀不懂，第 ${row} 列沒有指令` : `@巨集 ${row}：第 ${row} 列沒有指令`);
-      return;
+      return null;
     }
     const problem = validate?.(text);
     if (problem) {
       errors.push(`@巨集 ${row}：第 ${row} 列的指令不能執行（${problem}）`);
+      return null;
+    }
+    used += 1;
+    return text;
+  };
+  commands.forEach(command => {
+    if (!containsMacroRef(command)) {
+      out.push(command);
       return;
     }
-    out.push(text);
-    used += 1;
+    const kept = [];
+    splitPieces(command).forEach(piece => {
+      const row = macroRef(piece);
+      const text = row === null ? piece : resolve(row);
+      if (text !== null && text.trim() !== '') kept.push(text);
+    });
+    if (kept.length) out.push(kept.join(';'));
   });
   return { commands: out, errors, used };
 }
@@ -198,5 +212,5 @@ function clampWindowSize(size, available) {
 }
 
 // MAX_COMMAND、MAX_NOTE、MAX_KEY 公開出去是給 README 對照測試用的：說明裡的數字要從程式讀，不寫死在測試裡
-globalThis.CatworldMacroIO = { COUNT, VERSION, MAX_COMMAND, MAX_NOTE, MAX_KEY, MIN_WINDOW, readMacros, exportText, countFilled, macroRef, expandMacroRefs, parseImport, makeBackup, parseBackup, sanitizeSize, clampWindowSize };
+globalThis.CatworldMacroIO = { COUNT, VERSION, MAX_COMMAND, MAX_NOTE, MAX_KEY, MIN_WINDOW, readMacros, exportText, countFilled, macroRef, containsMacroRef, expandMacroRefs, parseImport, makeBackup, parseBackup, sanitizeSize, clampWindowSize };
 })();

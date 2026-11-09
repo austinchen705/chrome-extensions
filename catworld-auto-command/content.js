@@ -1067,7 +1067,7 @@ const macroProblem = text => CatworldMacro.parseSteps(text).error ?? null;
 // 這一組現在讀不到的 @巨集 N（規則啟用中才算），給面板的觸發列一直顯示；沒有任何 @巨集 時完全不讀遊戲存的巨集
 function macroWarnings(group) {
   if (!group.on) return [];
-  const rules = group.engine.snapshot().rules.filter(rule => rule.phase !== 'off' && rule.commands.some(command => CatworldMacroIO.macroRef(command) !== null));
+  const rules = group.engine.snapshot().rules.filter(rule => rule.phase !== 'off' && rule.commands.some(command => CatworldMacroIO.containsMacroRef(command)));
   if (!rules.length) return [];
   const raw = readGameMacros();
   return rules.flatMap(rule => CatworldMacroIO.expandMacroRefs(rule.commands, raw, macroProblem).errors.map(error => `規則「${rule.label}」${error}`));
@@ -1096,7 +1096,7 @@ async function startTriggers(group, config) {
         renderPanel();
       }
       // 最後一個指令是 @巨集 時不加隨機數字（加在整格巨集的結尾可能弄壞 @等待，要加就寫在規則自己的最後一個指令）
-      const lastIsRef = rawCommands.length > 0 && CatworldMacroIO.macroRef(rawCommands[rawCommands.length - 1]) !== null;
+      const lastIsRef = rawCommands.length > 0 && CatworldMacroIO.containsMacroRef(rawCommands[rawCommands.length - 1]);
       const commands = lastIsRef ? expanded.commands : CatworldTriggerEngine.withNumber(expanded.commands, config.rules[index]?.number);
       const hasMacroRef = expanded.used > 0;
       const stops = config.rules[index]?.stopGroup === true;

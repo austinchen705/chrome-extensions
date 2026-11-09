@@ -63,6 +63,30 @@ test('empty pieces in a row (a trailing ; or ;;) are dropped, an <enter> piece i
   assert.match(empty.errors[0], /第 4 列.*沒有指令/);
 });
 
+test('a reference written between semicolons inside one command is expanded too', () => {
+  const raw = slots(['65', 'run s;'], ['66', 'look;@等待 1;pw']);
+  assert.deepEqual(M.expandMacroRefs(['edf;@巨集 1'], raw), { commands: ['edf;run s'], errors: [], used: 1 }, 'the case from the field: edf;@巨集 18');
+  assert.deepEqual(M.expandMacroRefs(['@巨集 1;drink'], raw).commands, ['run s;drink']);
+  assert.deepEqual(M.expandMacroRefs(['a ; @巨集 1 ; b;@巨集 2'], raw).commands, ['a;run s;b;look;@等待 1;pw']);
+  assert.equal(M.expandMacroRefs(['a ; @巨集 1 ; b;@巨集 2'], raw).used, 2);
+  assert.deepEqual(M.expandMacroRefs(['look ; pw'], raw).commands, ['look ; pw'], 'a command with no reference is passed on exactly as it was');
+});
+
+test('a piece that cannot be resolved is dropped from its command, and the command is dropped when nothing else is left', () => {
+  const raw = slots(['65', 'run s']);
+  const result = M.expandMacroRefs(['edf;@巨集 9', '@巨集 9;@巨集 8', 'ok'], raw);
+  assert.deepEqual(result.commands, ['edf', 'ok']);
+  assert.equal(result.errors.length, 3);
+  assert.match(result.errors[0], /@巨集 9.*第 9 列沒有指令/);
+});
+
+test('containsMacroRef sees a reference anywhere between semicolons', () => {
+  assert.equal(M.containsMacroRef('edf;@巨集 18'), true);
+  assert.equal(M.containsMacroRef('@巨集 18'), true);
+  assert.equal(M.containsMacroRef('a ; @巨集3 ;b'), true);
+  ['edf', 'edf;look', '@巨集 x;look', 'look @巨集 3', ''].forEach(text => assert.equal(M.containsMacroRef(text), false, text));
+});
+
 test('a reference inside the slot text is not expanded again', () => {
   const raw = slots(['65', '@巨集 2;look'], ['66', 'pw']);
   assert.deepEqual(M.expandMacroRefs(['@巨集 1'], raw).commands, ['@巨集 2;look']);
@@ -255,6 +279,38 @@ ui('a row that ends in a semicolon sends its commands and no blank line', async 
     assert.ok(await waitFor(() => page.sent.includes('run s'), 2000));
     await sleep(300);
     assert.deepEqual(page.sent, ['run s'], 'no empty line after it');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a rule written as edf;@巨集 1 sends edf and then what the row holds, never the reference itself', async () => {
+  const { boot, waitFor, sleep } = gamePage;
+  const page = await boot({ scale: SCALE, preload: MEMORY_STORAGE });
+  try {
+    setMacros(page, slots(['65', 'run s;']));
+    await page.ask({ type: 'START_TRIGGER', group: 'practice', config: config([keyword('口渴', ['edf;@巨集 1'])]) });
+    page.output('<span>你覺得口渴。</span>');
+    assert.ok(await waitFor(() => page.sent.includes('run s'), 2000), JSON.stringify(page.sent));
+    await sleep(300);
+    assert.deepEqual(page.sent, ['edf', 'run s']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a reference between semicolons that cannot be read is warned about on the trigger row and not sent', async () => {
+  const { boot, waitFor, sleep } = gamePage;
+  const page = await boot({ scale: SCALE, preload: MEMORY_STORAGE });
+  const panelText = () => page.hosts()[0].shadowRoot.querySelector('[data-group="practice"] .trigger-text').textContent;
+  try {
+    setMacros(page, slots());
+    await page.ask({ type: 'START_TRIGGER', group: 'practice', config: config([keyword('口渴', ['edf;@巨集 7'])]) });
+    assert.ok(await waitFor(() => /@巨集 7/.test(panelText()), 2000), panelText());
+    page.output('<span>你覺得口渴。</span>');
+    assert.ok(await waitFor(() => page.sent.includes('edf'), 2000));
+    await sleep(300);
+    assert.deepEqual(page.sent, ['edf'], 'the reference is not typed into the game');
   } finally {
     page.close();
   }
