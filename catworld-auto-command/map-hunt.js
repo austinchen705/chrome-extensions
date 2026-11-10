@@ -306,21 +306,24 @@ function create(deps) {
     const a = state.assist;
     const picked = info.monsters.filter(mob => state.mobs.includes(mob.full));
     const mine = picked.filter(mob => mob.state !== KNOCKED_OUT);
+    // 診斷：每次決定都印一行，使用者回報「怪還沒死就下 fight」時看這行就知道當時看到什麼、為什麼送
+    const trace = action => console.log('[catworld] 只下 fight：', a.here, `看到 ${picked.length} 隻、昏迷 ${picked.length - mine.length}、戰鬥中 ${mine.filter(mob => mob.state === '戰鬥中').length}`, fresh ? '〔剛到房間或逾時自己看的 l〕' : '〔被動看到的 l〕', '→', action);
     const leave = why => {
       state.assist = null;
       if (why) state.skipped.push({ key: a.here, why });
       doneWith(a.here, why ? undefined : a.here);
     };
     // 勾選的怪有昏迷但還沒死的：玩家的觸發規則會去補刀（k），這時對別隻下 fight 會變成第一隻還沒死就打第二隻，先等它死了
-    if (picked.length > mine.length && !fresh) { a.waited = 0; return; }
-    if (!mine.length) { leave(); return; }
+    if (picked.length > mine.length && !fresh) { a.waited = 0; trace('等昏迷的怪死掉'); return; }
+    if (!mine.length) { trace('沒有可打的怪，換格'); leave(); return; }
     a.waited = 0;
-    if (mine.some(mob => mob.state === '戰鬥中')) return; // 在打，繼續等
+    if (mine.some(mob => mob.state === '戰鬥中')) { trace('有怪在戰鬥中，繼續等'); return; } // 在打，繼續等
     a.stuck = mine.length < a.count ? 0 : a.stuck + 1;
     a.count = mine.length;
-    if (a.stuck >= MAX_STUCK) { leave('打不動'); return; }
+    if (a.stuck >= MAX_STUCK) { trace('怪數一直沒減少，略過這間'); leave('打不動'); return; }
     const target = mine.find(mob => SAFE_ID.test(mob.id));
     if (!target) { leave('怪的 ID 不能用'); return; }
+    trace(`送 fight ${target.ref ?? target.id}`);
     if (!deps.send(`fight ${target.ref ?? target.id}`)) finish('指令送不出去，已停止', { alert: true });
   }
   function assistTick() {
