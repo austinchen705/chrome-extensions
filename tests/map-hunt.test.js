@@ -2476,7 +2476,7 @@ ui('assist: a second monster in the room gets another fight, but not while one i
       if (!command.startsWith('fight ')) return false;
       fights += 1;
       if (fights === 1) setTimeout(() => lookOut(page, [MOB_FIGHTING, MOB_LINE]), 50);
-      if (fights === 1) setTimeout(() => { idleLookShown = true; lookOut(page, [MOB_LINE]); }, 200);
+      if (fights === 1) setTimeout(() => { idleLookShown = true; say(page, '測試怪死了。'); lookOut(page, [MOB_LINE]); }, 200);
       if (fights === 2) { earlySecondFight = !idleLookShown; setTimeout(() => lookOut(page), 50); }
       return true;
     } });
@@ -2501,7 +2501,7 @@ ui('assist: a monster that is knocked out but not dead yet is waited for, so the
       if (!command.startsWith('fight ')) return false;
       fights += 1;
       if (fights === 1) setTimeout(() => lookOut(page, [KO_MOB, MOB_LINE]), 50);
-      if (fights === 1) setTimeout(() => { deadLookShown = true; lookOut(page, [MOB_LINE]); }, 200);
+      if (fights === 1) setTimeout(() => { deadLookShown = true; say(page, '測試怪死了。'); lookOut(page, [MOB_LINE]); }, 200);
       if (fights === 2) { earlySecondFight = !deadLookShown; setTimeout(() => lookOut(page), 50); }
       return true;
     } });
@@ -2510,6 +2510,55 @@ ui('assist: a monster that is knocked out but not dead yet is waited for, so the
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
     assert.equal(countOf(game, FIGHT), 2);
     assert.equal(earlySecondFight, false, 'the second fight waited until the knocked-out one was gone');
+  } finally {
+    page.close();
+  }
+});
+
+ui('assist: after a fight the next one waits for the death sentence, even when the l shows nobody fighting and nobody knocked out', async () => {
+  const page = await assistPage();
+  try {
+    let fights = 0;
+    let deadSaid = false;
+    let earlySecondFight = false;
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(2) } }, script: command => {
+      if (!command.startsWith('fight ')) return false;
+      fights += 1;
+      if (fights === 1) {
+        setTimeout(() => lookOut(page, ['  ※測試怪(test mob) <忙碌中> [fight][kill]', MOB_LINE]), 50); // 第一隻標「忙碌中」、第二隻沒標狀態：只看 l 會以為沒人在打
+        setTimeout(() => { deadSaid = true; say(page, '測試怪死了。'); }, 150);
+        setTimeout(() => lookOut(page, [MOB_LINE]), 200);
+      }
+      if (fights === 2) { earlySecondFight = !deadSaid; setTimeout(() => lookOut(page), 50); }
+      return true;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.equal(countOf(game, FIGHT), 2);
+    assert.equal(earlySecondFight, false, 'no second fight before the death sentence');
+  } finally {
+    page.close();
+  }
+});
+
+ui('assist: when the death sentence comes and the triggers send no l, it looks by itself a few seconds later and goes on to the next monster', async () => {
+  const page = await assistPage({ fightTimeoutSec: 30 });
+  try {
+    const looks = { c: { lines: mobsLines(2) } };
+    let fights = 0;
+    const game = world(page, { at: 'a', looks, script: command => {
+      if (!command.startsWith('fight ')) return false;
+      fights += 1;
+      if (fights === 1) setTimeout(() => { looks.c.lines.splice(0, 1); say(page, '測試怪死了。'); }, 100);
+      else { looks.c.lines.length = 0; say(page, '你出手了。'); }
+      return true;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.equal(countOf(game, FIGHT), 2);
+    assert.ok(countOf(game, 'l') >= 2, 'it looked by itself after the death sentence, not after the whole 30 second timeout');
   } finally {
     page.close();
   }

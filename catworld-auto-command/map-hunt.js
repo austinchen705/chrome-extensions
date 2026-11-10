@@ -295,8 +295,13 @@ function create(deps) {
   // ---- 只下 fight 模式（fightMode 為 assist）----
   // 戰鬥、補氣、撿屍都由玩家自己的觸發規則處理，這裡只：到房間有勾選的怪就送一次 fight，之後被動看遊戲輸出——
   // 看到 i 的輸出且負重超標就去整理；看到 l 的輸出沒怪了就換格、還有怪而且沒人在戰鬥中就再送一次 fight。逾時沒看到 l 就自己送一次
+  // 只下 fight 模式要等的「死了」：結束字扣掉代表昏迷的（昏迷不算死，你的觸發會去補刀）
+  const deathWords = () => {
+    const knockout = splitIds(state.settings.knockoutKeywords);
+    return splitIds(state.settings.endKeywords).filter(word => !knockout.includes(word));
+  };
   function assistStart(here, info) {
-    state.assist = { here, buffer: '', quietTicks: 0, waited: 0, asking: false, stuck: 0, count: Infinity, silent: 0 };
+    state.assist = { here, buffer: '', quietTicks: 0, waited: 0, asking: false, stuck: 0, count: Infinity, silent: 0, sent: false, dead: false, tail: '' };
     state.phase = 'assist';
     assistJudge(info, true);
   }
@@ -313,6 +318,8 @@ function create(deps) {
       if (why) state.skipped.push({ key: a.here, why });
       doneWith(a.here, why ? undefined : a.here);
     };
+    // 下過 fight 之後要看到死亡的字才再對下一隻下（只靠 l 的狀態判斷，怪沒標 <戰鬥中>、或在逃時，會變成第一隻還沒死就打第二隻）；剛到房間、逾時自己看的不等（沒有死亡的字可等）
+    if (a.sent && !a.dead && !fresh && picked.length) { trace('等死亡的字'); return; }
     // 勾選的怪有昏迷但還沒死的：玩家的觸發規則會去補刀（k），這時對別隻下 fight 會變成第一隻還沒死就打第二隻，先等它死了
     if (picked.length > mine.length && !fresh) { a.waited = 0; trace('等昏迷的怪死掉'); return; }
     if (!mine.length) { trace('沒有可打的怪，換格'); leave(); return; }
@@ -324,6 +331,9 @@ function create(deps) {
     const target = mine.find(mob => SAFE_ID.test(mob.id));
     if (!target) { leave('怪的 ID 不能用'); return; }
     trace(`送 fight ${target.ref ?? target.id}`);
+    a.sent = true;
+    a.dead = false;
+    a.tail = '';
     if (!deps.send(`fight ${target.ref ?? target.id}`)) finish('指令送不出去，已停止', { alert: true });
   }
   function assistTick() {
@@ -431,6 +441,14 @@ function create(deps) {
     }
     const assist = state?.assist;
     if (assist && !assist.asking) { assist.buffer = (assist.buffer + text).slice(-6000); assist.quietTicks = 0; }
+    if (assist?.sent && !assist.dead) {
+      assist.tail = (assist.tail + text).slice(-500);
+      if (deathWords().some(word => assist.tail.includes(word))) {
+        assist.dead = true;
+        // 死了之後如果一直沒有新的 l（你的觸發沒送），過幾秒自己看一次，才不會等到整個逾時
+        assist.waited = Math.max(assist.waited, state.settings.fightTimeoutSec * TICKS_PER_SEC - 3 * TICKS_PER_SEC);
+      }
+    }
     const fight = state?.fight;
     if (!fight) return;
     fight.buffer = (fight.buffer + text).slice(-500);
