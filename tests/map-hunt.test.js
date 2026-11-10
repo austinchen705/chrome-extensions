@@ -6,7 +6,7 @@ const { ui, boot: bootPage, sleep, waitFor, fixture } = require('./helpers/game-
 
 const SCALE = 20;
 // 開始前必填的欄位（吃藥指令、沒藥關鍵字、回家指令）：各測試預設都填好，要測缺欄位的自己清掉
-const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0 };
+const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, commandGapMinSec: 0, commandGapMaxSec: 0 };
 const boot = async options => {
   const page = await bootPage(options);
   page.store.mapHuntSettings = { ...REQUIRED };
@@ -1831,4 +1831,33 @@ ui('learn places: a chosen monster that is not in the room on three visits is dr
   } finally {
     page.close();
   }
+});
+
+ui('hunt: its own command gap is added between the commands it sends (walking and looking)', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapHuntSettings = { ...REQUIRED, commandGapMinSec: 3, commandGapMaxSec: 3 }; // 縮小 20 倍＝每個指令之間 0.15 秒
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a' });
+    await pick(page, MOB);
+    const started = Date.now();
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l']);
+    assert.ok(Date.now() - started >= 280, `three commands need at least two gaps, took ${Date.now() - started} ms`);
+  } finally {
+    page.close();
+  }
+});
+
+test('hunt settings: the gap fields are checked, the longest gap is never below the shortest, and gapMs stays in range', () => {
+  require('../catworld-auto-command/map-hunt.js');
+  const { normalizeSettings, gapMs } = globalThis.CatworldMapHunt;
+  assert.deepEqual([normalizeSettings({}).commandGapMinSec, normalizeSettings({}).commandGapMaxSec], [1, 2]);
+  const swapped = normalizeSettings({ commandGapMinSec: 3, commandGapMaxSec: 1 });
+  assert.equal(swapped.commandGapMaxSec, 3);
+  assert.equal(normalizeSettings({ commandGapMinSec: -1, commandGapMaxSec: 'x' }).commandGapMinSec, 1);
+  assert.equal(gapMs({ commandGapMinSec: 1, commandGapMaxSec: 3 }, () => 0), 1000);
+  assert.equal(gapMs({ commandGapMinSec: 1, commandGapMaxSec: 3 }, () => 0.5), 2000);
+  assert.equal(gapMs({ commandGapMinSec: 0, commandGapMaxSec: 0 }), 0);
 });

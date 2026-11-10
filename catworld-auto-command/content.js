@@ -909,9 +909,13 @@ function nextQueued() {
   return current ? queue.findIndex(entry => entry.run === current) : (queue.length ? 0 : -1);
 }
 
+// 巡怪的指令（單一指令或巡怪巨集拆出來的）另外再隔巡怪自己設的隨機間隔，和共用的 commandDelayMs 取較大的
+let huntSettings = CatworldMapHunt.normalizeSettings(undefined);
+const isHuntEntry = entry => entry.source === 'hunt' || entry.run?.owner === 'hunt';
 function pumpQueue() {
   if (queueTimer || nextQueued() < 0) return;
-  const gap = Math.max(0, Number(settings.commandDelayMs) || 0);
+  const next = queue[nextQueued()];
+  const gap = Math.max(0, Number(settings.commandDelayMs) || 0, isHuntEntry(next) ? CatworldMapHunt.gapMs(huntSettings) : 0);
   const wait = Math.max(0, lastSentAt + gap - Date.now());
   queueTimer = setTimeout(() => {
     queueTimer = null;
@@ -1359,7 +1363,8 @@ hunt = CatworldMapHunt.create({
   macroRunning: () => [...macroRuns].some(run => run.owner === 'hunt'),
   exits: async () => (await chrome.storage.local.get(CatworldMapHunt.EXITS_KEY))[CatworldMapHunt.EXITS_KEY] ?? {},
   saveExits: learned => chrome.storage.local.set({ [CatworldMapHunt.EXITS_KEY]: learned }),
-  settings: async () => CatworldMapHunt.normalizeSettings((await chrome.storage.local.get(CatworldMapHunt.SETTINGS_KEY))[CatworldMapHunt.SETTINGS_KEY]),
+  // 巡怪開始時讀的設定，間隔也在這時更新（送出佇列用 huntSettings）
+  settings: async () => (huntSettings = CatworldMapHunt.normalizeSettings((await chrome.storage.local.get(CatworldMapHunt.SETTINGS_KEY))[CatworldMapHunt.SETTINGS_KEY])),
   watch: handler => {
     const observer = new MutationObserver(records => handler(addedText(records)));
     observer.observe(document.getElementById('content'), { subtree: true, childList: true, characterData: true });

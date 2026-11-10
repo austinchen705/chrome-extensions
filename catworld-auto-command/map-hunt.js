@@ -31,6 +31,8 @@ const NO_MEDICINE_WINDOW_TICKS = 10 * TICKS_PER_SEC; // 吃藥指令真的送出
 
 // 設定頁的欄位（也決定預設值與檢查）：type 是 text、number 或 select
 const FIELDS = [
+  { key: 'commandGapMinSec', label: '巡怪送指令的最短間隔（秒，最多 3；走路、看房間、打怪、補氣都算，和「指令間隔」取較大的）', type: 'number', default: 1, min: 0, max: 3 },
+  { key: 'commandGapMaxSec', label: '巡怪送指令的最長間隔（秒；每次在最短與最長之間隨機）', type: 'number', default: 2, min: 0, max: 3 },
   { key: 'healMode', label: '補氣方式', type: 'select', options: [['eat', '吃藥'], ['rest', '自己回']], default: 'eat' },
   { key: 'eatBelow', label: '氣低於幾 % 就吃藥', type: 'number', default: 50, min: 1, max: 99 },
   { key: 'eatCommand', label: '吃藥指令（可多個，用 ; 分隔）', type: 'text', default: '' },
@@ -73,7 +75,15 @@ function normalizeSettings(raw) {
   });
   // 危險線要比休息線低，不然休息時永遠碰不到危險線
   if (out.dangerBelow >= out.restBelow) out.dangerBelow = Math.min(FIELDS.find(field => field.key === 'dangerBelow').default, out.restBelow - 1);
+  if (out.commandGapMaxSec < out.commandGapMinSec) out.commandGapMaxSec = out.commandGapMinSec;
   return out;
+}
+
+// 巡怪送出的指令之間，除了共用的「指令間隔」，還要再隔最短～最長秒數之間的隨機一段（毫秒）；random 可注入
+function gapMs(settings, random = Math.random) {
+  const min = settings.commandGapMinSec * 1000;
+  const max = settings.commandGapMaxSec * 1000;
+  return min + random() * (max - min);
 }
 
 // 讀回儲存的學習結果：形狀不對的丟掉
@@ -792,5 +802,5 @@ function create(deps) {
   return { start, stop, on, summary, snapshot };
 }
 
-globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, FIELDS, normalizeSettings, splitIds, create };
+globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, FIELDS, normalizeSettings, gapMs, splitIds, create };
 })();
