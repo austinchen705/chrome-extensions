@@ -31,12 +31,14 @@ const QI_WAIT_TICKS = 60 * TICKS_PER_SEC; // 試出口前等氣回復最多等�
 const SCAN_STALL_TICKS = 180 * TICKS_PER_SEC; // 掃描這麼久沒換過房間、沒處理完任何一間，就當成卡住，停下來並說明在等什麼
 const SORT_STEP_TICKS = 120 * TICKS_PER_SEC; // 整理的單一步驟（走一趟、鑑定、回程）最久等這麼久
 const SORT_QUIET_MS = 1000; // 鑑定的指令送完後，再等這麼久沒有新輸出才當成鑑定結束
+const ASSIST_QUIET_TICKS = 2; // 只下 fight 模式：輸出靜止這麼多個 tick 才解析一次（一份 l 或 i 的輸出可能分批到）
 const NO_MEDICINE_WINDOW_TICKS = 10 * TICKS_PER_SEC; // 吃藥指令真的送出後，這麼久內出現沒藥關鍵字才算
 
 // 設定頁的欄位（也決定預設值與檢查）：type 是 text、number 或 select
 const FIELDS = [
   { key: 'commandGapMinMs', label: '巡怪送指令的最短間隔（毫秒，0～3000；走路、看房間、打怪、補氣都算，和「指令間隔」取較大的，所以想更快也要把「指令間隔」調小）', type: 'number', default: 1000, min: 0, max: 3000 },
   { key: 'commandGapMaxMs', label: '巡怪送指令的最長間隔（毫秒；每次在最短與最長之間隨機）', type: 'number', default: 2000, min: 0, max: 3000 },
+  { key: 'fightMode', label: '戰鬥方式', type: 'select', options: [['full', '完整（巡怪自己打、補氣、撿屍）'], ['assist', '只下 fight（戰鬥、補氣、撿屍交給你的觸發規則；巡怪只看 i 與 l 的輸出，氣低於危險線才回家）']], default: 'full' },
   { key: 'healMode', label: '補氣方式', type: 'select', options: [['eat', '吃藥'], ['rest', '自己回']], default: 'eat' },
   { key: 'eatBelow', label: '氣低於幾 % 就吃藥', type: 'number', default: 50, min: 1, max: 99 },
   { key: 'eatCommand', label: '吃藥指令（可多個，用 ; 分隔）', type: 'text', default: '' },
@@ -285,7 +287,81 @@ function create(deps) {
       return;
     }
     state.skips = 0;
+    if (state.settings.fightMode === 'assist') { assistStart(here, info); return; }
     await fightRoom(token, here, info);
+  }
+
+  // ---- 只下 fight 模式（fightMode 為 assist）----
+  // 戰鬥、補氣、撿屍都由玩家自己的觸發規則處理，這裡只：到房間有勾選的怪就送一次 fight，之後被動看遊戲輸出——
+  // 看到 i 的輸出且負重超標就去整理；看到 l 的輸出沒怪了就換格、還有怪而且沒人在戰鬥中就再送一次 fight。逾時沒看到 l 就自己送一次
+  function assistStart(here, info) {
+    state.assist = { here, buffer: '', quietTicks: 0, waited: 0, asking: false, stuck: 0, count: Infinity, silent: 0 };
+    state.phase = 'assist';
+    assistJudge(info);
+  }
+  // 依一份 l 的內容決定下一步（輪到第一次、被動看到、逾時自己看都用這個）
+  function assistJudge(info) {
+    const a = state.assist;
+    const mine = info.monsters.filter(mob => state.mobs.includes(mob.full) && mob.state !== KNOCKED_OUT);
+    const leave = why => {
+      state.assist = null;
+      if (why) state.skipped.push({ key: a.here, why });
+      doneWith(a.here, why ? undefined : a.here);
+    };
+    if (!mine.length) { leave(); return; }
+    a.waited = 0;
+    if (mine.some(mob => mob.state === '戰鬥中')) return; // 在打，繼續等
+    a.stuck = mine.length < a.count ? 0 : a.stuck + 1;
+    a.count = mine.length;
+    if (a.stuck >= MAX_STUCK) { leave('打不動'); return; }
+    const target = mine.find(mob => SAFE_ID.test(mob.id));
+    if (!target) { leave('怪的 ID 不能用'); return; }
+    if (!deps.send(`fight ${target.ref ?? target.id}`)) finish('指令送不出去，已停止', { alert: true });
+  }
+  function assistTick() {
+    const a = state.assist;
+    if (a.asking) return;
+    const room = deps.room();
+    if (room && room !== a.here) { state.assist = null; state.phase = 'plan'; return; } // 人已經不在這間（手動走掉了）：重新規劃
+    a.waited += 1;
+    if (a.buffer) {
+      a.quietTicks += 1;
+      if (a.quietTicks >= ASSIST_QUIET_TICKS) {
+        const text = a.buffer;
+        a.buffer = '';
+        a.quietTicks = 0;
+        const load = Parse.parseLoad(text);
+        // 玩家的觸發送了 i 而且負重超標：結束這間的等待，下一次規劃時走既有的負重檢查與整理
+        if (load !== null && state.settings.loadMaxPercent > 0 && load >= state.settings.loadMaxPercent) {
+          state.load = load;
+          state.assist = null;
+          state.loadDue = true;
+          state.phase = 'plan';
+          deps.notify();
+          return;
+        }
+        const info = Parse.parseLook(text);
+        if (info.exits.length) { assistJudge(info); return; }
+      }
+    }
+    if (a.waited >= state.settings.fightTimeoutSec * TICKS_PER_SEC) assistCheck(a);
+  }
+  // 等太久沒看到 l：自己送一次 l（期間不收被動輸出，免得同一份處理兩次）
+  function assistCheck(a) {
+    const token = state;
+    a.asking = true;
+    deps.ask('l', 'look').then(text => {
+      if (state !== token || state.assist !== a) return;
+      a.asking = false;
+      a.waited = 0;
+      a.buffer = '';
+      const info = Parse.parseLook(text);
+      if (!info.exits.length) {
+        if ((a.silent += 1) >= MAX_STUCK) { state.assist = null; skipTarget(a.here, '讀不到房間'); }
+        return;
+      }
+      assistJudge(info);
+    }).catch(() => { if (state === token) finish('看房間時出錯，已停止', { alert: true }); });
   }
 
   // 把房間裡勾選的怪一隻一隻打完：fight（被拒就 kill）→ 倒下就送打完指令 → 再 l 重數；連續 MAX_STUCK 次數量沒減少就略過這間
@@ -344,6 +420,8 @@ function create(deps) {
       eating.buffer = (eating.buffer + text).slice(-500);
       if (eating.buffer.includes(state.settings.noMedicineKeyword)) { goHomeAndStop('沒藥了'); return; }
     }
+    const assist = state?.assist;
+    if (assist && !assist.asking) { assist.buffer = (assist.buffer + text).slice(-6000); assist.quietTicks = 0; }
     const fight = state?.fight;
     if (!fight) return;
     fight.buffer = (fight.buffer + text).slice(-500);
@@ -423,12 +501,17 @@ function create(deps) {
     if (!Number.isFinite(percent)) { finish('讀不到氣，已停止', { alert: true }); return; }
     // 掃描時整區走動，被主動攻擊的怪打到的機會比巡怪多：氣掉到危險線就回家停止（不管補氣方式，沒有在打架也一樣）
     if (state.scan && percent < state.settings.dangerBelow) { goHomeAndStop(`掃描中氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`); return; }
+    // 只下 fight：補氣是玩家的觸發規則的事，這裡只留危險線這一道保險
+    if (state.settings.fightMode === 'assist') {
+      if (percent < state.settings.dangerBelow) goHomeAndStop(`氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`);
+      return;
+    }
     if (state.settings.healMode === 'rest') { restStep(percent); return; }
     if (percent < state.settings.eatBelow && state.ticks - state.lastEat >= EAT_GAP_TICKS) eat();
   }
   // 打下一隻之前：自己回模式氣太低就在這裡等到回復（打完這一隻再休息）
   async function restGate(token) {
-    if (state.settings.healMode === 'rest') {
+    if (state.settings.healMode === 'rest' && state.settings.fightMode === 'full') {
       const percent = deps.kee();
       if (Number.isFinite(percent)) restStep(percent);
     }
@@ -891,6 +974,7 @@ function create(deps) {
       vitals();
       if (!state) return;
     }
+    if (state.assist) { assistTick(); return; }
     if (state.phase === 'wait' || state.phase === 'standby') { waitTick(); return; }
     if (state.phase === 'sort') return;
     if (state.trial) { trialTick(); return; }
@@ -953,7 +1037,7 @@ function create(deps) {
       const settings = scan ? { ...await deps.settings(), loopRounds: 'off' } : await deps.settings();
       if (cancelled) return fail('已取消', false);
       const missing = [];
-      if (settings.healMode === 'eat') {
+      if (settings.healMode === 'eat' && settings.fightMode === 'full') {
         if (!settings.eatCommand) missing.push('吃藥指令');
         if (!settings.noMedicineKeyword) missing.push('沒藥關鍵字');
       }
@@ -992,7 +1076,7 @@ function create(deps) {
       state = {
         round: 1, after: deps.now() + offset + settings.aheadSec * 1000, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
         mobs: scan ? [] : target.mobs, area: target.area, offset, scan: scan || prescan, prescan, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph, targets, skipped: [...baseSkipped], fixed: [],
-        settings, loadDue: false, load: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
+        settings, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
         ...roundFields(), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       note = '';
@@ -1033,6 +1117,7 @@ function create(deps) {
     if (state.calibrating) return { text: `${who}：校準伺服器時間…${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.trial) return { text: `${who}：在 ${room(state.trial.room)} 試出口${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.learning) return { text: `${who}：看 ${room(state.goal) ?? '房間'} 的出口…${skippedShort(state.skipped)}`, alert: noteAlert };
+    if (state.assist) return { text: `${who}：在 ${room(state.assist.here)} 已下 fight，等你的觸發規則打完（看 l 與 i 的輸出）${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.fight) return { text: `${who}：在 ${room(state.goal)} 打 ${state.fight.mob.name}${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.phase === 'look') return { text: `${who}：到了 ${room(state.goal)}，看房間…${skippedShort(state.skipped)}`, alert: noteAlert };
     return { text: `${who}：走向 ${room(state.goal) ?? '…'}（剩 ${state.targets.size} 間）${skippedShort(state.skipped)}`, alert: noteAlert };

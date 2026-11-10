@@ -2419,3 +2419,123 @@ ui('sort: more sorts than the hourly limit stops with an alert', async () => {
     page.close();
   }
 });
+
+// ---- 只下 fight 模式（fightMode: assist）：戰鬥交給玩家的觸發，巡怪只下第一次 fight、被動看 l 與 i ----
+const lookOut = (page, lines = []) => say(page, ['測試房間 - ', '    這裡是房間。', '    這裡明顯的出口是 east。', ...lines].join('\n'));
+const assistPage = async (settings = {}) => {
+  const page = await boot({ scale: SCALE });
+  page.store.mapMonsters = mobsAt('c');
+  page.store.mapHuntSettings = { ...REQUIRED, fightMode: 'assist', eatCommand: '', noMedicineKeyword: '', fightTimeoutSec: 5, ...settings };
+  return page;
+};
+const MOB_FIGHTING = '  ※測試怪(test mob) <戰鬥中> [fight][kill]';
+
+ui('assist: it sends fight once, nothing else about the fight, and moves on when an l it sees has no monster left', async () => {
+  const page = await assistPage();
+  try {
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: command => {
+      if (command.startsWith('fight ')) { setTimeout(() => lookOut(page), 50); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT], 'no gc, no special, no kill, no eating');
+  } finally {
+    page.close();
+  }
+});
+
+ui('assist: a second monster in the room gets another fight, but not while one is fighting', async () => {
+  const page = await assistPage();
+  try {
+    let fights = 0;
+    let idleLookShown = false;
+    let earlySecondFight = false;
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(2) } }, script: command => {
+      if (!command.startsWith('fight ')) return false;
+      fights += 1;
+      if (fights === 1) setTimeout(() => lookOut(page, [MOB_FIGHTING, MOB_LINE]), 50);
+      if (fights === 1) setTimeout(() => { idleLookShown = true; lookOut(page, [MOB_LINE]); }, 200);
+      if (fights === 2) { earlySecondFight = !idleLookShown; setTimeout(() => lookOut(page), 50); }
+      return true;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.equal(countOf(game, FIGHT), 2, 'one fight per monster');
+    assert.equal(earlySecondFight, false, 'the second fight waits until nobody is fighting');
+  } finally {
+    page.close();
+  }
+});
+
+ui('assist: when no l shows up it looks by itself after the timeout and moves on if the room is empty', async () => {
+  const page = await assistPage();
+  try {
+    const looks = { c: { lines: mobsLines(1) } };
+    const game = world(page, { at: 'a', looks, script: command => {
+      if (command.startsWith('fight ')) looks.c.lines.length = 0; // 觸發規則打死了，但沒有人送 l
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'l'], 'it looked once by itself');
+  } finally {
+    page.close();
+  }
+});
+
+ui('assist: an i the user triggers that is over the limit sends the hunt to the sort, then it fights on', async () => {
+  const page = await sortPage({ fightMode: 'assist', eatCommand: '', noMedicineKeyword: '', fightTimeoutSec: 5 });
+  try {
+    const state = sortState({ load: 40 });
+    const looks = { c: { lines: mobsLines(1) } };
+    const base = sortScript(page, state);
+    let fights = 0;
+    const game = world(page, { at: 'a', looks, script: (command, env) => {
+      if (command.startsWith('fight ')) {
+        fights += 1;
+        if (fights === 1) setTimeout(() => { state.load = 95; say(page, '你身上帶著下列這些東西( 載重 95% ):\n    布條(cloth piece)'); }, 50);
+        else { looks.c.lines.length = 0; setTimeout(() => lookOut(page), 50); }
+        return true;
+      }
+      return base(command, env);
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 15000), huntText(page));
+    assert.equal(countOf(game, FIGHT), 2);
+    assert.ok(game.log.indexOf('sell all') > game.log.indexOf(FIGHT) && game.log.lastIndexOf(FIGHT) > game.log.indexOf('sell all'), game.log.join(','));
+    assert.deepEqual(state.secured, ['black armor']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('assist: low qi does not eat, but under the danger line it goes home and stops', async () => {
+  const low = await assistPage({ eatCommand: 'eat pill', noMedicineKeyword: '沒有藥' });
+  try {
+    setKee(low, 40);
+    const game = world(low, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: command => { if (command.startsWith('fight ')) { setTimeout(() => lookOut(low), 50); return true; } return false; } });
+    await pick(low, MOB);
+    click(low, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(low)), 8000), huntText(low));
+    assert.equal(game.log.includes('eat pill'), false, 'eating is the user\'s trigger');
+  } finally {
+    low.close();
+  }
+  const danger = await assistPage();
+  try {
+    setKee(danger, 10);
+    const game = world(danger, { at: 'a', looks: { c: { lines: mobsLines(1) } } });
+    await pick(danger, MOB);
+    click(danger, '.hstart');
+    assert.ok(await waitFor(() => alerts(danger).some(message => /氣只剩 10%/.test(message.reason)), 5000), JSON.stringify(alerts(danger)));
+    assert.ok(await waitFor(() => game.log.includes('recall'), 3000));
+    assert.equal(game.log.includes(FIGHT), false);
+  } finally {
+    danger.close();
+  }
+});
