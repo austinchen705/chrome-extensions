@@ -2351,6 +2351,23 @@ ui('sort: with an alt ID the good armor is given to the alt instead of marked, t
   }
 });
 
+ui('sort: sell-everything mode skips the inventory and marking and sells right after the trip', async () => {
+  const page = await sortPage({ sortKeep: 'none', altId: 'mukoda' });
+  try {
+    const state = sortState();
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'l', 'i', 'go', 'identify', 'sell all', 'back', 'i']);
+    assert.deepEqual(state.secured, []);
+    assert.deepEqual(state.given, []);
+    assert.equal(alerts(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
+
 ui('sort: a give the game does not confirm stops with an alert and sells nothing', async () => {
   const page = await sortPage({ altId: 'mukoda' });
   try {
@@ -2581,7 +2598,8 @@ ui('assist: when no l shows up it looks by itself after the timeout and moves on
   }
 });
 
-ui('assist: an i the user triggers that is over the limit sends the hunt to the sort, then it fights on', async () => {
+for (const spam of [false, true]) {
+ui(`assist: an i the user triggers that is over the limit sends the hunt to the sort, then it fights on${spam ? ' (even when fight output keeps coming and never goes quiet)' : ''}`, async () => {
   const page = await sortPage({ fightMode: 'assist', eatCommand: '', noMedicineKeyword: '', fightTimeoutSec: 5 });
   try {
     const state = sortState({ load: 40 });
@@ -2591,7 +2609,12 @@ ui('assist: an i the user triggers that is over the limit sends the hunt to the 
     const game = world(page, { at: 'a', looks, script: (command, env) => {
       if (command.startsWith('fight ')) {
         fights += 1;
-        if (fights === 1) setTimeout(() => { state.load = 95; say(page, '你身上帶著下列這些東西( 載重 95% ):\n    布條(cloth piece)'); }, 50);
+        if (fights === 1) setTimeout(() => {
+          state.load = 95;
+          say(page, '你身上帶著下列這些東西( 載重 95% ):\n    布條(cloth piece)');
+          // 載重行之後戰鬥輸出一直來、超過緩衝大小也不靜止：不能等靜止才看載重
+          if (spam) { let n = 0; const timer = setInterval(() => { say(page, `${'你揮拳打中怪物，'.repeat(12)}\n`); if ((n += 1) >= 120) clearInterval(timer); }, 5); }
+        }, 50);
         else { looks.c.lines.length = 0; setTimeout(() => lookOut(page), 50); }
         return true;
       }
@@ -2607,6 +2630,7 @@ ui('assist: an i the user triggers that is over the limit sends the hunt to the 
     page.close();
   }
 });
+}
 
 ui('assist: low qi eats when an eat command is set (and not when it is blank), and under the danger line it goes home and stops', async () => {
   const low = await assistPage({ eatCommand: 'eat pill', noMedicineKeyword: '沒有藥' });

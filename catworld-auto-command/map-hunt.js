@@ -52,6 +52,7 @@ const FIELDS = [
   { key: 'prescan', label: '打怪前先掃描這一區還沒走過的房間（沒有圖資才掃；走過的、走不到的不再掃；掃完再開始打）', type: 'select', options: [['on', '開'], ['off', '關']], default: 'on' },
   { key: 'loadMaxPercent', label: '負重（i 的「載重」）超過幾 % 就先去整理（0＝不檢查）', type: 'number', default: 90, min: 0, max: 100 },
   { key: 'tripCommand', label: '整理：前往整理處的指令／巨集（路線、鑑定全寫在這裡，最後要停在能 sell all 的地方；不要自己寫 sell all，工具會在標記好東西之後才送；可用 ; 與 @等待。前往與回程至少填一個才走自動整理）', type: 'text', default: '' },
+  { key: 'sortKeep', label: '整理：鑑定完要不要留好裝備（留＝好的 secure 或 give 給小號再賣其餘；全賣＝不看背包，直接 sell all，只有你自己 secure 過的不會賣）', type: 'select', options: [['keep', '留好裝備'], ['none', '全賣，不留']], default: 'keep' },
   { key: 'altId', label: '整理：小號的英文 ID（好東西 give 給它；不填就只用 secure 標記留在身上）', type: 'text', default: '' },
   { key: 'returnCommand', label: '整理：回到巡怪地圖的指令／巨集（回來後要在原本這一區才會繼續）', type: 'text', default: '' },
   { key: 'sortPerHour', label: '整理：每小時最多整理幾次（超過就停止並警報）', type: 'number', default: 6, min: 1, max: 60 },
@@ -301,7 +302,7 @@ function create(deps) {
     return splitIds(state.settings.endKeywords).filter(word => !knockout.includes(word));
   };
   function assistStart(here, info) {
-    state.assist = { here, buffer: '', quietTicks: 0, waited: 0, asking: false, stuck: 0, count: Infinity, silent: 0, sent: false, dead: false, tail: '' };
+    state.assist = { here, buffer: '', quietTicks: 0, waited: 0, asking: false, stuck: 0, count: Infinity, silent: 0, sent: false, dead: false, tail: '', loadTail: '' };
     state.phase = 'assist';
     assistJudge(info, true);
   }
@@ -336,6 +337,17 @@ function create(deps) {
     a.tail = '';
     if (!deps.send(`fight ${target.ref ?? target.id}`)) finish('指令送不出去，已停止', { alert: true });
   }
+  // 玩家的觸發送了 i 而且負重超標：結束這間的等待，下一次規劃時走既有的負重檢查與整理
+  function assistOverweight(load) {
+    if (load === null || !(state.settings.loadMaxPercent > 0) || load < state.settings.loadMaxPercent) return false;
+    console.log(`[catworld] 只下 fight：看到 i 的載重 ${load}%，達到 ${state.settings.loadMaxPercent}%，結束這間的等待去整理`);
+    state.load = load;
+    state.assist = null;
+    state.loadDue = true;
+    state.phase = 'plan';
+    deps.notify();
+    return true;
+  }
   function assistTick() {
     const a = state.assist;
     if (a.asking) return;
@@ -348,16 +360,7 @@ function create(deps) {
         const text = a.buffer;
         a.buffer = '';
         a.quietTicks = 0;
-        const load = Parse.parseLoad(text);
-        // 玩家的觸發送了 i 而且負重超標：結束這間的等待，下一次規劃時走既有的負重檢查與整理
-        if (load !== null && state.settings.loadMaxPercent > 0 && load >= state.settings.loadMaxPercent) {
-          state.load = load;
-          state.assist = null;
-          state.loadDue = true;
-          state.phase = 'plan';
-          deps.notify();
-          return;
-        }
+        if (assistOverweight(Parse.parseLoad(text))) return;
         const info = Parse.parseLook(text);
         if (info.exits.length) { assistJudge(info); return; }
       }
@@ -440,7 +443,13 @@ function create(deps) {
       if (eating.buffer.includes(state.settings.noMedicineKeyword)) { goHomeAndStop('沒藥了'); return; }
     }
     const assist = state?.assist;
-    if (assist && !assist.asking) { assist.buffer = (assist.buffer + text).slice(-6000); assist.quietTicks = 0; }
+    if (assist && !assist.asking) {
+      assist.buffer = (assist.buffer + text).slice(-6000);
+      assist.quietTicks = 0;
+      // 載重行一出現就判斷，不等輸出靜止：戰鬥中觸發送 i，輸出一直來、永遠不會靜止，等的話這行早被擠出緩衝
+      assist.loadTail = (assist.loadTail + text).slice(-200);
+      if (assistOverweight(Parse.parseLoad(assist.loadTail))) return;
+    }
     if (assist?.sent && !assist.dead) {
       assist.tail = (assist.tail + text).slice(-500);
       if (deathWords().some(word => assist.tail.includes(word))) {
@@ -793,15 +802,19 @@ function create(deps) {
         await pause(SORT_QUIET_MS);
       } finally { unwatchOut(); }
       if (ok === null || state !== token) return;
-            stage('inventory');
-      const items = Parse.parseInventory(await deps.ask('i', 'inventory'));
-      if (state !== token) return;
-      if (!items.length) { fail('讀不到背包（i 的輸出沒有物品），已停止，沒有賣東西'); return; }
-      const keepers = new Set((await deps.keepers(captured)).map(name => name.replace(/\s+/g, '')));
-      if (state !== token) return;
-      // 要留的：名稱對得上鑑定出的好裝備，而且還沒標記、不是穿著中的
-      const keep = items.filter(item => !item.marked && !item.worn && keepers.has(item.name.replace(/\s+/g, '')));
-      stage('keep');
+      // 全賣模式：不看背包、不標記、不轉給小號，鑑定完直接 sell all（已手動標記的仍不會賣）
+      let keep = [];
+      if (settings.sortKeep !== 'none') {
+        stage('inventory');
+        const items = Parse.parseInventory(await deps.ask('i', 'inventory'));
+        if (state !== token) return;
+        if (!items.length) { fail('讀不到背包（i 的輸出沒有物品），已停止，沒有賣東西'); return; }
+        const keepers = new Set((await deps.keepers(captured)).map(name => name.replace(/\s+/g, '')));
+        if (state !== token) return;
+        // 要留的：名稱對得上鑑定出的好裝備，而且還沒標記、不是穿著中的
+        keep = items.filter(item => !item.marked && !item.worn && keepers.has(item.name.replace(/\s+/g, '')));
+        stage('keep');
+      }
       for (const item of keep) {
         if (!SAFE_ID.test(item.id)) { fail(`物品 ID「${item.id}」不能放進指令，已停止，沒有賣東西`); return; }
         const kind = settings.altId ? 'give' : 'secure';
