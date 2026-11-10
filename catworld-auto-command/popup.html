@@ -41,7 +41,7 @@
     .rhead { font-size:11px; color:#777; margin-top:2px; }
     .add-item { margin-top:8px; width:100%; background:#f4f4f4; }
     .tabs { display:flex; gap:4px; background:#f0f0f0; border-radius:9px; padding:3px; margin-bottom:10px; }
-    .tabs button { padding:6px 0; background:transparent; color:#666; font-size:13px; }
+    .tabs button { padding:6px 0; background:transparent; color:#666; font-size:12px; white-space:nowrap; min-width:0; }
     .tabs button[aria-selected="true"] { background:#fff; color:#222; box-shadow:0 1px 3px rgba(0,0,0,.18); }
     [data-pane][hidden] { display:none; }
 
@@ -60,7 +60,7 @@
     .rule .numrange input { width:70px; margin:0; padding:2px 6px; }
     .cond { display:grid; grid-template-columns:64px 50px minmax(0, 1fr) 72px; gap:6px; align-items:center; margin-top:6px; }
     .cond select { padding:8px 4px; }
-    .pill { display:inline-block; border-radius:999px; padding:1px 9px; font-size:11px; font-weight:600; max-width:190px; }
+    .pill { display:inline-block; border-radius:12px; padding:1px 9px; font-size:11px; font-weight:600; max-width:190px; }
     .pill.ready { background:#dff3e6; color:#1f7a46; }
     .pill.waiting { background:#fdecc8; color:#8a5a00; }
     .pill.disabled { background:#fde2df; color:#b42318; }
@@ -97,6 +97,10 @@
     details.fold { border:1px solid #ddd; border-radius:9px; padding:0 10px; margin-top:10px; }
     details.fold[open] { padding-bottom:10px; }
     details.fold > summary { cursor:pointer; padding:8px 0; font-size:13px; font-weight:600; color:#222; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    details.group { border-color:#bbb; }
+    details.group > summary { font-size:14px; }
+    details.group > details.alertbox { margin-bottom:0; }
+    details.has-dep > summary::after { content:" ⚠"; color:#8a5a00; }
     .rule-summary { font-size:12px; color:#555; margin-top:4px; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .rule-summary[hidden], .rule-body[hidden] { display:none; }
     .fold-toggle { padding:2px 6px; }
@@ -114,6 +118,7 @@
     <button role="tab" id="tab-timer" data-tab="timer" aria-selected="true">定時送出</button>
     <button role="tab" id="tab-random" data-tab="random" aria-selected="false">隨機送出</button>
     <button role="tab" id="tab-idle" data-tab="idle" aria-selected="false">Idle</button>
+    <button role="tab" id="tab-settings" data-tab="settings" aria-selected="false">設定</button>
   </div>
 
   <div data-pane="timer">
@@ -129,7 +134,7 @@
     <label>指令間隔（毫秒）</label>
     <input id="commandDelayMs" type="number" min="0" value="500">
     <div class="buttons">
-      <button id="start">開始</button><button id="stop">停止</button>
+      <button id="start">開始</button><button id="stop">停止</button><button id="test">測試送出 ps</button>
     </div>
   </div>
 
@@ -167,13 +172,15 @@
       <label>現在從遊戲頁讀到的數值（讀不到顯示 —，該項不會觸發）</label>
       <div class="read" id="read-__G__"></div>
 
-      <label>觸發規則（各規則獨立判斷，同時成立就依序送出）</label>
-      <div id="rules-__G__"></div>
-      <div class="addrow">
-        <button id="addRule-__G__" class="add-rule" type="button">＋ 數值規則</button>
-        <button id="addKeyword-__G__" class="add-keyword" type="button">＋ 關鍵字規則</button>
-      </div>
-      <p class="hint">數值規則：精氣神等數值達到門檻就送指令。關鍵字規則：遊戲輸出區<b>新出現</b>的文字含有關鍵字（不分大小寫）就送指令；不看開始前的舊紀錄，也不看以 &gt; 開頭的指令回聲，冷卻期間出現的不會補送。<b>其他玩家說的話也可能含有關鍵字</b>，請用不容易被別人說出的詞；安全機制沒勾選時，冷卻是唯一的頻率限制。</p>
+      <details class="fold" id="fold-rules-__G__">
+        <summary id="rulesSummary-__G__">觸發規則</summary>
+        <label>觸發規則（各規則獨立判斷，同時成立就依序送出）</label>
+        <div id="rules-__G__"></div>
+        <div class="addrow">
+          <button id="addRule-__G__" class="add-rule" type="button">＋ 數值規則</button>
+          <button id="addKeyword-__G__" class="add-keyword" type="button">＋ 關鍵字規則</button>
+        </div>
+      </details>
 
       <details class="delaybox fold" id="fold-delay-__G__">
         <summary>命中後隨機延遲</summary>
@@ -215,229 +222,249 @@
       <div class="buttons">
         <button id="tstart-__G__" class="tstart-btn">開始觸發</button><button id="tstop-__G__" class="tstop-btn">停止觸發</button>
       </div>
-      <div class="hint">按開始時如果門檻已經達成，會立刻命中一次（再依上面的延遲設定送出）；之後要等數值回升到「回復條件」之上才會再次觸發。修改規則後要重新按「開始觸發」才會套用。驗證碼停止、重新整理遊戲頁、按停止，觸發都會一併停止。</div>
+      <details class="fold" id="fold-help-__G__">
+        <summary>觸發說明</summary>
+        <p class="hint">數值規則：精氣神等數值達到門檻就送指令。關鍵字規則：遊戲輸出區<b>新出現</b>的文字含有關鍵字（不分大小寫）就送指令；不看開始前的舊紀錄，也不看以 &gt; 開頭的指令回聲，冷卻期間出現的不會補送。<b>其他玩家說的話也可能含有關鍵字</b>，請用不容易被別人說出的詞；安全機制沒勾選時，冷卻是唯一的頻率限制。</p>
+        <p class="hint">按開始時如果門檻已經達成，會立刻命中一次（再依上面的延遲設定送出）；之後要等數值回升到「回復條件」之上才會再次觸發。修改規則後要重新按「開始觸發」才會套用。驗證碼停止、重新整理遊戲頁、按停止，觸發都會一併停止。</p>
+      </details>
   </template>
 
-  <details class="alertbox fold" id="sec-features">
-    <summary>輔助功能（預設全部關閉）</summary>
-    <div class="hint tight">勾了遊戲頁面板才會出現對應的列，改了馬上生效：</div>
-    <label class="check"><input id="featureMobs" type="checkbox"> 怪物查詢（適合的怪、怪物出現提示、走過去）</label>
-    <label class="check"><input id="featureItems" type="checkbox"> 無名物品鑑定提示與裝備比較</label>
-    <label class="check"><input id="featureRiddles" type="checkbox"> 解謎清單</label>
-    <label class="check"><input id="featureHunt" type="checkbox"> 地圖巡怪（面板的「巡怪」列：選怪、自動走到房間打怪；實驗中，預設關閉）</label>
-    <label class="check"><input id="featureMasters" type="checkbox"> 拜師導師搜尋（面板的「拜師」列：搜導師、功法、心法，看導師教什麼與怎麼走；預設關閉）</label>
-    <label class="check"><input id="featureWhisper" type="checkbox"> 密語區塊（置頂浮窗最上面顯示最近 5 句私聊並閃爍提醒；預設開啟）</label>
-    <label class="check">密語區塊的顏色
-      <select id="whisperColor">
-        <option value="orange">橘</option><option value="red">紅</option><option value="yellow">黃</option><option value="green">綠</option>
-        <option value="cyan">青</option><option value="blue">藍</option><option value="purple">紫</option><option value="pink">粉</option>
-      </select>
-    </label>
-    <label class="check"><input id="featureForceCap" type="checkbox"> 內力可練上限（打 hp 時多一行；上限 = (內功心法等級 ＋ enable 內功有效等級 ÷ 5) × 10，等級在你打 sk、enable 時記下；預設開啟）</label>
-    <label class="check"><input id="featureSkills" type="checkbox"> 招式列表（打 careers 時，把已悟的招式依資料列出來並上色）</label>
+  <div data-pane="settings" hidden>
+    <details class="group fold" id="grp-assist">
+      <summary>遊戲輔助（輔助功能、怪物、裝備、地圖、巡怪）</summary>
+      <details class="alertbox fold" id="sec-features">
+        <summary>輔助功能（預設全部關閉）</summary>
+        <div class="hint tight">勾了遊戲頁面板才會出現對應的列，改了馬上生效：</div>
+        <label class="check"><input id="featureMobs" type="checkbox"> 怪物查詢（適合的怪、怪物出現提示、走過去）</label>
+        <label class="check"><input id="featureItems" type="checkbox"> 無名物品鑑定提示與裝備比較</label>
+        <label class="check"><input id="featureRiddles" type="checkbox"> 解謎清單</label>
+        <label class="check"><input id="featureHunt" type="checkbox"> 地圖巡怪（面板的「巡怪」列：選怪、自動走到房間打怪；實驗中，預設關閉）</label>
+        <label class="check"><input id="featureMasters" type="checkbox"> 拜師導師搜尋（面板的「拜師」列：搜導師、功法、心法，看導師教什麼與怎麼走；預設關閉）</label>
+        <label class="check"><input id="featureWhisper" type="checkbox"> 密語區塊（置頂浮窗最上面顯示最近 5 句私聊並閃爍提醒；預設開啟）</label>
+        <label class="check">密語區塊的顏色
+          <select id="whisperColor">
+            <option value="orange">橘</option><option value="red">紅</option><option value="yellow">黃</option><option value="green">綠</option>
+            <option value="cyan">青</option><option value="blue">藍</option><option value="purple">紫</option><option value="pink">粉</option>
+          </select>
+        </label>
+        <label class="check"><input id="featureForceCap" type="checkbox"> 內力可練上限（打 hp 時多一行；上限 = (內功心法等級 ＋ enable 內功有效等級 ÷ 5) × 10，等級在你打 sk、enable 時記下；預設開啟）</label>
+        <label class="check"><input id="featureSkills" type="checkbox"> 招式列表（打 careers 時，把已悟的招式依資料列出來並上色）</label>
+        <button id="skills">悟招清單（新分頁開啟）</button>
+      </details>
+      <details class="alertbox fold" id="sec-grade">
+        <summary>怪物分級</summary>
+        <div class="row">
+          <div><label for="zapGreenMax">怪物分級：綠上限 q</label><input id="zapGreenMax" type="number" min="1.01" step="0.1"></div>
+          <div><label for="zapYellowMax">黃上限 q</label><input id="zapYellowMax" type="number" min="1.01" step="0.1"></div>
+        </div>
+        <p class="hint tight">q = 怪物強度×2 ÷ 目前經驗。q ≤ 1 白（打了沒潛能）；q ≤ 綠上限 綠；q ≤ 黃上限 黃；更高紅。遊戲沒有公開門檻，請對照遊戲裡的顏色調整。</p>
+      </details>
+      <details class="alertbox fold" id="sec-weapon">
+        <summary>主要武器與裝備比較</summary>
+        <label for="mainWeapon">主要武器類型</label>
+        <select id="mainWeapon"></select>
+        <p class="hint tight">用來判斷鑑定後的鑄模與材料是否適合你；未設定時只依等級建議（LV1～2 賣掉、LV3 以上留著）。</p>
+        <label class="check"><input id="keepEnabled" type="checkbox"> 附屬能力達到門檻就建議留下</label>
+        <div class="row"><div><label for="keepMin">門檻（屬性數值）</label><input id="keepMin" type="number" min="1" step="1"></div></div>
+        <p class="hint tight">預設關閉。開啟後，鑑定出的裝備只要有一條屬性的數值達到門檻（例如 +10 攻擊），就算傷害／防禦比現在穿的差、沒有基準或還不能穿，都標「屬性達門檻，建議留下」並排在最上面；重量、硬度、潛能、損修不算。</p>
+      </details>
+      <details class="alertbox fold" id="sec-mentor">
+        <summary>拜師導師路線</summary>
+        <div id="mentorInfo" class="hint tight">還沒有自己改過的路線</div>
+        <button id="mentorCopy">複製（可貼進試算表）</button>
+        <button id="mentorImportToggle">匯入…</button>
+        <button id="mentorClear">清除全部修改</button>
+        <div id="mentorImportBox" hidden>
+          <textarea id="mentorImportText" rows="4" placeholder="一行一筆：導師 [Tab] 功法 [Tab] 指令"></textarea>
+          <button id="mentorImportApply">匯入</button>
+        </div>
+        <div id="mentorMsg" class="hint tight"></div>
+        <p class="hint tight">在遊戲面板的「拜師」列改過的路線。複製出來每行一筆，Tab 分隔：導師、功法、指令（和 mentors.tsv 前三欄同格式），可以交給作者併進內建資料。匯入會加在現有修改上，同一個功法以匯入的為準；整份檢查通過才寫入。只存在這台瀏覽器的本機。</p>
+      </details>
+      <details class="alertbox fold" id="sec-map">
+        <summary>地圖怪物蒐集</summary>
+        <div id="mapCollectInfo" class="hint tight">尚無紀錄</div>
+        <button id="mapCollectCopy">複製（可貼進試算表）</button>
+        <button id="mapCollectClear">清除</button>
+        <div id="mapCollectMsg" class="hint tight"></div>
+        <p class="hint tight">遊戲頁的地圖視窗開著時，走進房間、輸出區印出怪物行（※名稱(ID)），就會記給你所在的房間（只增不減，重新整理遊戲頁也不會丟）：手動走一輪就蒐集得到。複製出來每列一個房間，Tab 分隔：區域代號、區域名稱、房間代號、怪物（名稱(ID)，逗號分隔）。只存在這台瀏覽器的本機。</p>
+      </details>
+      <details class="alertbox fold" id="sec-shop">
+        <summary>裝備資料庫（商人 check）</summary>
+        <label class="check"><input id="featureShop" type="checkbox"> 啟用裝備資料庫（預設關閉，勾了馬上生效）</label>
+        <label for="shopMinPrice">沒資料的商品，價格低於這個（單位 S）的不列入批次 check</label>
+        <input id="shopMinPrice" type="number" min="0" step="0.5">
+        <p class="hint tight">預設 5S。便宜的多半是食物、藥草這類非裝備，check 要錢又沒用；填 0 就全部都 check。只影響「還沒蒐集的」批次，已經有資料、推薦的裝備不受影響。</p>
+        <label for="shopBuyNames">快速購買的商品名稱（list 裡出現就多一顆「買全部符合的」按鈕）</label>
+        <input id="shopBuyNames" type="text" autocomplete="off" placeholder="無名物品、無名藥草、不知名藥草">
+        <p class="hint tight">用「、」、逗號或分號分隔，名稱要和 list 裡一樣。list 裡符合的商品，每個編號各 buy 一次（遊戲的 buy 不能帶數量），一顆按鈕全部送出，最多一次 20 個，不再確認，所以名稱請填準。留空＝不出現購買鈕。</p>
+        <label for="shopSkipNames">不 check 的商品名稱（名稱含這些字就略過）</label>
+        <input id="shopSkipNames" type="text" autocomplete="off" placeholder="赤兔馬、白馬、烏黑駒、自由行走的花的赤兔馬">
+        <p class="hint tight">用「、」、逗號或分號分隔；名稱只要<b>含有</b>其中一個詞就不 check（例如填「赤兔馬」連「自由行走的花的赤兔馬」也會略過）。略過的不進批次 check、不算沒蒐集，摘要會註明略過幾件。留空＝都不略過。</p>
+        <div id="shopInfo" class="hint tight">尚無紀錄</div>
+        <button id="shopCopy">複製（可貼進試算表）</button>
+        <button id="shopClear">清除</button>
+        <div id="shopMsg" class="hint tight"></div>
+        <p class="hint tight">在商人面前自己打 check 編號，輸出的裝備資料（類別、傷害／防禦、佩帶經驗、屬性）就會記下來，以名稱為鍵、不分店、後讀的覆蓋舊的；check 要付錢，工具不會代你送。每次記下來，輸出下面會回報一行（記了哪件、資料庫共幾件）；打 list 時，輸出下面會多一塊摘要：這一頁「建議 check」的編號（穿得了、佩帶經驗比現在穿的高；同名裝備的傷害屬性可能不同，所以只看等級，check 之後才用實際數值比），以及還沒蒐集的編號，兩者都有批次 check 按鈕。整個功能要先勾上面的「啟用裝備資料庫」才會作用（預設關閉，沒勾時不記錄、輸出裡也不會多任何東西）；比較好的判斷還要用面板的「讀取目前穿著」讀過穿著。</p>
+      </details>
+      <details class="alertbox fold" id="sec-hunt">
+        <summary>地圖巡怪</summary>
+        <p class="hint tight">面板「巡怪」列先按「選怪」勾選要巡的怪（可以多隻），按「開始」時，會把勾選的怪和地圖目前顯示的區域固定下來，一間一間走到蒐集到這些怪的房間。以下欄位改了就存，下次按「開始」生效。</p>
+        <div id="huntFields"></div>
+        <div id="huntNpcs" class="hint tight"></div>
+        <button id="huntNpcClear" type="button">清除已學到的 NPC</button>
+        <p class="hint tight">到目標房間會先送 <code>l</code>，房間裡有別人就略過那間。沒見過的英文 ID 會送 <code>finger</code> 分辨：玩家就略過，找不到就當 NPC 記下來（上面清單），之後不再問；沒回應或讀不懂一律當玩家。固定的 NPC 也可以手動填在上面的「NPC 白名單」。</p>
+      </details>
+    </details>
+    <details class="group fold" id="grp-auto">
+      <summary>自動回覆與獎勵（聊天回覆、劇本、在線獎勵）</summary>
+      <details class="alertbox fold" id="sec-reward">
+        <summary>在線獎勵</summary>
+        <label class="check"><input id="autoReward" type="checkbox"> 在線獎勵自動領取</label>
+        <p class="hint tight">預設開啟。打 sc 後看到「在線獎勵： N分鐘後可領取」，就在 N+1 分鐘後自動送出 reward（驗證碼照常自動辨識）；已經在等的時候再打 sc 不會重複排，重新整理遊戲頁會取消。</p>
+      </details>
+      <details class="alertbox fold" id="sec-chat">
+        <summary>聊天回覆</summary>
+        <label class="check"><input id="chatReplyOn" type="checkbox"> 有人私訊我時，用資料集裡相似對話的回覆自動回話</label>
+        <div class="row">
+          <div><label for="chatThreshold">相似度門檻（0.1～1）</label><input id="chatThreshold" type="number" min="0.1" max="1" step="0.05"></div>
+          <div><label for="chatCooldown">同一個人的冷卻（秒，0～3600）</label><input id="chatCooldown" type="number" min="0" max="3600" step="1"></div>
+          <div><label for="chatPerHour">每小時最多回幾則（1～100）</label><input id="chatPerHour" type="number" min="1" max="100" step="1"></div>
+          <div><label for="chatDelayMin">看到後最快幾秒回（0～300）</label><input id="chatDelayMin" type="number" min="0" max="300" step="1"></div>
+          <div><label for="chatDelayMax">最慢幾秒回（0～300）</label><input id="chatDelayMax" type="number" min="0" max="300" step="1"></div>
+        </div>
+        <div id="chatPairsInfo" class="hint tight">還沒有資料</div>
+        <div id="chatPairsList" class="chat-pairs" hidden></div>
+        <button id="chatPairsCopy">複製（匯出文字）</button>
+        <button id="chatPairsImportToggle">匯入…</button>
+        <button id="chatPairsClear">清除全部</button>
+        <div id="chatPairsImportBox" hidden>
+          <textarea id="chatPairsImportText" rows="4" placeholder="一行一筆：對方說 [Tab] 我回"></textarea>
+          <button id="chatPairsImportApply">匯入</button>
+        </div>
+        <div id="chatPairsMsg" class="hint tight"></div>
+        <p class="hint tight">預設關閉。只回別人對你說的私聊（[P]暱稱回答你：…），在資料集裡找最相似的一句，相似度達到門檻才回，隔 3～10 秒隨機延遲後用 reply 送出。同一個人冷卻中、同一個人 10 分鐘內重複說同一句、或超過每小時上限都不回；驗證碼處理中或按了停止也不送。資料集是你自己的對話（對方說一句、你在 2 分鐘內回一句），一律自動記錄，不受這個開關影響。數字超出範圍會限制在範圍內，留白或不是數字則退回預設值。匯出／匯入是一行一筆「對方說 Tab 我回」，舊的在前；匯入先檢查整份，有一行不合格就整份不收，合格的接在現有資料後面當最新的（同樣的一組不重複，超過 500 筆丟最舊的）。</p>
+      </details>
+      <details class="alertbox fold" id="sec-script">
+        <summary>劇本對話</summary>
+        <label class="check"><input id="scriptOn" type="checkbox"> 開啟劇本對話（兩個帳號用 tell 照劇本聊天）</label>
+        <div class="row">
+          <div><label for="scriptRole">這台電腦的角色</label><select id="scriptRole"><option value="A">A（開場）</option><option value="B">B（接話）</option></select></div>
+          <div><label for="scriptPartner">對方的英文 ID（tell 用）</label><input id="scriptPartner" type="text" maxlength="30"></div>
+          <div><label for="scriptPartnerName">對方的角色名（選填）</label><input id="scriptPartnerName" type="text" maxlength="20"></div>
+          <div><label for="scriptPerDay">每天最多幾場（0～99）</label><input id="scriptPerDay" type="number" min="0" max="99" step="1"></div>
+          <div><label for="scriptTypoRate">錯字機率（每一輪，0～100%）</label><input id="scriptTypoRate" type="number" min="0" max="100" step="1"></div>
+        </div>
+        <label for="sharedChatUrl">劇本試算表分頁的 CSV 連結（選填，沒填只用內建劇本）</label>
+        <input id="sharedChatUrl" type="text" autocomplete="off" placeholder="https://docs.google.com/spreadsheets/…output=csv">
+        <div id="sharedChatResult" class="hint tight">尚未設定</div>
+        <div id="sharedChatDetail" class="hint tight detail" hidden></div>
+        <button id="sharedChatRefresh">立即更新</button>
+        <div id="scriptStatus" class="hint tight"></div>
+        <button id="scriptStart">現在開一場</button>
+        <div id="scriptMsg" class="hint tight"></div>
+        <p class="hint tight">預設關閉。A 按「現在開一場」先說第一輪；B 看到對方傳來的 tell 像劇本的第一輪就接話，之後一人一輪。劇本裡的 {對方} 會換成這裡填的角色名，請填遊戲頁標題「角色名 - …」那個名字，不然對方認不出來。每一輪會以「錯字機率」在其中一則（至少 6 個字）打錯一個字，緊接著補一則「*正確的字」更正；每天場數：A 開場、B 開始接話都算一場，依這台電腦的日期計數，隔天歸零，用完 A 不能開場、B 不接新場；A 挑劇本會避開最近用過的 5 份。劇本來自上面的試算表連結（共用的在前、內建的補在後面，兩台電腦要填同一份）；整份劇本只要有一處不合規定就整份不採用，逐列列在連結下面。填 0 就不打錯字，超出範圍會限制在範圍內，留白或不是數字則退回預設 3。</p>
+      </details>
+    </details>
+    <details class="group fold" id="grp-alert">
+      <summary>警報與安全（提示音、停止關鍵字、手機通知、驗證碼）</summary>
+      <details class="alertbox fold" id="sec-alert">
+        <summary>警報提示音</summary>
+        <label class="check"><input id="persistentAlert" type="checkbox"> 警報提示音一直響，按「確認」才停</label>
+        <p class="hint tight">預設關閉＝原本的行為：每 10 秒響一次、最多 5 分鐘，回到遊戲頁點一下、按鍵或按「開始」就停。開啟後不會自己停，要按遊戲頁面板標題列（或系統通知上）的「確認」才會停，標題也會一直閃。</p>
+        <button id="beep">測試提示音</button>
+      </details>
+      <details class="alertbox fold" id="sec-stopwords">
+        <summary>停止關鍵字</summary>
+        <label class="check"><input id="stopKeywordsOn" type="checkbox"> 遊戲輸出出現關鍵字就停止所有功能並警報</label>
+        <label for="stopKeywordsList">關鍵字（可填多個，用「、」或空行分隔；一個詞可以有好幾行，直接貼多行的輸出進來（逗號、分號不分隔））</label>
+        <textarea id="stopKeywordsList" rows="3"></textarea>
+        <p class="hint tight">預設開啟，預設只有 jrealm。遊戲輸出（輸出區新出現的文字）含清單裡任何一個詞（不分大小寫）就停止定時、隨機、所有觸發、巨集、巡怪，響一次並跳通知；閒置時也會提醒。輸出分批到或詞中間換行也看得到（最近 5 秒的新增文字會接起來比對，忽略空白與換行）；自己打的指令的回聲（以 &gt; 開頭的行）不算；同一個命中 10 秒內不重複。清單清空就不會命中。</p>
+      </details>
+      <details class="alertbox fold" id="sec-line">
+        <summary>手機通知（LINE）</summary>
+        <label for="lineToken">Channel access token</label>
+        <input id="lineToken" type="password" autocomplete="off">
+        <label for="lineUserId">User ID</label>
+        <input id="lineUserId" type="password" autocomplete="off">
+        <label class="check"><input id="lineEnabled" type="checkbox"> 警報時也推播到手機（需先填好 token 與 userId）</label>
+        <div class="row">
+          <div><label for="lineDedupe">同原因幾分鐘內只推一次</label><input id="lineDedupe" type="number" min="1" step="1" value="10"></div>
+          <div><label for="lineHourly">每小時最多推幾則</label><input id="lineHourly" type="number" min="1" step="1" value="10"></div>
+        </div>
+        <div id="lineSkipped" class="hint tight">已略過 0 則</div>
+        <button id="lineTest">發送測試訊息</button>
+        <div id="lineResult" class="hint tight">尚未發送</div>
+        <p class="hint tight">只存在這台瀏覽器的本機，不會同步或匯出。請用自己的 LINE 官方帳號（Messaging API）的 token 與你的 userId。</p>
+      </details>
+      <details class="alertbox fold" id="sec-captcha">
+        <summary>驗證碼樣本收集</summary>
+        <label for="captchaSampleUrl">Google Apps Script 網頁應用程式的網址（空白＝不收集）</label>
+        <input id="captchaSampleUrl" type="text" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec">
+        <div id="captchaSampleResult" class="hint tight">尚未送出</div>
+        <p class="hint tight">每次驗證碼自動辨識結束（通過、送 3 次都沒回應、讀不出數字）就把那張圖的 HTML 與結果送到這個網址，用來補字形庫。安裝時帶入的是作者的收集表；不想分享就清空（清空後不會再帶入），要收進自己的試算表見 README。HTML 可能含圖前幾行的遊戲輸出，例如狀態卡裡的角色名。網址只存在這台瀏覽器的本機，不會匯出。</p>
+      </details>
+    </details>
+    <details class="group fold" id="grp-data">
+      <summary>資料與連線（共用資料、額外網址、設定備份）</summary>
+      <details class="alertbox fold" id="sec-shared">
+        <summary>共用資料（Google 試算表）</summary>
+        <div id="sharedOff" class="hint tight msg-warn" hidden>怪物查詢與解謎都關著，不會抓取共用資料（上面是上次抓到的結果）。</div>
+        <label for="sharedMobUrl">怪物路線分頁的 CSV 連結</label>
+        <input id="sharedMobUrl" type="text" autocomplete="off" placeholder="https://docs.google.com/spreadsheets/…output=csv">
+        <div id="sharedMobResult" class="hint tight">尚未設定</div>
+        <div id="sharedMobDetail" class="hint tight detail" hidden></div>
+        <label for="sharedRiddleUrl">解謎指令分頁的 CSV 連結</label>
+        <input id="sharedRiddleUrl" type="text" autocomplete="off" placeholder="https://docs.google.com/spreadsheets/…output=csv">
+        <div id="sharedRiddleResult" class="hint tight">尚未設定</div>
+        <div id="sharedRiddleDetail" class="hint tight detail" hidden></div>
+        <button id="sharedRefresh">立即更新</button>
+        <p class="hint tight">大家共同維護的路線：優先順序是個人 &gt; 共用 &gt; 內建。連結只存在這台瀏覽器的本機，不會匯出。</p>
+      </details>
+      <details class="alertbox fold" id="sec-extra">
+        <summary>額外的遊戲網址（臨時）</summary>
+        <p class="hint tight">讓面板也出現在別的網站上，例如 ngrok 的臨時網址。貼上網址按「新增」，Chrome 會問你要不要讓這個 extension 存取那個網站，按「允許」才會生效；用完按「移除」。新增或移除後，要到那個網站的分頁重新整理。只存在這台瀏覽器的本機，不會匯出。</p>
+        <label for="extraUrl">網址（整個網站都會算，port 會被忽略）</label>
+        <input id="extraUrl" type="text" autocomplete="off" placeholder="https://xxxx.ngrok-free.app">
+        <button id="extraAdd" type="button">新增</button>
+        <div id="extraMessage" class="hint tight"></div>
+        <div id="extraList"></div>
+      </details>
+      <details class="alertbox fold" id="sec-backup">
+        <summary>設定備份</summary>
+        <div class="hint tight">匯出哪些區塊：</div>
+        <div id="backupBlocks"></div>
+        <label><input type="checkbox" id="backupSecrets"> 連同 LINE 憑證與樣本收集網址一起匯出</label>
+        <div id="backupSecretWarn" class="msg-warn" hidden>這份檔案含有 LINE token、userId 與樣本收集網址，等於密碼：不要傳給別人、不要貼到公開的地方。</div>
+        <button id="backupCopy">複製</button>
+        <button id="backupDownload">下載檔案</button>
+        <textarea id="backupFallback" rows="4" readonly hidden></textarea>
+        <div id="backupMsg" class="hint tight"></div>
+        <div class="hint">匯入（貼上匯出的文字，或選檔）：</div>
+        <textarea id="backupImportText" rows="4" placeholder="貼上匯出的設定 JSON"></textarea>
+        <input type="file" id="backupImportFile" accept=".json,application/json">
+        <div id="backupImportMsg" class="hint tight"></div>
+        <button id="backupRestore" disabled>還原上一份</button>
+        <div class="hint tight">每次確認匯入前，會先把被動到的設定存成一份備份（只留最近一份，不會匯出）；匯入出錯或後悔時按「還原上一份」。</div>
+        <div id="backupImportPlan" hidden>
+          <div class="hint tight">將覆蓋這些區塊（取消勾選的不動）：</div>
+          <div id="backupImportBlocks"></div>
+          <div id="backupImportSecretsRow" hidden>
+            <label><input type="checkbox" id="backupImportSecrets"> LINE 憑證與樣本收集網址（檔案裡有）</label>
+            <div class="msg-warn">勾選後，現有的這兩項會被檔案裡的取代，檔案裡沒有的會被清掉。</div>
+          </div>
+          <div class="hint tight">被覆蓋的區塊，現有設定會整個被取代，檔案裡沒有的項目會被清掉。</div>
+          <button id="backupImportApply">確認匯入</button>
+          <button id="backupImportCancel">取消</button>
+        </div>
+        <p class="hint tight">把設定與累積資料（地圖怪物、商人裝備、個人路線、聊天配對…）匯出成一份 JSON。預設不含 LINE 憑證與樣本收集網址；執行狀態、快取與各裝置自己的版面（面板位置、視窗大小）不會匯出。遊戲的巨集有自己的匯入匯出，不在這裡。</p>
+      </details>
+    </details>
+  </div>
+  <details class="fold" id="fold-notes">
+    <summary>使用說明</summary>
+    <p class="hint tight">出現驗證碼（「請輸入上方的數字」或數字圖）會先自動辨識並送出，讀不出數字或送 3 次都沒回應才停止；停了請先手動完成驗證，再按開始。舊紀錄不會重複觸發。需在 CatWorld Web 分頁使用。重新整理遊戲頁後會自動停止，避免意外持續執行。</p>
   </details>
-  <details class="alertbox fold" id="sec-alert">
-    <summary>警報提示音</summary>
-    <label class="check"><input id="persistentAlert" type="checkbox"> 警報提示音一直響，按「確認」才停</label>
-    <p class="hint tight">預設關閉＝原本的行為：每 10 秒響一次、最多 5 分鐘，回到遊戲頁點一下、按鍵或按「開始」就停。開啟後不會自己停，要按遊戲頁面板標題列（或系統通知上）的「確認」才會停，標題也會一直閃。</p>
-  </details>
-  <details class="alertbox fold" id="sec-stopwords">
-    <summary>停止關鍵字</summary>
-    <label class="check"><input id="stopKeywordsOn" type="checkbox"> 遊戲輸出出現關鍵字就停止所有功能並警報</label>
-    <label for="stopKeywordsList">關鍵字（可填多個，用「、」或空行分隔；一個詞可以有好幾行，直接貼多行的輸出進來（逗號、分號不分隔））</label>
-    <textarea id="stopKeywordsList" rows="3"></textarea>
-    <p class="hint tight">預設開啟，預設只有 jrealm。遊戲輸出（輸出區新出現的文字）含清單裡任何一個詞（不分大小寫）就停止定時、隨機、所有觸發、巨集、巡怪，響一次並跳通知；閒置時也會提醒。輸出分批到或詞中間換行也看得到（最近 5 秒的新增文字會接起來比對，忽略空白與換行）；自己打的指令的回聲（以 &gt; 開頭的行）不算；同一個命中 10 秒內不重複。清單清空就不會命中。</p>
-  </details>
-  <details class="alertbox fold" id="sec-chat">
-    <summary>聊天回覆</summary>
-    <label class="check"><input id="chatReplyOn" type="checkbox"> 有人私訊我時，用資料集裡相似對話的回覆自動回話</label>
-    <div class="row">
-      <div><label for="chatThreshold">相似度門檻（0.1～1）</label><input id="chatThreshold" type="number" min="0.1" max="1" step="0.05"></div>
-      <div><label for="chatCooldown">同一個人的冷卻（秒，0～3600）</label><input id="chatCooldown" type="number" min="0" max="3600" step="1"></div>
-      <div><label for="chatPerHour">每小時最多回幾則（1～100）</label><input id="chatPerHour" type="number" min="1" max="100" step="1"></div>
-      <div><label for="chatDelayMin">看到後最快幾秒回（0～300）</label><input id="chatDelayMin" type="number" min="0" max="300" step="1"></div>
-      <div><label for="chatDelayMax">最慢幾秒回（0～300）</label><input id="chatDelayMax" type="number" min="0" max="300" step="1"></div>
-    </div>
-    <div id="chatPairsInfo" class="hint tight">還沒有資料</div>
-    <div id="chatPairsList" class="chat-pairs" hidden></div>
-    <button id="chatPairsCopy">複製（匯出文字）</button>
-    <button id="chatPairsImportToggle">匯入…</button>
-    <button id="chatPairsClear">清除全部</button>
-    <div id="chatPairsImportBox" hidden>
-      <textarea id="chatPairsImportText" rows="4" placeholder="一行一筆：對方說 [Tab] 我回"></textarea>
-      <button id="chatPairsImportApply">匯入</button>
-    </div>
-    <div id="chatPairsMsg" class="hint tight"></div>
-    <p class="hint tight">預設關閉。只回別人對你說的私聊（[P]暱稱回答你：…），在資料集裡找最相似的一句，相似度達到門檻才回，隔 3～10 秒隨機延遲後用 reply 送出。同一個人冷卻中、同一個人 10 分鐘內重複說同一句、或超過每小時上限都不回；驗證碼處理中或按了停止也不送。資料集是你自己的對話（對方說一句、你在 2 分鐘內回一句），一律自動記錄，不受這個開關影響。數字超出範圍會限制在範圍內，留白或不是數字則退回預設值。匯出／匯入是一行一筆「對方說 Tab 我回」，舊的在前；匯入先檢查整份，有一行不合格就整份不收，合格的接在現有資料後面當最新的（同樣的一組不重複，超過 500 筆丟最舊的）。</p>
-  </details>
-  <details class="alertbox fold" id="sec-script">
-    <summary>劇本對話</summary>
-    <label class="check"><input id="scriptOn" type="checkbox"> 開啟劇本對話（兩個帳號用 tell 照劇本聊天）</label>
-    <div class="row">
-      <div><label for="scriptRole">這台電腦的角色</label><select id="scriptRole"><option value="A">A（開場）</option><option value="B">B（接話）</option></select></div>
-      <div><label for="scriptPartner">對方的英文 ID（tell 用）</label><input id="scriptPartner" type="text" maxlength="30"></div>
-      <div><label for="scriptPartnerName">對方的角色名（選填）</label><input id="scriptPartnerName" type="text" maxlength="20"></div>
-      <div><label for="scriptPerDay">每天最多幾場（0～99）</label><input id="scriptPerDay" type="number" min="0" max="99" step="1"></div>
-      <div><label for="scriptTypoRate">錯字機率（每一輪，0～100%）</label><input id="scriptTypoRate" type="number" min="0" max="100" step="1"></div>
-    </div>
-    <label for="sharedChatUrl">劇本試算表分頁的 CSV 連結（選填，沒填只用內建劇本）</label>
-    <input id="sharedChatUrl" type="text" autocomplete="off" placeholder="https://docs.google.com/spreadsheets/…output=csv">
-    <div id="sharedChatResult" class="hint tight">尚未設定</div>
-    <div id="sharedChatDetail" class="hint tight detail" hidden></div>
-    <button id="sharedChatRefresh">立即更新</button>
-    <div id="scriptStatus" class="hint tight"></div>
-    <button id="scriptStart">現在開一場</button>
-    <div id="scriptMsg" class="hint tight"></div>
-    <p class="hint tight">預設關閉。A 按「現在開一場」先說第一輪；B 看到對方傳來的 tell 像劇本的第一輪就接話，之後一人一輪。劇本裡的 {對方} 會換成這裡填的角色名，請填遊戲頁標題「角色名 - …」那個名字，不然對方認不出來。每一輪會以「錯字機率」在其中一則（至少 6 個字）打錯一個字，緊接著補一則「*正確的字」更正；每天場數：A 開場、B 開始接話都算一場，依這台電腦的日期計數，隔天歸零，用完 A 不能開場、B 不接新場；A 挑劇本會避開最近用過的 5 份。劇本來自上面的試算表連結（共用的在前、內建的補在後面，兩台電腦要填同一份）；整份劇本只要有一處不合規定就整份不採用，逐列列在連結下面。填 0 就不打錯字，超出範圍會限制在範圍內，留白或不是數字則退回預設 3。</p>
-  </details>
-  <details class="alertbox fold" id="sec-reward">
-    <summary>在線獎勵</summary>
-    <label class="check"><input id="autoReward" type="checkbox"> 在線獎勵自動領取</label>
-    <p class="hint tight">預設開啟。打 sc 後看到「在線獎勵： N分鐘後可領取」，就在 N+1 分鐘後自動送出 reward（驗證碼照常自動辨識）；已經在等的時候再打 sc 不會重複排，重新整理遊戲頁會取消。</p>
-  </details>
-  <details class="alertbox fold" id="sec-grade">
-    <summary>怪物分級</summary>
-    <div class="row">
-      <div><label for="zapGreenMax">怪物分級：綠上限 q</label><input id="zapGreenMax" type="number" min="1.01" step="0.1"></div>
-      <div><label for="zapYellowMax">黃上限 q</label><input id="zapYellowMax" type="number" min="1.01" step="0.1"></div>
-    </div>
-    <p class="hint tight">q = 怪物強度×2 ÷ 目前經驗。q ≤ 1 白（打了沒潛能）；q ≤ 綠上限 綠；q ≤ 黃上限 黃；更高紅。遊戲沒有公開門檻，請對照遊戲裡的顏色調整。</p>
-  </details>
-  <details class="alertbox fold" id="sec-weapon">
-    <summary>主要武器與裝備比較</summary>
-    <label for="mainWeapon">主要武器類型</label>
-    <select id="mainWeapon"></select>
-    <p class="hint tight">用來判斷鑑定後的鑄模與材料是否適合你；未設定時只依等級建議（LV1～2 賣掉、LV3 以上留著）。</p>
-    <label class="check"><input id="keepEnabled" type="checkbox"> 附屬能力達到門檻就建議留下</label>
-    <div class="row"><div><label for="keepMin">門檻（屬性數值）</label><input id="keepMin" type="number" min="1" step="1"></div></div>
-    <p class="hint tight">預設關閉。開啟後，鑑定出的裝備只要有一條屬性的數值達到門檻（例如 +10 攻擊），就算傷害／防禦比現在穿的差、沒有基準或還不能穿，都標「屬性達門檻，建議留下」並排在最上面；重量、硬度、潛能、損修不算。</p>
-  </details>
-  <details class="alertbox fold" id="sec-shared">
-    <summary>共用資料（Google 試算表）</summary>
-    <div id="sharedOff" class="hint tight msg-warn" hidden>怪物查詢與解謎都關著，不會抓取共用資料（上面是上次抓到的結果）。</div>
-    <label for="sharedMobUrl">怪物路線分頁的 CSV 連結</label>
-    <input id="sharedMobUrl" type="text" autocomplete="off" placeholder="https://docs.google.com/spreadsheets/…output=csv">
-    <div id="sharedMobResult" class="hint tight">尚未設定</div>
-    <div id="sharedMobDetail" class="hint tight detail" hidden></div>
-    <label for="sharedRiddleUrl">解謎指令分頁的 CSV 連結</label>
-    <input id="sharedRiddleUrl" type="text" autocomplete="off" placeholder="https://docs.google.com/spreadsheets/…output=csv">
-    <div id="sharedRiddleResult" class="hint tight">尚未設定</div>
-    <div id="sharedRiddleDetail" class="hint tight detail" hidden></div>
-    <button id="sharedRefresh">立即更新</button>
-    <p class="hint tight">大家共同維護的路線：優先順序是個人 &gt; 共用 &gt; 內建。連結只存在這台瀏覽器的本機，不會匯出。</p>
-  </details>
-  <details class="alertbox fold" id="sec-map">
-    <summary>地圖怪物蒐集</summary>
-    <div id="mapCollectInfo" class="hint tight">尚無紀錄</div>
-    <button id="mapCollectCopy">複製（可貼進試算表）</button>
-    <button id="mapCollectClear">清除</button>
-    <div id="mapCollectMsg" class="hint tight"></div>
-    <p class="hint tight">遊戲頁的地圖視窗開著時，走進房間、輸出區印出怪物行（※名稱(ID)），就會記給你所在的房間（只增不減，重新整理遊戲頁也不會丟）：手動走一輪就蒐集得到。複製出來每列一個房間，Tab 分隔：區域代號、區域名稱、房間代號、怪物（名稱(ID)，逗號分隔）。只存在這台瀏覽器的本機。</p>
-  </details>
-  <details class="alertbox fold" id="sec-mentor">
-    <summary>拜師導師路線</summary>
-    <div id="mentorInfo" class="hint tight">還沒有自己改過的路線</div>
-    <button id="mentorCopy">複製（可貼進試算表）</button>
-    <button id="mentorImportToggle">匯入…</button>
-    <button id="mentorClear">清除全部修改</button>
-    <div id="mentorImportBox" hidden>
-      <textarea id="mentorImportText" rows="4" placeholder="一行一筆：導師 [Tab] 功法 [Tab] 指令"></textarea>
-      <button id="mentorImportApply">匯入</button>
-    </div>
-    <div id="mentorMsg" class="hint tight"></div>
-    <p class="hint tight">在遊戲面板的「拜師」列改過的路線。複製出來每行一筆，Tab 分隔：導師、功法、指令（和 mentors.tsv 前三欄同格式），可以交給作者併進內建資料。匯入會加在現有修改上，同一個功法以匯入的為準；整份檢查通過才寫入。只存在這台瀏覽器的本機。</p>
-  </details>
-  <details class="alertbox fold" id="sec-shop">
-    <summary>裝備資料庫（商人 check）</summary>
-    <label class="check"><input id="featureShop" type="checkbox"> 啟用裝備資料庫（預設關閉，勾了馬上生效）</label>
-    <label for="shopMinPrice">沒資料的商品，價格低於這個（單位 S）的不列入批次 check</label>
-    <input id="shopMinPrice" type="number" min="0" step="0.5">
-    <p class="hint tight">預設 5S。便宜的多半是食物、藥草這類非裝備，check 要錢又沒用；填 0 就全部都 check。只影響「還沒蒐集的」批次，已經有資料、推薦的裝備不受影響。</p>
-    <label for="shopBuyNames">快速購買的商品名稱（list 裡出現就多一顆「買全部符合的」按鈕）</label>
-    <input id="shopBuyNames" type="text" autocomplete="off" placeholder="無名物品、無名藥草、不知名藥草">
-    <p class="hint tight">用「、」、逗號或分號分隔，名稱要和 list 裡一樣。list 裡符合的商品，每個編號各 buy 一次（遊戲的 buy 不能帶數量），一顆按鈕全部送出，最多一次 20 個，不再確認，所以名稱請填準。留空＝不出現購買鈕。</p>
-    <label for="shopSkipNames">不 check 的商品名稱（名稱含這些字就略過）</label>
-    <input id="shopSkipNames" type="text" autocomplete="off" placeholder="赤兔馬、白馬、烏黑駒、自由行走的花的赤兔馬">
-    <p class="hint tight">用「、」、逗號或分號分隔；名稱只要<b>含有</b>其中一個詞就不 check（例如填「赤兔馬」連「自由行走的花的赤兔馬」也會略過）。略過的不進批次 check、不算沒蒐集，摘要會註明略過幾件。留空＝都不略過。</p>
-    <div id="shopInfo" class="hint tight">尚無紀錄</div>
-    <button id="shopCopy">複製（可貼進試算表）</button>
-    <button id="shopClear">清除</button>
-    <div id="shopMsg" class="hint tight"></div>
-    <p class="hint tight">在商人面前自己打 check 編號，輸出的裝備資料（類別、傷害／防禦、佩帶經驗、屬性）就會記下來，以名稱為鍵、不分店、後讀的覆蓋舊的；check 要付錢，工具不會代你送。每次記下來，輸出下面會回報一行（記了哪件、資料庫共幾件）；打 list 時，輸出下面會多一塊摘要：這一頁「建議 check」的編號（穿得了、佩帶經驗比現在穿的高；同名裝備的傷害屬性可能不同，所以只看等級，check 之後才用實際數值比），以及還沒蒐集的編號，兩者都有批次 check 按鈕。整個功能要先勾上面的「啟用裝備資料庫」才會作用（預設關閉，沒勾時不記錄、輸出裡也不會多任何東西）；比較好的判斷還要用面板的「讀取目前穿著」讀過穿著。</p>
-  </details>
-  <details class="alertbox fold" id="sec-hunt">
-    <summary>地圖巡怪</summary>
-    <p class="hint tight">面板「巡怪」列先按「選怪」勾選要巡的怪（可以多隻），按「開始」時，會把勾選的怪和地圖目前顯示的區域固定下來，一間一間走到蒐集到這些怪的房間。以下欄位改了就存，下次按「開始」生效。</p>
-    <div id="huntFields"></div>
-    <div id="huntNpcs" class="hint tight"></div>
-    <button id="huntNpcClear" type="button">清除已學到的 NPC</button>
-    <p class="hint tight">到目標房間會先送 <code>l</code>，房間裡有別人就略過那間。沒見過的英文 ID 會送 <code>finger</code> 分辨：玩家就略過，找不到就當 NPC 記下來（上面清單），之後不再問；沒回應或讀不懂一律當玩家。固定的 NPC 也可以手動填在上面的「NPC 白名單」。</p>
-  </details>
-  <details class="alertbox fold" id="sec-extra">
-    <summary>額外的遊戲網址（臨時）</summary>
-    <p class="hint tight">讓面板也出現在別的網站上，例如 ngrok 的臨時網址。貼上網址按「新增」，Chrome 會問你要不要讓這個 extension 存取那個網站，按「允許」才會生效；用完按「移除」。新增或移除後，要到那個網站的分頁重新整理。只存在這台瀏覽器的本機，不會匯出。</p>
-    <label for="extraUrl">網址（整個網站都會算，port 會被忽略）</label>
-    <input id="extraUrl" type="text" autocomplete="off" placeholder="https://xxxx.ngrok-free.app">
-    <button id="extraAdd" type="button">新增</button>
-    <div id="extraMessage" class="hint tight"></div>
-    <div id="extraList"></div>
-  </details>
-  <details class="alertbox fold" id="sec-backup">
-    <summary>設定備份</summary>
-    <div class="hint tight">匯出哪些區塊：</div>
-    <div id="backupBlocks"></div>
-    <label><input type="checkbox" id="backupSecrets"> 連同 LINE 憑證與樣本收集網址一起匯出</label>
-    <div id="backupSecretWarn" class="msg-warn" hidden>這份檔案含有 LINE token、userId 與樣本收集網址，等於密碼：不要傳給別人、不要貼到公開的地方。</div>
-    <button id="backupCopy">複製</button>
-    <button id="backupDownload">下載檔案</button>
-    <textarea id="backupFallback" rows="4" readonly hidden></textarea>
-    <div id="backupMsg" class="hint tight"></div>
-    <div class="hint">匯入（貼上匯出的文字，或選檔）：</div>
-    <textarea id="backupImportText" rows="4" placeholder="貼上匯出的設定 JSON"></textarea>
-    <input type="file" id="backupImportFile" accept=".json,application/json">
-    <div id="backupImportMsg" class="hint tight"></div>
-    <button id="backupRestore" disabled>還原上一份</button>
-    <div class="hint tight">每次確認匯入前，會先把被動到的設定存成一份備份（只留最近一份，不會匯出）；匯入出錯或後悔時按「還原上一份」。</div>
-    <div id="backupImportPlan" hidden>
-      <div class="hint tight">將覆蓋這些區塊（取消勾選的不動）：</div>
-      <div id="backupImportBlocks"></div>
-      <div id="backupImportSecretsRow" hidden>
-        <label><input type="checkbox" id="backupImportSecrets"> LINE 憑證與樣本收集網址（檔案裡有）</label>
-        <div class="msg-warn">勾選後，現有的這兩項會被檔案裡的取代，檔案裡沒有的會被清掉。</div>
-      </div>
-      <div class="hint tight">被覆蓋的區塊，現有設定會整個被取代，檔案裡沒有的項目會被清掉。</div>
-      <button id="backupImportApply">確認匯入</button>
-      <button id="backupImportCancel">取消</button>
-    </div>
-    <p class="hint tight">把設定與累積資料（地圖怪物、商人裝備、個人路線、聊天配對…）匯出成一份 JSON。預設不含 LINE 憑證與樣本收集網址；執行狀態、快取與各裝置自己的版面（面板位置、視窗大小）不會匯出。遊戲的巨集有自己的匯入匯出，不在這裡。</p>
-  </details>
-  <details class="alertbox fold" id="sec-line">
-    <summary>手機通知（LINE）</summary>
-    <label for="lineToken">Channel access token</label>
-    <input id="lineToken" type="password" autocomplete="off">
-    <label for="lineUserId">User ID</label>
-    <input id="lineUserId" type="password" autocomplete="off">
-    <label class="check"><input id="lineEnabled" type="checkbox"> 警報時也推播到手機（需先填好 token 與 userId）</label>
-    <div class="row">
-      <div><label for="lineDedupe">同原因幾分鐘內只推一次</label><input id="lineDedupe" type="number" min="1" step="1" value="10"></div>
-      <div><label for="lineHourly">每小時最多推幾則</label><input id="lineHourly" type="number" min="1" step="1" value="10"></div>
-    </div>
-    <div id="lineSkipped" class="hint tight">已略過 0 則</div>
-    <button id="lineTest">發送測試訊息</button>
-    <div id="lineResult" class="hint tight">尚未發送</div>
-    <p class="hint tight">只存在這台瀏覽器的本機，不會同步或匯出。請用自己的 LINE 官方帳號（Messaging API）的 token 與你的 userId。</p>
-  </details>
-  <details class="alertbox fold" id="sec-captcha">
-    <summary>驗證碼樣本收集</summary>
-    <label for="captchaSampleUrl">Google Apps Script 網頁應用程式的網址（空白＝不收集）</label>
-    <input id="captchaSampleUrl" type="text" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec">
-    <div id="captchaSampleResult" class="hint tight">尚未送出</div>
-    <p class="hint tight">每次驗證碼自動辨識結束（通過、送 3 次都沒回應、讀不出數字）就把那張圖的 HTML 與結果送到這個網址，用來補字形庫。安裝時帶入的是作者的收集表；不想分享就清空（清空後不會再帶入），要收進自己的試算表見 README。HTML 可能含圖前幾行的遊戲輸出，例如狀態卡裡的角色名。網址只存在這台瀏覽器的本機，不會匯出。</p>
-  </details>
-  <button id="test">測試送出 ps</button>
-  <button id="beep">測試提示音</button>
-  <button id="skills">悟招清單（新分頁開啟）</button>
-  <div class="hint">出現驗證碼（「請輸入上方的數字」或數字圖）會先自動辨識並送出，讀不出數字或送 3 次都沒回應才停止；停了請先手動完成驗證，再按開始。舊紀錄不會重複觸發。需在 CatWorld Web 分頁使用。重新整理遊戲頁後會自動停止，避免意外持續執行。</div>
   <script src="trigger-engine.js"></script>
   <script src="timer-settings.js"></script>
   <script src="zap-mobs.js"></script>

@@ -330,15 +330,22 @@ function hearScript({ name, text }) {
   if (Date.now() - scriptCache.at > SCRIPT_CACHE_MS) loadScripts();
   const ownName = characterName();
   let session = scriptSession;
-  const isNew = !session;
-  if (!session) {
-    if (scriptPlayedToday() >= chatScript.perDay) return false; // 今天的場數用完了：不接新場
-    const script = chatScript.role === 'B' ? CatworldChatScript.bestStart(scriptCache.scripts, chatScript.role, text, ownName) : null;
-    if (!script) return false;
-    session = CatworldChatScript.createSession({ script, role: chatScript.role, ownName });
+  let step = session ? session.hear(text) : null;
+  let isNew = false;
+  if (!step) {
+    // 沒有進行中的一場，或這句不是目前這場的下一句：B 看這句像不像哪份劇本的開場。A 重新開了一場時 B 可能還停在上一場
+    // （最久等 SCRIPT_WAIT_MS），新的開場句要當作新場的開頭，不能被舊的那場擋掉
+    if (chatScript.role !== 'B') return false;
+    if (scriptPlayedToday() >= chatScript.perDay) { console.log('[catworld] 劇本：對方的來訊沒接話（今天的場數用完了）'); return false; } // 今天的場數用完了：不接新場
+    const script = CatworldChatScript.bestStart(scriptCache.scripts, chatScript.role, text, ownName);
+    if (!script) { console.log(`[catworld] 劇本：對方的來訊沒接話（和 ${scriptCache.scripts.length} 份劇本的開場都對不上${scriptCache.scripts.length ? '' : '，可能還沒載入劇本'}）`); return false; }
+    const fresh = CatworldChatScript.createSession({ script, role: chatScript.role, ownName });
+    step = fresh.hear(text);
+    if (!step) return false;
+    if (session) cancelScript(); // 舊的一場作廢：計時器與排隊中的台詞
+    session = fresh;
+    isNew = true;
   }
-  const step = session.hear(text);
-  if (!step) return false;
   if (isNew) recordScriptStart(session.scriptId);
   scriptHeardAt = Date.now();
   clearTimeout(scriptWaitTimer);

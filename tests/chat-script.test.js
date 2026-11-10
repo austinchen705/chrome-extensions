@@ -875,3 +875,20 @@ ui('a background that answers badly is asked again on the next message, not reme
     page.close();
   }
 });
+
+ui('B still stuck in an earlier script answers when A opens a new one', async () => {
+  // A 重新開了一場時，B 可能還停在上一場（最久等 SCRIPT_WAIT_MS）：新的開場句不是舊那場的下一句，B 要當作新場的開頭
+  const both = await pair({ scripts: [SCRIPT, OTHER] });
+  try {
+    both.pageB.output('<span>[P]阿凱(akai)告訴你：欸緋爾 你今天有上線喔\n</span>');
+    assert.ok(await waitFor(() => both.told.length === 1, 5000), 'B answers the first script');
+    assert.equal(both.told[0].text, '有啊 剛下班');
+    assert.equal((await both.pageB.ask({ type: 'STATUS' })).chatScript.scriptId, 't1', 'B now waits for round 3 of the first script');
+    both.pageB.output('<span>[P]阿凱(akai)告訴你：晚餐吃什麼好呢\n</span>');
+    assert.ok(await waitFor(() => both.told.length === 2, 5000), `B answers the new opener: ${JSON.stringify(both.told)}`);
+    assert.equal(both.told[1].text, '我想吃牛肉麵');
+    assert.ok(await waitFor(async () => (await both.pageB.ask({ type: 'STATUS' })).chatScript === null), 'the new two-round script is over');
+  } finally {
+    both.close();
+  }
+});

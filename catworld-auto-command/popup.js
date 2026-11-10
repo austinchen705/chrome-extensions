@@ -30,6 +30,7 @@ function itemRow(item, placeholder) {
     const list = row.parentElement;
     row.remove();
     updateItemSummary(list.id);
+    saveTimerSettings();
   });
   return row;
 }
@@ -70,6 +71,10 @@ function readSettings() {
     commandDelayMs: Number($('commandDelayMs').value)
   };
 }
+
+// 定時、隨機的指令與指令間隔：改了就存，不用按開始（按開始時才檢查秒數是否合理；遊戲頁讀到時會再整理）
+const saveTimerSettings = () => chrome.storage.local.set({ settings: readSettings() });
+['timer', 'random'].forEach(name => document.querySelector(`[data-pane="${name}"]`).addEventListener('change', saveTimerSettings));
 
 // 驗證、錯誤、警告的訊息一律用同一組顏色：error 紅、warn 琥珀、info 不上色（樣式是 popup.html 的 .msg-error／.msg-warn）
 function markLevel(node, level) {
@@ -820,7 +825,7 @@ function createTriggerPane(group) {
 
   // 每張規則卡片共用：刪除、重新啟用（按卡片在清單中的順序對應引擎裡的規則）
   function wireRuleControls(card, remove, again) {
-    remove.addEventListener('click', () => { card.remove(); save(); });
+    remove.addEventListener('click', () => { card.remove(); save(); updateRulesSummary(); });
     again.addEventListener('click', async () => {
       const index = [...$g('rules').children].indexOf(card);
       try { await send({ type: 'REARM_RULE', group: group.id, index }); refreshLive(); } catch (e) { holdStatus(e.message); }
@@ -1002,9 +1007,22 @@ function createTriggerPane(group) {
       .forEach(([switchId, inputs]) => inputs.forEach(id => { $g(id).disabled = !$g(switchId).checked; }));
   }
 
+  // 規則清單收起來時，標題寫幾條、幾條關閉，以及執行中被停用的條數
+  let ruleStates = [];
+  function updateRulesSummary() {
+    const cards = [...$g('rules').children];
+    const closed = cards.filter(card => !card.querySelector('[data-f="enabled"]').checked).length;
+    const stopped = ruleStates.filter(rule => rule.phase === 'disabled').length;
+    const parts = [`${cards.length} 條`];
+    if (closed) parts.push(`${closed} 條關閉`);
+    if (stopped) parts.push(`⚠ ${stopped} 條被停用`);
+    $g('rulesSummary').textContent = `觸發規則（${parts.join('，')}）`;
+  }
+
   function render(saved) {
     const config = saved || { rules: [BLANK_RULE] };
     $g('rules').replaceChildren(...(config.rules.length ? config.rules : [BLANK_RULE]).map(buildCard));
+    updateRulesSummary();
     $g('limitFires').checked = config.limitFires === true;
     $g('limitIneffective').checked = config.limitIneffective === true;
     $g('limitGlobal').checked = config.limitGlobal === true;
@@ -1022,9 +1040,10 @@ function createTriggerPane(group) {
   }
 
   root.querySelector('.safety').addEventListener('change', syncLimitInputs);
-  $g('addRule').addEventListener('click', () => { $g('rules').append(ruleCard(BLANK_RULE, true)); save(); });
-  $g('addKeyword').addEventListener('click', () => { $g('rules').append(keywordCard({ enabled: true, pattern: '', commands: [], cooldown: D.cooldown }, true)); save(); });
+  $g('addRule').addEventListener('click', () => { $g('rules').append(ruleCard(BLANK_RULE, true)); save(); updateRulesSummary(); });
+  $g('addKeyword').addEventListener('click', () => { $g('rules').append(keywordCard({ enabled: true, pattern: '', commands: [], cooldown: D.cooldown }, true)); save(); updateRulesSummary(); });
   root.addEventListener('change', save);
+  root.addEventListener('change', updateRulesSummary);
 
   $g('tstart').addEventListener('click', async () => {
     try {
@@ -1056,6 +1075,8 @@ function createTriggerPane(group) {
     const state = status?.triggerGroups?.[group.id];
     const cards = [...$g('rules').children];
     const states = state?.on && state.rules.length === cards.length ? state.rules : [];
+    ruleStates = states;
+    updateRulesSummary();
     cards.forEach((card, i) => {
       const pill = card.querySelector('[data-f="pill"]');
       const again = card.querySelector('[data-f="again"]');
@@ -1075,6 +1096,8 @@ function createTriggerPane(group) {
 }
 
 const panes = Object.fromEntries(Engine.GROUPS.map(group => [group.id, createTriggerPane(group)]));
+// 觸發分頁是 JS 後加的，「設定」分頁的按鈕要重新放到最後
+document.querySelector('.tabs').append($('tab-settings'));
 
 // 定時分頁的倒數：固定指令每一項的下一次、隨機指令的下一次
 function renderCountdown(status) {
@@ -1109,6 +1132,7 @@ async function refreshLive() {
   if (status) lastIdle = Boolean(status.idle);
   scriptSession = status ? status.chatScript ?? null : undefined;
   renderScriptStatus();
+  updateHints();
   renderCountdown(status);
   Object.values(panes).forEach(pane => pane.refresh(status));
 }
@@ -1190,7 +1214,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   Object.values(panes).forEach(pane => pane.render(savedGroups[pane.group.id]));
   // 舊版的分頁名稱是 trigger（現在叫練功）
   const lastTab = data.popupTab === 'trigger' ? 'practice' : data.popupTab;
-  showTab(panes[lastTab] || lastTab === 'random' || lastTab === 'idle' ? lastTab : 'timer');
+  showTab(panes[lastTab] || ['random', 'idle', 'settings'].includes(lastTab) ? lastTab : 'timer');
   showIdleFields(CatworldTimer.normalizeIdle(data.idleSettings));
   try {
     const status = await send({ type: 'STATUS' });
@@ -1202,9 +1226,48 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     setRandomStatus('請切到 CatWorld Web 分頁', 'warn');
     setIdleStatus('請切到 CatWorld Web 分頁', 'warn');
   }
+  updateHints();
   refreshLive();
   setInterval(refreshLive, 1000);
 })();
+
+// 功能之間的依賴提示：某個功能要靠另一個功能（或某個欄位）才會作用時，在用到它的區塊最上面寫出原因。
+// warn（琥珀、「⚠」）＝現在這樣設定不會作用，區塊標題也會標 ⚠ 讓收起來時看得到；info＝只是說明。
+// 條件只看畫面上的欄位，改了就即時更新；新增依賴只要加一列（先確認程式裡真的有這個前提）
+const isOn = id => $(id).checked;
+const blank = id => !$(id).value.trim();
+const DEPENDENCIES = [
+  { host: 'sec-features', anchor: () => $('whisperColor').closest('label'), warn: () => !isOn('featureWhisper'), text: '密語區塊沒開，顏色用不到。' },
+  { host: 'sec-grade', warn: () => !isOn('featureMobs'), text: '「怪物查詢」沒開，面板不會用到怪物分級。' },
+  { host: 'sec-weapon', warn: () => !isOn('featureItems'), text: '「無名物品鑑定提示與裝備比較」沒開，這裡的主要武器與屬性門檻用不到。' },
+  { host: 'sec-mentor', warn: () => !isOn('featureMasters'), text: '「拜師導師搜尋」沒開，面板沒有「拜師」列可以修改路線；這裡只能管理已經存下來的修改。' },
+  { host: 'sec-shop', warn: () => isOn('featureShop') && !isOn('featureItems'), text: '裝備資料庫已啟用，但「無名物品鑑定提示與裝備比較」沒開：面板沒有「讀取目前穿著」，商人的建議只能依等級，沒有現在穿的裝備可比。' },
+  { host: 'sec-hunt', warn: () => !isOn('featureHunt'), text: '「地圖巡怪」沒開，面板不會出現「巡怪」列，下面的欄位用不到。' },
+  { host: 'sec-script', warn: () => isOn('scriptOn') && blank('scriptPartner'), text: '還沒填對方的英文 ID：A 開不了場、B 認不出對方的來訊，都不會動。' },
+  { host: 'sec-script', warn: () => isOn('scriptOn') && !blank('scriptPerDay') && Number($('scriptPerDay').value) === 0, text: '每天最多 0 場：不開場也不接話。' },
+  { host: 'sec-script', info: () => isOn('scriptOn'), text: '劇本認領的來訊不會進密語區，也不會觸發聊天回覆；兩台電腦要填同一份試算表連結和互相的英文 ID。' },
+  { host: 'sec-stopwords', warn: () => isOn('stopKeywordsOn') && blank('stopKeywordsList'), text: '關鍵字清單是空的，不會命中任何詞。' },
+];
+const lastHint = new Map();
+const hintNodes = DEPENDENCIES.map(dep => {
+  const node = element('div', { className: 'hint tight', hidden: true, textContent: `${dep.warn ? '⚠' : 'ℹ'} ${dep.text}` });
+  node.dataset.dep = dep.host;
+  (lastHint.get(dep.host) || dep.anchor?.() || $(dep.host).querySelector('summary')).after(node);
+  lastHint.set(dep.host, node);
+  return node;
+});
+function updateHints() {
+  const warned = new Set();
+  DEPENDENCIES.forEach((dep, i) => {
+    const level = dep.warn?.() ? 'warn' : dep.info?.() ? 'info' : null;
+    hintNodes[i].hidden = !level;
+    markLevel(hintNodes[i], level);
+    if (level === 'warn') warned.add(dep.host);
+  });
+  new Set(DEPENDENCIES.map(dep => dep.host)).forEach(host => $(host).classList.toggle('has-dep', warned.has(host)));
+}
+document.addEventListener('change', updateHints);
+document.addEventListener('input', updateHints);
 
 // 設定備份：匯出（區塊與機密的清單、格式在 settings-backup.js）
 function backupMessage(text, level) { $('backupMsg').textContent = text; markLevel($('backupMsg'), level); }
@@ -1355,7 +1418,7 @@ $('backupImportApply').addEventListener('click', async () => {
   } catch (e) {
     importMessage(`匯入失敗：${e.message}`, 'error');
   } finally {
-    if (!settingsFrozen && !$('backupImportApply').closest('[hidden]')) $('backupImportApply').disabled = false;
+    if (!settingsFrozen && !$('backupImportPlan').hidden) $('backupImportApply').disabled = false;
     refreshRestore();
   }
 });
