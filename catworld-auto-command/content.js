@@ -1353,6 +1353,15 @@ async function learnHuntNpc(id) {
   const name = id.toLowerCase();
   if (!learned.some(known => known.toLowerCase() === name)) await chrome.storage.local.set({ [CatworldMapHunt.NPCS_KEY]: [...learned, name] });
 }
+// 掃描走過的房間：讀改寫排成一條佇列（連續幾間很快，各自先讀再寫會互相蓋掉）
+let visitedWrite = Promise.resolve();
+function markHuntVisited(key, state) {
+  visitedWrite = visitedWrite.catch(() => {}).then(async () => {
+    const stored = CatworldMapHunt.normalizeVisited((await chrome.storage.local.get(CatworldMapHunt.VISITED_KEY))[CatworldMapHunt.VISITED_KEY]);
+    await chrome.storage.local.set({ [CatworldMapHunt.VISITED_KEY]: { ...stored, [key]: { at: Date.now(), state } } });
+  });
+  return visitedWrite;
+}
 // 地圖巡怪：目標是面板「選怪」勾選的怪（map-hunt-ui.js，依區域記在 mapHuntPicks）與地圖目前顯示的區域；指令走共用送出佇列（來源 hunt）
 hunt = CatworldMapHunt.create({
   target: async () => {
@@ -1368,13 +1377,18 @@ hunt = CatworldMapHunt.create({
   learnVisit: async (key, seen, picked) => {
     const storageKey = CatworldMapCollect.STORAGE_KEY;
     const at = key.indexOf('/');
-    const result = CatworldMapCollect.visit((await chrome.storage.local.get(storageKey))[storageKey] || {}, { key, area: key.slice(0, at), room: key.slice(at + 1) }, seen, picked, Date.now());
+    const store = (await chrome.storage.local.get(storageKey))[storageKey] || {};
+    // picked 是 null＝掃描：這間記錄的每一隻怪都要驗證（沒看到就累計，連續三次才拿掉）
+    const checked = picked ?? (CatworldMapCollect.withBuiltin(store)[key]?.mobs || []);
+    const result = CatworldMapCollect.visit(store, { key, area: key.slice(0, at), room: key.slice(at + 1) }, seen, checked, Date.now());
     if (result.changed) {
       await chrome.storage.local.set({ [storageKey]: result.store });
       console.log('[catworld] 巡怪修正位置：', key, result.removed.length ? `移除 ${result.removed.join('、')}` : '', result.added.length ? `新增 ${result.added.join('、')}` : '');
     }
     return result;
   },
+  visited: async () => (await chrome.storage.local.get(CatworldMapHunt.VISITED_KEY))[CatworldMapHunt.VISITED_KEY] ?? {},
+  markVisited: markHuntVisited,
   ask: askGame,
   npcs: huntNpcs,
   learnNpc: learnHuntNpc,
@@ -1511,7 +1525,7 @@ function initPanel() {
         <div class="line macro-line"><span class="t">巨集</span><span class="s macro-text"></span>
           <span class="mini"><button class="mexport" title="把遊戲的巨集和備註複製成一段文字">匯出</button><button class="mimport" title="貼上匯出的文字，整份取代遊戲的巨集和備註">匯入</button><button class="mstop">停止</button></span></div>
         <div class="line hunt-line"><span class="t">巡怪</span><span class="s hunt-text"></span>
-          <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hstop">停止</button></span></div>
+          <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hscan" title="街景模式：不用選怪，走這一區還沒走過的每一間，看一眼並記下有哪些怪（不打）">掃描</button><button class="hstop">停止</button></span></div>
         <div class="line reward-line" hidden><span class="t">獎勵</span><span class="s reward-text"></span></div>
         <div class="line macro-import" hidden><span class="t"></span><span class="s"><textarea class="macro-import-text" placeholder="貼上匯出的巨集文字"></textarea><span class="mini"><button class="macro-import-check">檢查</button><button class="macro-import-cancel">取消</button><button class="macro-restore" title="把匯入前自動留的備份寫回去" disabled>還原上一份</button></span></span></div>
         <div class="line macro-confirm" hidden><span class="t"></span><span class="s"><div class="macro-confirm-msg"></div><span class="mini"><button class="macro-confirm-ok">確認取代</button><button class="macro-confirm-cancel">取消</button></span></span></div>
@@ -1530,7 +1544,7 @@ function initPanel() {
     randomText: $('.random-text'), rstart: $('.rstart'), rstop: $('.rstop'),
     idleText: $('.idle-text'), istart: $('.istart'), istop: $('.istop'),
     macroText: $('.macro-text'), mstop: $('.mstop'),
-    huntText: $('.hunt-text'), hstart: $('.hstart'), hstop: $('.hstop'),
+    huntText: $('.hunt-text'), hstart: $('.hstart'), hscan: $('.hscan'), hstop: $('.hstop'),
     rewardLine: $('.reward-line'), rewardText: $('.reward-text'),
     confirm: $('.confirm'),
   };
@@ -1693,6 +1707,11 @@ function initPanel() {
     if (hunt.on()) return;
     armDetection();
     await hunt.start();
+  });
+  panel.hscan.addEventListener('click', async () => {
+    if (hunt.on()) return;
+    armDetection();
+    await hunt.start({ scan: true });
   });
   panel.hstop.addEventListener('click', () => hunt.stop());
   panel.confirm.addEventListener('click', confirmAlert);
@@ -1931,6 +1950,7 @@ function renderPanel() {
   panel.huntText.classList.toggle('alert', huntInfo.alert);
   panel.huntText.title = huntInfo.detail || '';
   panel.hstart.disabled = hunt.on();
+  panel.hscan.disabled = hunt.on();
   panel.hstop.disabled = !hunt.on();
   panel.mstop.disabled = !macroRuns.size;
   panel.avoidMap();

@@ -6,7 +6,7 @@ const { ui, boot: bootPage, sleep, waitFor, fixture } = require('./helpers/game-
 
 const SCALE = 20;
 // 開始前必填的欄位（吃藥指令、沒藥關鍵字、回家指令）：各測試預設都填好，要測缺欄位的自己清掉
-const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, commandGapMinMs: 0, commandGapMaxMs: 0 };
+const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, commandGapMinMs: 0, commandGapMaxMs: 0, prescan: 'off' };
 const boot = async options => {
   const page = await bootPage(options);
   page.store.mapHuntSettings = { ...REQUIRED };
@@ -24,9 +24,9 @@ const MOB_B = '另一隻怪(other mob)';
 // 假遊戲：moves[現在][指令] = 下一間（沒有就留在原地）；reply 為 false 時不回任何輸出（看門狗會因為沒回應而停）
 // looks[房間] = { exits, lines }：l 的輸出（出口行與後面的怪物、人物行）；silentLook 為 true 時 l 不回應；
 // fingers[ID] = finger 的輸出，沒寫就不回應
-function world(page, { at, moves = MOVES, reply = true, stuck = false, looks = {}, fingers = {}, silentLook = false, arrivals = {}, arrivalDelayMs = 0, lookDelayMs = 0, script = null } = {}) {
+function world(page, { at, moves = MOVES, reply = true, stuck = false, looks = {}, fingers = {}, silentLook = false, arrivals = {}, arrivalDelayMs = 0, lookDelayMs = 0, script = null, row = ROW } = {}) {
   const doc = page.w.document;
-  doc.body.insertAdjacentHTML('beforeend', `<div id="map_table"><span id="map_header">地圖 (<span data-default-grid="□">測試區</span>)</span><div id="map_wrapper"><div id="m-t">${ROW}</div></div><div id="map_anchor"></div></div>`);
+  doc.body.insertAdjacentHTML('beforeend', `<div id="map_table"><span id="map_header">地圖 (<span data-default-grid="□">測試區</span>)</span><div id="map_wrapper"><div id="m-t">${row}</div></div><div id="map_anchor"></div></div>`);
   if (!doc.getElementById('kee')) setKee(page, 100); // 氣讀不到會停，預設滿的
   const state = { at, log: [] };
   const rect = (left, top) => ({ left, top, width: 20, height: 20, right: left + 20, bottom: top + 20 });
@@ -930,13 +930,13 @@ ui('heal: rest mode only needs the home command', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { healMode: 'rest', loopRounds: 'off' };
+    page.store.mapHuntSettings = { healMode: 'rest', loopRounds: 'off', prescan: 'off' };
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } } });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /填：回家指令/.test(huntText(page)), 3000), huntText(page));
     assert.equal(/吃藥指令|沒藥關鍵字/.test(huntText(page)), false);
-    page.store.mapHuntSettings = { healMode: 'rest', homeCommand: 'recall', loopRounds: 'off' };
+    page.store.mapHuntSettings = { healMode: 'rest', homeCommand: 'recall', loopRounds: 'off', prescan: 'off' };
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
     assert.equal(game.log[0], 'e', 'it walks: nothing makes it rest or eat');
@@ -1970,5 +1970,313 @@ ui('hunt: a @巨集 N that cannot be read is dropped with a note, and the other 
     assert.match(panelRoot(page).querySelector('.macro-text').textContent, /巡怪.*@巨集 10.*沒有指令/, 'the macro row says why');
   } finally {
     page.close();
+  }
+});
+
+// ---- 街景模式（掃描）：不需要勾怪，走完這一區沒走過的每一間，每間 l 一次並記下走過 ----
+const scanClick = page => click(page, '.hscan');
+const seenState = (page, key) => page.store.mapVisited?.[key]?.state;
+
+ui('scan: needs no chosen monster, walks every room of the area, looks at each, and records empty rooms as visited too', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const game = world(page, { at: 'a' });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['l', 'e', 'l', 'e', 'l', 'e', 'l']);
+    assert.ok(await waitFor(() => ['a', 'b', 'c', 'd'].every(room => seenState(page, `t/${room}`) === 'seen')), JSON.stringify(page.store.mapVisited));
+    assert.equal(await hunting(page), false);
+    assert.equal(alerts(page).length, 0, 'finishing a scan is not an alarm');
+  } finally {
+    page.close();
+  }
+});
+
+ui('scan: monsters seen in a room are recorded there, and a recorded monster that is not seen there starts counting misses', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('b');
+    world(page, { at: 'a', looks: { c: { lines: [MOB_LINE] } } });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 6000), huntText(page));
+    assert.ok(await waitFor(() => page.store.mapMonsters['t/c']?.mobs.includes(MOB)), 'the monster seen in c is recorded');
+    assert.equal(page.store.mapMonsters['t/b']?.miss?.[MOB], 1, 'the monster recorded in b but not seen there has one miss (removed only after three)');
+    assert.ok(page.store.mapMonsters['t/b'].mobs.includes(MOB), 'one miss does not remove it');
+  } finally {
+    page.close();
+  }
+});
+
+ui('scan: rooms already visited are not walked again, and a fully visited area says so without sending anything', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapVisited = { 't/a': { at: 1, state: 'seen' }, 't/b': { at: 1, state: 'seen' } };
+    const game = world(page, { at: 'a' });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 6000), huntText(page));
+    // 掃描一律照實際出口走：離開沒看過出口的房間之前先 l 一次（a、b 都走過了，但這一次還沒讀過它們的出口）
+    assert.deepEqual(game.log, ['l', 'e', 'l', 'e', 'l', 'e', 'l']);
+    page.store.mapVisited = Object.fromEntries(['a', 'b', 'c', 'd'].map(room => [`t/${room}`, { at: 1, state: 'seen' }]));
+    game.log.length = 0;
+    scanClick(page);
+    assert.ok(await waitFor(() => /都走過了/.test(huntText(page)), 3000), huntText(page));
+    assert.deepEqual(game.log, []);
+  } finally {
+    page.close();
+  }
+});
+
+ui('scan: a door that still cannot be passed on the second try marks the rooms behind it as blocked, does not stop the scan and is not an alarm', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const game = world(page, { at: 'a', moves: { a: { e: 'b' }, b: { w: 'a' }, c: { w: 'b', e: 'd' }, d: { w: 'c' } } });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 8000), huntText(page));
+    assert.ok(await waitFor(() => seenState(page, 't/d') === 'blocked'), JSON.stringify(page.store.mapVisited));
+    assert.equal(seenState(page, 't/a'), 'seen');
+    assert.equal(seenState(page, 't/b'), 'seen');
+    assert.equal(seenState(page, 't/c'), 'blocked');
+    assert.equal(game.log.filter(command => command === 'e').length, 5, 'a to b, then the door tried twice, and once more (twice) at the end; d is never tried because the door edge is dropped');
+    assert.equal(alerts(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('scan: finishes after one pass even when the round loop is on, and never asks for the server time or sends the standby command', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapHuntSettings = { ...REQUIRED, loopRounds: 'on', standbyCommand: 'stand' };
+    const game = world(page, { at: 'a' });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 6000), huntText(page));
+    assert.ok(!game.log.includes('time') && !game.log.includes('stand'), game.log.join());
+    assert.equal(await hunting(page), false);
+  } finally {
+    page.close();
+  }
+});
+
+ui('scan: a qi below the danger line while only walking goes home, stops and raises an alert', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapHuntSettings = { ...REQUIRED, dangerBelow: 20, homeCommand: 'recall' };
+    setKee(page, 10);
+    const game = world(page, { at: 'a' });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => game.log.includes('recall'), 4000), huntText(page));
+    assert.equal(await hunting(page), false);
+    assert.equal(alerts(page).length, 1);
+  } finally {
+    page.close();
+  }
+});
+
+ui('scan: a block that goes away (for example the fight that held you is over) is not remembered, because the failed rooms get a second try at the end', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const moves = { a: { e: 'b' }, b: { w: 'a' }, c: { w: 'b', e: 'd' }, d: { w: 'c' } };
+    let attempts = 0;
+    const script = (command, { game }) => {
+      // a 走到 b 的那一個 e 也算一次（world 先移動才呼叫 script，game.at 已經是 b），所以第 3 次（門的第二次嘗試）之後才打開
+      if (command === 'e' && game.at === 'b') { attempts += 1; if (attempts >= 3) moves.b.e = 'c'; }
+      return false;
+    };
+    world(page, { at: 'a', moves, script });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 10000), huntText(page));
+    assert.ok(await waitFor(() => ['a', 'b', 'c', 'd'].every(room => seenState(page, `t/${room}`) === 'seen')), JSON.stringify(page.store.mapVisited));
+    assert.ok(!Object.values(page.store.mapVisited).some(row => row.state === 'blocked'), 'nothing is remembered as blocked');
+  } finally {
+    page.close();
+  }
+});
+
+ui('scan: when you run away while the look is in flight, what l shows belongs to the other room and is not recorded for the one it was meant for', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    let moved = false;
+    const script = (command, { game }) => {
+      if (command === 'l' && game.at === 'b' && !moved) { moved = true; game.at = 'c'; } // 手動跑到 c
+      return false;
+    };
+    // 掃描照實際出口走，所以假世界每間的出口行要寫對
+    const looks = { a: { exits: 'east' }, b: { exits: 'west 和 east' }, c: { exits: 'west 和 east', lines: [MOB_LINE] }, d: { exits: 'west' } };
+    world(page, { at: 'a', looks, script });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 10000), huntText(page));
+    assert.ok(await waitFor(() => ['a', 'b', 'c', 'd'].every(room => seenState(page, `t/${room}`) === 'seen')), JSON.stringify(page.store.mapVisited));
+    assert.ok(page.store.mapMonsters['t/c']?.mobs.includes(MOB), 'the monster is recorded in c, where it was');
+    assert.ok(!page.store.mapMonsters['t/b']?.mobs?.includes(MOB), 'and not in b, where you were only supposed to be');
+  } finally {
+    page.close();
+  }
+});
+
+// 地圖畫的是 e，實際的出口卻是 eastup（遊戲的上坡出口，圖上看起來一樣是往旁邊）：掃描要靠 l 的出口行找到真正的指令
+ui('scan always learns exits (even with the setting off): a link the map draws as e but the game only offers as eastup is found, trying the matching exit before the others', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    // 設定頁的「自動學習出口」沒開：掃描一定會碰到圖上畫不準的房間，所以掃描一律照實際出口走
+    const moves = { a: { e: 'b' }, b: { w: 'a', eu: 'c' }, c: { w: 'b', e: 'd' }, d: { w: 'c' } };
+    const looks = { a: { exits: 'east' }, b: { exits: 'west 和 eastup' }, c: { exits: 'west 和 east' }, d: { exits: 'west' } };
+    const game = world(page, { at: 'a', moves, looks });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 12000), huntText(page));
+    assert.ok(await waitFor(() => ['a', 'b', 'c', 'd'].every(room => seenState(page, `t/${room}`) === 'seen')), JSON.stringify(page.store.mapVisited));
+    assert.ok(game.log.includes('eu'), game.log.join());
+    assert.ok(!game.log.includes('w') || game.log.indexOf('eu') < game.log.indexOf('w'), `eu is tried before w: ${game.log.join()}`);
+    assert.equal(alerts(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+// 地圖上的單向箭頭只畫去的方向：掃描要能走回去（反方向當猜的邊，到了再用 l 的出口行找真正的指令）
+ui('scan: a one-way arrow on the map does not strand the scan, the way back is found from the real exits', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const row = ['a', 'b', 'c', 'd'].map(ROOM).join('→'); // 圖上全是往東的單向
+    const moves = { a: { e: 'b' }, b: { w: 'a', e: 'c' }, c: { w: 'b', e: 'd' }, d: { w: 'c' } };
+    const looks = { a: { exits: 'east' }, b: { exits: 'west 和 east' }, c: { exits: 'west 和 east' }, d: { exits: 'west' } };
+    world(page, { at: 'd', moves, looks, row });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 12000), huntText(page));
+    assert.ok(await waitFor(() => ['a', 'b', 'c', 'd'].every(room => seenState(page, `t/${room}`) === 'seen')), JSON.stringify(page.store.mapVisited));
+    assert.equal(alerts(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('scan: rooms it cannot find an exit toward (try-the-exits ran out) are not a run of failures that stops the scan', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const row = ['a', 'b', 'c', 'd', 'e', 'f'].map(ROOM).join('─');
+    // b 的出口行只有 west：圖上往東的路實際上沒有，後面四間（c～f）都找不到出口通過去
+    const moves = { a: { e: 'b' }, b: { w: 'a' } };
+    const looks = { a: { exits: 'east' }, b: { exits: 'west' } };
+    world(page, { at: 'a', moves, looks, row });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 20000), huntText(page));
+    assert.equal(alerts(page).length, 0, 'no alarm');
+    assert.equal(seenState(page, 't/b'), 'seen');
+    assert.equal(seenState(page, 't/f'), 'blocked');
+  } finally {
+    page.close();
+  }
+});
+
+// 掃描卡住（例如氣一直沒回復、一直在休息）不能無聲無息地掛著：一段時間沒有任何進展就停下來，把當時的狀態寫在訊息裡
+ui('scan: with no progress for a long time (stuck resting) it stops with an alarm and says what it was waiting for', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', restBelow: 50, restResume: 80, dangerBelow: 20 };
+    setKee(page, 30); // 低於休息線，而且不會回復
+    const game = world(page, { at: 'a' });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /沒有進展/.test(huntText(page)), 20000), huntText(page));
+    assert.match(huntText(page), /休息中/, 'the message says what it was waiting for');
+    assert.equal(await hunting(page), false);
+    assert.equal(alerts(page).length, 1);
+    assert.deepEqual(game.log, [], 'nothing was sent while resting');
+  } finally {
+    page.close();
+  }
+});
+
+ui('scan: rooms remembered as blocked are tried again on the next scan (no need to clear anything), and become visited once they work', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapVisited = { 't/a': { at: 1, state: 'seen' }, 't/b': { at: 1, state: 'seen' }, 't/c': { at: 1, state: 'blocked' }, 't/d': { at: 1, state: 'blocked' } };
+    const looks = { a: { exits: 'east' }, b: { exits: 'west 和 east' }, c: { exits: 'west 和 east' }, d: { exits: 'west' } };
+    const game = world(page, { at: 'a', looks });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 8000), huntText(page));
+    assert.ok(await waitFor(() => seenState(page, 't/c') === 'seen' && seenState(page, 't/d') === 'seen'), JSON.stringify(page.store.mapVisited));
+    assert.ok(game.log.filter(command => command === 'l').length >= 2, game.log.join());
+  } finally {
+    page.close();
+  }
+});
+
+// 之前學到 su → l5 這種實測的邊（存在儲存裡）：路線要用它，不能再挑圖上畫的、實際不存在的那條（圖上往 s、實際是 su）
+ui('scan: an exit already learned (map says e, game says eu) is used straight away, not replaced by the map edge it contradicts', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    // b 的兩個出口都學過了（沒有沒試過的可以試）；c 的出口學過了（west、eastdown），但通往 d 的 ed 還沒走過：d 只靠「寬鬆」的路線（圖上的猜測）走得到
+    page.store.mapHuntExits = { 't/b': { exits: ['w', 'eu'], to: { eu: 't/c', w: 't/a' } }, 't/c': { exits: ['w', 'ed'], to: {} } };
+    const moves = { a: { e: 'b' }, b: { w: 'a', eu: 'c' }, c: { w: 'b', ed: 'd' }, d: { w: 'c' } };
+    const looks = { a: { exits: 'east' }, b: { exits: 'west 和 eastup' }, c: { exits: 'west 和 eastdown' }, d: { exits: 'west' } };
+    // a、b、c 都走過了，只剩 d：從 b 出發，每條通往 d 的路第一步都得過 b→c（圖上畫 e，實際是學過的 eu）
+    page.store.mapVisited = Object.fromEntries(['a', 'b', 'c'].map(room => [`t/${room}`, { at: 1, state: 'seen' }]));
+    const game = world(page, { at: 'b', moves, looks });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 12000), huntText(page));
+    assert.ok(await waitFor(() => seenState(page, 't/d') === 'seen'), JSON.stringify(page.store.mapVisited));
+    assert.deepEqual(game.log.filter(command => command !== 'l'), ['eu', 'ed'], game.log.join());
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 打怪前補掃：這一區還有沒走過、沒有圖資的房間，先掃一輪（看到的怪補進資料）再開始打 ----
+const SCAN_LOOKS = { a: { exits: 'east' }, b: { exits: 'west 和 east' }, c: { exits: 'west 和 east', lines: [MOB_LINE] }, d: { exits: 'west', lines: [MOB_LINE] } };
+
+ui('prescan: a hunt in an area with rooms never visited first scans them, so a monster only seen during the scan becomes a target', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapHuntSettings = { ...REQUIRED, prescan: 'on' };
+    page.store.mapMonsters = mobsAt('c'); // d 沒有記錄，掃描時才看到
+    const game = world(page, { at: 'a', looks: SCAN_LOOKS });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 20000), huntText(page));
+    assert.ok(['a', 'b', 'c', 'd'].every(room => seenState(page, `t/${room}`) === 'seen'), JSON.stringify(page.store.mapVisited));
+    assert.ok(page.store.mapMonsters['t/d']?.mobs.includes(MOB), 'the scan recorded the monster in d');
+    assert.equal(countOf(game, 'fight test mob'), 2, `fought in c and in d: ${game.log.join()}`);
+  } finally {
+    page.close();
+  }
+});
+
+ui('prescan: not done when every room of the area is already known (visited or blocked), and not done when switched off', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapHuntSettings = { ...REQUIRED, prescan: 'on' };
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapVisited = { 't/a': { at: 1, state: 'seen' }, 't/b': { at: 1, state: 'seen' }, 't/c': { at: 1, state: 'seen' }, 't/d': { at: 1, state: 'blocked' } };
+    const game = world(page, { at: 'a' });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l'], 'goes straight to c: no scan, no extra l');
+  } finally {
+    page.close();
+  }
+  const off = await boot({ scale: SCALE });
+  try {
+    off.store.mapMonsters = mobsAt('c');
+    const game = world(off, { at: 'a' });
+    await pick(off, MOB);
+    click(off, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(off)), 6000), huntText(off));
+    assert.deepEqual(game.log, ['e', 'e', 'l'], 'prescan off: the old behaviour');
+  } finally {
+    off.close();
   }
 });

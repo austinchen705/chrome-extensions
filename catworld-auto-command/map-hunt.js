@@ -10,6 +10,7 @@ const SETTINGS_KEY = 'mapHuntSettings';
 const NPCS_KEY = 'mapHuntNpcs';
 // 自動學習的出口與實測連線：{ "區域/房間": { exits: [指令…]|null, to: { 指令: "區域/房間" | "out" } } }，out＝走出這個區域（或到地圖上找不到的房間）
 const EXITS_KEY = 'mapHuntExits';
+const VISITED_KEY = 'mapVisited'; // 掃描走過的房間：{ "區域/房間": { at, state: 'seen' | 'blocked' } }
 const OPPOSITE = { n: 's', s: 'n', e: 'w', w: 'e', ne: 'sw', sw: 'ne', nw: 'se', se: 'nw', u: 'd', d: 'u', eu: 'wd', wd: 'eu', ed: 'wu', wu: 'ed', nu: 'sd', sd: 'nu', nd: 'su', su: 'nd' };
 const splitIds = text => String(text ?? '').split(/[、,，;；\s]+/).filter(Boolean);
 const TICK_MS = 200;
@@ -27,6 +28,7 @@ const RECALIBRATE_LEAD_MS = 30 * 1000; // 距開始時間不到這麼久（或�
 const RECALIBRATE_GAP_MS = 20 * 1000;
 const FRESH_MS = 60 * 1000; // 開始下一輪前，最近一次校準不能比這更舊
 const QI_WAIT_TICKS = 60 * TICKS_PER_SEC; // 試出口前等氣回復最多等這麼久，等不到就略過這個目標
+const SCAN_STALL_TICKS = 180 * TICKS_PER_SEC; // 掃描這麼久沒換過房間、沒處理完任何一間，就當成卡住，停下來並說明在等什麼
 const NO_MEDICINE_WINDOW_TICKS = 10 * TICKS_PER_SEC; // 吃藥指令真的送出後，這麼久內出現沒藥關鍵字才算
 
 // 設定頁的欄位（也決定預設值與檢查）：type 是 text、number 或 select
@@ -43,6 +45,7 @@ const FIELDS = [
   { key: 'restCommand', label: '自己回：休息時送的指令（可空）', type: 'text', default: '' },
   { key: 'dangerBelow', label: '自己回：戰鬥中氣低於幾 % 就回家停止（要小於「氣低於幾 % 就休息」，否則自動改小）', type: 'number', default: 20, min: 1, max: 99 },
   { key: 'learnExits', label: '自動學習出口（記下看到的出口與實際走到的房間；路線不通時才試出口）', type: 'select', options: [['off', '關'], ['on', '開']], default: 'off' },
+  { key: 'prescan', label: '打怪前先掃描這一區還沒走過的房間（沒有圖資才掃；走過的、走不到的不再掃；掃完再開始打）', type: 'select', options: [['on', '開'], ['off', '關']], default: 'on' },
   { key: 'loadMaxPercent', label: '負重（i 的「載重」）超過幾 % 就先去整理（0＝不檢查）', type: 'number', default: 90, min: 0, max: 100 },
   { key: 'unloadCommand', label: '負重太高時執行的指令／巨集（自己寫：回去、驗無名裝備與物品、留下好的、賣掉其餘的、回來；可用 ; 與 @等待）', type: 'text', default: '' },
   { key: 'afterKillCommand', label: '怪倒下後送的指令（可多個，用 ; 分隔）', type: 'text', default: 'gc' },
@@ -92,6 +95,15 @@ function gapMs(settings, random = Math.random) {
   return min + random() * (max - min);
 }
 
+// 讀回「走過的房間」：形狀不對的丟掉。seen＝走進去 l 看過；blocked＝試過但走不到（鎖著的門、要解謎的地方），掃描不會再試
+function normalizeVisited(raw) {
+  const out = {};
+  Object.entries(raw && typeof raw === 'object' ? raw : {}).forEach(([key, row]) => {
+    if (key.includes('/') && row && typeof row === 'object' && Number.isFinite(row.at) && (row.state === 'seen' || row.state === 'blocked')) out[key] = { at: row.at, state: row.state };
+  });
+  return out;
+}
+
 // 讀回儲存的學習結果：形狀不對的丟掉
 function normalizeLearned(raw) {
   const out = {};
@@ -109,6 +121,28 @@ function forgetOut(learned) {
     Object.keys(room.to).forEach(cmd => { if (room.to[cmd] === 'out') delete room.to[cmd]; });
   });
   return learned;
+}
+
+// 掃描用：地圖上的單向箭頭（→ ↓ 等）只畫去的方向，回來的路圖上沒有，但實際上多半走得回去（往下的 s 對應回來的 nu 之類）。
+// 把每條邊的反方向也當成「猜的」邊補上（只補圖上沒有的；猜的邊走到時由試出口去找真正的指令）
+function withReverse(graph) {
+  const rooms = {};
+  Object.entries(graph.rooms).forEach(([key, room]) => { rooms[key] = { ...room, exits: { ...room.exits } }; });
+  Object.entries(graph.rooms).forEach(([key, room]) => Object.entries(room.exits).forEach(([cmd, to]) => {
+    const back = OPPOSITE[cmd];
+    // 那間已經有通往這裡的邊（不管用哪個指令，例如學到的 nu）就不再補猜的
+    if (back && rooms[to] && rooms[to].exits[back] === undefined && !Object.values(rooms[to].exits).includes(key)) rooms[to].exits[back] = key;
+  }));
+  return { ...graph, rooms };
+}
+
+// 把走不通的邊（"房間|指令"）從圖裡拿掉（不改輸入）
+function dropEdges(graph, bad) {
+  const rooms = {};
+  Object.entries(graph.rooms).forEach(([key, room]) => {
+    rooms[key] = { ...room, exits: Object.fromEntries(Object.entries(room.exits).filter(([cmd]) => !bad.has(`${key}|${cmd}`))) };
+  });
+  return { ...graph, rooms };
 }
 
 function create(deps) {
@@ -152,18 +186,42 @@ function create(deps) {
     deps.notify();
   };
 
+  // 掃描模式：記下這間走不到（下次掃描不再試）；讀不到房間可能只是慢，不記
+  const markScan = (key, kind) => {
+    if (!state?.scan || !deps.markVisited) return;
+    Promise.resolve().then(() => deps.markVisited(key, kind)).catch(() => {});
+  };
+
+  // 掃描時走不到的房間：第一輪先不記（可能只是被怪纏住、被別人擋住，之後就走得過了），放進 deferred，掃完一輪後再試一次（endRound）；
+  // 第二輪還走不到才記成走不到
+  const blockScan = key => {
+    if (!state?.scan) return;
+    if (state.retried) markScan(key, 'blocked');
+    else state.deferred.add(key);
+  };
+
   const skipTarget = (key, why) => {
+    state.progressAt = state.ticks;
+    // 診斷：目標、原因、現在在哪、上一步指令、這間讀到的出口（卡住時請把 console 這幾行貼出來）
+    if (state.scan) console.warn('[catworld] 掃描略過', key, why, '現在在', deps.room(), '上一步', state.cmd, '出口', JSON.stringify(state.learned?.[deps.room()]?.exits ?? null));
+    // 掃描時走不過去的那一步（鎖著的門）從圖裡拿掉，門後面的房間一下子就判定走不到，不必一間一間等逾時
+    if (state.scan) {
+      if ((why === '走不過去' || why === '走錯房間') && state.from && state.cmd) state.badEdges.add(`${state.from}|${state.cmd}`);
+      if (why !== '讀不到房間') blockScan(key);
+    }
     state.targets.delete(key);
     state.skipped.push({ key, why });
     state.skips += 1;
     state.tries = 0;
     state.wrong = 0;
     state.phase = 'plan';
-    if (state.skips >= MAX_SKIPS) finish(`連續 ${MAX_SKIPS} 次走不到目標房間，已停止（最後一間 ${key}）`, { alert: true });
+    // 掃描時「試不出路」只是從這裡找不到出口通往目標（第二輪再試），不算連續走不到
+    if (state.skips >= MAX_SKIPS && !(state.scan && why === '試不出路')) finish(`連續 ${MAX_SKIPS} 次走不到目標房間，已停止（最後一間 ${key}）`, { alert: true });
   };
 
   // 這間目標處理完了（不管有沒有打）：從目標拿掉，接著走向下一間
   const doneWith = (key, visit) => {
+    state.progressAt = state.ticks;
     state.targets.delete(key);
     state.handled += 1;
     if (visit) state.visited.push(visit);
@@ -175,7 +233,7 @@ function create(deps) {
   async function learnPlaces(token, here, info) {
     if (!deps.learnVisit) return;
     try {
-      const result = await deps.learnVisit(here, info.monsters.map(mob => mob.full), token.mobs);
+      const result = await deps.learnVisit(here, info.monsters.map(mob => mob.full), token.scan ? null : token.mobs);
       if (state !== token || !result) return;
       [...(result.removed || []).map(mob => `${here} 沒有 ${mob}`), ...(result.added || []).map(mob => `${here} 有 ${mob}`)].forEach(text => state.fixed.push(text));
     } catch {
@@ -189,10 +247,20 @@ function create(deps) {
   async function inspect(token, here) {
     const info = Parse.parseLook(await deps.ask('l', 'look'));
     if (state !== token) return;
+    // 回應回來時人已經不在這間了（例如自己手動跑掉）：這份輸出是別間的，不能記給這間，丟掉、重新規劃
+    const now = deps.room();
+    if (now && now !== here) { state.phase = 'plan'; return; }
     if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
     learnExits(here, info.exits);
     await learnPlaces(token, here, info);
     if (state !== token) return;
+    if (token.scan) {
+      try { await deps.markVisited?.(here, 'seen'); } catch { /* 存不進去只是下次還會再走一次 */ }
+      if (state !== token) return;
+      state.skips = 0;
+      doneWith(here, here);
+      return;
+    }
     if (!info.monsters.some(mob => token.mobs.includes(mob.full))) { state.skips = 0; doneWith(here, here); return; }
     const npcs = await deps.npcs();
     if (state !== token) return;
@@ -348,6 +416,8 @@ function create(deps) {
   function vitals() {
     const percent = deps.kee();
     if (!Number.isFinite(percent)) { finish('讀不到氣，已停止', { alert: true }); return; }
+    // 掃描時整區走動，被主動攻擊的怪打到的機會比巡怪多：氣掉到危險線就回家停止（不管補氣方式，沒有在打架也一樣）
+    if (state.scan && percent < state.settings.dangerBelow) { goHomeAndStop(`掃描中氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`); return; }
     if (state.settings.healMode === 'rest') { restStep(percent); return; }
     if (percent < state.settings.eatBelow && state.ticks - state.lastEat >= EAT_GAP_TICKS) eat();
   }
@@ -452,6 +522,12 @@ function create(deps) {
         exits[cmd] = to;
       });
       Object.entries(learned?.to ?? {}).forEach(([cmd, to]) => { if (to !== 'out' && state.graph.rooms[to]) exits[cmd] = to; });
+      // 實測的邊取代圖上畫的、通往同一間卻不在出口裡的邊（圖上往 s、實際是 su）：兩條都留著，路線會挑到走不通的 s
+      if (learned?.exits) {
+        Object.entries(room.exits).forEach(([cmd, to]) => {
+          if (!(cmd in learned.to) && !learned.exits.includes(cmd) && Object.values(learned.to).includes(to)) delete exits[cmd];
+        });
+      }
       rooms[key] = { ...room, exits };
     });
     return { rooms };
@@ -472,8 +548,9 @@ function create(deps) {
     }).catch(() => { if (state === token) finish('看房間時出錯，已停止', { alert: true }); });
   }
   // 路線需要的邊在這個房間的出口裡找不到：把沒試過的出口一個一個試（每個房間每個指令只試一次）
-  function startTrial(here) {
-    state.trial = { room: here, cmd: null, stage: 'pick', waited: 0 };
+  // want＝路線要走、但出口裡沒有的那個指令（圖上畫的方向）：試出口時先試和它相符的（圖上往 s，實際是 su／sd 這種上下坡）
+  function startTrial(here, want) {
+    state.trial = { room: here, cmd: null, want, stage: 'pick', waited: 0 };
     state.phase = 'trial';
     deps.notify();
   }
@@ -500,7 +577,9 @@ function create(deps) {
       }
       const learned = state.learned[trial.room];
       const tried = (state.tried[trial.room] ??= new Set());
-      const cmd = (learned?.exits ?? []).find(exit => !tried.has(exit) && !learned.to[exit]);
+      const fresh = (learned?.exits ?? []).filter(exit => !tried.has(exit) && !learned.to[exit]);
+      const rank = exit => (trial.want && exit.startsWith(trial.want) ? (/^[ud]$/.test(exit.slice(trial.want.length)) ? 2 : 1) : 0);
+      const cmd = [...fresh].sort((a, b) => rank(b) - rank(a))[0]; // 穩定排序：同級照 l 印的順序
       if (!cmd) { state.trial = null; skipTarget(state.goal, '試不出路'); return; }
       tried.add(cmd);
       trial.cmd = cmd;
@@ -578,10 +657,48 @@ function create(deps) {
     const server = Parse.parseTime(await deps.ask('time', 'time'));
     return server === null ? null : server - deps.now();
   }
+  // 勾選的怪在這個區域記錄的房間（要在地圖上）；不在地圖上的列進略過清單
+  function huntTargets(store, mobs, area, graph) {
+    const places = mobs.flatMap(mob => Collect.locate(store, mob)).filter(place => place.area === area);
+    const rooms = [...new Set(places.flatMap(place => place.rooms.map(room => `${place.area}/${room}`)))];
+    return { targets: new Set(rooms.filter(key => graph.rooms[key])), baseSkipped: rooms.filter(key => !graph.rooms[key]).map(key => ({ key, why: '不在地圖上' })) };
+  }
+  // 打怪前的補掃做完：用補掃之後的資料重新算目標房間，轉成一般的巡怪
+  async function startHuntAfterPrescan() {
+    const token = state;
+    state.phase = 'look'; // 重讀資料的這一下不規劃路線
+    deps.notify();
+    let store;
+    try { store = await deps.readStore(); } catch { if (state === token) finish('讀不到蒐集的怪物資料，已停止', { alert: true }); return; }
+    if (state !== token) return;
+    const { targets, baseSkipped } = huntTargets(store, state.mobs, state.area, state.graph);
+    if (!targets.size) { finish(`掃描完成（走過 ${state.visited.length} 間），但這一區沒有勾選的怪的房間`); return; }
+    Object.assign(state, {
+      scan: false, prescan: false, learn: state.settings.learnExits === 'on', progressAt: state.ticks,
+      targets, allTargets: new Set(targets), baseSkipped, skipped: [...baseSkipped], badEdges: new Set(), deferred: new Set(), retried: false,
+      round: 1, after: deps.now() + state.offset + state.settings.aheadSec * 1000, waiting: null, ...roundFields(),
+    });
+    state.phase = 'plan';
+    deps.notify();
+  }
   const roundFields = () => ({ skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [] });
   // 每個目標房間都處理過一次＝一輪。沒開「等下一個重生」或這一輪什麼都沒處理（沒有走得到的目標）就停（第 2 輪以後警報）；
   // 否則送待命指令（是巨集的話等它跑完），用 time 校準，等到下一個重生減「提早秒數」再開始下一輪
   function endRound() {
+    // 第一輪走不到的房間再試一次（門還是過不去才記成走不到）
+    if (state.scan && !state.retried && state.deferred.size) {
+      state.retried = true;
+      state.badEdges.clear();
+      state.skipped = state.skipped.filter(item => !state.deferred.has(item.key));
+      state.targets = new Set(state.deferred);
+      state.deferred.clear();
+      Object.assign(state, { skips: 0, tries: 0, wrong: 0 });
+      state.phase = 'plan';
+      deps.notify();
+      return;
+    }
+    if (state.scan && state.prescan) { startHuntAfterPrescan(); return; }
+    if (state.scan) { finish(state.handled ? `掃描完成（走過 ${state.visited.length} 間）` : '沒有走得到的房間了'); return; }
     const message = state.handled ? `這一輪巡完了（到過 ${state.visited.length} 間）` : '沒有走得到的目標房間了';
     if (state.settings.loopRounds !== 'on' || !state.handled) { finish(message, { alert: !state.handled && state.round > 1 }); return; }
     if (state.settings.standbyCommand && !sendOrStop(state.settings.standbyCommand)) return;
@@ -645,15 +762,18 @@ function create(deps) {
   function plan(here) {
     if (state.loadDue) { state.loadDue = false; checkLoad(here); return; }
     if (state.targets.has(here)) { arrive(here); return; }
-    const strictGraph = state.learn ? buildGraph(true) : state.graph;
-    const looseGraph = state.learn ? buildGraph(false) : state.graph;
+    const clean = graph => (state.badEdges.size ? dropEdges(graph, state.badEdges) : graph);
+    const strictGraph = clean(state.learn ? buildGraph(true) : state.graph);
+    // 先補猜的反方向，再拿掉走不通的邊（順序反過來，剛拿掉的邊會被另一頭的反方向補回來）
+    const looseBase = state.learn ? buildGraph(false) : state.graph;
+    const looseGraph = clean(state.scan ? withReverse(looseBase) : looseBase);
     if (state.learn && !looseGraph.rooms[here]) { finish('走到地圖外的房間，已停止', { alert: true }); return; }
     let best = null;
     let guess = null;
     [...state.targets].forEach(key => {
       const way = Route.route(strictGraph, here, key);
       const loose = way ?? Route.route(looseGraph, here, key);
-      if (!loose) { state.targets.delete(key); state.skipped.push({ key, why: '走不到' }); return; }
+      if (!loose) { state.targets.delete(key); state.skipped.push({ key, why: '走不到' }); blockScan(key); return; }
       if (way) { if (!best || way.length < best.way.length) best = { key, way, graph: strictGraph }; }
       else if (!guess || loose.length < guess.way.length) guess = { key, way: loose, graph: looseGraph };
     });
@@ -665,7 +785,7 @@ function create(deps) {
     if (state.learn) {
       const learned = state.learned[here];
       if (!state.looked.has(here) && !learned?.exits && !learned?.to[cmd]) { learnHere(here); return; }
-      if (strictGraph.rooms[here].exits[cmd] === undefined) { startTrial(here); return; }
+      if (strictGraph.rooms[here].exits[cmd] === undefined) { startTrial(here, cmd); return; }
     }
     if (!sendOrStop(cmd)) return;
     state.cmd = cmd;
@@ -678,6 +798,15 @@ function create(deps) {
   function tick() {
     if (!state) return;
     state.ticks += 1;
+    // 掃描的卡住偵測：房間沒換、也沒處理完或略過任何一間，超過 SCAN_STALL_TICKS 就停下來（不管卡在哪個階段，包括一直在休息）
+    if (state.scan) {
+      const room = deps.room();
+      if (room !== state.lastRoom) { state.lastRoom = room; state.progressAt = state.ticks; }
+      else if (state.ticks - state.progressAt > SCAN_STALL_TICKS) {
+        finish(`掃描 ${SCAN_STALL_TICKS / TICKS_PER_SEC} 秒沒有進展，已停止（${describe().text}）`, { alert: true });
+        return;
+      }
+    }
     if (state.fight) { fightTick(); return; }
     if ((state.ticks - 1) % TICKS_PER_SEC === 0) {
       vitals();
@@ -723,7 +852,9 @@ function create(deps) {
   }
 
   // 按「開始」：把勾選的怪與目前顯示的區域固定下來；回傳 { ok, error }
-  async function start() {
+  // options.scan＝街景模式：不用勾怪，走這一區還沒走過的每一間，每間 l 一次記下怪與走過（不打、不問人、不等重生）
+  async function start(options = {}) {
+    const scan = options.scan === true;
     if (state || starting) return { ok: false, error: '已經在巡怪' };
     starting = true;
     cancelled = false;
@@ -732,14 +863,15 @@ function create(deps) {
     deps.notify();
     try {
       const target = await deps.target();
-      if (!target?.mobs?.length) return fail('請先按「選怪」勾選要巡的怪');
+      if (scan && !target?.area) return fail('讀不到地圖目前顯示的區域（地圖視窗沒有開？）');
+      if (!scan && !target?.mobs?.length) return fail('請先按「選怪」勾選要巡的怪');
       const here = deps.room();
       if (!here) return fail('讀不到目前所在的房間（地圖視窗沒開，或房間不在地圖上）');
       if (!here.startsWith(`${target.area}/`)) return fail('目前所在的房間不在地圖顯示的區域，請先把地圖切到你所在的區域');
       const graph = Route.parseArea(deps.areaHtml(target.area));
       if (!Object.keys(graph.rooms).length) return fail('讀不到這個區域的地圖');
       const store = await deps.readStore();
-      const settings = await deps.settings();
+      const settings = scan ? { ...await deps.settings(), loopRounds: 'off' } : await deps.settings();
       if (cancelled) return fail('已取消', false);
       const missing = [];
       if (settings.healMode === 'eat') {
@@ -748,8 +880,8 @@ function create(deps) {
       }
       if (!settings.homeCommand) missing.push('回家指令');
       if (missing.length) return fail(`請先到設定頁「地圖巡怪」填：${missing.join('、')}`);
-      const learn = settings.learnExits === 'on';
-      const learned = learn ? forgetOut(normalizeLearned(await deps.exits())) : {};
+      const learn = settings.learnExits === 'on' || scan; // 掃描一定會碰到圖上畫不準的房間（圖上往 s、實際是 su），所以一律照 l 的出口行走
+      const learned = learn || settings.prescan === 'on' ? forgetOut(normalizeLearned(await deps.exits())) : {};
       if (cancelled) return fail('已取消', false);
       let offset = 0;
       if (settings.loopRounds === 'on') {
@@ -758,15 +890,30 @@ function create(deps) {
         if (read === null) return fail('讀不到伺服器時間（time 的輸出），沒有開始');
         offset = read;
       }
-      const places = target.mobs.flatMap(mob => Collect.locate(store, mob)).filter(place => place.area === target.area);
-      const rooms = [...new Set(places.flatMap(place => place.rooms.map(room => `${place.area}/${room}`)))];
-      const targets = new Set(rooms.filter(key => graph.rooms[key]));
-      if (!targets.size) return fail('這個區域沒有蒐集到勾選的怪的房間（或那些房間不在地圖上）');
-      const baseSkipped = rooms.filter(key => !graph.rooms[key]).map(key => ({ key, why: '不在地圖上' }));
+      let targets;
+      let baseSkipped = [];
+      let prescan = false;
+      if (scan) {
+        const visited = normalizeVisited(await deps.visited?.());
+        if (cancelled) return fail('已取消', false);
+        // 走過（seen）的不再走；上次走不到（blocked）的每次掃描都再試一次（門可能開了、怪散了），不必清掉紀錄
+        targets = new Set(Object.keys(graph.rooms).filter(key => visited[key]?.state !== 'seen'));
+        if (!targets.size) return fail('這一區的房間都走過了（要全部重掃，請到設定頁清除「已走過的房間」）', false);
+      } else {
+        ({ targets, baseSkipped } = huntTargets(store, target.mobs, target.area, graph));
+        // 這一區有還沒走過、也沒記成走不到的房間＝沒有圖資：先掃它們，掃完再用補好的資料打（資料還沒補，勾選的怪可能一間都找不到，所以先不擋）
+        if (settings.prescan === 'on') {
+          const known = normalizeVisited(await deps.visited?.());
+          if (cancelled) return fail('已取消', false);
+          const missing = Object.keys(graph.rooms).filter(key => !known[key]);
+          if (missing.length) { prescan = true; targets = new Set(missing); baseSkipped = []; }
+        }
+        if (!prescan && !targets.size) return fail('這個區域沒有蒐集到勾選的怪的房間（或那些房間不在地圖上）');
+      }
       state = {
         round: 1, after: deps.now() + offset + settings.aheadSec * 1000, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
-        mobs: target.mobs, graph, targets, skipped: [...baseSkipped], fixed: [],
-        settings, loadDue: false, load: null, unloadTries: 0, unload: null, checkingLoad: false, learn, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
+        mobs: scan ? [] : target.mobs, area: target.area, offset, scan: scan || prescan, prescan, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph, targets, skipped: [...baseSkipped], fixed: [],
+        settings, loadDue: false, load: null, unloadTries: 0, unload: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
         ...roundFields(), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       note = '';
@@ -797,7 +944,7 @@ function create(deps) {
   const describe = () => {
     if (!state) return { text: note || '未啟動', alert: noteAlert };
     // 面板那一行要短：怪只寫名稱（拿掉括號 ID），房間只寫房間代號（區域在地圖上看得到）；完整的放在 title
-    const who = state.mobs.length === 1 ? state.mobs[0].replace(/\s*\([^()]*\)\s*$/, '') : `${state.mobs.length} 種怪`;
+    const who = state.prescan ? '打怪前先掃描' : state.scan ? '掃描' : state.mobs.length === 1 ? state.mobs[0].replace(/\s*\([^()]*\)\s*$/, '') : `${state.mobs.length} 種怪`;
     const room = key => (typeof key === 'string' ? key.split('/').pop() : key);
     if (state.resting) return { text: `${who}：休息中 ${Math.round(state.restPercent)}%→${state.settings.restResume}%${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.waiting) return { text: `${who}：等下一個重生 ${hhmm(state.waiting.spawn)}（第 ${state.waiting.rounds} 輪到過 ${state.waiting.visited} 間）${skippedShort(state.skipped)}`, alert: noteAlert };
@@ -821,5 +968,5 @@ function create(deps) {
   return { start, stop, on, summary, snapshot };
 }
 
-globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, FIELDS, normalizeSettings, gapMs, splitIds, create };
+globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, FIELDS, normalizeSettings, normalizeVisited, gapMs, splitIds, create };
 })();

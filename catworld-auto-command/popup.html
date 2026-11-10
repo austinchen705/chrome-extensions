@@ -248,6 +248,15 @@
           </select>
         </label>
         <label class="check"><input id="featureForceCap" type="checkbox"> 內力可練上限（打 hp 時多一行；上限 = (內功心法等級 ＋ enable 內功有效等級 ÷ 5) × 10，等級在你打 sk、enable 時記下；預設開啟）</label>
+        <div class="hint tight">內力上限的其他加成（遊戲輸出讀不到，自己填；公式來自試算表「內力試算」，沒填就當 0）：</div>
+        <label for="forceLevel">人物等級（超過 60 的部分每級 +10）</label>
+        <input id="forceLevel" type="number" min="0" max="999" step="1">
+        <label for="forceZhuguo">朱果吃了幾顆（每顆 +10）</label>
+        <input id="forceZhuguo" type="number" min="0" max="9999" step="1">
+        <label class="check"><input id="forceLaba" type="checkbox"> 臘八粥解謎做過了（+100）</label>
+        <label class="check"><input id="forceDongying" type="checkbox"> 東瀛做過了（+50）</label>
+        <label for="forceEquip">裝備加的內功點數（每點 +10）</label>
+        <input id="forceEquip" type="number" min="0" max="9999" step="1">
         <label class="check"><input id="featureSkills" type="checkbox"> 招式列表（打 careers 時，把已悟的招式依資料列出來並上色）</label>
         <button id="skills">悟招清單（新分頁開啟）</button>
       </details>
@@ -286,6 +295,7 @@
         <div id="mapCollectInfo" class="hint tight">尚無紀錄</div>
         <button id="mapCollectCopy">複製（可貼進試算表）</button>
         <button id="mapCollectClear">清除</button>
+        <button id="mapVisitedClear" title="清掉「已走過」的紀錄，下次按面板的「掃描」會重新走整區（怪物紀錄不受影響）">清除已走過的房間</button>
         <div id="mapCollectMsg" class="hint tight"></div>
         <p class="hint tight">遊戲頁的地圖視窗開著時，走進房間、輸出區印出怪物行（※名稱(ID)），就會記給你所在的房間（只增不減，重新整理遊戲頁也不會丟）：手動走一輪就蒐集得到。複製出來每列一個房間，Tab 分隔：區域代號、區域名稱、房間代號、怪物（名稱(ID)，逗號分隔）。只存在這台瀏覽器的本機。</p>
       </details>
@@ -486,6 +496,7 @@
   <script src="mentor-data.js"></script>
   <script src="mentor-search.js"></script>
   <script src="settings-backup.js"></script>
+  <script src="force-cap.js"></script>
   <script src="update-check.js"></script>
   <script src="popup.js"></script>
 </body>

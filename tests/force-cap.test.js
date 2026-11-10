@@ -127,3 +127,42 @@ ui('hp shows no line once the maximum internal force has reached the cap', async
     page.close();
   }
 });
+
+// ---- 其他加成（試算表「內力試算」的公式）：人物等級、朱果、臘八粥、東瀛、裝備的內功，都由玩家在設定頁自己填 ----
+test('extras follow the spreadsheet: level above 60 x10, 朱果 x10 each, 臘八粥 +100, 東瀛 +50, equipment +force x10', () => {
+  assert.deepEqual(F.extraPoints({ level: 71, zhuguo: 3, laba: true, dongying: true, equip: 5 }), { level: 110, zhuguo: 30, laba: 100, dongying: 50, equip: 50 });
+  assert.equal(F.extraPoints({ level: 60 }).level, 0, 'level 60 adds nothing');
+  assert.equal(F.extraPoints({ level: 59 }).level, 0, 'under 60 adds nothing, never negative');
+  assert.equal(F.extraPoints({ level: 61 }).level, 10);
+  assert.equal(F.extraTotal({}), 0);
+  assert.equal(F.extraTotal(undefined), 0);
+  // 試算表的樣本：basic 200、enable 311（技能 2620）＋ 等級 71（110）＋ 裝備 +5（50）＝ 2780
+  assert.equal(F.cap(200, 311) + F.extraTotal({ level: 71, equip: 5 }), 2780);
+});
+
+test('extras read back from storage are checked: junk, negatives and non-true switches count as nothing', () => {
+  assert.deepEqual(F.normalizeExtras(undefined), { level: 0, zhuguo: 0, laba: false, dongying: false, equip: 0 });
+  assert.deepEqual(F.normalizeExtras({ level: '71', zhuguo: -3, laba: 'yes', dongying: 1, equip: 'x' }), { level: 71, zhuguo: 0, laba: false, dongying: false, equip: 0 });
+  assert.deepEqual(F.normalizeExtras({ level: 71.9, zhuguo: 99999, laba: true }), { level: 71, zhuguo: 9999, laba: true, dongying: false, equip: 0 });
+  assert.equal(F.normalizeExtras({ level: 100000 }).level, 999);
+});
+
+test('describe adds the extras to the cap and says how it is made up; with no extras the text is exactly as before', () => {
+  const levels = { base: 200, effective: 311 };
+  const view = F.describe(levels, { cur: 1, max: 2620 }, String, { level: 71, equip: 5 });
+  assert.equal(view.text, '內力可練上限：2780（公式估算，實際可能更高；技能 2620＋其他 160；目前最大 2620，還差 160）');
+  assert.equal(F.describe(levels, { cur: 1, max: 2780 }, String, { level: 71, equip: 5 }), null, 'reached the cap with the extras');
+  assert.equal(F.describe(levels, { cur: 1, max: 2000 }, String, {}).text, '內力可練上限：2620（公式估算，實際可能更高；目前最大 2000，還差 620）');
+});
+
+ui('the line under hp includes the extras saved on the settings page', async () => {
+  const page = await boot({ initialStore: { forceLevels: { base: 156, effective: 244 }, forceExtras: { level: 71, laba: true } } });
+  try {
+    HP.split('\n').forEach(row => page.output(`<span>${row}\n</span>`));
+    assert.ok(await waitFor(() => box(page)));
+    assert.match(box(page).textContent, /2250/, '2040 + 110 + 100');
+    assert.match(box(page).textContent, /技能 2040＋其他 210/);
+  } finally {
+    page.close();
+  }
+});

@@ -648,12 +648,16 @@ showExtraSites();
 // 主要武器類型：存起來，遊戲頁的面板監聽 storage 變化，馬上生效。不合法的值當成未設定
 // 地圖怪物蒐集：紀錄由遊戲頁的 map-collect.js 寫進 storage，這裡只顯示筆數、複製成 Tab 分隔文字、清除
 const MAP_KEY = 'mapMonsters';
+const VISITED_KEY = 'mapVisited'; // 面板「掃描」走過的房間（map-hunt.js 寫入）
 const mapRows = CatworldMapCollect.rows;
 async function showMapCollect() {
   const rows = mapRows((await chrome.storage.local.get(MAP_KEY))[MAP_KEY]);
   const mobs = new Set(rows.flatMap(row => row.mobs));
   const builtin = Object.keys(CatworldMapCollect.builtinStore()).length;
-  $('mapCollectInfo').textContent = `內建 ${builtin} 個房間；` + (rows.length ? `你自己記下 ${rows.length} 個房間、${mobs.size} 種怪物` : '你自己還沒有紀錄');
+  const visited = Object.values(CatworldMapHunt.normalizeVisited((await chrome.storage.local.get(VISITED_KEY))[VISITED_KEY]));
+  const blocked = visited.filter(row => row.state === 'blocked').length;
+  $('mapCollectInfo').textContent = `內建 ${builtin} 個房間；` + (rows.length ? `你自己記下 ${rows.length} 個房間、${mobs.size} 種怪物` : '你自己還沒有紀錄')
+    + `；掃描走過 ${visited.length - blocked} 間` + (blocked ? `、走不到 ${blocked} 間` : '');
 }
 function mapMessage(text, level) { $('mapCollectMsg').textContent = text; markLevel($('mapCollectMsg'), level); }
 $('mapCollectCopy').addEventListener('click', async () => {
@@ -668,8 +672,34 @@ $('mapCollectClear').addEventListener('click', async () => {
   await chrome.storage.local.remove(MAP_KEY);
   mapMessage('已清除');
 });
+$('mapVisitedClear').addEventListener('click', async () => {
+  if (!confirm('清除「已走過的房間」紀錄？下次按面板的「掃描」會重新走整區。怪物紀錄不受影響。')) return;
+  await chrome.storage.local.remove(VISITED_KEY);
+  mapMessage('已清除已走過的房間');
+});
 showMapCollect();
-chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[MAP_KEY]) showMapCollect(); });
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && (changes[MAP_KEY] || changes[VISITED_KEY])) showMapCollect(); });
+
+// 內力可練上限的其他加成（force-cap.js 讀 forceExtras）：五個欄位每次 change 存成一個物件，存的是檢查過的值，欄位也改成存下來的樣子
+const FORCE_EXTRAS_KEY = 'forceExtras';
+const FORCE_NUMBER_FIELDS = { forceLevel: 'level', forceZhuguo: 'zhuguo', forceEquip: 'equip' };
+const FORCE_SWITCH_FIELDS = { forceLaba: 'laba', forceDongying: 'dongying' };
+function showForceExtras(raw) {
+  const stored = raw && typeof raw === 'object' ? raw : {};
+  const extras = CatworldForceCap.normalizeExtras(stored);
+  Object.entries(FORCE_NUMBER_FIELDS).forEach(([id, key]) => { $(id).value = stored[key] === undefined ? '' : String(extras[key]); });
+  Object.entries(FORCE_SWITCH_FIELDS).forEach(([id, key]) => { $(id).checked = extras[key]; });
+}
+async function saveForceExtras() {
+  const raw = {};
+  Object.entries(FORCE_NUMBER_FIELDS).forEach(([id, key]) => { raw[key] = $(id).value.trim(); });
+  Object.entries(FORCE_SWITCH_FIELDS).forEach(([id, key]) => { raw[key] = $(id).checked; });
+  const extras = CatworldForceCap.normalizeExtras(raw);
+  showForceExtras(extras);
+  await chrome.storage.local.set({ [FORCE_EXTRAS_KEY]: extras });
+}
+Object.keys({ ...FORCE_NUMBER_FIELDS, ...FORCE_SWITCH_FIELDS }).forEach(id => $(id).addEventListener('change', saveForceExtras));
+chrome.storage.local.get(FORCE_EXTRAS_KEY).then(data => showForceExtras(data[FORCE_EXTRAS_KEY]));
 
 // 裝備資料庫：紀錄由遊戲頁的 shop-collect.js 寫進 storage，這裡只顯示件數、複製成 Tab 分隔文字、清除
 const SHOP_KEY = CatworldShopCollect.DB_KEY;
