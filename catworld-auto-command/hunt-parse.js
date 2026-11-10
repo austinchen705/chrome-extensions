@@ -60,7 +60,24 @@ function parseLook(text) {
   const starts = [...whole.matchAll(new RegExp(EXIT_LINE.source, 'gm'))].map(match => match.index);
   const out = starts.length ? whole.slice(starts[starts.length - 1]) : whole;
   const lines = out.split(/\r?\n/);
-  return { exits: parseExits(out), monsters: lines.map(parseMonster).filter(Boolean), people: lines.map(parsePerson).filter(Boolean) };
+  // 同一個房間 ID 一樣的怪（例如三隻 ID 都是 guard）fight guard 只會打第一隻，所以每個都帶 ref：第一個就是 ID，第 N 個是「ID N」
+  // （遊戲照房間裡東西的順序數，和 l 列出的順序一樣；怪與別人一起數）
+  const counts = new Map();
+  const refOf = id => {
+    const key = id.toLowerCase();
+    const n = (counts.get(key) || 0) + 1;
+    counts.set(key, n);
+    return n === 1 ? id : `${id} ${n}`;
+  };
+  const monsters = [];
+  const people = [];
+  lines.forEach(line => {
+    const mob = parseMonster(line);
+    if (mob) { monsters.push({ ...mob, ref: refOf(mob.id) }); return; }
+    const person = parsePerson(line);
+    if (person) people.push({ ...person, ref: refOf(person.id) });
+  });
+  return { exits: parseExits(out), monsters, people };
 }
 
 // i：「你身上帶著下列這些東西( 載重 23% ):」→ 23；讀不到回 null

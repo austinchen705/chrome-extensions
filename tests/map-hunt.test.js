@@ -6,7 +6,7 @@ const { ui, boot: bootPage, sleep, waitFor, fixture } = require('./helpers/game-
 
 const SCALE = 20;
 // 開始前必填的欄位（吃藥指令、沒藥關鍵字、回家指令）：各測試預設都填好，要測缺欄位的自己清掉
-const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, commandGapMinSec: 0, commandGapMaxSec: 0 };
+const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, commandGapMinMs: 0, commandGapMaxMs: 0 };
 const boot = async options => {
   const page = await bootPage(options);
   page.store.mapHuntSettings = { ...REQUIRED };
@@ -83,6 +83,8 @@ const pick = async (page, ...names) => {
   assert.ok(await waitFor(() => names.every(name => page.store.mapHuntPicks?.t?.includes(name))), 'the ticks are saved');
 };
 const huntText = page => panelRoot(page).querySelector('.hunt-text').textContent;
+// 進行中的那一行只寫「略過 N 間」，哪幾間、為什麼放在那一行的 title
+const huntDetail = page => panelRoot(page).querySelector('.hunt-text').title;
 const click = (page, selector) => panelRoot(page).querySelector(selector).click();
 const alerts = page => page.messages.filter(message => message.type === 'ALERT');
 
@@ -146,6 +148,27 @@ ui('hunt: goes to the nearest of several target rooms, and ignores a collected r
     assert.deepEqual(game.log, ['e', 'e', 'l', 'e', 'l'], 'the nearer room c first, then d');
     assert.equal(game.at, 'd');
     assert.match(huntText(page), /略過 1 間.*zz.*不在地圖上/, 'the room that is not on the map is named in the panel');
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: while running, the panel line only counts the skipped rooms and the details are in its title', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = { ...mobsAt('c', 'd'), 't/zz': { area: 't', room: 'zz', areaName: '測試區', mobs: [MOB], seen: 1 } };
+    const game = world(page, { at: 'a' });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /略過 1 間/.test(huntText(page)) && !/巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.match(huntText(page), /（略過 1 間）/);
+    assert.doesNotMatch(huntText(page), /zz|不在地圖上/, 'the line stays short while running');
+    assert.match(huntText(page), /^測試怪：/, 'the monster is its name only, without the (id)');
+    assert.doesNotMatch(huntText(page), /test mob|t\//, 'no id and no area prefix on the line');
+    assert.match(huntDetail(page), /測試怪\(test mob\)/, 'the title keeps the full name');
+    assert.match(huntDetail(page), /zz 不在地圖上/, 'the title names the room and why');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000));
+    assert.equal(game.at, 'd');
   } finally {
     page.close();
   }
@@ -1836,7 +1859,7 @@ ui('learn places: a chosen monster that is not in the room on three visits is dr
 ui('hunt: its own command gap is added between the commands it sends (walking and looking)', async () => {
   const page = await boot({ scale: SCALE });
   try {
-    page.store.mapHuntSettings = { ...REQUIRED, commandGapMinSec: 3, commandGapMaxSec: 3 }; // 縮小 20 倍＝每個指令之間 0.15 秒
+    page.store.mapHuntSettings = { ...REQUIRED, commandGapMinMs: 3000, commandGapMaxMs: 3000 }; // 縮小 20 倍＝每個指令之間 0.15 秒
     page.store.mapMonsters = mobsAt('c');
     const game = world(page, { at: 'a' });
     await pick(page, MOB);
@@ -1850,14 +1873,102 @@ ui('hunt: its own command gap is added between the commands it sends (walking an
   }
 });
 
-test('hunt settings: the gap fields are checked, the longest gap is never below the shortest, and gapMs stays in range', () => {
+test('hunt settings: the gap fields (milliseconds) are checked, the longest gap is never below the shortest, and gapMs stays in range', () => {
   require('../catworld-auto-command/map-hunt.js');
   const { normalizeSettings, gapMs } = globalThis.CatworldMapHunt;
-  assert.deepEqual([normalizeSettings({}).commandGapMinSec, normalizeSettings({}).commandGapMaxSec], [1, 2]);
-  const swapped = normalizeSettings({ commandGapMinSec: 3, commandGapMaxSec: 1 });
-  assert.equal(swapped.commandGapMaxSec, 3);
-  assert.equal(normalizeSettings({ commandGapMinSec: -1, commandGapMaxSec: 'x' }).commandGapMinSec, 1);
-  assert.equal(gapMs({ commandGapMinSec: 1, commandGapMaxSec: 3 }, () => 0), 1000);
-  assert.equal(gapMs({ commandGapMinSec: 1, commandGapMaxSec: 3 }, () => 0.5), 2000);
-  assert.equal(gapMs({ commandGapMinSec: 0, commandGapMaxSec: 0 }), 0);
+  assert.deepEqual([normalizeSettings({}).commandGapMinMs, normalizeSettings({}).commandGapMaxMs], [1000, 2000]);
+  const swapped = normalizeSettings({ commandGapMinMs: 3000, commandGapMaxMs: 1000 });
+  assert.equal(swapped.commandGapMaxMs, 3000);
+  assert.equal(normalizeSettings({ commandGapMinMs: -1, commandGapMaxMs: 'x' }).commandGapMinMs, 1000);
+  assert.equal(normalizeSettings({ commandGapMinMs: 250, commandGapMaxMs: 400 }).commandGapMinMs, 250, 'a few hundred milliseconds is allowed');
+  assert.equal(normalizeSettings({ commandGapMinMs: 5000, commandGapMaxMs: 5000 }).commandGapMaxMs, 2000, 'over 3000 falls back to the default');
+  assert.equal(gapMs({ commandGapMinMs: 1000, commandGapMaxMs: 3000 }, () => 0), 1000);
+  assert.equal(gapMs({ commandGapMinMs: 1000, commandGapMaxMs: 3000 }, () => 0.5), 2000);
+  assert.equal(gapMs({ commandGapMinMs: 0, commandGapMaxMs: 0 }), 0);
+});
+
+test('hunt settings: the old gap in seconds is converted to milliseconds, and the new fields win when both exist', () => {
+  require('../catworld-auto-command/map-hunt.js');
+  const { normalizeSettings } = globalThis.CatworldMapHunt;
+  const old = normalizeSettings({ commandGapMinSec: 1, commandGapMaxSec: 2.5 });
+  assert.deepEqual([old.commandGapMinMs, old.commandGapMaxMs], [1000, 2500]);
+  assert.equal(old.commandGapMinSec, undefined, 'the old key is not kept');
+  const zero = normalizeSettings({ commandGapMinSec: 0, commandGapMaxSec: 0 });
+  assert.deepEqual([zero.commandGapMinMs, zero.commandGapMaxMs], [0, 0], 'a saved 0 keeps meaning no extra gap');
+  const both = normalizeSettings({ commandGapMinSec: 1, commandGapMaxSec: 2, commandGapMinMs: 300, commandGapMaxMs: 500 });
+  assert.deepEqual([both.commandGapMinMs, both.commandGapMaxMs], [300, 500]);
+  assert.deepEqual([normalizeSettings({ commandGapMinSec: 9, commandGapMaxSec: 9 }).commandGapMinMs], [1000], 'an old value over the limit falls back to the default');
+});
+
+// 同一個房間有好幾隻 ID 一樣的怪（襄陽守軍 小隊長(guard)、中隊長(guard)、中隊長(guard)）：fight guard 會打第一隻，所以要用第幾個（guard 2）指定勾選的那一隻
+ui('hunt: monsters sharing one id are told apart by their place in the room (fight guard 2, not fight guard)', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const CAPTAIN = '襄陽守軍 中隊長(guard)';
+    const lines = ['  ※襄陽守軍 小隊長(guard) [fight][kill]', `  ※${CAPTAIN} [fight][kill]`, `  ※${CAPTAIN} [fight][kill]`, '  ※「郭家女婿」耶律齊(ya lu chi) [fight][kill]'];
+    page.store.mapMonsters = mobsIn(CAPTAIN, 'c');
+    page.store.mapHuntSettings = { ...page.store.mapHuntSettings, afterKillCommand: '' }; // 預設的 gc 在假遊戲裡會清掉第一隻怪，序號就跟著變
+    const fights = [];
+    world(page, {
+      at: 'a',
+      looks: { c: { lines } },
+      script: (command, { say, looks }) => {
+        const match = /^(?:fight|kill) (guard)(?: (\d+))?$/.exec(command);
+        if (!match) return false;
+        fights.push(command);
+        const nth = Number(match[2] || 1);
+        const index = looks.c.lines.map((line, i) => [line, i]).filter(([line]) => line.includes('(guard)'))[nth - 1][1];
+        looks.c.lines.splice(index, 1); // 被打的那一隻倒下
+        say('守軍死了。');
+        return true;
+      },
+    });
+    await pick(page, CAPTAIN);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(fights, ['fight guard 2', 'fight guard 2'], 'both captains, never the first guard (the squad leader)');
+  } finally {
+    page.close();
+  }
+});
+
+// 巡怪的指令欄（打完後、回家、吃藥、待命…）也可以寫「@巨集 N」：用到的當下讀遊戲存的那一格換成它的指令，不然 @巨集 10 會原樣送給遊戲，遊戲回「什麼﹖」
+const MEMORY_STORAGE = "const mem = {}; Object.defineProperty(window, 'localStorage', { configurable: true, value: { getItem: key => (key in mem ? mem[key] : null), setItem: (key, value) => { mem[key] = String(value); } } });";
+const macroSlots = (row, text) => JSON.stringify(Array.from({ length: 90 }, (_, i) => (i === row - 1 ? ['', text] : 0)));
+
+ui('hunt: @巨集 N in a hunt command field is replaced by that game macro instead of being sent as text', async () => {
+  const page = await boot({ scale: SCALE, preload: MEMORY_STORAGE });
+  try {
+    page.w.localStorage.setItem('MACROS', macroSlots(10, 'sit;stand'));
+    page.store.mapHuntSettings = { ...page.store.mapHuntSettings, afterKillCommand: 'ride;@巨集 10' };
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.ok(await waitFor(() => game.log.includes('stand'), 4000), `the macro slot is sent: ${game.log}`);
+    assert.ok(game.log.includes('ride') && game.log.includes('sit'), `ride then the slot: ${game.log}`);
+    assert.ok(!game.log.some(command => command.includes('@巨集')), 'the reference itself never reaches the game');
+    assert.ok(game.log.indexOf('ride') < game.log.indexOf('sit') && game.log.indexOf('sit') < game.log.indexOf('stand'), 'in order');
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: a @巨集 N that cannot be read is dropped with a note, and the other commands are still sent', async () => {
+  const page = await boot({ scale: SCALE, preload: MEMORY_STORAGE });
+  try {
+    page.w.localStorage.setItem('MACROS', macroSlots(3, 'sit')); // 第 10 列是空的
+    page.store.mapHuntSettings = { ...page.store.mapHuntSettings, afterKillCommand: 'ride;@巨集 10' };
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.ok(await waitFor(() => game.log.includes('ride'), 4000));
+    assert.ok(!game.log.some(command => command.includes('@巨集')), 'the unreadable reference is not sent as text');
+    assert.match(panelRoot(page).querySelector('.macro-text').textContent, /巡怪.*@巨集 10.*沒有指令/, 'the macro row says why');
+  } finally {
+    page.close();
+  }
 });

@@ -1143,6 +1143,18 @@ function macroWarnings(group) {
   return rules.flatMap(rule => CatworldMacroIO.expandMacroRefs(rule.commands, raw, macroProblem).errors.map(error => `規則「${rule.label}」${error}`));
 }
 
+// 巡怪的指令欄（打完後、回家、吃藥、待命、整理…）也能寫「@巨集 N」：送出的當下才讀遊戲存的那一格換成它的指令；
+// 讀不到的拿掉並在面板的巨集列說明原因，其他指令照送。沒有 @巨集 時原樣回傳、完全不讀遊戲存的巨集
+function expandHuntCommand(command) {
+  if (!CatworldMacroIO.containsMacroRef(command)) return command;
+  const expanded = CatworldMacroIO.expandMacroRefs([command], readGameMacros(), macroProblem);
+  if (expanded.errors.length) {
+    macroNote = { text: `巡怪的指令有讀不到的 @巨集：${expanded.errors.join('；')}`, until: Date.now() + 8000 };
+    renderPanel();
+  }
+  return expanded.commands.join(';');
+}
+
 // 兩組觸發各自獨立；送出佇列的來源記成 trigger:<組>，停掉某一組只丟掉那一組還沒送的指令
 async function startTriggers(group, config) {
   if (!CatworldTriggerEngine.hasActiveRules(config)) {
@@ -1381,9 +1393,16 @@ hunt = CatworldMapHunt.create({
     const stat = readStat('氣');
     return stat && stat.max > 0 ? (stat.value / stat.max) * 100 : NaN;
   },
-  send: (command, onSent) => { queueCommand(command, 'hunt', onSent); return true; },
+  send: (command, onSent) => {
+    const text = expandHuntCommand(command);
+    if (text.trim()) queueCommand(text, 'hunt', onSent);
+    return true;
+  },
   // 停止後才送的回家指令：用巨集（執行中算 active()，佇列才送得出去），owner 不是 hunt，所以停止巡怪時不會被一起取消
-  sendAfterStop: command => startMacro(command, 'hunt-home'),
+  sendAfterStop: command => {
+    const text = expandHuntCommand(command);
+    return text.trim() ? startMacro(text, 'hunt-home') : false;
+  },
   dropQueue: () => { dropQueue('hunt'); cancelMacros('hunt'); },
   alert: reason => alertOnly(reason, '⚠ 巡怪已停止'),
   notify: () => renderPanel(),
@@ -1453,6 +1472,11 @@ function initPanel() {
       .line .s { flex: 1; min-width: 0; color: #bbb; font-size: 15px; overflow-wrap: anywhere; white-space: pre-line; padding-top: 4px; }
       .line .s.alert { color: #ff8a7a; }
       .line .s.warn { color: #ffb347; }
+      /* 巡怪、巨集這兩行有按鈕：文字跟按鈕擠在同一列會被擠成又窄又高的一條，所以標籤與按鈕在第一列、狀態文字獨佔下面一整列 */
+      .line.hunt-line, .line.macro-line { flex-wrap: wrap; row-gap: 2px; }
+      .hunt-line .s, .macro-line .s { order: 3; flex: 1 1 100%; padding-top: 0; }
+      .hunt-line .mini, .macro-line .mini { margin-left: auto; }
+      .macro-line .s:empty { display: none; }
       .mini { display: flex; gap: 6px; flex: none; }
       .mini button { all: unset; text-align: center; padding: 3px 12px; border-radius: 6px;
         background: #3a3a3e; cursor: pointer; font-size: 14px; font-weight: 600; }
@@ -1905,6 +1929,7 @@ function renderPanel() {
     panel.replace();
   }
   panel.huntText.classList.toggle('alert', huntInfo.alert);
+  panel.huntText.title = huntInfo.detail || '';
   panel.hstart.disabled = hunt.on();
   panel.hstop.disabled = !hunt.on();
   panel.mstop.disabled = !macroRuns.size;

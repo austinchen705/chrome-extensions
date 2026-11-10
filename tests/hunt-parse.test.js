@@ -55,12 +55,17 @@ const monstersOf = text => JSON.parse(JSON.stringify(P.parseLook(text).monsters)
 test('look monsters: one entry per ※ line, same-name monsters are not merged', () => {
   const three = monstersOf(sample('look-garden'));
   assert.equal(three.length, 3);
-  three.forEach(mob => assert.deepEqual(mob, { name: '峨嵋派 第五代弟子', id: 'emei pupil', full: '峨嵋派 第五代弟子(emei pupil)', state: '' }));
+  three.forEach((mob, i) => assert.deepEqual(mob, { name: '峨嵋派 第五代弟子', id: 'emei pupil', full: '峨嵋派 第五代弟子(emei pupil)', state: '', ref: ['emei pupil', 'emei pupil 2', 'emei pupil 3'][i] }));
 });
 
 test('look monsters: the state tag is kept, corpses and the prompt are not monsters', () => {
-  assert.deepEqual(monstersOf(sample('look-treetop-fighting')), [{ name: '炎蛛', id: 'fire spider', full: '炎蛛(fire spider)', state: '戰鬥中' }]);
-  assert.deepEqual(monstersOf(sample('look-treetop-ko')), [{ name: '炎蛛', id: 'fire spider', full: '炎蛛(fire spider)', state: '昏迷不醒' }]);
+  assert.deepEqual(monstersOf(sample('look-treetop-fighting')), [{ name: '炎蛛', id: 'fire spider', full: '炎蛛(fire spider)', state: '戰鬥中', ref: 'fire spider' }]);
+  assert.deepEqual(monstersOf(sample('look-treetop-ko')), [{ name: '炎蛛', id: 'fire spider', full: '炎蛛(fire spider)', state: '昏迷不醒', ref: 'fire spider' }]);
+});
+
+test('look monsters: ids shared by several monsters get their place in the room as ref (fight guard would hit the first one)', () => {
+  const refs = monstersOf(sample('look-parade')).map(mob => [mob.name, mob.ref]);
+  assert.deepEqual(refs, [['襄陽守軍 小隊長', 'guard'], ['襄陽守軍 中隊長', 'guard 2'], ['襄陽守軍 中隊長', 'guard 3'], ['「郭家女婿」耶律齊', 'ya lu chi']]);
 });
 
 test('look monsters: rooms with only people and items have none', () => {
@@ -77,7 +82,7 @@ test('look people: every line with an ID and a <state> that is not a monster, ni
 });
 
 test('look people: a lone player in the valley, and the long title line is still one person', () => {
-  assert.deepEqual(peopleOf(sample('look-valley')), [{ id: 'geats', state: '發呆四分鐘' }]);
+  assert.deepEqual(peopleOf(sample('look-valley')), [{ id: 'geats', state: '發呆四分鐘', ref: 'geats' }]);
 });
 
 test('look people: items without a state, corpses, monsters, the door in the description and the prompt are not people', () => {

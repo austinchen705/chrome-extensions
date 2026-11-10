@@ -31,8 +31,8 @@ const NO_MEDICINE_WINDOW_TICKS = 10 * TICKS_PER_SEC; // 吃藥指令真的送出
 
 // 設定頁的欄位（也決定預設值與檢查）：type 是 text、number 或 select
 const FIELDS = [
-  { key: 'commandGapMinSec', label: '巡怪送指令的最短間隔（秒，最多 3；走路、看房間、打怪、補氣都算，和「指令間隔」取較大的）', type: 'number', default: 1, min: 0, max: 3 },
-  { key: 'commandGapMaxSec', label: '巡怪送指令的最長間隔（秒；每次在最短與最長之間隨機）', type: 'number', default: 2, min: 0, max: 3 },
+  { key: 'commandGapMinMs', label: '巡怪送指令的最短間隔（毫秒，0～3000；走路、看房間、打怪、補氣都算，和「指令間隔」取較大的，所以想更快也要把「指令間隔」調小）', type: 'number', default: 1000, min: 0, max: 3000 },
+  { key: 'commandGapMaxMs', label: '巡怪送指令的最長間隔（毫秒；每次在最短與最長之間隨機）', type: 'number', default: 2000, min: 0, max: 3000 },
   { key: 'healMode', label: '補氣方式', type: 'select', options: [['eat', '吃藥'], ['rest', '自己回']], default: 'eat' },
   { key: 'eatBelow', label: '氣低於幾 % 就吃藥', type: 'number', default: 50, min: 1, max: 99 },
   { key: 'eatCommand', label: '吃藥指令（可多個，用 ; 分隔）', type: 'text', default: '' },
@@ -60,7 +60,13 @@ const FIELDS = [
 ];
 
 // 儲存的設定可能缺欄位或被改壞：每個欄位都檢查，不合法用預設
-function normalizeSettings(raw) {
+function normalizeSettings(rawSettings) {
+  // 舊版的巡怪間隔單位是秒（commandGapMinSec／commandGapMaxSec），沒有新欄位時換算成毫秒
+  const raw = rawSettings && typeof rawSettings === 'object' ? { ...rawSettings } : rawSettings;
+  ['Min', 'Max'].forEach(which => {
+    const old = raw?.[`commandGap${which}Sec`];
+    if (raw && raw[`commandGap${which}Ms`] === undefined && old !== undefined && old !== '' && old !== null && Number.isFinite(Number(old))) raw[`commandGap${which}Ms`] = Number(old) * 1000;
+  });
   const out = {};
   FIELDS.forEach(field => {
     const value = raw?.[field.key];
@@ -75,14 +81,14 @@ function normalizeSettings(raw) {
   });
   // 危險線要比休息線低，不然休息時永遠碰不到危險線
   if (out.dangerBelow >= out.restBelow) out.dangerBelow = Math.min(FIELDS.find(field => field.key === 'dangerBelow').default, out.restBelow - 1);
-  if (out.commandGapMaxSec < out.commandGapMinSec) out.commandGapMaxSec = out.commandGapMinSec;
+  if (out.commandGapMaxMs < out.commandGapMinMs) out.commandGapMaxMs = out.commandGapMinMs;
   return out;
 }
 
-// 巡怪送出的指令之間，除了共用的「指令間隔」，還要再隔最短～最長秒數之間的隨機一段（毫秒）；random 可注入
+// 巡怪送出的指令之間，除了共用的「指令間隔」，還要再隔最短～最長毫秒之間的隨機一段；random 可注入
 function gapMs(settings, random = Math.random) {
-  const min = settings.commandGapMinSec * 1000;
-  const max = settings.commandGapMaxSec * 1000;
+  const min = settings.commandGapMinMs;
+  const max = settings.commandGapMaxMs;
   return min + random() * (max - min);
 }
 
@@ -122,6 +128,10 @@ function create(deps) {
     if (!list.length) return '';
     return `（略過 ${list.length} 間：${list.slice(0, 3).map(item => `${item.key} ${item.why}`).join('、')}${list.length > 3 ? '…' : ''}）`;
   };
+
+  // 巡怪進行中面板那一行用的短版：只有間數，細節放在 detail（滑鼠移上去看）
+  const skippedShort = list => (list.length ? `（略過 ${list.length} 間）` : '');
+  const skippedDetail = list => list.map(item => `${item.key} ${item.why}`).join('\n');
 
   // 巡怪時修正了哪些怪的位置（learnVisit 的結果）：只在停止時提一句
   const fixedNote = list => (list.length ? `（修正位置：${list.slice(0, 3).join('、')}${list.length > 3 ? '…' : ''}）` : '');
@@ -244,7 +254,7 @@ function create(deps) {
       // 特攻從開打算起隔一個間隔才送第一次，免得緊跟在 fight 後面被拒戰時得到「你要對誰施展這個招式」
       state.fight = { mob, resolve, finishing, knockout, knockedOut: false, killSent: finishing, buffer: '', noTarget: false, waited: 0, lastSpecial: state.ticks, checking: false, silentChecks: 0, endWords };
       deps.notify();
-      if (!deps.send(`${finishing ? 'kill' : 'fight'} ${mob.id}`)) finish('指令送不出去，已停止', { alert: true });
+      if (!deps.send(`${finishing ? 'kill' : 'fight'} ${mob.ref ?? mob.id}`)) finish('指令送不出去，已停止', { alert: true });
     });
   }
   const endFight = fight => {
@@ -270,7 +280,7 @@ function create(deps) {
       fight.killSent = true;
       fight.noTarget = false; // 前面的特攻對著還沒開打的怪，不算這場沒有目標
       fight.buffer = '';
-      deps.send(`kill ${fight.mob.id}`);
+      deps.send(`kill ${fight.mob.ref ?? fight.mob.id}`);
       return;
     }
     const hit = fight.endWords.find(word => fight.buffer.includes(word));
@@ -293,7 +303,9 @@ function create(deps) {
       if (!info.exits.length) { if ((fight.silentChecks += 1) >= MAX_STUCK) endFight(fight); return; }
       const mine = info.monsters.filter(mob => token.mobs.includes(mob.full));
       if (mine.some(mob => mob.state === '戰鬥中')) return;
-      if (mine.some(mob => mob.state !== KNOCKED_OUT) && (fight.silentChecks += 1) < MAX_STUCK) { deps.send(`${fight.killSent ? 'kill' : 'fight'} ${fight.mob.id}`); return; }
+      // 重送時用這次 l 看到的位置（前面的怪倒下後，第幾個會變）
+      const again = mine.find(mob => mob.state !== KNOCKED_OUT && SAFE_ID.test(mob.id));
+      if (again && (fight.silentChecks += 1) < MAX_STUCK) { deps.send(`${fight.killSent ? 'kill' : 'fight'} ${again.ref}`); return; }
       fight.knockedOut = !fight.finishing && mine.some(mob => mob.id === fight.mob.id && mob.state === KNOCKED_OUT);
       endFight(fight);
     }).catch(() => { if (state === token) finish('看房間時出錯，已停止', { alert: true }); });
@@ -782,20 +794,27 @@ function create(deps) {
   }
 
   const on = () => starting || state !== null;
-  const summary = () => {
+  const describe = () => {
     if (!state) return { text: note || '未啟動', alert: noteAlert };
-    const who = state.mobs.length === 1 ? state.mobs[0] : `${state.mobs.length} 種怪`;
-    if (state.resting) return { text: `${who}：休息中 ${Math.round(state.restPercent)}%→${state.settings.restResume}%${skippedNote(state.skipped)}`, alert: noteAlert };
-    if (state.waiting) return { text: `${who}：等下一個重生 ${hhmm(state.waiting.spawn)}（第 ${state.waiting.rounds} 輪到過 ${state.waiting.visited} 間）${skippedNote(state.skipped)}`, alert: noteAlert };
-    if (state.phase === 'unload') return { text: `${who}：負重 ${state.load}%，執行整理指令中…${skippedNote(state.skipped)}`, alert: noteAlert };
-    if (state.checkingLoad) return { text: `${who}：看負重…${skippedNote(state.skipped)}`, alert: noteAlert };
-    if (state.phase === 'standby') return { text: `${who}：等待指令送完，再校準伺服器時間…${skippedNote(state.skipped)}`, alert: noteAlert };
-    if (state.calibrating) return { text: `${who}：校準伺服器時間…${skippedNote(state.skipped)}`, alert: noteAlert };
-    if (state.trial) return { text: `${who}：在 ${state.trial.room} 試出口${skippedNote(state.skipped)}`, alert: noteAlert };
-    if (state.learning) return { text: `${who}：看 ${state.goal ?? '房間'} 的出口…${skippedNote(state.skipped)}`, alert: noteAlert };
-    if (state.fight) return { text: `${who}：在 ${state.goal} 打 ${state.fight.mob.name}${skippedNote(state.skipped)}`, alert: noteAlert };
-    if (state.phase === 'look') return { text: `${who}：到了 ${state.goal}，看房間…${skippedNote(state.skipped)}`, alert: noteAlert };
-    return { text: `${who}：走向 ${state.goal ?? '…'}（目標剩 ${state.targets.size} 間）${skippedNote(state.skipped)}`, alert: noteAlert };
+    // 面板那一行要短：怪只寫名稱（拿掉括號 ID），房間只寫房間代號（區域在地圖上看得到）；完整的放在 title
+    const who = state.mobs.length === 1 ? state.mobs[0].replace(/\s*\([^()]*\)\s*$/, '') : `${state.mobs.length} 種怪`;
+    const room = key => (typeof key === 'string' ? key.split('/').pop() : key);
+    if (state.resting) return { text: `${who}：休息中 ${Math.round(state.restPercent)}%→${state.settings.restResume}%${skippedShort(state.skipped)}`, alert: noteAlert };
+    if (state.waiting) return { text: `${who}：等下一個重生 ${hhmm(state.waiting.spawn)}（第 ${state.waiting.rounds} 輪到過 ${state.waiting.visited} 間）${skippedShort(state.skipped)}`, alert: noteAlert };
+    if (state.phase === 'unload') return { text: `${who}：負重 ${state.load}%，執行整理指令中…${skippedShort(state.skipped)}`, alert: noteAlert };
+    if (state.checkingLoad) return { text: `${who}：看負重…${skippedShort(state.skipped)}`, alert: noteAlert };
+    if (state.phase === 'standby') return { text: `${who}：等待指令送完，再校準伺服器時間…${skippedShort(state.skipped)}`, alert: noteAlert };
+    if (state.calibrating) return { text: `${who}：校準伺服器時間…${skippedShort(state.skipped)}`, alert: noteAlert };
+    if (state.trial) return { text: `${who}：在 ${room(state.trial.room)} 試出口${skippedShort(state.skipped)}`, alert: noteAlert };
+    if (state.learning) return { text: `${who}：看 ${room(state.goal) ?? '房間'} 的出口…${skippedShort(state.skipped)}`, alert: noteAlert };
+    if (state.fight) return { text: `${who}：在 ${room(state.goal)} 打 ${state.fight.mob.name}${skippedShort(state.skipped)}`, alert: noteAlert };
+    if (state.phase === 'look') return { text: `${who}：到了 ${room(state.goal)}，看房間…${skippedShort(state.skipped)}`, alert: noteAlert };
+    return { text: `${who}：走向 ${room(state.goal) ?? '…'}（剩 ${state.targets.size} 間）${skippedShort(state.skipped)}`, alert: noteAlert };
+  };
+  // 面板那一行只寫略過幾間（要看是哪幾間、為什麼，滑鼠移到那一行；停止時的訊息也會列）
+  const summary = () => {
+    const info = describe();
+    return state ? { ...info, detail: [state.mobs.join('、'), state.goal ? `目標房間 ${state.goal}` : '', skippedDetail(state.skipped)].filter(Boolean).join('\n') } : info;
   };
   const snapshot = () => ({ on: on(), note, targets: state ? [...state.targets] : [], skipped: state ? state.skipped : [] });
 
