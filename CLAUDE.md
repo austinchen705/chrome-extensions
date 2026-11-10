@@ -183,6 +183,14 @@
 - 「巨集」列常駐顯示（按鈕在列上），狀態文字沒有巨集在跑時要清成空的；剪貼簿一律用按鈕所在 document 的視窗（面板可能在置頂浮窗），複製失敗要把文字放進可手動複製的框；文字框要擋掉 `mousedown`、`click` 與按鍵事件的冒泡。
 - 測試：`tests/macro-io.test.js`（純函式，邊界案例都放這裡）、`tests/macro-io-ui.test.js`（jsdom 載入整個 content script，假的 `chrome`、`localStorage.MACROS` 與剪貼簿）；真實排版、遊戲重新整理後是否讀到新巨集只能在真實頁面驗證。
 
+## 設定備份
+
+- 規格與票在 `.scratch/settings-backup/`（不進 git）。`settings-backup.js`（純函式，不碰 DOM 與 `chrome.*`，**只有 popup.html 載入**，不進 manifest 的 content script，也不進 popup 備援注入，`tests/injection-lists.test.js` 會擋）：`BLOCKS`（八個區塊 timer、trigger、safety、helpers、chat、hunt、sources、data，每個有 id、label、keys）、`SECRET_KEYS`（`lineNotify`、`captchaSampleUrl`）、`EXCLUDED_KEYS`（執行狀態、快取、各裝置版面、`macroBackup`、`settingsBackup` 等）。**每個儲存鍵都必須在這三份清單的其中一份**：`tests/settings-backup.test.js` 的守門測試會掃原始碼裡的儲存鍵（`const …KEY… = '…'`、`get／remove('…')`、`get([…])`、`set({…})` 的頂層鍵），新增的鍵沒分類就失敗，所以新增儲存鍵時要決定它屬於哪個區塊、是機密、還是不匯出。
+- 檔案格式 `{ format: 'catworld-settings', version: 1, exportedWith, exportedAt, blocks: { 區塊id: { 鍵: 值 } }, secrets? }`；`exportData／exportText` 產生，機密只在 `secrets: true` 時放進 `secrets`。**LINE token 與 userId 仍是機密**：content script 不得讀取（見手機通知），匯出只在設定頁、要玩家勾選，有警告。
+- 匯入：`checkImport(text)` 整份檢查（版本、形狀，`null` 值拒絕，未知的區塊與鍵忽略，只有分類過的鍵能被寫入，空的 `secrets` 不算有東西），`planImport(current, data, { blocks, secrets })` 算寫入計畫（`set`、`remove`）：勾選的區塊整個取代、檔案沒有而現在有的鍵移除，沒勾的區塊與排除的鍵不動。設定頁（`popup.js`）按確認時取下當下檢查過的那一份（`pendingImport`），讀完現有儲存後若文字被改了就什麼都不寫。**匯入或還原成功後 `freezeSettingsPage()` 把整頁停用**：頁上欄位是舊值，任何改動都會存回去蓋掉剛寫的。
+- 備份：`makeBackup`（這次會被動到的鍵的現值＋「原本沒有」的鍵 `absent`，存成 null 的當沒有）、`checkBackup`（形狀、鍵都要分類過）、`planRestore`。存在 `chrome.storage.local.settingsBackup`（只留一層，不匯出）。**順序：先寫備份，備份寫不進去就不匯入；計畫和現在完全一樣就不寫備份；寫入失敗時，寫過東西就用新備份放回去，放得回去才把舊備份放回，放不回去就留著新備份（它才是回頭的路）**；`set` 是整批成功或失敗，所以 `set` 失敗代表什麼都沒寫。「還原上一份」有備份才可按（壞的備份也可按，按了才說明原因），確認後照 `planRestore` 寫回，備份保留；匯入與還原進行中互相停用。
+- 測試：`tests/settings-backup.test.js`（純函式與守門）、`tests/settings-backup-ui.test.js`（jsdom 載入真正的 popup.html，假儲存有 `flags`：`writeFails`、`removeFails`、`failSet`、`hold`）。Chrome 真實的剪貼簿與下載行為只能在真實瀏覽器驗證。
+
 ## 額外的遊戲網址（臨時網站）
 
 - manifest 的 `content_scripts.matches` 是靜態的，只認遊戲網站；其他網站要用動態註冊。清單在 `chrome.storage.local.extraGameUrls`（match pattern 的陣列，每一項是整個主機 `https://主機/*`，**不帶 port**：Chrome 的 match pattern 不認 port），由設定頁的「額外的遊戲網址」管理。不要把某個臨時網址（尤其是 ngrok 這種含 IP 的）寫進 manifest 或程式、commit 進公開 repo。
