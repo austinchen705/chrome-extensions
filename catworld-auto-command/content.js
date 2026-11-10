@@ -1362,6 +1362,8 @@ function markHuntVisited(key, state) {
   });
   return visitedWrite;
 }
+// 手動蒐集的觀察器在巡怪、掃描進行中暫停（見 map-collect.js 的 setSuspended）
+CatworldMapCollect.setSuspended(() => hunt?.on() ?? false);
 // 地圖巡怪：目標是面板「選怪」勾選的怪（map-hunt-ui.js，依區域記在 mapHuntPicks）與地圖目前顯示的區域；指令走共用送出佇列（來源 hunt）
 hunt = CatworldMapHunt.create({
   target: async () => {

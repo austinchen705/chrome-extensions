@@ -2280,3 +2280,24 @@ ui('prescan: not done when every room of the area is already known (visited or b
     off.close();
   }
 });
+
+// 巡怪、掃描進行中，手動蒐集的觀察器要暫停：它等 0.6 秒才看地圖捲到哪一間，巡怪走得快時會記錯房間；巡怪自己看過 l 之後的記錄才準
+ui('the manual collector pauses while a hunt or scan is running, and works again after it stops', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    world(page, { at: 'a', silentLook: true }); // l 沒回應：巡怪停在等回應的階段，有時間做檢查
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.equal(await hunting(page), true);
+    say(page, '  ※路人怪(passerby)');
+    await sleep(250);
+    assert.ok(!Object.values(page.store.mapMonsters).some(row => row.mobs?.includes('路人怪(passerby)')), 'not recorded while hunting');
+    click(page, '.hstop');
+    assert.ok(await waitFor(async () => !(await hunting(page))), 'stopped');
+    say(page, '  ※路人怪(passerby)');
+    assert.ok(await waitFor(() => Object.values(page.store.mapMonsters).some(row => row.mobs?.includes('路人怪(passerby)')), 2000), 'recorded again once the hunt has stopped');
+  } finally {
+    page.close();
+  }
+});

@@ -153,7 +153,12 @@ function markRooms(doc, places) {
   return count;
 }
 
-globalThis.CatworldMapCollect = { currentRoom, merge, visit, MISS_LIMIT, withBuiltin, builtinStore, rows, isMob, locate, whereIs, markRooms, clearMarks, STORAGE_KEY };
+// 巡怪、掃描進行中要暫停（content.js 注入）：這個觀察器等 SETTLE_MS 才看地圖捲到哪一間，巡怪走得快時會記錯房間；
+// 巡怪自己走進房間看過 l 之後的記錄（visit）才準。暫停時看到的怪不記（也不留到之後）
+let suspended = () => false;
+const setSuspended = fn => { suspended = typeof fn === 'function' ? fn : () => false; };
+
+globalThis.CatworldMapCollect = { setSuspended, currentRoom, merge, visit, MISS_LIMIT, withBuiltin, builtinStore, rows, isMob, locate, whereIs, markRooms, clearMarks, STORAGE_KEY };
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs) return;
 
@@ -163,6 +168,7 @@ async function flush() {
   const mobs = [...pending];
   pending = new Set();
   timer = null;
+  if (suspended()) return;
   const spot = currentRoom(document);
   if (!spot || !mobs.length) return;
   try {
@@ -178,6 +184,7 @@ const observer = new MutationObserver(records => {
   const text = CatworldZapMobs.textFromAdded(records.flatMap(record => (record.type === 'characterData'
     ? [record.target.textContent || '']
     : Array.from(record.addedNodes, node => node.textContent || ''))));
+  if (suspended()) return;
   const found = CatworldZapMobs.parseMobLines(text).filter(mob => isMob(mob.name));
   if (!found.length) return;
   found.forEach(mob => pending.add(mob.name));
