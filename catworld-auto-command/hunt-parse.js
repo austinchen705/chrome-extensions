@@ -87,5 +87,23 @@ function parseLoad(text) {
   return match ? Number(match[1]) : null;
 }
 
-globalThis.CatworldHuntParse = { parseTime, parseFinger, parseLook, parseLoad };
+// i 的物品行：「 *  一瓶普洱茶(puer tea)」（* 已標記）、「  ˇ布衣(cloth) [view][remove]」（ˇ 穿著中）、「    銀戒指(sliver ring) [view][wear]」。
+// ref 是指令用的寫法：同一個 ID 第一個就是 ID、第 N 個是「ID N」（穿著與標記的也一起數，遊戲照背包順序數）
+const ITEM_LINE = /^\s*([*ˇ]?)\s*(.+?)\s*\(([A-Za-z][^()]*)\)\s*((?:\[[^\]]*\]\s*)*)$/;
+function parseInventory(text) {
+  const counts = new Map();
+  const items = [];
+  String(text ?? '').split(/\r?\n/).forEach(rawLine => {
+    const match = ITEM_LINE.exec(rawLine.normalize('NFKC'));
+    if (!match) return;
+    const id = match[3].trim();
+    const key = id.toLowerCase();
+    const n = (counts.get(key) || 0) + 1;
+    counts.set(key, n);
+    items.push({ name: match[2].trim(), id, ref: n === 1 ? id : `${id} ${n}`, marked: match[1] === '*', worn: match[1] === 'ˇ' });
+  });
+  return items;
+}
+
+globalThis.CatworldHuntParse = { parseTime, parseFinger, parseLook, parseLoad, parseInventory };
 })();

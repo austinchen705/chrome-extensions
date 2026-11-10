@@ -1,0 +1,15 @@
+你身上帶著下列這些東西( 載重 29% ):
+    紙皮水袋(waterskin)
+ *  一瓶普洱茶(puer tea)
+    一瓶蜆精(clam essence)
+    銀戒指(sliver ring) [view][wear]
+    黑羽長風鎧(black armor) [view][wear]
+    一瓶高麗人蔘茶(ginseng tea)
+    貓假面(cat mask) [view][wear]
+    二瓶黑糖薑茶(ginger tea)
+    紫金軟鞭(purple-gold whip) [view][wield]
+    二百一十根珍品．人蔘(treasure ginseng)
+    一百八十九個小石頭(small stone) [view][wield]
+    一百八十九個小石頭(small stone) [view][wield]
+  ˇ布衣(cloth) [view][remove]
+  ˇ生鏽的戒指(rusty ring) [view][remove]

@@ -1752,7 +1752,7 @@ const loadPage = async (settings = {}) => {
 };
 
 ui('load: after a fight it looks at i, and under the limit nothing else happens', async () => {
-  const page = await loadPage({ unloadCommand: 'sell;back' });
+  const page = await loadPage({ tripCommand: 'go' });
   try {
     const state = { load: 40 };
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: loadScript(page, state) });
@@ -1765,44 +1765,14 @@ ui('load: after a fight it looks at i, and under the limit nothing else happens'
   }
 });
 
-ui('load: over the limit it runs the macro the user wrote, then checks again before going on', async () => {
-  const page = await loadPage({ unloadCommand: 'sell;back' });
-  try {
-    const state = { load: 95 };
-    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(2) } }, script: loadScript(page, state, command => { if (command === 'sell') state.load = 20; return false; }) });
-    await pick(page, MOB);
-    click(page, '.hstart');
-    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'l', FIGHT, 'gc', 'l', 'i', 'sell', 'back', 'i'], 'both monsters of the room are fought first, then i, then the macro, then i again');
-    assert.equal(countOf(game, 'sell'), 1, 'the macro runs once, because the second look says it worked');
-  } finally {
-    page.close();
-  }
-});
-
-ui('load: over the limit with no macro written stops with an alert that says what to set', async () => {
+ui('load: over the limit with no sort command written stops with an alert that says what to set', async () => {
   const page = await loadPage();
   try {
     const state = { load: 95 };
     world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: loadScript(page, state) });
     await pick(page, MOB);
     click(page, '.hstart');
-    assert.ok(await waitFor(() => alerts(page).some(message => /寫好「負重太高時執行的指令」/.test(message.reason)), 6000));
-    assert.equal(await hunting(page), false);
-  } finally {
-    page.close();
-  }
-});
-
-ui('load: a macro that does not bring the load down is run at most twice, then the hunt stops with an alert', async () => {
-  const page = await loadPage({ unloadCommand: 'sell' });
-  try {
-    const state = { load: 95 };
-    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: loadScript(page, state) });
-    await pick(page, MOB);
-    click(page, '.hstart');
-    assert.ok(await waitFor(() => alerts(page).some(message => /還是 95%/.test(message.reason)), 8000));
-    assert.equal(countOf(game, 'sell'), 2);
+    assert.ok(await waitFor(() => alerts(page).some(message => /填好「整理：前往整理處」/.test(message.reason)), 6000));
     assert.equal(await hunting(page), false);
   } finally {
     page.close();
@@ -1820,7 +1790,7 @@ ui('load: 0 means it never looks at i, and an i that cannot be read does not sto
   } finally {
     off.close();
   }
-  const unreadable = await loadPage({ unloadCommand: 'sell' });
+  const unreadable = await loadPage({ tripCommand: 'sell' });
   try {
     const script = command => {
       if (command === 'i') { say(unreadable, '你身上帶著一些東西。'); return true; }
@@ -2297,6 +2267,154 @@ ui('the manual collector pauses while a hunt or scan is running, and works again
     assert.ok(await waitFor(async () => !(await hunting(page))), 'stopped');
     say(page, '  ※路人怪(passerby)');
     assert.ok(await waitFor(() => Object.values(page.store.mapMonsters).some(row => row.mobs?.includes('路人怪(passerby)')), 2000), 'recorded again once the hunt has stopped');
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 自動整理（永動機）：負重超標 → 前往 → 鑑定 → i → secure／give → sell all → 回程 → 繼續巡怪 ----
+const ARMOR = '黑羽長風鎧';
+const blockOf = (name, primary = 50) => `此物名曰 ：${name}，盔甲類防具\n    防禦力：${primary}/${primary}\n    佩帶條件：經驗 100\n`;
+const bagLines = [
+  '    牛皮拳套(leather gloves) [view][wield]',
+  `    ${ARMOR}(black armor) [view][wear]`,
+  ' *  一瓶普洱茶(puer tea)',
+  '  ˇ布衣(cloth) [view][remove]',
+];
+const sortPage = async (settings = {}) => {
+  const page = await loadPage({ tripCommand: 'go;identify', returnCommand: 'back', ...settings });
+  page.w.document.title = '小明 - 貓的世界';
+  return page;
+};
+// 假背包與商店：i 列出背包；identify 印鑑定區塊；secure／give 回成功字樣（記下對象）；sell all 之後負重降到 20
+const sortScript = (page, state) => (command, { game }) => {
+  if (command === 'gc') state.load = state.afterFight ?? state.load;
+  if (command === 'i') { say(page, `你身上帶著下列這些東西( 載重 ${state.load}% ):\n${bagLines.join('\n')}`); return true; }
+  if (command === 'identify') { say(page, state.block ?? blockOf(ARMOR)); return true; }
+  if (command.startsWith('secure ')) { state.secured.push(command.slice(7)); say(page, '標記完成。'); return true; }
+  if (command.startsWith('give ')) { state.given.push(command); say(page, state.giveReply ?? '你給某人一件黑羽長風鎧。'); return true; }
+  if (command === 'sell all') { state.load = 20; say(page, '你把牛皮拳套賣掉，獲得了一兩銀子。'); return true; }
+  if (command === 'back' && state.backTo !== undefined) game.at = state.backTo;
+  return false;
+};
+const sortState = extra => ({ load: 95, secured: [], given: [], ...extra });
+
+ui('sort: over the limit it goes, identifies, marks the good armor, sells, comes back and keeps hunting', async () => {
+  const page = await sortPage();
+  try {
+    const state = sortState();
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'l', 'i', 'go', 'identify', 'i', 'secure black armor', 'sell all', 'back', 'i']);
+    assert.deepEqual(state.secured, ['black armor'], 'only the identified good armor; the marked tea and the worn cloth are left alone, the gloves are sold');
+    assert.equal(alerts(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('sort: with an alt ID the good armor is given to the alt instead of marked, then everything else is sold', async () => {
+  const page = await sortPage({ altId: 'mukoda' });
+  try {
+    const state = sortState();
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(state.given, ['give black armor to mukoda']);
+    assert.deepEqual(state.secured, []);
+    assert.ok(game.log.indexOf('give black armor to mukoda') < game.log.indexOf('sell all'), 'given before selling');
+  } finally {
+    page.close();
+  }
+});
+
+ui('sort: a give the game does not confirm stops with an alert and sells nothing', async () => {
+  const page = await sortPage({ altId: 'mukoda' });
+  try {
+    const state = sortState({ giveReply: '你身上沒有這樣東西。' });
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(message => /轉給小號 黑羽長風鎧 沒成功/.test(message.reason)), 8000), JSON.stringify(alerts(page)));
+    assert.equal(game.log.includes('sell all'), false);
+    assert.equal(await hunting(page), false);
+  } finally {
+    page.close();
+  }
+});
+
+ui('sort: armor that is worse than what is worn is sold, not kept', async () => {
+  const page = await sortPage();
+  try {
+    page.store.wornEquipment = { 小明: { 盔甲類防具: [{ name: '舊甲', primary: 99, attrs: [], needExp: null, readAt: 1 }] } };
+    const state = sortState();
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(state.secured, []);
+    assert.ok(game.log.includes('sell all'));
+  } finally {
+    page.close();
+  }
+});
+
+ui('sort: a weapon is kept only when it is the main weapon type', async () => {
+  const page = await sortPage();
+  try {
+    page.store.mainWeapon = '劍';
+    const state = sortState({ block: '此物名曰 ：牛皮拳套，拳套類武器\n    傷害力：30/30\n    佩帶條件：經驗 100\n' });
+    world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(state.secured, [], 'a glove is not a sword');
+  } finally {
+    page.close();
+  }
+});
+
+ui('sort: still over the limit after selling stops with an alert instead of going again', async () => {
+  const page = await sortPage();
+  try {
+    const state = sortState();
+    const script = sortScript(page, state);
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: (command, env) => { const handled = script(command, env); if (command === 'sell all') state.load = 95; return handled; } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(message => /整理完負重還是 95%/.test(message.reason)), 10000), JSON.stringify(alerts(page)));
+    assert.equal(countOf(game, 'sell all'), 1);
+  } finally {
+    page.close();
+  }
+});
+
+ui('sort: coming back to a room that is not on this area stops with an alert', async () => {
+  const page = await sortPage();
+  try {
+    const state = sortState({ backTo: 'nowhere' });
+    world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(message => /回程後不在 t 這一區/.test(message.reason)), 10000), JSON.stringify(alerts(page)));
+  } finally {
+    page.close();
+  }
+});
+
+ui('sort: more sorts than the hourly limit stops with an alert', async () => {
+  const page = await sortPage({ sortPerHour: 1 });
+  try {
+    page.store.mapMonsters = mobsAt('c', 'd');
+    const state = sortState({ afterFight: 95 });
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) }, d: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(message => /一小時內已經整理 1 次/.test(message.reason)), 15000), JSON.stringify(alerts(page)));
+    assert.equal(countOf(game, 'sell all'), 1);
   } finally {
     page.close();
   }

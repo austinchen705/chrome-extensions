@@ -1308,6 +1308,9 @@ const ASK = {
   finger: { pattern: /權限等級|找不到/, quietMs: 250 },
   time: { pattern: /台北時間為/, quietMs: 250 },
   inventory: { pattern: /載重\s*\d+/, quietMs: 400 },
+  secure: { pattern: /標記|沒有|找不到|什麼/, quietMs: 250 },
+  give: { pattern: /你給|沒有|找不到|什麼|不在|太重/, quietMs: 250 },
+  sell: { pattern: /賣掉|沒有|什麼|不能/, quietMs: 1000 },
 };
 const ASK_MAX_MS = 8000;
 const addedText = records => CatworldZapMobs.textFromAdded(records.flatMap(record => (record.type === 'characterData'
@@ -1392,6 +1395,13 @@ hunt = CatworldMapHunt.create({
   visited: async () => (await chrome.storage.local.get(CatworldMapHunt.VISITED_KEY))[CatworldMapHunt.VISITED_KEY] ?? {},
   markVisited: markHuntVisited,
   ask: askGame,
+  // 整理用：從鑑定輸出裡挑出要留的裝備名稱（比現在穿的好或屬性達門檻、沒基準的，武器只留主要武器職業的）
+  keepers: async text => {
+    const E = CatworldZapEquipment;
+    const data = await chrome.storage.local.get(['wornEquipment', 'mainWeapon', 'equipmentKeep']);
+    const worn = data.wornEquipment?.[characterName()];
+    return E.pickKeepers(E.parseEquipmentBlocks(text), { baselineOf: category => worn?.[category], mainWeapon: data.mainWeapon, exp: readGameNumber('exp'), keep: E.normalizeKeepRule(data.equipmentKeep) }).map(block => block.name);
+  },
   npcs: huntNpcs,
   learnNpc: learnHuntNpc,
   now: () => Date.now(),

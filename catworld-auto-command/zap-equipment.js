@@ -120,6 +120,16 @@ function compareEquipment(candidate, baseline, { mainWeapon, exp, keep } = {}) {
   return { ...result, verdict: 'keep', text: VERDICT_TEXT.keep, reasons: [`${hit.name} +${hit.value} 達門檻 ${keep.min}`, ...result.reasons] };
 }
 
+// 整理背包時要留下的鑑定結果（巡怪的整理流程用）：武器只留主要武器職業的（沒設定主要武器就不篩）；比現在好或屬性達門檻的留下，
+// 沒有基準可比的（沒穿同類別、或沒讀過穿著）也留下，寧可多留；比現在差或相當的不留。baselineOf(類別) 回該類別現在穿的清單
+function pickKeepers(blocks, { baselineOf, mainWeapon, exp, keep } = {}) {
+  return blocks.filter(block => {
+    if (block.kind === 'weapon' && mainWeapon && !block.category.startsWith(mainWeapon)) return false;
+    const { verdict } = compareEquipment(block, baselineOf?.(block.category), { mainWeapon, exp, keep });
+    return verdict === 'better' || verdict === 'keep' || verdict === 'none';
+  });
+}
+
 // ---- 基準（現在穿的裝備）----
 // Store = { [類別]: [ { name, primary, attrs, needExp, readAt } ] }；同類別可能穿兩件（兩枚戒指），所以是清單
 const toBaselineItem = (block, now) => ({
@@ -247,7 +257,7 @@ function createTracker({ runTimeoutMs = 30000 } = {}) {
 }
 
 globalThis.CatworldZapEquipment = {
-  PRIMARY_GAP, IGNORED_ATTRS, normalizeAttrName, parseEquipmentBlocks, relatedAttrNames, scoreAttrs, normalizeKeepRule, compareEquipment,
+  PRIMARY_GAP, IGNORED_ATTRS, normalizeAttrName, parseEquipmentBlocks, relatedAttrNames, scoreAttrs, normalizeKeepRule, compareEquipment, pickKeepers,
   toBaselineItem, replaceBaseline, upsertBaseline, mergeBaseline, parseWornHtml, createTracker,
 };
 })();

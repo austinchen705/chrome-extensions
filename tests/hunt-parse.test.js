@@ -133,3 +133,13 @@ test('parseLoad reads the load percentage from the first line of i, and nothing 
   assert.equal(P.parseLoad(''), null);
   assert.equal(P.parseLoad(undefined), null);
 });
+
+test('parseInventory reads name, ID, the * mark and the worn ˇ mark, and numbers items that share an ID', () => {
+  const items = P.parseInventory(sample('inventory-marked'));
+  assert.equal(items.length, 14);
+  assert.deepEqual(items[1], { name: '一瓶普洱茶', id: 'puer tea', ref: 'puer tea', marked: true, worn: false });
+  assert.deepEqual(items[4], { name: '黑羽長風鎧', id: 'black armor', ref: 'black armor', marked: false, worn: false });
+  assert.deepEqual(items.filter(item => item.worn).map(item => item.id), ['cloth', 'rusty ring']);
+  assert.deepEqual(items.filter(item => item.id === 'small stone').map(item => item.ref), ['small stone', 'small stone 2'], 'the second of two same-ID items is "ID 2"');
+  assert.deepEqual(P.parseInventory('你身上帶著下列這些東西( 載重 29% ):\n> give ring to x\n你給某人一枚銀戒指。'), [], 'the header, echoes and replies are not items');
+});

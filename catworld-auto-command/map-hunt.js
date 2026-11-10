@@ -29,6 +29,8 @@ const RECALIBRATE_GAP_MS = 20 * 1000;
 const FRESH_MS = 60 * 1000; // 開始下一輪前，最近一次校準不能比這更舊
 const QI_WAIT_TICKS = 60 * TICKS_PER_SEC; // 試出口前等氣回復最多等這麼久，等不到就略過這個目標
 const SCAN_STALL_TICKS = 180 * TICKS_PER_SEC; // 掃描這麼久沒換過房間、沒處理完任何一間，就當成卡住，停下來並說明在等什麼
+const SORT_STEP_TICKS = 120 * TICKS_PER_SEC; // 整理的單一步驟（走一趟、鑑定、回程）最久等這麼久
+const SORT_QUIET_MS = 1000; // 鑑定的指令送完後，再等這麼久沒有新輸出才當成鑑定結束
 const NO_MEDICINE_WINDOW_TICKS = 10 * TICKS_PER_SEC; // 吃藥指令真的送出後，這麼久內出現沒藥關鍵字才算
 
 // 設定頁的欄位（也決定預設值與檢查）：type 是 text、number 或 select
@@ -47,7 +49,10 @@ const FIELDS = [
   { key: 'learnExits', label: '自動學習出口（記下看到的出口與實際走到的房間；路線不通時才試出口）', type: 'select', options: [['off', '關'], ['on', '開']], default: 'off' },
   { key: 'prescan', label: '打怪前先掃描這一區還沒走過的房間（沒有圖資才掃；走過的、走不到的不再掃；掃完再開始打）', type: 'select', options: [['on', '開'], ['off', '關']], default: 'on' },
   { key: 'loadMaxPercent', label: '負重（i 的「載重」）超過幾 % 就先去整理（0＝不檢查）', type: 'number', default: 90, min: 0, max: 100 },
-  { key: 'unloadCommand', label: '負重太高時執行的指令／巨集（自己寫：回去、驗無名裝備與物品、留下好的、賣掉其餘的、回來；可用 ; 與 @等待）', type: 'text', default: '' },
+  { key: 'tripCommand', label: '整理：前往整理處的指令／巨集（路線、鑑定全寫在這裡，最後要停在能 sell all 的地方；不要自己寫 sell all，工具會在標記好東西之後才送；可用 ; 與 @等待。前往與回程至少填一個才走自動整理）', type: 'text', default: '' },
+  { key: 'altId', label: '整理：小號的英文 ID（好東西 give 給它；不填就只用 secure 標記留在身上）', type: 'text', default: '' },
+  { key: 'returnCommand', label: '整理：回到巡怪地圖的指令／巨集（回來後要在原本這一區才會繼續）', type: 'text', default: '' },
+  { key: 'sortPerHour', label: '整理：每小時最多整理幾次（超過就停止並警報）', type: 'number', default: 6, min: 1, max: 60 },
   { key: 'afterKillCommand', label: '怪倒下後送的指令（可多個，用 ; 分隔）', type: 'text', default: 'gc' },
   { key: 'specialCommand', label: '特攻指令（可空，可以是你的別名）', type: 'text', default: '' },
   { key: 'specialIntervalSec', label: '特攻最小間隔（秒）', type: 'number', default: 10, min: 1, max: 600 },
@@ -610,8 +615,7 @@ function create(deps) {
   }
 
   // ---- 負重 ----
-  // 打完怪撿了東西，下一次規劃前先用 i 看負重（loadMaxPercent，0＝不檢查）；超過就執行使用者自己寫的整理指令（unloadCommand：
-  // 回去、驗無名裝備與物品、留下好的、賣掉其餘的、回來都在裡面），執行完再看一次，兩次都沒降下來就停止並警報；沒寫指令也停止並提醒去寫
+  // 打完怪撿了東西，下一次規劃前先用 i 看負重（loadMaxPercent，0＝不檢查）；超過就自動整理（sortOut）；前往與回程指令都沒填就停止並提醒去填
   function checkLoad(here) {
     const token = state;
     state.phase = 'look';
@@ -624,23 +628,98 @@ function create(deps) {
       if (percent === null) { console.warn('[catworld] 巡怪：讀不到負重（i 的輸出沒有「載重 N%」），這次不檢查'); state.phase = 'plan'; deps.notify(); return; }
       state.load = percent;
       const settings = state.settings;
-      if (percent < settings.loadMaxPercent) { state.unloadTries = 0; state.phase = 'plan'; deps.notify(); return; }
-      if (!settings.unloadCommand) { finish(`負重 ${percent}% 已經超過 ${settings.loadMaxPercent}%，請先到設定頁「地圖巡怪」寫好「負重太高時執行的指令」（回去、驗無名裝備與物品、賣掉其餘的、回來的巨集）`, { alert: true }); return; }
-      if (state.unloadTries >= 2) { finish(`整理指令跑了兩次，負重還是 ${percent}%（要小於 ${settings.loadMaxPercent}%），已停止`, { alert: true }); return; }
-      state.unloadTries += 1;
-      state.unload = { sent: false, from: here };
-      state.phase = 'unload';
-      deps.notify();
-      if (!deps.send(settings.unloadCommand, () => { if (state?.unload) state.unload.sent = true; })) finish('指令送不出去，已停止', { alert: true });
+      if (percent < settings.loadMaxPercent) { state.sorted = false; state.phase = 'plan'; deps.notify(); return; }
+      if (sortConfigured(settings)) {
+        if (state.sorted) { finish(`整理完負重還是 ${percent}%（要小於 ${settings.loadMaxPercent}%），已停止`, { alert: true }); return; }
+        sortOut(here, token);
+        return;
+      }
+      finish(`負重 ${percent}% 已經超過 ${settings.loadMaxPercent}%，請先到設定頁「地圖巡怪」填好「整理：前往整理處」與「整理：回程」的指令`, { alert: true });
     }).catch(() => { if (state === token) finish('讀取負重時出錯，已停止', { alert: true }); });
   }
-  // 整理指令（巨集）執行中：等它送完，再看一次負重確認有降下來
-  function unloadTick() {
-    if (!state.unload?.sent || deps.macroRunning()) return;
-    state.unload = null;
-    state.loadDue = true;
-    state.phase = 'plan';
-    deps.notify();
+  // ---- 自動整理（永動機）----
+  // 前往（路線與鑑定都寫在裡面，抓輸出裡的裝備區塊）、回程兩個指令只要填了任何一個就走這條：前往 → i → 把好東西 secure 標記或 give 給小號 → sell all → 回程 →
+  // 確認還在這一區 → 回去繼續巡怪（下一次 plan 會再看一次負重）。任何一步沒成功就停止並警報，不賣東西
+  const sortConfigured = settings => Boolean(settings.tripCommand || settings.returnCommand);
+  const SORT_PHASE_TEXT = { trip: '前往整理處與鑑定', inventory: '看背包', keep: '標記或轉給小號', sell: '賣東西', back: '回到巡怪地圖' };
+  const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const SORT_REPLY = { secure: /標記完成/, give: /你給/ };
+  // 送一個指令／巨集並等它送完；null＝巡怪已經停了或換了一次，false＝等太久
+  function runStep(command, token) {
+    return new Promise(resolve => {
+      if (!command) { resolve(true); return; }
+      let sent = false;
+      let waited = 0;
+      deps.send(command, () => { sent = true; });
+      const poll = () => {
+        if (state !== token) { resolve(null); return; }
+        if (sent && !deps.macroRunning()) { resolve(true); return; }
+        if ((waited += 1) > SORT_STEP_TICKS) { resolve(false); return; }
+        setTimeout(poll, TICK_MS);
+      };
+      poll();
+    });
+  }
+  async function sortOut(here, token) {
+    const settings = state.settings;
+    const stage = name => { if (state === token) { state.phase = 'sort'; state.sortStage = name; deps.notify(); } };
+    const fail = reason => { if (state === token) finish(reason, { alert: true }); };
+    const now = deps.now();
+    state.sortTimes = state.sortTimes.filter(at => now - at < 3600 * 1000);
+    if (state.sortTimes.length >= settings.sortPerHour) { fail(`一小時內已經整理 ${state.sortTimes.length} 次，超過上限 ${settings.sortPerHour}，已停止`); return; }
+    if (settings.altId && !SAFE_ID.test(settings.altId)) { fail(`小號 ID「${settings.altId}」不合法（只能英文、數字、空白、底線、點、單引號、連字號），已停止`); return; }
+    state.sortTimes.push(now);
+    try {
+      // 前往指令跑完前印出的輸出都抓下來（鑑定的裝備區塊在裡面）：好幾個地方要鑑定時，路線與鑑定指令全寫在前往指令裡
+      let captured = '';
+      const unwatchOut = deps.watch(text => { captured += text; });
+      let ok;
+      try {
+        stage('trip');
+        ok = await runStep(settings.tripCommand, token);
+        if (ok === null) return;
+        if (!ok) { fail('前往整理處的指令沒有送完，已停止'); return; }
+        await pause(SORT_QUIET_MS);
+      } finally { unwatchOut(); }
+      if (ok === null || state !== token) return;
+            stage('inventory');
+      const items = Parse.parseInventory(await deps.ask('i', 'inventory'));
+      if (state !== token) return;
+      if (!items.length) { fail('讀不到背包（i 的輸出沒有物品），已停止，沒有賣東西'); return; }
+      const keepers = new Set((await deps.keepers(captured)).map(name => name.replace(/\s+/g, '')));
+      if (state !== token) return;
+      // 要留的：名稱對得上鑑定出的好裝備，而且還沒標記、不是穿著中的
+      const keep = items.filter(item => !item.marked && !item.worn && keepers.has(item.name.replace(/\s+/g, '')));
+      stage('keep');
+      for (const item of keep) {
+        if (!SAFE_ID.test(item.id)) { fail(`物品 ID「${item.id}」不能放進指令，已停止，沒有賣東西`); return; }
+        const kind = settings.altId ? 'give' : 'secure';
+        const reply = await deps.ask(settings.altId ? `give ${item.ref} to ${settings.altId}` : `secure ${item.ref}`, kind);
+        if (state !== token) return;
+        if (!SORT_REPLY[kind].test(reply)) { fail(`${kind === 'give' ? '轉給小號' : '標記'} ${item.name} 沒成功（遊戲回：${reply.trim().slice(0, 40) || '沒有回應'}），已停止，沒有賣東西`); return; }
+      }
+      stage('sell');
+      await deps.ask('sell all', 'sell');
+      if (state !== token) return;
+      stage('back');
+      ok = await runStep(settings.returnCommand, token);
+      if (ok === null) return;
+      if (!ok) { fail('回程的指令沒有送完，已停止'); return; }
+      // 回到這一區才繼續（地圖捲動可能慢，多等一會）
+      const inArea = () => deps.room()?.startsWith(`${state.area}/`);
+      for (let waited = 0; waited <= 2 * MOVE_TIMEOUT_TICKS && !inArea(); waited += 1) {
+        await pause(TICK_MS);
+        if (state !== token) return;
+      }
+      if (!inArea()) { fail(`整理完回程後不在 ${state.area} 這一區（目前 ${deps.room() ?? '讀不到房間'}），已停止`); return; }
+      state.sorted = true;
+      state.loadDue = true;
+      state.phase = 'plan';
+      state.sortCount += 1;
+      deps.notify();
+    } catch {
+      fail('整理時出錯，已停止');
+    }
   }
 
   // ---- 輪與輪之間 ----
@@ -813,7 +892,7 @@ function create(deps) {
       if (!state) return;
     }
     if (state.phase === 'wait' || state.phase === 'standby') { waitTick(); return; }
-    if (state.phase === 'unload') { unloadTick(); return; }
+    if (state.phase === 'sort') return;
     if (state.trial) { trialTick(); return; }
     if (state.phase === 'look') return;
     const here = deps.room();
@@ -913,7 +992,7 @@ function create(deps) {
       state = {
         round: 1, after: deps.now() + offset + settings.aheadSec * 1000, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
         mobs: scan ? [] : target.mobs, area: target.area, offset, scan: scan || prescan, prescan, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph, targets, skipped: [...baseSkipped], fixed: [],
-        settings, loadDue: false, load: null, unloadTries: 0, unload: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
+        settings, loadDue: false, load: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
         ...roundFields(), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       note = '';
@@ -948,7 +1027,7 @@ function create(deps) {
     const room = key => (typeof key === 'string' ? key.split('/').pop() : key);
     if (state.resting) return { text: `${who}：休息中 ${Math.round(state.restPercent)}%→${state.settings.restResume}%${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.waiting) return { text: `${who}：等下一個重生 ${hhmm(state.waiting.spawn)}（第 ${state.waiting.rounds} 輪到過 ${state.waiting.visited} 間）${skippedShort(state.skipped)}`, alert: noteAlert };
-    if (state.phase === 'unload') return { text: `${who}：負重 ${state.load}%，執行整理指令中…${skippedShort(state.skipped)}`, alert: noteAlert };
+    if (state.phase === 'sort') return { text: `${who}：負重 ${state.load}%，整理中（${SORT_PHASE_TEXT[state.sortStage] ?? '…'}，第 ${state.sortCount + 1} 次）${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.checkingLoad) return { text: `${who}：看負重…${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.phase === 'standby') return { text: `${who}：等待指令送完，再校準伺服器時間…${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.calibrating) return { text: `${who}：校準伺服器時間…${skippedShort(state.skipped)}`, alert: noteAlert };
