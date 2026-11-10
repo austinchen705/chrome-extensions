@@ -96,3 +96,60 @@ test('the built-in scripts are three general ones with no news, no placeholder, 
   assert.deepEqual([checked.report.used, checked.report.dropped.length], [3, 0]);
   assert.equal(C.usableScripts(BUILTIN).length, 3);
 });
+
+// 第 46 週那批（docs/data/chat-scripts-w46.csv）：6 份時事（2 娛樂、4 遊戲，週 2026-11-09）加 14 份常青（週留空）
+const CSV46 = fs.readFileSync(path.join(__dirname, '..', 'docs', 'data', 'chat-scripts-w46.csv'), 'utf8').replace(/\r\n/g, '\n');
+const IN_WEEK46 = new Date(2026, 10, 10, 12, 0, 0).getTime(); // 2026-11-10
+const built46 = S.buildChatScripts(CSV46, IN_WEEK46);
+const evergreen = S.buildChatScripts(fs.readFileSync(path.join(__dirname, '..', 'docs', 'data', 'chat-scripts-evergreen.csv'), 'utf8').replace(/\r\n/g, '\n'), IN_WEEK46);
+
+test('the week 46 batch has 20 scripts that pass the sheet rules, 8 turns each, opening with A', () => {
+  assert.equal(built46.ok, true);
+  assert.deepEqual([built46.report.used, built46.report.dropped.length, built46.report.unmatched.length], [20, 0, 0]);
+  assert.equal(C.usableScripts(built46.scripts).length, 20);
+  built46.scripts.forEach(script => {
+    assert.equal(turnCount(script), 8, script.id);
+    assert.equal(script.lines[0].who, 'A', script.id);
+  });
+});
+
+test('the 6 news scripts of week 46 name their source and date; the 14 evergreen ones have no week and no news', () => {
+  const records = S.parseCsv(CSV46).slice(1).filter(record => record[0]);
+  const firstRows = new Map();
+  records.forEach(record => { if (!firstRows.has(record[0])) firstRows.set(record[0], record); });
+  const news = [...firstRows].filter(([id]) => /^w46-(ent|game)-/.test(id));
+  const evergreenRows = [...firstRows].filter(([id]) => /^w46-eg-/.test(id));
+  assert.deepEqual([news.length, evergreenRows.length], [6, 14]);
+  news.forEach(([id, record]) => {
+    assert.match(record[4], /20\d\d-\d\d-\d\d/, `${id}: the note has the date of the news`);
+    assert.match(record[4], /https?:\/\//, `${id}: the note has the source link`);
+    assert.equal(record[5], '2026-11-09', `${id}: the week is the Monday of that week`);
+  });
+  evergreenRows.forEach(([id, record]) => assert.equal(record[5], '', `${id}: evergreen has no week`));
+});
+
+test('the week 46 lines are short, colloquial and stay clear of politics, casualties and disasters', () => {
+  const forbidden = ['政治', '選舉', '總統', '政府', '戰爭', '死', '傷', '災', '颱風', '地震', '火災', '車禍', '事故'];
+  built46.scripts.forEach(script => {
+    script.lines.forEach(line => {
+      relativeWeek.forEach(word => assert.ok(!line.text.includes(word), `${script.id} says ${word}: ${line.text}`));
+      forbidden.forEach(word => assert.ok(!line.text.includes(word), `${script.id} mentions ${word}: ${line.text}`));
+      assert.ok(line.text.split('／').every(part => [...part].length <= 40), `${script.id}: a part is long: ${line.text}`);
+    });
+    const turns = C.toTurns(script);
+    const questions = turns.filter(turn => /[嗎？?沒]$|你呢$/.test(turn.parts[turn.parts.length - 1])).length;
+    assert.ok(questions * 2 <= turns.length, `${script.id}: ${questions} of ${turns.length} turns end as a question`);
+  });
+});
+
+test('no week 46 script opens like any other script (first batch, evergreen, built-in, or its own batch)', () => {
+  const all = [...built46.scripts, ...built.scripts, ...evergreen.scripts, ...BUILTIN];
+  const openers = script => C.toTurns(script)[0].parts;
+  all.forEach((one, i) => all.slice(i + 1).forEach(other => {
+    if (!built46.scripts.includes(one) && !built46.scripts.includes(other)) return;
+    openers(one).forEach(a => openers(other).forEach(b => {
+      const score = globalThis.CatworldChatReply.similarity(a, b);
+      assert.ok(score < C.MATCH_THRESHOLD, `${one.id} and ${other.id} open too alike (${score.toFixed(2)}): ${a} / ${b}`);
+    }));
+  }));
+});
