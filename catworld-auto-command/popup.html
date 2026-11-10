@@ -396,6 +396,8 @@
     <textarea id="backupImportText" rows="4" placeholder="貼上匯出的設定 JSON"></textarea>
     <input type="file" id="backupImportFile" accept=".json,application/json">
     <div id="backupImportMsg" class="hint tight"></div>
+    <button id="backupRestore" disabled>還原上一份</button>
+    <div class="hint tight">每次確認匯入前，會先把被動到的設定存成一份備份（只留最近一份，不會匯出）；匯入出錯或後悔時按「還原上一份」。</div>
     <div id="backupImportPlan" hidden>
       <div class="hint tight">將覆蓋這些區塊（取消勾選的不動）：</div>
       <div id="backupImportBlocks"></div>

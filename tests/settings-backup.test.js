@@ -203,3 +203,45 @@ test('round trip: exporting a store and importing it into an empty one gives the
   assert.deepEqual(plan.set, expected);
   assert.deepEqual(plan.remove, []);
 });
+
+// ---- 匯入前的備份與還原 ----
+test('makeBackup keeps the current values of the keys the plan touches, and names the ones that are absent now', () => {
+  const current = { settings: { old: 1 }, idleSettings: { old: 2 }, chatReply: { keep: 1 } };
+  const plan = { set: { settings: { fresh: 1 }, zapFeatures: { mobs: true } }, remove: ['idleSettings', 'mapMonsters'] };
+  const backup = B.makeBackup(current, plan, FIXED_NOW);
+  assert.deepEqual(backup.values, { settings: { old: 1 }, idleSettings: { old: 2 } });
+  assert.deepEqual(backup.absent.sort(), ['mapMonsters', 'zapFeatures']);
+  assert.equal(backup.at, '2026-11-10T01:02:03.000Z');
+  assert.ok(!('chatReply' in backup.values), 'keys the import does not touch are not backed up');
+  current.settings.old = 99;
+  assert.equal(backup.values.settings.old, 1, 'the backup is a copy');
+});
+
+test('planRestore writes the saved values back and removes what was absent, so a restore returns to the state before the import', () => {
+  const current = { settings: { old: 1 }, idleSettings: { old: 2 } };
+  const plan = { set: { settings: { fresh: 1 }, zapFeatures: { mobs: true } }, remove: ['idleSettings'] };
+  const checked = B.checkBackup(B.makeBackup(current, plan, FIXED_NOW));
+  assert.equal(checked.ok, true);
+  const restore = B.planRestore(checked.backup);
+  assert.deepEqual(restore.set, { settings: { old: 1 }, idleSettings: { old: 2 } });
+  assert.deepEqual(restore.remove, ['zapFeatures']);
+});
+
+test('checkBackup refuses a damaged backup and says why', () => {
+  const good = { at: 'x', values: { settings: {} }, absent: ['idleSettings'] };
+  assert.equal(B.checkBackup(good).ok, true);
+  assert.equal(B.checkBackup(good).keys, 2);
+  [null, 'x', [], {}, { values: {}, absent: 'x' }, { values: [], absent: [] }, { values: {}, absent: [1] }].forEach(bad => {
+    assert.equal(B.checkBackup(bad).ok, false, JSON.stringify(bad));
+  });
+  assert.match(B.checkBackup({ values: { running: true }, absent: [] }).error, /running/);
+  assert.match(B.checkBackup({ values: {}, absent: ['evil'] }).error, /evil/);
+  assert.match(B.checkBackup({ values: { settings: null }, absent: [] }).error, /矛盾/);
+  assert.match(B.checkBackup({ values: { settings: {} }, absent: ['settings'] }).error, /矛盾/);
+});
+
+test('the backup key is never exported', () => {
+  assert.ok(B.EXCLUDED_KEYS.includes('settingsBackup'));
+  const text = B.exportText({ ...store, settingsBackup: { at: 'x', values: { lineNotify: { token: 'SECRET-TOKEN' } }, absent: [] } }, { version: '1', secrets: true, now: FIXED_NOW });
+  assert.ok(!text.includes('settingsBackup'));
+});

@@ -109,5 +109,36 @@ function planImport(current, data, { blocks = [], secrets = false } = {}) {
   return { set, remove, blocks: done, secrets: withSecrets };
 }
 
-globalThis.CatworldSettingsBackup = { FORMAT, VERSION, MAX_TEXT, BLOCKS, SECRET_KEYS, EXCLUDED_KEYS, exportData, exportText, checkImport, planImport };
+// 匯入前的備份：這次會被動到的鍵現在的值（values），以及現在沒有這個鍵的（absent，還原時要移除）。只存本機、不進匯出
+function makeBackup(current, plan, now = Date.now()) {
+  const values = {};
+  const absent = [];
+  [...Object.keys(plan.set), ...plan.remove].forEach(key => {
+    if (current?.[key] !== undefined) values[key] = copy(current[key]);
+    else absent.push(key);
+  });
+  return { at: new Date(now).toISOString(), values, absent };
+}
+
+// 讀回儲存裡的備份：形狀不對或含沒分類過的鍵就說明原因，呼叫端什麼都不動
+function checkBackup(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, error: '備份不是物件' };
+  const { values, absent } = value;
+  if (!values || typeof values !== 'object' || Array.isArray(values)) return { ok: false, error: '備份缺少 values' };
+  if (!Array.isArray(absent) || absent.some(key => typeof key !== 'string')) return { ok: false, error: '備份缺少 absent' };
+  const known = new Set([...BLOCKS.flatMap(block => block.keys), ...SECRET_KEYS]);
+  const stray = [...Object.keys(values), ...absent].find(key => !known.has(key));
+  if (stray) return { ok: false, error: `備份裡有不認得的項目：${stray}` };
+  if (Object.keys(values).some(key => values[key] === null || absent.includes(key))) return { ok: false, error: '備份內容自相矛盾' };
+  return { ok: true, at: String(value.at ?? ''), keys: Object.keys(values).length + absent.length, backup: { values, absent } };
+}
+
+// 還原計畫：values 寫回、absent 移除（和匯入同一種 set／remove 形狀）
+function planRestore(backup) {
+  const set = {};
+  Object.keys(backup.values).forEach(key => { set[key] = copy(backup.values[key]); });
+  return { set, remove: [...backup.absent] };
+}
+
+globalThis.CatworldSettingsBackup = { FORMAT, VERSION, MAX_TEXT, BLOCKS, SECRET_KEYS, EXCLUDED_KEYS, exportData, exportText, checkImport, planImport, makeBackup, checkBackup, planRestore };
 })();

@@ -46,7 +46,7 @@ async function boot(store = {}, { clipboardFails = false, readFails = false } = 
               if (readFails && Array.isArray(keys) && keys.includes('mapMonsters')) throw new Error('quota');
               return Object.fromEntries([].concat(keys).filter(key => key in store).map(key => [key, JSON.parse(JSON.stringify(store[key]))]));
             },
-            set: async values => { if (flags.writeFails) throw new Error('disk full'); Object.assign(store, JSON.parse(JSON.stringify(values))); },
+            set: async values => { if (flags.writeFails || flags.failSet?.(values)) throw new Error('disk full'); Object.assign(store, JSON.parse(JSON.stringify(values))); },
             remove: async keys => { if (flags.writeFails || flags.removeFails) throw new Error('disk full'); [].concat(keys).forEach(key => { delete store[key]; }); },
           },
           sync: { get: async () => ({}), set: async () => {} },
@@ -364,16 +364,18 @@ ui('nothing ticked is a warning, and a failed write is shown in red and keeps th
     assert.equal(level(page, 'backupImportMsg'), 'warn');
     page.check('backupImportBlock-timer', true);
     page.click('backupImportApply');
-    assert.ok(await waitFor(() => /匯入失敗：disk full/.test(page.text('backupImportMsg'))));
+    assert.ok(await waitFor(() => /備份寫不進去，沒有匯入：disk full/.test(page.text('backupImportMsg'))));
     assert.equal(level(page, 'backupImportMsg'), 'error');
     assert.equal(planShown(page), true, 'the plan stays so it can be retried');
+    assert.deepEqual(userKeys(store), { settings: { old: 1 } }, 'no backup, no import');
   } finally {
     page.dom.window.close();
   }
 });
 
-ui('a failure after the values were written says the import may be partial', async () => {
-  const store = { settings: { old: 1 }, idleSettings: { old: 1 } };
+ui('a failure after the values were written rolls them back and puts the earlier backup back', async () => {
+  const earlier = { at: '2026-01-01T00:00:00.000Z', values: { chatReply: { old: 1 } }, absent: [] };
+  const store = { settings: { old: 1 }, idleSettings: { old: 1 }, settingsBackup: earlier };
   const page = await boot(store);
   try {
     page.flags.removeFails = true;
@@ -381,10 +383,150 @@ ui('a failure after the values were written says the import may be partial', asy
     assert.ok(await waitFor(() => planShown(page)));
     page.click('backupImportApply');
     assert.ok(await waitFor(() => /匯入失敗：disk full/.test(page.text('backupImportMsg'))));
-    assert.match(page.text('backupImportMsg'), /只套用了一部分/);
+    assert.match(page.text('backupImportMsg'), /設定沒有變動，原本的備份保留/);
     assert.equal(level(page, 'backupImportMsg'), 'error');
-    assert.equal(store.settings.fresh, 1, 'the values were written before remove failed');
+    assert.deepEqual(store.settings, { old: 1 }, 'the written values were rolled back');
+    assert.deepEqual(store.settingsBackup, earlier, 'the new backup did not replace the earlier one');
     assert.equal(page.doc.getElementById('backupImportApply').disabled, false, 'it can be retried');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('when the import write fails before anything changed, the earlier backup is put back untouched', async () => {
+  const earlier = { at: '2026-01-01T00:00:00.000Z', values: { chatReply: { old: 1 } }, absent: [] };
+  const store = { settings: { old: 1 }, settingsBackup: earlier };
+  const page = await boot(store);
+  try {
+    page.flags.failSet = values => values.settings?.fresh === 1;
+    paste(page, backupFile({ timer: { settings: { fresh: 1 } } }));
+    assert.ok(await waitFor(() => planShown(page)));
+    page.click('backupImportApply');
+    assert.ok(await waitFor(() => /匯入失敗/.test(page.text('backupImportMsg'))));
+    assert.match(page.text('backupImportMsg'), /設定沒有變動，原本的備份保留/);
+    assert.deepEqual(store.settings, { old: 1 });
+    assert.deepEqual(store.settingsBackup, earlier);
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('when even the rollback fails, the new backup stays as the way back and the message says the import may be partial', async () => {
+  const store = { settings: { old: 1 }, idleSettings: { old: 1 } };
+  const page = await boot(store);
+  try {
+    page.flags.removeFails = true;
+    page.flags.failSet = values => values.settings?.old === 1; // 放回去的那一次寫入失敗
+    paste(page, backupFile({ timer: { settings: { fresh: 1 } } }));
+    assert.ok(await waitFor(() => planShown(page)));
+    page.click('backupImportApply');
+    assert.ok(await waitFor(() => /只套用了一部分/.test(page.text('backupImportMsg'))));
+    assert.equal(level(page, 'backupImportMsg'), 'error');
+    assert.equal(store.settings.fresh, 1);
+    assert.deepEqual(store.settingsBackup.values.settings, { old: 1 }, 'the way back is kept');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('a backup is written before the import and the absent keys are recorded', async () => {
+  const store = { settings: { old: 1 } };
+  const page = await boot(store);
+  try {
+    paste(page, backupFile({ timer: { settings: { fresh: 1 } }, chat: { chatReply: { fresh: 1 } } }));
+    assert.ok(await waitFor(() => planShown(page)));
+    page.click('backupImportApply');
+    assert.ok(await waitFor(() => store.settings?.fresh === 1));
+    assert.deepEqual(store.settingsBackup.values, { settings: { old: 1 } });
+    assert.deepEqual(store.settingsBackup.absent, ['chatReply']);
+    assert.match(store.settingsBackup.at, /^\d{4}-\d\d-\d\dT/);
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+// ---- 還原上一份 ----
+const restoreButton = page => page.doc.getElementById('backupRestore');
+
+ui('the restore button is only available when there is a backup, and follows the storage', async () => {
+  const none = await boot({});
+  try {
+    assert.equal(restoreButton(none).disabled, true);
+  } finally {
+    none.dom.window.close();
+  }
+  const store = { settingsBackup: { at: 'x', values: {}, absent: [] } };
+  const some = await boot(store);
+  try {
+    assert.ok(await waitFor(() => restoreButton(some).disabled === false));
+  } finally {
+    some.dom.window.close();
+  }
+});
+
+ui('restoring puts the saved values back, removes keys that were absent, keeps the backup and freezes the page', async () => {
+  const store = {
+    settings: { fresh: 1 }, chatReply: { fresh: 1 }, triggerGroupSettings: { mine: 1 },
+    settingsBackup: { at: '2026-11-10T00:00:00.000Z', values: { settings: { old: 1 } }, absent: ['chatReply'] },
+  };
+  const page = await boot(store);
+  try {
+    page.dom.window.confirm = () => true;
+    assert.ok(await waitFor(() => restoreButton(page).disabled === false));
+    page.click('backupRestore');
+    assert.ok(await waitFor(() => /已還原/.test(page.text('backupImportMsg'))));
+    assert.deepEqual(store.settings, { old: 1 });
+    assert.ok(!('chatReply' in store), 'a key that was absent before the import is removed again');
+    assert.deepEqual(store.triggerGroupSettings, { mine: 1 }, 'keys outside the backup are untouched');
+    assert.ok(store.settingsBackup, 'the backup is kept');
+    assert.equal(level(page, 'backupImportMsg'), 'info');
+    assert.equal(restoreButton(page).disabled, true, 'the page is frozen until it is reopened');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('declining the confirmation restores nothing', async () => {
+  const store = { settings: { fresh: 1 }, settingsBackup: { at: 'x', values: { settings: { old: 1 } }, absent: [] } };
+  const page = await boot(store);
+  try {
+    page.dom.window.confirm = () => false;
+    assert.ok(await waitFor(() => restoreButton(page).disabled === false));
+    page.click('backupRestore');
+    assert.ok(await waitFor(() => restoreButton(page).disabled === false));
+    assert.deepEqual(store.settings, { fresh: 1 });
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('a damaged backup is explained in red and nothing is changed', async () => {
+  const store = { settings: { fresh: 1 }, settingsBackup: { at: 'x', values: { running: true }, absent: [] } };
+  const page = await boot(store);
+  try {
+    page.dom.window.confirm = () => true;
+    assert.ok(await waitFor(() => restoreButton(page).disabled === false));
+    page.click('backupRestore');
+    assert.ok(await waitFor(() => /備份壞了，什麼都沒有動/.test(page.text('backupImportMsg'))));
+    assert.equal(level(page, 'backupImportMsg'), 'error');
+    assert.deepEqual(store.settings, { fresh: 1 });
+    assert.ok(await waitFor(() => restoreButton(page).disabled === false), 'the page is not frozen');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('a failed restore is shown in red and can be retried', async () => {
+  const store = { settings: { fresh: 1 }, settingsBackup: { at: 'x', values: { settings: { old: 1 } }, absent: [] } };
+  const page = await boot(store);
+  try {
+    page.dom.window.confirm = () => true;
+    assert.ok(await waitFor(() => restoreButton(page).disabled === false));
+    page.flags.writeFails = true;
+    page.click('backupRestore');
+    assert.ok(await waitFor(() => /還原失敗：disk full/.test(page.text('backupImportMsg'))));
+    assert.equal(level(page, 'backupImportMsg'), 'error');
+    assert.ok(await waitFor(() => restoreButton(page).disabled === false));
   } finally {
     page.dom.window.close();
   }
