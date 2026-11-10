@@ -584,21 +584,21 @@ ui('fight: three monsters with the same name are fought one at a time, each foll
   }
 });
 
-ui('fight: the kill command is a setting, so a refusal gets kb when the user set that', async () => {
+ui('fight: the kill command is a setting, so a refusal gets k when the user set that', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { ...REQUIRED, killCommand: 'kb' };
+    page.store.mapHuntSettings = { ...REQUIRED, killCommand: 'k' };
     const script = (command, { say: tell }) => {
       if (command === FIGHT) { tell('看起來測試怪並不想跟你較量。'); return true; }
-      if (command === 'kb test mob') { tell('測試怪死了。'); return true; }
+      if (command === 'k test mob') { tell('測試怪死了。'); return true; }
       return false;
     };
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kb test mob', 'gc', 'l']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'k test mob', 'gc', 'l']);
   } finally {
     page.close();
   }

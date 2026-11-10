@@ -58,7 +58,7 @@ const FIELDS = [
   { key: 'afterKillCommand', label: '怪倒下後送的指令（可多個，用 ; 分隔）', type: 'text', default: 'gc' },
   { key: 'specialCommand', label: '特攻指令（可空，可以是你的別名）', type: 'text', default: '' },
   { key: 'specialIntervalSec', label: '特攻最小間隔（秒）', type: 'number', default: 10, min: 1, max: 600 },
-  { key: 'killCommand', label: '打死用的指令（怪不想打、或補刀時送「這個指令 怪的ID」；預設 kill，可以填你的別名，例如 kb）', type: 'text', default: 'kill' },
+  { key: 'killCommand', label: '打死用的指令（怪不想打、或補刀時送「這個指令 怪的ID」；預設 kill，可以填你的別名，例如 k）', type: 'text', default: 'kill' },
   { key: 'refuseKeyword', label: '怪不想打時遊戲回的字（fight 被拒就改 kill）', type: 'text', default: '並不想跟你較量' },
   { key: 'endKeywords', label: '怪倒下的字（用、分隔）', type: 'text', default: '一動也不動了、死了' },
   { key: 'knockoutKeywords', label: '其中哪些字代表只是昏迷（用、分隔；昏迷的怪會再補 kill 打死）', type: 'text', default: '一動也不動了' },
