@@ -584,6 +584,26 @@ ui('fight: three monsters with the same name are fought one at a time, each foll
   }
 });
 
+ui('fight: the kill command is a setting, so a refusal gets kb when the user set that', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, killCommand: 'kb' };
+    const script = (command, { say: tell }) => {
+      if (command === FIGHT) { tell('看起來測試怪並不想跟你較量。'); return true; }
+      if (command === 'kb test mob') { tell('測試怪死了。'); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kb test mob', 'gc', 'l']);
+  } finally {
+    page.close();
+  }
+});
+
 ui('fight: a monster that does not want to fight gets kill after the refusal; when that only knocks it out it gets one more kill, and the corpse is taken only after the death sentence', async () => {
   const page = await boot({ scale: SCALE });
   try {
@@ -2465,6 +2485,31 @@ ui('assist: a second monster in the room gets another fight, but not while one i
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
     assert.equal(countOf(game, FIGHT), 2, 'one fight per monster');
     assert.equal(earlySecondFight, false, 'the second fight waits until nobody is fighting');
+  } finally {
+    page.close();
+  }
+});
+
+ui('assist: a monster that is knocked out but not dead yet is waited for, so the next one is not fought before it dies', async () => {
+  const page = await assistPage();
+  try {
+    const KO_MOB = '  ※測試怪(test mob) <昏迷不醒> [fight][kill]';
+    let fights = 0;
+    let deadLookShown = false;
+    let earlySecondFight = false;
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(2) } }, script: command => {
+      if (!command.startsWith('fight ')) return false;
+      fights += 1;
+      if (fights === 1) setTimeout(() => lookOut(page, [KO_MOB, MOB_LINE]), 50);
+      if (fights === 1) setTimeout(() => { deadLookShown = true; lookOut(page, [MOB_LINE]); }, 200);
+      if (fights === 2) { earlySecondFight = !deadLookShown; setTimeout(() => lookOut(page), 50); }
+      return true;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.equal(countOf(game, FIGHT), 2);
+    assert.equal(earlySecondFight, false, 'the second fight waited until the knocked-out one was gone');
   } finally {
     page.close();
   }

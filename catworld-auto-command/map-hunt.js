@@ -58,6 +58,7 @@ const FIELDS = [
   { key: 'afterKillCommand', label: '怪倒下後送的指令（可多個，用 ; 分隔）', type: 'text', default: 'gc' },
   { key: 'specialCommand', label: '特攻指令（可空，可以是你的別名）', type: 'text', default: '' },
   { key: 'specialIntervalSec', label: '特攻最小間隔（秒）', type: 'number', default: 10, min: 1, max: 600 },
+  { key: 'killCommand', label: '打死用的指令（怪不想打、或補刀時送「這個指令 怪的ID」；預設 kill，可以填你的別名，例如 kb）', type: 'text', default: 'kill' },
   { key: 'refuseKeyword', label: '怪不想打時遊戲回的字（fight 被拒就改 kill）', type: 'text', default: '並不想跟你較量' },
   { key: 'endKeywords', label: '怪倒下的字（用、分隔）', type: 'text', default: '一動也不動了、死了' },
   { key: 'knockoutKeywords', label: '其中哪些字代表只是昏迷（用、分隔；昏迷的怪會再補 kill 打死）', type: 'text', default: '一動也不動了' },
@@ -297,17 +298,21 @@ function create(deps) {
   function assistStart(here, info) {
     state.assist = { here, buffer: '', quietTicks: 0, waited: 0, asking: false, stuck: 0, count: Infinity, silent: 0 };
     state.phase = 'assist';
-    assistJudge(info);
+    assistJudge(info, true);
   }
-  // 依一份 l 的內容決定下一步（輪到第一次、被動看到、逾時自己看都用這個）
-  function assistJudge(info) {
+  // 依一份 l 的內容決定下一步（輪到第一次、被動看到、逾時自己看都用這個）。fresh＝第一次看到、或逾時自己看的：
+  // 這種情況不再等昏迷的怪（沒有人在補刀就不會有下一份 l，等下去會卡到逾時）
+  function assistJudge(info, fresh = false) {
     const a = state.assist;
-    const mine = info.monsters.filter(mob => state.mobs.includes(mob.full) && mob.state !== KNOCKED_OUT);
+    const picked = info.monsters.filter(mob => state.mobs.includes(mob.full));
+    const mine = picked.filter(mob => mob.state !== KNOCKED_OUT);
     const leave = why => {
       state.assist = null;
       if (why) state.skipped.push({ key: a.here, why });
       doneWith(a.here, why ? undefined : a.here);
     };
+    // 勾選的怪有昏迷但還沒死的：玩家的觸發規則會去補刀（k），這時對別隻下 fight 會變成第一隻還沒死就打第二隻，先等它死了
+    if (picked.length > mine.length && !fresh) { a.waited = 0; return; }
     if (!mine.length) { leave(); return; }
     a.waited = 0;
     if (mine.some(mob => mob.state === '戰鬥中')) return; // 在打，繼續等
@@ -360,7 +365,7 @@ function create(deps) {
         if ((a.silent += 1) >= MAX_STUCK) { state.assist = null; skipTarget(a.here, '讀不到房間'); }
         return;
       }
-      assistJudge(info);
+      assistJudge(info, true);
     }).catch(() => { if (state === token) finish('看房間時出錯，已停止', { alert: true }); });
   }
 
@@ -396,6 +401,7 @@ function create(deps) {
 
   // 打一隻：送 fight，之後由 onText（拒戰句、結束句）與 fightTick（特攻、補氣、逾時看 l）推進；結束時回 'ended'，被停止回 'stopped'
   // finishing 為真＝補刀：直接送 kill，只認死亡的字（結束字裡扣掉代表昏迷的），不送特攻；結束時回 'ended'、昏迷結束回 'knockedOut'
+  const killCmd = () => state.settings.killCommand || 'kill';
   function fightOne(token, mob, { finishing = false } = {}) {
     return new Promise(resolve => {
       const knockout = splitIds(state.settings.knockoutKeywords);
@@ -403,7 +409,7 @@ function create(deps) {
       // 特攻從開打算起隔一個間隔才送第一次，免得緊跟在 fight 後面被拒戰時得到「你要對誰施展這個招式」
       state.fight = { mob, resolve, finishing, knockout, knockedOut: false, killSent: finishing, buffer: '', noTarget: false, waited: 0, lastSpecial: state.ticks, checking: false, silentChecks: 0, endWords };
       deps.notify();
-      if (!deps.send(`${finishing ? 'kill' : 'fight'} ${mob.ref ?? mob.id}`)) finish('指令送不出去，已停止', { alert: true });
+      if (!deps.send(`${finishing ? killCmd() : 'fight'} ${mob.ref ?? mob.id}`)) finish('指令送不出去，已停止', { alert: true });
     });
   }
   const endFight = fight => {
@@ -431,7 +437,7 @@ function create(deps) {
       fight.killSent = true;
       fight.noTarget = false; // 前面的特攻對著還沒開打的怪，不算這場沒有目標
       fight.buffer = '';
-      deps.send(`kill ${fight.mob.ref ?? fight.mob.id}`);
+      deps.send(`${killCmd()} ${fight.mob.ref ?? fight.mob.id}`);
       return;
     }
     const hit = fight.endWords.find(word => fight.buffer.includes(word));
@@ -456,7 +462,7 @@ function create(deps) {
       if (mine.some(mob => mob.state === '戰鬥中')) return;
       // 重送時用這次 l 看到的位置（前面的怪倒下後，第幾個會變）
       const again = mine.find(mob => mob.state !== KNOCKED_OUT && SAFE_ID.test(mob.id));
-      if (again && (fight.silentChecks += 1) < MAX_STUCK) { deps.send(`${fight.killSent ? 'kill' : 'fight'} ${again.ref}`); return; }
+      if (again && (fight.silentChecks += 1) < MAX_STUCK) { deps.send(`${fight.killSent ? killCmd() : 'fight'} ${again.ref}`); return; }
       fight.knockedOut = !fight.finishing && mine.some(mob => mob.id === fight.mob.id && mob.state === KNOCKED_OUT);
       endFight(fight);
     }).catch(() => { if (state === token) finish('看房間時出錯，已停止', { alert: true }); });
