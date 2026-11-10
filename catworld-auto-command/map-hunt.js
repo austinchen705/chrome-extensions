@@ -38,7 +38,7 @@ const NO_MEDICINE_WINDOW_TICKS = 10 * TICKS_PER_SEC; // 吃藥指令真的送出
 const FIELDS = [
   { key: 'commandGapMinMs', label: '巡怪送指令的最短間隔（毫秒，0～3000；走路、看房間、打怪、補氣都算，和「指令間隔」取較大的，所以想更快也要把「指令間隔」調小）', type: 'number', default: 1000, min: 0, max: 3000 },
   { key: 'commandGapMaxMs', label: '巡怪送指令的最長間隔（毫秒；每次在最短與最長之間隨機）', type: 'number', default: 2000, min: 0, max: 3000 },
-  { key: 'fightMode', label: '戰鬥方式', type: 'select', options: [['full', '完整（巡怪自己打、補氣、撿屍）'], ['assist', '只下 fight（戰鬥、補氣、撿屍交給你的觸發規則；巡怪只看 i 與 l 的輸出，氣低於危險線才回家）']], default: 'full' },
+  { key: 'fightMode', label: '戰鬥方式', type: 'select', options: [['full', '完整（巡怪自己打、補氣、撿屍）'], ['assist', '只下 fight（戰鬥、補氣、撿屍交給你的觸發規則；巡怪只看 i 與 l 的輸出；吃藥模式照樣吃藥，氣低於危險線回家）']], default: 'full' },
   { key: 'healMode', label: '補氣方式', type: 'select', options: [['eat', '吃藥'], ['rest', '自己回']], default: 'eat' },
   { key: 'eatBelow', label: '氣低於幾 % 就吃藥', type: 'number', default: 50, min: 1, max: 99 },
   { key: 'eatCommand', label: '吃藥指令（可多個，用 ; 分隔）', type: 'text', default: '' },
@@ -501,9 +501,10 @@ function create(deps) {
     if (!Number.isFinite(percent)) { finish('讀不到氣，已停止', { alert: true }); return; }
     // 掃描時整區走動，被主動攻擊的怪打到的機會比巡怪多：氣掉到危險線就回家停止（不管補氣方式，沒有在打架也一樣）
     if (state.scan && percent < state.settings.dangerBelow) { goHomeAndStop(`掃描中氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`); return; }
-    // 只下 fight：補氣是玩家的觸發規則的事，這裡只留危險線這一道保險
+    // 只下 fight：休息是玩家的觸發規則的事；危險線照樣回家停止，吃藥模式有填吃藥指令時照樣吃（戰鬥中也每秒看，因為這個模式沒有 fightTick）
     if (state.settings.fightMode === 'assist') {
-      if (percent < state.settings.dangerBelow) goHomeAndStop(`氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`);
+      if (percent < state.settings.dangerBelow) { goHomeAndStop(`氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`); return; }
+      if (state.settings.healMode === 'eat' && state.settings.eatCommand && percent < state.settings.eatBelow && state.ticks - state.lastEat >= EAT_GAP_TICKS) eat();
       return;
     }
     if (state.settings.healMode === 'rest') { restStep(percent); return; }

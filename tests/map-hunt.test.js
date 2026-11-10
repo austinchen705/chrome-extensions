@@ -2514,7 +2514,7 @@ ui('assist: an i the user triggers that is over the limit sends the hunt to the 
   }
 });
 
-ui('assist: low qi does not eat, but under the danger line it goes home and stops', async () => {
+ui('assist: low qi eats when an eat command is set (and not when it is blank), and under the danger line it goes home and stops', async () => {
   const low = await assistPage({ eatCommand: 'eat pill', noMedicineKeyword: '沒有藥' });
   try {
     setKee(low, 40);
@@ -2522,9 +2522,20 @@ ui('assist: low qi does not eat, but under the danger line it goes home and stop
     await pick(low, MOB);
     click(low, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(low)), 8000), huntText(low));
-    assert.equal(game.log.includes('eat pill'), false, 'eating is the user\'s trigger');
+    assert.ok(game.log.includes('eat pill'), 'it eats even though the fight itself is the triggers business');
   } finally {
     low.close();
+  }
+  const blank = await assistPage();
+  try {
+    setKee(blank, 40);
+    const game = world(blank, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: command => { if (command.startsWith('fight ')) { setTimeout(() => lookOut(blank), 50); return true; } return false; } });
+    await pick(blank, MOB);
+    click(blank, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(blank)), 8000), huntText(blank));
+    assert.equal(game.log.some(command => /eat/.test(command)), false, 'no eat command set, nothing to send');
+  } finally {
+    blank.close();
   }
   const danger = await assistPage();
   try {
