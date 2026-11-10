@@ -571,3 +571,37 @@ ui('clearing the file choice discards the earlier check, and an unreadable file 
     page.dom.window.close();
   }
 });
+
+ui('an import that would change nothing says so and leaves the earlier backup alone', async () => {
+  const earlier = { at: '2026-01-01T00:00:00.000Z', values: { chatReply: { old: 1 } }, absent: [] };
+  const store = { settings: { same: 1 }, settingsBackup: earlier };
+  const page = await boot(store);
+  try {
+    paste(page, backupFile({ timer: { settings: { same: 1 } } }));
+    assert.ok(await waitFor(() => planShown(page)));
+    page.click('backupImportApply');
+    assert.ok(await waitFor(() => /沒有任何變動/.test(page.text('backupImportMsg'))));
+    assert.deepEqual(store.settingsBackup, earlier);
+    assert.equal(planShown(page), true);
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('the restore button is off while an import is running', async () => {
+  const store = { settings: { old: 1 }, settingsBackup: { at: 'x', values: {}, absent: [] } };
+  const page = await boot(store);
+  try {
+    assert.ok(await waitFor(() => restoreButton(page).disabled === false));
+    paste(page, backupFile({ timer: { settings: { fresh: 1 } } }));
+    assert.ok(await waitFor(() => planShown(page)));
+    let release;
+    page.flags.hold = new Promise(resolve => { release = resolve; });
+    page.click('backupImportApply');
+    assert.equal(restoreButton(page).disabled, true);
+    release();
+    assert.ok(await waitFor(() => store.settings.fresh === 1));
+  } finally {
+    page.dom.window.close();
+  }
+});

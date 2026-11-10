@@ -1296,6 +1296,12 @@ function freezeSettingsPage() {
   settingsFrozen = true;
   document.querySelectorAll('input, select, textarea, button').forEach(control => { control.disabled = true; });
 }
+// 匯入與還原結束後一樣：清掉輸入、說明、把設定頁停用
+function finishFrozen(text) {
+  clearImport();
+  importMessage(`${text}。這個設定頁已停用：請重新整理遊戲分頁，並把設定頁關掉再重新開啟`);
+  freezeSettingsPage();
+}
 async function writePlan(plan) {
   if (Object.keys(plan.set).length) await chrome.storage.local.set(plan.set);
   if (plan.remove.length) await chrome.storage.local.remove(plan.remove);
@@ -1307,7 +1313,8 @@ async function refreshRestore() {
     $('backupRestore').disabled = settingsFrozen || !('settingsBackup' in stored);
   } catch { $('backupRestore').disabled = true; }
 }
-// 匯入寫到一半失敗：寫過東西就用新備份放回去，放得回去才把舊備份放回；放不回去就留著新備份（它才是回頭的路）
+// 匯入寫到一半失敗：寫過東西就用新備份放回去，放得回去才把舊備份放回；放不回去就留著新備份（它才是回頭的路）。
+// touched 只在 set 成功後才為真：chrome.storage.local.set 是整批一起成功或失敗，失敗代表什麼都沒寫進去
 async function undoImport(backup, previousBackup, touched) {
   try {
     if (touched) await writePlan(CatworldSettingsBackup.planRestore(backup));
@@ -1325,10 +1332,13 @@ $('backupImportApply').addEventListener('click', async () => {
   const secrets = pending.hasSecrets && $('backupImportSecrets').checked;
   if (!ids.length && !secrets) { importMessage('請至少勾選一個區塊', 'warn'); return; }
   $('backupImportApply').disabled = true;
+  $('backupRestore').disabled = true; // 匯入進行中不能同時還原
   try {
     const current = await chrome.storage.local.get([...BACKUP_KEYS, 'settingsBackup']);
     if (pendingImport !== pending) { importMessage('等待期間文字被改了，請重新檢查再匯入', 'warn'); return; }
     const plan = CatworldSettingsBackup.planImport(current, pending.data, { blocks: ids, secrets });
+    const unchanged = !plan.remove.length && Object.entries(plan.set).every(([key, value]) => JSON.stringify(value) === JSON.stringify(current[key]));
+    if (unchanged) { importMessage('檔案的內容和現在一樣，沒有任何變動（舊的備份沒有動）'); return; }
     const backup = CatworldSettingsBackup.makeBackup(current, plan);
     try {
       await chrome.storage.local.set({ settingsBackup: backup }); // 先備份，備份寫不進去就不匯入
@@ -1341,31 +1351,29 @@ $('backupImportApply').addEventListener('click', async () => {
       importMessage(`匯入失敗：${e.message}。${await undoImport(backup, current.settingsBackup, touched)}`, 'error');
       return;
     }
-    const count = plan.blocks.length + (plan.secrets ? 1 : 0);
-    clearImport();
-    importMessage(`已匯入 ${count} 個區塊${plan.secrets ? '（含機密）' : ''}。這個設定頁已停用：請重新整理遊戲分頁，並把設定頁關掉再重新開啟`);
-    freezeSettingsPage();
+    finishFrozen(`已匯入 ${plan.blocks.length + (plan.secrets ? 1 : 0)} 個區塊${plan.secrets ? '（含機密）' : ''}`);
   } catch (e) {
     importMessage(`匯入失敗：${e.message}`, 'error');
   } finally {
     if (!settingsFrozen && !$('backupImportApply').closest('[hidden]')) $('backupImportApply').disabled = false;
+    refreshRestore();
   }
 });
 
 $('backupRestore').addEventListener('click', async () => {
   $('backupRestore').disabled = true;
+  $('backupImportApply').disabled = true; // 還原進行中不能同時匯入
   try {
     const { settingsBackup } = await chrome.storage.local.get(['settingsBackup']);
     const checked = CatworldSettingsBackup.checkBackup(settingsBackup);
     if (!checked.ok) { importMessage(`備份壞了，什麼都沒有動：${checked.error}`, 'error'); return; }
     if (!confirm(`要把 ${checked.keys} 個設定項目還原成匯入前的樣子（備份時間 ${checked.at || '不明'}）嗎？匯入之後的更動會被取代。`)) return;
     await writePlan(CatworldSettingsBackup.planRestore(checked.backup));
-    clearImport();
-    importMessage('已還原成匯入前的樣子（備份保留）。這個設定頁已停用：請重新整理遊戲分頁，並把設定頁關掉再重新開啟');
-    freezeSettingsPage();
+    finishFrozen('已還原成匯入前的樣子（備份保留）');
   } catch (e) {
     importMessage(`還原失敗：${e.message}。設定可能只套用了一部分，可以再按一次「還原上一份」`, 'error');
   } finally {
+    if (!settingsFrozen && !$('backupImportPlan').hidden) $('backupImportApply').disabled = false;
     refreshRestore();
   }
 });

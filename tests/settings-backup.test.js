@@ -245,3 +245,9 @@ test('the backup key is never exported', () => {
   const text = B.exportText({ ...store, settingsBackup: { at: 'x', values: { lineNotify: { token: 'SECRET-TOKEN' } }, absent: [] } }, { version: '1', secrets: true, now: FIXED_NOW });
   assert.ok(!text.includes('settingsBackup'));
 });
+
+test('makeBackup treats a stored null as absent, so the backup it makes can always be restored', () => {
+  const backup = B.makeBackup({ settings: null }, { set: { settings: { fresh: 1 } }, remove: [] }, FIXED_NOW);
+  assert.deepEqual(backup.absent, ['settings']);
+  assert.equal(B.checkBackup(backup).ok, true);
+});

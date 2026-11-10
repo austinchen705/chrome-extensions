@@ -109,12 +109,13 @@ function planImport(current, data, { blocks = [], secrets = false } = {}) {
   return { set, remove, blocks: done, secrets: withSecrets };
 }
 
-// 匯入前的備份：這次會被動到的鍵現在的值（values），以及現在沒有這個鍵的（absent，還原時要移除）。只存本機、不進匯出
+// 匯入前的備份：這次會被動到的鍵現在的值（values），以及現在沒有這個鍵的（absent，還原時要移除；存成 null 的當作沒有，
+// 匯入檢查本來就不收 null）。只存本機、不進匯出
 function makeBackup(current, plan, now = Date.now()) {
   const values = {};
   const absent = [];
   [...Object.keys(plan.set), ...plan.remove].forEach(key => {
-    if (current?.[key] !== undefined) values[key] = copy(current[key]);
+    if (current?.[key] != null) values[key] = copy(current[key]);
     else absent.push(key);
   });
   return { at: new Date(now).toISOString(), values, absent };
