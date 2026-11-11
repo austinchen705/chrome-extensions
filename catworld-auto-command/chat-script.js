@@ -19,6 +19,10 @@ const PER_DAY_DEFAULT = 3; // 每天最多幾場
 const PER_DAY_MAX = 99;
 const AUTO_EVERY_DEFAULT = 0; // 平均每幾分鐘自動開一場（0＝不啟用）
 const AUTO_EVERY_MAX = 1440; // 上限一天
+// 自動開場：練功組開始後先暖機，之後每分鐘擲一次骰子；兩場開始之間至少隔這麼多次擲骰（用次數不用時鐘，測試縮小計時器時才跟著縮）
+const AUTO_WARMUP_MS = 5 * 60 * 1000;
+const AUTO_ROLL_MS = 60 * 1000;
+const AUTO_MIN_GAP_ROLLS = 20;
 const RECENT_LIMIT = 5; // A 挑劇本時避開最近用過的幾份
 const TYPO_RATE_DEFAULT = 3; // 每一輪出錯字的機率（%）
 const TYPO_MIN_LENGTH = 6; // 一則至少幾個字才會被打錯
@@ -207,8 +211,11 @@ function describeStatus({ session, state, perDay, today }) {
   return day + '；進行中：劇本 ' + session.scriptId + '，已演 ' + session.turn + '/' + session.total + ' 輪，' + (session.phase === 'say' ? '正在說' : '等對方回');
 }
 
+// 每分鐘擲一次骰子抽中的機率：平均每 N 分鐘一場＝1÷N；0（不啟用）或不合法回 0
+const autoChance = everyMin => (everyMin > 0 ? 1 / everyMin : 0);
+
 // 對方更正錯字的那一則（「*字」）：不是劇本的台詞，但屬於這一場，收下就好
 const isCorrection = text => /^[*＊]\S{1,4}$/u.test(String(text ?? '').trim());
 
-globalThis.CatworldChatScript = { SETTINGS_KEY, STATE_KEY, MATCH_THRESHOLD, normalizeSettings, partnerIdOf, fill, tellCommand, usableScripts, toTurns, bestStart, createSession, sendDelayMs, correctionDelayMs, addTypo, isCorrection, dayKey, normalizeState, todayCount, recordStart, pickScript, describeStatus };
+globalThis.CatworldChatScript = { SETTINGS_KEY, STATE_KEY, MATCH_THRESHOLD, AUTO_WARMUP_MS, AUTO_ROLL_MS, AUTO_MIN_GAP_ROLLS, autoChance, normalizeSettings, partnerIdOf, fill, tellCommand, usableScripts, toTurns, bestStart, createSession, sendDelayMs, correctionDelayMs, addTypo, isCorrection, dayKey, normalizeState, todayCount, recordStart, pickScript, describeStatus };
 })();

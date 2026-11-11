@@ -286,6 +286,7 @@ const scriptToday = () => CatworldChatScript.dayKey(Date.now());
 const scriptPlayedToday = () => CatworldChatScript.todayCount(scriptState, scriptToday());
 // 開了一場（A 開場、B 開始接話）就記一場，連同用的劇本
 function recordScriptStart(scriptId) {
+  scriptRollsSinceStart = 0;
   scriptState = CatworldChatScript.recordStart(scriptState, scriptToday(), scriptId);
   try {
     chrome.storage.local.set({ [CatworldChatScript.STATE_KEY]: scriptState }).catch(() => {});
@@ -358,6 +359,36 @@ function hearScript({ name, text }) {
   scriptSession = step.send.length ? session : null;
   if (step.send.length) sayTurn(step.send, step.done);
   return true;
+}
+// 自動開場（autoEveryMin > 0、這台是 A、有對方 ID、「練功」觸發組開著才作用）：開始後先暖機 AUTO_WARMUP_MS，之後每 AUTO_ROLL_MS 擲一次骰子，
+// 機率 1÷autoEveryMin；抽中就等於按了「現在開一場」（startScript 自己會擋已有一場在進行、今天場數用完、沒有劇本）。
+// 兩場開始（手動或自動）之間至少隔 AUTO_MIN_GAP_ROLLS 次擲骰；Idle 暫停、驗證碼處理中或因驗證停止時這次放棄，下一次照常再抽。
+// 條件消失（停止練功、關功能、改角色或對方 ID、autoEveryMin 改成 0）時 syncScriptAuto 就把計時器清掉，再開始會重新暖機
+let scriptAutoWarm = null;
+let scriptAutoRoll = null;
+let scriptRollsSinceStart = CatworldChatScript.AUTO_MIN_GAP_ROLLS; // 剛載入的頁面不受最小間隔限制
+const scriptAutoWanted = () => chatScript.enabled && chatScript.role === 'A' && !!chatScript.partner && chatScript.autoEveryMin > 0 && triggerGroups.practice?.on === true;
+function stopScriptAuto() {
+  clearTimeout(scriptAutoWarm);
+  clearInterval(scriptAutoRoll);
+  scriptAutoWarm = null;
+  scriptAutoRoll = null;
+}
+function rollScriptAuto() {
+  if (!scriptAutoWanted()) { stopScriptAuto(); return; }
+  scriptRollsSinceStart += 1;
+  if (Math.random() >= CatworldChatScript.autoChance(chatScript.autoEveryMin)) return;
+  if (scriptRollsSinceStart < CatworldChatScript.AUTO_MIN_GAP_ROLLS) return;
+  if (idlePaused || captcha || /驗證/.test(stopReason) || presenceOpen()) return;
+  startScript();
+}
+function syncScriptAuto() {
+  if (!scriptAutoWanted()) { stopScriptAuto(); return; }
+  if (scriptAutoWarm || scriptAutoRoll) return;
+  scriptAutoWarm = setTimeout(() => {
+    scriptAutoWarm = null;
+    scriptAutoRoll = setInterval(rollScriptAuto, CatworldChatScript.AUTO_ROLL_MS);
+  }, CatworldChatScript.AUTO_WARMUP_MS);
 }
 // 現在不能開場的原因（可以開回 null）
 function startBlock() {
@@ -1206,6 +1237,7 @@ async function startTriggers(group, config) {
     onDisable: (index, label, reason) => alertOnly(`${group.name}觸發規則「${label}」已停用：${reason}`),
   });
   group.on = true;
+  syncScriptAuto();
   await saveGroupConfig(group.id, config);
   if (!idlePaused) group.engine.tick();
   group.timer = setInterval(() => { if (!idlePaused) group.engine.tick(); }, 1000);
@@ -1221,6 +1253,7 @@ async function saveGroupConfig(id, config) {
 
 function stopTriggers(group, note = '已停止') {
   group.on = false;
+  syncScriptAuto();
   clearInterval(group.timer);
   group.timer = null;
   dropQueue(`trigger:${group.id}`);
@@ -2093,6 +2126,7 @@ chrome.storage.onChanged?.addListener((changes, area) => {
     // 關掉、換角色、換對方：進行中的一場作廢
     if (!chatScript.enabled || chatScript.role !== before.role || chatScript.partner.toLowerCase() !== before.partner.toLowerCase()) cancelScript();
     if (chatScript.enabled) loadScripts();
+    syncScriptAuto();
   }
   if (area === 'local' && changes[CatworldChatScript.STATE_KEY]) scriptState = CatworldChatScript.normalizeState(changes[CatworldChatScript.STATE_KEY].newValue); // 別的遊戲分頁開了一場
   if (area === 'local' && changes.autoReward) {

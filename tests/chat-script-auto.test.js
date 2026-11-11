@@ -1,0 +1,142 @@
+// 劇本對話的自動開場：練功組開始後，角色 A 每分鐘擲一次骰子（機率 1÷autoEveryMin），抽中就等於按了「現在開一場」。
+// 整個 content script 在 jsdom 裡跑；計時器縮小 SCALE 倍（暖機 5 分鐘＝150 毫秒、每分鐘擲一次＝30 毫秒、兩場至少隔 20 次擲骰＝600 毫秒），
+// 隨機數換成固定值，所以「抽中」「沒抽中」是確定的。
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { ui, boot, waitFor, sleep } = require('./helpers/game-page');
+
+const SCALE = 2000;
+const B = { nick: '緋爾', id: 'fenrir' };
+const PLAIN = {
+  id: 't4',
+  lines: [
+    { who: 'A', text: '今天要不要去吃飯' },
+    { who: 'B', text: '好啊去哪裡吃' },
+  ],
+};
+const FIRST_TELL = 'tell fenrir 今天要不要去吃飯';
+const keyword = (pattern, commands) => ({ kind: 'keyword', enabled: true, pattern, commands, cooldown: 1 });
+const PRACTICE = { type: 'START_TRIGGER', group: 'practice', config: { rules: [keyword('口渴', ['drink'])], delayMax: 0, requireNormal: false } };
+const tells = page => page.sent.filter(command => command === FIRST_TELL);
+
+// random：頁面裡 Math.random 的固定值（0＝一定抽中，0.999＝只有機率 1 才抽得中）
+async function soloA({ autoEveryMin = 1, random = 0, role = 'A', extra = {}, chatScript = {} } = {}) {
+  const page = await boot({
+    scale: SCALE,
+    respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {}),
+    initialStore: { chatScript: { enabled: true, typoRate: 0, role, partner: B.id, partnerName: B.nick, autoEveryMin, ...chatScript }, autoReward: false, ...extra },
+  });
+  page.w.Math.random = () => random;
+  // 遊戲對送出的每個指令都回一行：沒有回應的話「送出指令 8 秒沒回應」的看門狗（縮小後只有幾毫秒）會把整個練功組停掉，自動開場也跟著停
+  page.w.document.getElementById('f').addEventListener('submit', () => setTimeout(() => page.output('<span>遊戲的回應\n</span>'), 1));
+  return page;
+}
+
+test('the chance of one roll is 1 over the minutes asked for, and 0 when it is off', () => {
+  require('../catworld-auto-command/chat-script.js');
+  const C = globalThis.CatworldChatScript;
+  assert.deepEqual([0, 1, 4, 100].map(C.autoChance), [0, 1, 0.25, 0.01]);
+  assert.ok(C.AUTO_MIN_GAP_ROLLS >= 1 && C.AUTO_WARMUP_MS > C.AUTO_ROLL_MS);
+});
+
+ui('nothing opens by itself while the setting is 0, even with the practice group running and a sure hit', async () => {
+  const page = await soloA({ autoEveryMin: 0 });
+  try {
+    await page.ask(PRACTICE);
+    await sleep(900);
+    assert.equal(tells(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('nothing opens by itself until the practice group is started', async () => {
+  const page = await soloA();
+  try {
+    await sleep(900);
+    assert.equal(tells(page).length, 0, 'not running');
+    await page.ask(PRACTICE);
+    assert.ok(await waitFor(() => tells(page).length >= 1, 4000), 'running');
+  } finally {
+    page.close();
+  }
+});
+
+ui('there is a warm-up after the practice group starts, and then the first roll opens a scene', async () => {
+  const page = await soloA();
+  try {
+    await page.ask(PRACTICE);
+    await sleep(60); // 暖機 150 毫秒還沒過
+    assert.equal(tells(page).length, 0, 'still warming up');
+    assert.ok(await waitFor(() => tells(page).length >= 1, 4000), 'then the scene opens');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a roll that misses opens nothing, a roll that hits opens a scene; the next roll tries again', async () => {
+  const page = await soloA({ autoEveryMin: 2, random: 0.9 }); // 機率 0.5：0.9 沒中
+  try {
+    await page.ask(PRACTICE);
+    await sleep(700);
+    assert.equal(tells(page).length, 0, 'every roll missed');
+    page.w.Math.random = () => 0.1;
+    assert.ok(await waitFor(() => tells(page).length >= 1, 4000), 'the next roll hits');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a role of B, a spent daily limit and idle each make a hit give up, and the next roll tries again', async () => {
+  const day = new Date();
+  const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+  const asB = await soloA({ role: 'B' });
+  const full = await soloA({ chatScript: { perDay: 1 }, extra: { chatScriptState: { date: key, count: 1, recent: [] } } });
+  const idle = await soloA();
+  try {
+    await asB.ask(PRACTICE);
+    await full.ask(PRACTICE);
+    await idle.ask(PRACTICE);
+    await idle.ask({ type: 'START_IDLE', settings: { everyMin: 60, everyMax: 60, durMin: 60, durMax: 60 } });
+    await sleep(900);
+    assert.equal(tells(asB).length, 0, 'B never opens');
+    assert.equal(tells(full).length, 0, 'the daily limit is spent');
+    assert.equal(tells(idle).length, 0, 'idle is quiet');
+    await idle.ask({ type: 'STOP_IDLE' });
+    assert.ok(await waitFor(() => tells(idle).length >= 1, 4000), 'after idle ends the next roll opens a scene');
+  } finally {
+    asB.close();
+    full.close();
+    idle.close();
+  }
+});
+
+ui('two scenes are at least 20 rolls apart, so a sure hit does not open scene after scene', async () => {
+  const page = await soloA();
+  try {
+    await page.ask(PRACTICE);
+    assert.ok(await waitFor(() => tells(page).length >= 1, 4000));
+    const firstAt = Date.now();
+    assert.ok(await waitFor(() => tells(page).length >= 2, 6000), 'the second scene opens once the gap has passed');
+    assert.ok(Date.now() - firstAt >= 450, `the gap is 20 rolls of 30 ms, took ${Date.now() - firstAt} ms`);
+  } finally {
+    page.close();
+  }
+});
+
+ui('a scene opened by hand counts as the last scene for the gap, and an automatic scene counts in the daily total', async () => {
+  const page = await soloA();
+  try {
+    assert.equal((await page.ask({ type: 'START_CHAT_SCRIPT' })).ok, true);
+    assert.ok(await waitFor(() => tells(page).length >= 1, 4000));
+    await page.ask(PRACTICE);
+    await sleep(500);
+    assert.equal(tells(page).length, 1, 'too soon after the hand-opened scene');
+    assert.ok(await waitFor(() => tells(page).length >= 2, 6000), 'later the automatic one opens');
+    const stored = await page.ask({ type: 'STATUS' });
+    assert.ok(stored.chatScript === null || stored.chatScript.scriptId, 'the status still answers');
+    assert.equal(page.store.chatScriptState.count, 2, 'both scenes are in the daily count');
+  } finally {
+    page.close();
+  }
+});
