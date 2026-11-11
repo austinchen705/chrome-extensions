@@ -853,6 +853,12 @@ test('the daily count, the recent list and the status text are worked out by the
   assert.equal(C.describeStatus({ session: { scriptId: 'x', turn: 2, total: 6, phase: 'wait' }, state: C.normalizeState(undefined), perDay: 3, today: '2026-11-07' }), '今天 0/3 場；進行中：劇本 x，已演 2/6 輪，等對方回');
   assert.equal(C.describeStatus({ session: { scriptId: 'x', turn: 1, total: 6, phase: 'say' }, state: C.normalizeState(undefined), perDay: 3, today: '2026-11-07' }), '今天 0/3 場；進行中：劇本 x，已演 1/6 輪，正在說');
   assert.equal(C.describeStatus({ session: undefined, state: C.normalizeState(undefined), perDay: 3, today: '2026-11-07' }), '今天 0/3 場；遊戲頁沒有回應');
+  // 自動開場：沒有排程（null 或沒給）時文字和以前完全一樣；暖機中寫還要幾分鐘（進位），擲骰中寫平均幾分鐘一場
+  const none = { session: null, state: C.normalizeState(undefined), perDay: 3, today: '2026-11-07' };
+  assert.equal(C.describeStatus({ ...none, auto: null, everyMin: 100 }), '今天 0/3 場；目前沒有進行中的一場');
+  assert.equal(C.describeStatus({ ...none, auto: { phase: 'warmup', secondsLeft: 125 }, everyMin: 100 }), '今天 0/3 場；目前沒有進行中的一場；自動開場：暖機中，約 3 分鐘後開始擲骰');
+  assert.equal(C.describeStatus({ ...none, auto: { phase: 'warmup', secondsLeft: 0 }, everyMin: 100 }), '今天 0/3 場；目前沒有進行中的一場；自動開場：暖機中，約 1 分鐘後開始擲骰', 'never says 0 minutes');
+  assert.equal(C.describeStatus({ ...none, auto: { phase: 'rolling' }, everyMin: 100 }), '今天 0/3 場；目前沒有進行中的一場；自動開場：擲骰中，平均每 100 分鐘一場');
 });
 
 ui('when the background cannot be reached A does not open and B does not answer', async () => {

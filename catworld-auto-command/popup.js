@@ -301,8 +301,9 @@ function showChatReply(settings) {
 let scriptSettings = CatworldChatScript.normalizeSettings(undefined);
 let scriptDay = CatworldChatScript.normalizeState(undefined);
 let scriptSession = undefined;
+let scriptAuto = null; // STATUS 的 chatScriptAuto：練功開始後自動開場的排程（沒有排程是 null）
 function renderScriptStatus() {
-  $('scriptStatus').textContent = CatworldChatScript.describeStatus({ session: scriptSession, state: scriptDay, perDay: scriptSettings.perDay, today: CatworldChatScript.dayKey(Date.now()) });
+  $('scriptStatus').textContent = CatworldChatScript.describeStatus({ session: scriptSession, state: scriptDay, perDay: scriptSettings.perDay, today: CatworldChatScript.dayKey(Date.now()), auto: scriptAuto, everyMin: scriptSettings.autoEveryMin });
 }
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !changes[CatworldChatScript.STATE_KEY]) return;
@@ -1173,6 +1174,7 @@ async function refreshLive() {
   if (status && lastIdle !== null && Boolean(status.idle) !== lastIdle && !status.idle) setIdleStatus(status.stopReason && !status.running && !status.randomRunning ? status.stopReason : '已停止', 'info');
   if (status) lastIdle = Boolean(status.idle);
   scriptSession = status ? status.chatScript ?? null : undefined;
+  scriptAuto = status?.chatScriptAuto ?? null;
   renderScriptStatus();
   updateHints();
   renderCountdown(status);
@@ -1354,6 +1356,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 // 條件只看畫面上的欄位，改了就即時更新；新增依賴只要加一列（先確認程式裡真的有這個前提）
 const isOn = id => $(id).checked;
 const blank = id => !$(id).value.trim();
+const autoEvery = () => Number($('scriptAutoEvery').value) || 0;
 const DEPENDENCIES = [
   { host: 'sec-features', anchor: () => $('whisperColor').closest('label'), warn: () => !isOn('featureWhisper'), text: '密語區塊沒開，顏色用不到。' },
   { host: 'sec-grade', warn: () => !isOn('featureMobs'), text: '「怪物查詢」沒開，面板不會用到怪物分級。' },
@@ -1363,6 +1366,9 @@ const DEPENDENCIES = [
   { host: 'sec-hunt', warn: () => !isOn('featureHunt'), text: '「地圖巡怪」沒開，面板不會出現「巡怪」列，下面的欄位用不到。' },
   { host: 'sec-script', warn: () => isOn('scriptOn') && blank('scriptPartner'), text: '還沒填對方的英文 ID：A 開不了場、B 認不出對方的來訊，都不會動。' },
   { host: 'sec-script', warn: () => isOn('scriptOn') && !blank('scriptPerDay') && Number($('scriptPerDay').value) === 0, text: '每天最多 0 場：不開場也不接話。' },
+  { host: 'sec-script', warn: () => isOn('scriptOn') && autoEvery() > 0 && $('scriptRole').value !== 'A', text: '自動開場只有角色 A 會開，這台是 B，不會自動開場。' },
+  { host: 'sec-script', warn: () => isOn('scriptOn') && autoEvery() > 0 && blank('scriptPartner'), text: '自動開場要先填對方的英文 ID，現在還沒填，不會自動開。' },
+  { host: 'sec-script', info: () => isOn('scriptOn') && autoEvery() > 0, text: '自動開場只在「練功」觸發組開始之後才會擲骰；每天場數與兩場之間約 20 分鐘的間隔照樣限制。' },
   { host: 'sec-script', info: () => isOn('scriptOn'), text: '劇本認領的來訊不會進密語區，也不會觸發聊天回覆；兩台電腦要填同一份試算表連結和互相的英文 ID。' },
   { host: 'sec-stopwords', warn: () => isOn('stopKeywordsOn') && blank('stopKeywordsList'), text: '關鍵字清單是空的，不會命中任何詞。' },
 ];

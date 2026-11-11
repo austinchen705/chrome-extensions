@@ -366,6 +366,7 @@ function hearScript({ name, text }) {
 // 條件消失（停止練功、關功能、改角色或對方 ID、autoEveryMin 改成 0）時 syncScriptAuto 就把計時器清掉，再開始會重新暖機
 let scriptAutoWarm = null;
 let scriptAutoRoll = null;
+let scriptAutoWarmAt = 0; // 暖機開始的時間（只給 STATUS 算還剩幾秒）
 let scriptRollsSinceStart = CatworldChatScript.AUTO_MIN_GAP_ROLLS; // 剛載入的頁面不受最小間隔限制
 const scriptAutoWanted = () => chatScript.enabled && chatScript.role === 'A' && !!chatScript.partner && chatScript.autoEveryMin > 0 && triggerGroups.practice?.on === true;
 function stopScriptAuto() {
@@ -385,6 +386,7 @@ function rollScriptAuto() {
 function syncScriptAuto() {
   if (!scriptAutoWanted()) { stopScriptAuto(); return; }
   if (scriptAutoWarm || scriptAutoRoll) return;
+  scriptAutoWarmAt = Date.now();
   scriptAutoWarm = setTimeout(() => {
     scriptAutoWarm = null;
     scriptAutoRoll = setInterval(rollScriptAuto, CatworldChatScript.AUTO_ROLL_MS);
@@ -2096,6 +2098,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       macros: macroRuns.size,
       hunt: hunt.snapshot(),
       chatScript: scriptSession ? { ...scriptSession.status(), phase: scriptTimers.size ? 'say' : 'wait' } : null,
+      chatScriptAuto: scriptAutoWarm ? { phase: 'warmup', secondsLeft: Math.max(0, Math.round((scriptAutoWarmAt + CatworldChatScript.AUTO_WARMUP_MS - Date.now()) / 1000)) } : scriptAutoRoll ? { phase: 'rolling' } : null,
       stats: readAllStats(),
       triggerGroups: Object.fromEntries(groupList.map(item => [item.id, { on: item.on, note: item.note, warning: macroWarnings(item).join('；'), rules: item.on ? item.engine.snapshot().rules : [] }])),
     });

@@ -210,12 +210,16 @@ function pickScript(choices, recent, random = Math.random) {
   const pool = fresh.length ? fresh : choices.filter(script => recent.indexOf(script.id) === oldest);
   return pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))];
 }
-// 設定頁的狀態行；session 是 STATUS 回的 chatScript（沒有進行中是 null，遊戲頁沒回應是 undefined）
-function describeStatus({ session, state, perDay, today }) {
+// 設定頁的狀態行；session 是 STATUS 回的 chatScript（沒有進行中是 null，遊戲頁沒回應是 undefined）；
+// auto 是 STATUS 回的 chatScriptAuto（沒有排程是 null 或沒給，狀態行就不多寫），everyMin 是設定的平均每幾分鐘一場
+function describeStatus({ session, state, perDay, today, auto = null, everyMin = 0 }) {
   const day = '今天 ' + todayCount(state, today) + '/' + perDay + ' 場';
   if (session === undefined) return day + '；遊戲頁沒有回應';
-  if (!session) return day + '；目前沒有進行中的一場';
-  return day + '；進行中：劇本 ' + session.scriptId + '，已演 ' + session.turn + '/' + session.total + ' 輪，' + (session.phase === 'say' ? '正在說' : '等對方回');
+  const schedule = !auto ? '' : auto.phase === 'warmup'
+    ? '；自動開場：暖機中，約 ' + Math.max(1, Math.ceil(auto.secondsLeft / 60)) + ' 分鐘後開始擲骰'
+    : '；自動開場：擲骰中，平均每 ' + everyMin + ' 分鐘一場';
+  if (!session) return day + '；目前沒有進行中的一場' + schedule;
+  return day + '；進行中：劇本 ' + session.scriptId + '，已演 ' + session.turn + '/' + session.total + ' 輪，' + (session.phase === 'say' ? '正在說' : '等對方回') + schedule;
 }
 
 // 每分鐘擲一次骰子抽中的機率：平均每 N 分鐘一場＝1÷N；0（不啟用）或不合法回 0

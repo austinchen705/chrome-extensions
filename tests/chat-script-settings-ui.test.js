@@ -204,6 +204,21 @@ ui('the auto-start field shows 0 (off) by default and is saved with the other ch
   }
 });
 
+ui('the status line adds the automatic start: warm-up with the minutes left, then rolling with the average, nothing when it is not scheduled', async () => {
+  let reply = { ok: true, chatScript: null, chatScriptAuto: { phase: 'warmup', secondsLeft: 200 } };
+  const page = await boot({ chatScript: { enabled: true, role: 'A', partner: 'fenrir', partnerName: '', perDay: 4, autoEveryMin: 60 }, chatScriptState: { date: TODAY_KEY(), count: 1, recent: [] } }, message => (message.type === 'STATUS' ? reply : { ok: true }));
+  const text = () => page.doc.getElementById('scriptStatus').textContent;
+  try {
+    assert.ok(await waitFor(() => text() === '今天 1/4 場；目前沒有進行中的一場；自動開場：暖機中，約 4 分鐘後開始擲骰'), text());
+    reply = { ok: true, chatScript: null, chatScriptAuto: { phase: 'rolling' } };
+    assert.ok(await waitFor(() => text() === '今天 1/4 場；目前沒有進行中的一場；自動開場：擲骰中，平均每 60 分鐘一場'), text());
+    reply = { ok: true, chatScript: null, chatScriptAuto: null };
+    assert.ok(await waitFor(() => text() === '今天 1/4 場；目前沒有進行中的一場'), text());
+  } finally {
+    page.dom.window.close();
+  }
+});
+
 ui('the daily count field shows 3 by default and is saved with the other chatScript fields, clamped and with blank falling back to 3', async () => {
   const { dom, doc, store, change } = await boot();
   try {

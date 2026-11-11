@@ -211,3 +211,20 @@ ui('the combat group is not a trigger for automatic scenes, and stopping it does
     both.close();
   }
 });
+
+// ---- 狀態 ----
+ui('STATUS says nothing about automatic scenes unless they are scheduled, then warm-up, then rolling, and nothing again once the practice group stops', async () => {
+  const page = await soloA({ autoEveryMin: 5, random: 0.999 }); // 機率 0.2：0.999 不會中，只看狀態
+  try {
+    assert.equal((await page.ask({ type: 'STATUS' })).chatScriptAuto, null, 'practice group is off');
+    await page.ask(PRACTICE);
+    const warm = (await page.ask({ type: 'STATUS' })).chatScriptAuto;
+    assert.equal(warm.phase, 'warmup');
+    assert.ok(warm.secondsLeft > 0 && warm.secondsLeft <= 300, 'seconds left of the five minute warm-up: ' + warm.secondsLeft);
+    assert.ok(await waitFor(async () => (await page.ask({ type: 'STATUS' })).chatScriptAuto?.phase === 'rolling', 4000));
+    await page.ask({ type: 'STOP_TRIGGER', group: 'practice' });
+    assert.equal((await page.ask({ type: 'STATUS' })).chatScriptAuto, null);
+  } finally {
+    page.close();
+  }
+});

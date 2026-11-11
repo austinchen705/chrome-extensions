@@ -229,6 +229,34 @@ ui('script dialogue asks for the partner id, notes 0 per day, and explains what 
   }
 });
 
+ui('the automatic start field warns when this computer is B or the partner id is missing, explains when it works, and says nothing at 0', async () => {
+  const page = await boot();
+  try {
+    const { doc } = page;
+    const texts = () => hintOf(doc, 'sec-script').map(node => node.textContent);
+    const warns = () => hintOf(doc, 'sec-script').filter(node => node.classList.contains('msg-warn')).map(node => node.textContent);
+    const set = (id, value) => { const field = doc.getElementById(id); field.value = value; page.fire(field, 'change'); };
+    page.toggle('scriptOn', true);
+    set('scriptPartner', 'fox');
+    assert.ok(!texts().some(text => /自動開場/.test(text)), 'nothing about it while it is 0');
+    set('scriptAutoEvery', '60');
+    assert.ok(texts().some(text => /自動開場.*練功/.test(text)), 'says it only starts once the practice group runs');
+    assert.ok(warns().some(text => /自動開場.*角色 A/.test(text)), 'role B is the default, so it would never open on its own');
+    set('scriptRole', 'A');
+    assert.ok(!warns().some(text => /自動開場/.test(text)), 'role A with a partner id has nothing to warn about');
+    set('scriptPartner', '');
+    assert.ok(warns().some(text => /自動開場.*對方的英文 ID/.test(text)), 'no partner id');
+    set('scriptPartner', 'fox');
+    set('scriptRole', 'B');
+    assert.ok(warns().some(text => /自動開場.*角色 A/.test(text)), 'B never opens');
+    set('scriptAutoEvery', '0');
+    assert.ok(!texts().some(text => /自動開場/.test(text)));
+    await sleep(60);
+  } finally {
+    page.close();
+  }
+});
+
 ui('an empty stop-keyword list is flagged', async () => {
   const page = await boot();
   try {
