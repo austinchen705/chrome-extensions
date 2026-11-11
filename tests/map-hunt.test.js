@@ -744,6 +744,24 @@ for (const how of ['status', 'bar']) {
   });
 }
 
+ui('vitals: an injury below its line sends its own command, while a full current value and an empty injury command send nothing', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, ginBelow: 50, ginCommand: 'eatgin', ginHurtBelow: 100, ginHurtCommand: 'healgin', keeHurtBelow: 100, keeHurtCommand: '' };
+    const doc = page.w.document;
+    // 精目前值滿的（100/100），傷勢 80%；氣傷勢 70% 但沒填指令
+    doc.body.insertAdjacentHTML('beforeend', '<span id="gin">100</span><span id="eff_gin">100</span><span id="max_gin">80</span><span id="max_kee">70</span>');
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, 'healgin') >= 1, 4000), game.log.join('|'));
+    assert.equal(countOf(game, 'eatgin'), 0, 'the current jing is full');
+  } finally {
+    page.close();
+  }
+});
+
 ui('fight: the special attack waits until the game cooldown bar (#perform) has finished', async () => {
   const page = await boot({ scale: SCALE });
   try {

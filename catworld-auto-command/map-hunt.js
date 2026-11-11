@@ -66,7 +66,13 @@ const FIELDS = [
   { key: 'ginCommand', group: 'heal', row: 'gin', label: '精低時的指令', hint: '空白＝不看', type: 'text', default: '' },
   { key: 'senBelow', group: 'heal', row: 'sen', label: '神低於 %', hint: '0＝不看', type: 'number', default: 0, min: 0, max: 99 },
   { key: 'senCommand', group: 'heal', row: 'sen', label: '神低時的指令', hint: '空白＝不看', type: 'text', default: '' },
-  { key: 'noMedicineKeyword', group: 'heal', show: s => eatMode(s) || Boolean(s.ginCommand || s.senCommand), label: '沒藥時遊戲回的字', hint: '吃藥、精、神的指令送出後看到這個字就回家停止', type: 'text', default: '', required: s => eatMode(s) && full(s) },
+  { key: 'ginHurtBelow', group: 'heal', row: 'ginHurt', label: '精內傷低於 %', hint: '狀態區的傷勢 %（有效÷最大），不到 100% 就是內傷；0＝不看', type: 'number', default: 0, min: 0, max: 100 },
+  { key: 'ginHurtCommand', group: 'heal', row: 'ginHurt', label: '精內傷時的指令', hint: '空白＝不看', type: 'text', default: '' },
+  { key: 'keeHurtBelow', group: 'heal', row: 'keeHurt', label: '氣內傷低於 %', hint: '0＝不看', type: 'number', default: 0, min: 0, max: 100 },
+  { key: 'keeHurtCommand', group: 'heal', row: 'keeHurt', label: '氣內傷時的指令', hint: '空白＝不看', type: 'text', default: '' },
+  { key: 'senHurtBelow', group: 'heal', row: 'senHurt', label: '神內傷低於 %', hint: '0＝不看', type: 'number', default: 0, min: 0, max: 100 },
+  { key: 'senHurtCommand', group: 'heal', row: 'senHurt', label: '神內傷時的指令', hint: '空白＝不看', type: 'text', default: '' },
+  { key: 'noMedicineKeyword', group: 'heal', show: s => eatMode(s) || TOP_UPS.some(item => s[`${item.key}Command`]), label: '沒藥時遊戲回的字', hint: '吃藥、精神、內傷的指令送出後看到這個字就回家停止', type: 'text', default: '', required: s => eatMode(s) && full(s) },
   { key: 'dangerBelow', group: 'heal', label: '危險線：氣低於 % 回家停止', hint: '自己回模式的戰鬥中、只下 fight 模式、掃描時都看；要小於「氣低於 % 休息」，否則自動改小', type: 'number', default: 20, min: 1, max: 99 },
   { key: 'homeCommand', group: 'heal', label: '回家指令', type: 'text', default: '', required: () => true },
   { key: 'loadMaxPercent', group: 'sort', label: '負重超過 % 就去整理', hint: 'i 的「載重」；0＝不檢查', type: 'number', default: 90, min: 0, max: 100 },
@@ -81,13 +87,22 @@ const FIELDS = [
   { key: 'stopBeforeSpawnSec', group: 'rounds', label: '重生前幾秒停打', hint: '0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；要比「提早幾秒」大才有用；沒開「等下一個重生」就直接停', type: 'number', default: 0, min: 0, max: 600 },
   { key: 'npcWhitelist', group: 'advanced', label: 'NPC 白名單', hint: '英文 ID，用、分隔', type: 'text', default: '' },
 ];
+// 精、神（目前值）與精氣神內傷（傷勢 %）的補充：比照吃藥，各自一組「低於 %」與指令（設定鍵是 key＋Below／Command），沒填就不看。
+// read 是讀哪個百分比：目前＝目前值÷有效值（deps.percent），傷勢＝有效值÷最大值（deps.injury，狀態區 #max_gin 等那格的數字，不到 100% 是內傷）
+const TOP_UPS = [
+  { key: 'gin', name: '精', read: deps => deps.percent('精') },
+  { key: 'sen', name: '神', read: deps => deps.percent('神') },
+  { key: 'ginHurt', name: '精內傷', read: deps => deps.injury('精') },
+  { key: 'keeHurt', name: '氣內傷', read: deps => deps.injury('氣') },
+  { key: 'senHurt', name: '神內傷', read: deps => deps.injury('神') },
+];
 // 設定頁的分組；summary 是收起時標題後面的重點
 const gapText = s => `${s.commandGapMinMs}～${s.commandGapMaxMs}ms`;
 const GROUPS = [
   { id: 'move', title: '走路與速度', summary: s => `${gapText(s)}｜學出口 ${s.learnExits === 'on' ? '開' : '關'}｜補掃 ${s.prescan === 'on' ? '開' : '關'}` },
   { id: 'fight', title: '戰鬥', summary: s => (full(s) ? `完整｜打死用 ${s.killCommand}｜逾時 ${s.fightTimeoutSec} 秒` : `只下 fight｜逾時 ${s.fightTimeoutSec} 秒`) },
   { id: 'special', title: '特攻', summary: s => (s.specialCommand ? `${s.specialCommand}，至少隔 ${s.specialIntervalSec} 秒` : '沒填') },
-  { id: 'heal', title: '補氣與安全', summary: s => [eatMode(s) ? `吃藥 ${s.eatCommand || '（沒填）'} <${s.eatBelow}%` : `自己回 <${s.restBelow}%`, `回家 ${s.homeCommand || '（沒填）'}`, s.ginCommand && s.ginBelow > 0 ? `精 <${s.ginBelow}%` : '', s.senCommand && s.senBelow > 0 ? `神 <${s.senBelow}%` : ''].filter(Boolean).join('｜') },
+  { id: 'heal', title: '補氣與安全', summary: s => [eatMode(s) ? `吃藥 ${s.eatCommand || '（沒填）'} <${s.eatBelow}%` : `自己回 <${s.restBelow}%`, `回家 ${s.homeCommand || '（沒填）'}`, ...TOP_UPS.map(item => (s[`${item.key}Command`] && s[`${item.key}Below`] > 0 ? `${item.name} <${s[`${item.key}Below`]}%` : ''))].filter(Boolean).join('｜') },
   { id: 'sort', title: '負重與自動整理', summary: s => (sorting(s) ? `>${s.loadMaxPercent}% 整理｜${s.sortKeep === 'none' ? '全賣' : '留好裝備'}` : '不檢查') },
   { id: 'rounds', title: '輪與重生', summary: s => [s.loopRounds === 'on' ? `等重生｜提早 ${s.aheadSec} 秒` : '巡完就停', s.stopBeforeSpawnSec > 0 ? `重生前 ${s.stopBeforeSpawnSec} 秒停打` : ''].filter(Boolean).join('｜') },
   { id: 'advanced', title: '進階', summary: s => (s.npcWhitelist ? `白名單 ${s.npcWhitelist}` : '') },
@@ -550,14 +565,13 @@ function create(deps) {
       eating.until = state.ticks + NO_MEDICINE_WINDOW_TICKS;
     });
   }
-  // 精、神：比照吃藥，低於門檻送指令（同一項至少隔 5 秒），送出後一樣聽「沒藥關鍵字」；沒填、讀不到都不看（選填的，不能因此停）
-  const TOP_UPS = [['gin', '精'], ['sen', '神']];
+  // 精、神、內傷（TOP_UPS）：比照吃藥，低於門檻送指令（同一項至少隔 5 秒），送出後一樣聽「沒藥關鍵字」；沒填、讀不到都不看（選填的，不能因此停）
   function topUp() {
-    for (const [key, name] of TOP_UPS) {
+    for (const { key, read } of TOP_UPS) {
       const below = state.settings[`${key}Below`];
       const command = state.settings[`${key}Command`];
       if (!command || !(below > 0)) continue;
-      const percent = deps.percent(name);
+      const percent = read(deps);
       if (!Number.isFinite(percent) || percent >= below || state.ticks - (state.lastTopUp[key] ?? -Infinity) < EAT_GAP_TICKS) continue;
       state.lastTopUp[key] = state.ticks;
       swallow(command);

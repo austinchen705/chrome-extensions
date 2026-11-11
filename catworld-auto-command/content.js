@@ -1431,6 +1431,8 @@ hunt = CatworldMapHunt.create({
     const stat = readStat(name);
     return stat && stat.max > 0 ? (stat.value / stat.max) * 100 : NaN;
   },
+  // 精氣神的傷勢 %（有效÷最大）：遊戲狀態區 #max_gin、#max_kee、#max_sen 那格顯示的就是這個百分比（遊戲 vitals.js 的 get_percent）；讀不到回 NaN
+  injury: name => readGameNumber({ 精: 'max_gin', 氣: 'max_kee', 神: 'max_sen' }[name]),
   kee: () => {
     const stat = readStat('氣');
     return stat && stat.max > 0 ? (stat.value / stat.max) * 100 : NaN;
