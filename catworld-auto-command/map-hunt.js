@@ -581,8 +581,8 @@ function create(deps) {
       healInFight();
       if (!state || state.fight !== fight) return;
     }
-    // 特攻：怪還活著、這場沒被告知沒有目標、距離上次已過最小間隔才送（#busy 還沒有樣本，不看狀態列）
-    if (settings.specialCommand && !fight.finishing && !fight.noTarget && state.ticks - fight.lastSpecial >= settings.specialIntervalSec * TICKS_PER_SEC) {
+    // 特攻：怪還活著、這場沒被告知沒有目標、距離上次已過最小間隔、而且遊戲的特攻冷卻條（#perform）跑完了才送
+    if (settings.specialCommand && !fight.finishing && !fight.noTarget && state.ticks - fight.lastSpecial >= settings.specialIntervalSec * TICKS_PER_SEC && !deps.cooling?.('perform')) {
       fight.lastSpecial = state.ticks;
       deps.send(settings.specialCommand);
     }

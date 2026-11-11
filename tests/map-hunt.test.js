@@ -698,6 +698,37 @@ ui('fight: when gc does not make a monster go away three times in a row the room
   }
 });
 
+ui('fight: the special attack waits until the game cooldown bar (#perform) has finished', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'pt', specialIntervalSec: 1 };
+    // 遊戲的冷卻條：#perform 裡一個子 div，CSS 動畫在跑＝冷卻中（jsdom 沒有 CSS 動畫，用 getAnimations 模擬）
+    const doc = page.w.document;
+    const bar = doc.createElement('div');
+    bar.id = 'perform';
+    const inner = doc.createElement('div');
+    let running = true;
+    inner.getAnimations = () => (running ? [{ playState: 'running' }] : [{ playState: 'finished' }]);
+    bar.appendChild(inner);
+    doc.body.appendChild(bar);
+    const script = command => {
+      if (command === FIGHT || command === 'pt') { say(page, '你揮拳打中測試怪。'); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, FIGHT) >= 1, 4000), 'the fight starts');
+    await sleep(600);
+    assert.equal(countOf(game, 'pt'), 0, 'no special attack while the cooldown bar is running');
+    running = false;
+    assert.ok(await waitFor(() => countOf(game, 'pt') >= 1, 4000), 'the special attack goes once the bar has finished');
+  } finally {
+    page.close();
+  }
+});
+
 ui('fight: the special attack repeats while the monster lives, a busy refusal is just waited out, and it stops with the end sentence', async () => {
   const page = await boot({ scale: SCALE });
   try {

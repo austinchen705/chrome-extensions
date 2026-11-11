@@ -1404,6 +1404,12 @@ hunt = CatworldMapHunt.create({
   },
   npcs: huntNpcs,
   learnNpc: learnHuntNpc,
+  // 遊戲的冷卻條（#perform 特攻、#busy 忙碌）：伺服器送 GMCP cooldown 時，遊戲 web.js 的 cooldown() 把元素的 innerHTML 換成一個新的子 div，
+  // 帶 animation-duration（web.css 的 @keyframes cooldown 從寬 100% 跑到 0，跑一次）。子 div 的 CSS 動畫還在跑＝冷卻中；讀不到元素或動畫＝不在冷卻
+  cooling: id => {
+    const inner = document.getElementById(id)?.firstElementChild;
+    try { return Boolean(inner?.getAnimations?.().some(animation => animation.playState === 'running')); } catch { return false; }
+  },
   now: () => Date.now(),
   macroRunning: () => [...macroRuns].some(run => run.owner === 'hunt'),
   exits: async () => (await chrome.storage.local.get(CatworldMapHunt.EXITS_KEY))[CatworldMapHunt.EXITS_KEY] ?? {},
