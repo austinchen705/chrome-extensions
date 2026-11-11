@@ -18,6 +18,7 @@ const section = title => {
 };
 const MACRO_TEXT = ['巨集備註', '巨集匯出與匯入', '巨集視窗調整大小'].map(section).join('\n');
 const CONTENT = fs.readFileSync(path.join(root, 'catworld-auto-command', 'content.js'), 'utf8');
+const POPUP = fs.readFileSync(path.join(root, 'catworld-auto-command', 'popup.html'), 'utf8');
 
 // 數字連同它的語境一起比對：只看數字有沒有出現在某處，別處剛好有 90 或 200 也會放行
 test('the numbers README gives for the macro features are the ones the code uses, each with what it limits', () => {
@@ -42,15 +43,16 @@ test('README says when a drag ends and that the success message goes away by its
   assert.ok(section('巨集匯出與匯入').includes('8 秒後自動收起'));
 });
 
-test('README says the restore button stays pressable when the backup is broken, and why it is in the import box', () => {
+test('README says the restore button stays pressable when the backup is broken, and that the settings page works on its game tab', () => {
   const io = section('巨集匯出與匯入');
   assert.ok(io.includes('仍然可以按'));
-  assert.ok(io.includes('310px'));
+  assert.ok(io.includes('遊戲巨集匯入匯出') && io.includes('控制的那個遊戲分頁'));
 });
 
-test('every button of the panel macro row and its import box is named in README with the label it has on screen', () => {
-  const labels = [...CONTENT.matchAll(/<button class="(?:mexport|mimport|mstop|macro-import-check|macro-restore|macro-confirm-ok)"[^>]*>([^<]+)<\/button>/g)].map(match => match[1]);
-  assert.deepEqual(labels.sort(), ['停止', '匯入', '匯出', '檢查', '確認取代', '還原上一份'].sort(), 'the buttons in the panel are the ones this test expects');
+test('every button of the panel macro row and of the settings page import box is named in README with the label it has on screen', () => {
+  const pattern = /<button class="(?:mexport|mimport|mstop|macro-import-check|macro-restore|macro-confirm-ok)"[^>]*>([^<]+)<\/button>/g;
+  const labels = [...CONTENT.matchAll(pattern), ...POPUP.matchAll(pattern)].map(match => match[1]);
+  assert.deepEqual(labels.sort(), ['停止', '匯入', '匯出', '檢查', '確認取代', '還原上一份'].sort(), 'the buttons in the panel and the settings page are the ones this test expects');
   labels.forEach(label => assert.ok(README.includes(`「${label}」`), `README names the button 「${label}」`));
 });
 

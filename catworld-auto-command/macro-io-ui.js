@@ -1,8 +1,7 @@
-// 面板「巨集」列的匯出、匯入與還原上一份：
+// 設定頁「遊戲巨集匯入匯出」的匯出、匯入與還原上一份：
 // 匯出＝把遊戲的巨集加備註複製成一段 JSON 文字；匯入＝貼回那段文字，檢查通過、玩家確認後整份取代，取代前先留一份備份；
 // 還原上一份＝把那份備份原樣寫回（還原後備份還在）。
-// 遊戲存巨集的 localStorage、備註與備份的 storage 都由 content.js 注入（deps），這裡只管畫面與流程。
-// 面板可能被搬進置頂浮窗（另一個 document）：剪貼簿一律用按鈕所在 document 的視窗，不假設事件會傳到主頁面。
+// 遊戲的巨集在遊戲分頁的 localStorage，讀寫、備註與備份的 storage 都由 popup.js 注入（deps，全部是 async），這裡只管畫面與流程。
 (() => {
 if (globalThis.CatworldMacroIOUI) return;
 
@@ -10,14 +9,6 @@ const MESSAGE_MS = 8000;
 const IMPORT_FAILED = '匯入失敗，沒有改動任何資料：';
 const RESTORE_FAILED = '還原失敗，沒有改動任何資料：';
 const describeError = error => error?.message || error;
-
-// 面板其他地方為了不搶遊戲輸入框的游標擋掉 mousedown，輸入框要放行；click 也要擋（遊戲的 window.onclick 會把游標搶回
-// 遊戲輸入框）；打字也不讓遊戲的快捷鍵收到
-function typable(node) {
-  ['mousedown', 'click'].forEach(type => node.addEventListener(type, event => event.stopPropagation()));
-  ['keydown', 'keyup', 'keypress'].forEach(type => node.addEventListener(type, event => event.stopPropagation()));
-  return node;
-}
 
 // 取代前要玩家看清楚的事：遊戲只在載入時讀一次巨集，而且之後改巨集時會用記憶體裡的舊內容整份存回去
 const WARNINGS = [
@@ -53,23 +44,22 @@ const confirmText = pending => [
 ].join('\n');
 
 // 訊息區（.macro-io）：一則訊息加手動複製框。manual 有文字時文字框一直留著，直到下一次匯出；
-// autoHide 的訊息一會兒就收掉，其他（錯誤、匯入結果）留著等玩家看
-function createMessage(pick, relayout) {
+// autoHide 的訊息一會兒就收掉，其他（錯誤、匯入結果）留著等玩家看。顏色用設定頁共用的 msg-error／msg-warn，換訊息時舊的一起清掉
+function createMessage(pick) {
   const box = pick('.macro-io');
   const message = pick('.macro-io-msg');
-  const manual = typable(pick('.macro-io-text'));
+  const manual = pick('.macro-io-text');
   let hideTimer = null;
   return {
     show(text, { level = 'info', manual: manualText = '', autoHide = false } = {}) {
       clearTimeout(hideTimer);
       message.textContent = text;
-      message.classList.toggle('warn', level === 'warn');
-      message.classList.toggle('alert', level === 'error');
+      message.classList.toggle('msg-warn', level === 'warn');
+      message.classList.toggle('msg-error', level === 'error');
       manual.hidden = !manualText;
       manual.value = manualText;
       box.hidden = false;
-      if (autoHide && !manualText) hideTimer = setTimeout(() => { box.hidden = true; relayout(); }, MESSAGE_MS);
-      relayout();
+      if (autoHide && !manualText) hideTimer = setTimeout(() => { box.hidden = true; }, MESSAGE_MS);
     },
     hide() {
       clearTimeout(hideTimer);
@@ -84,8 +74,10 @@ function setupExport(pick, deps, messages) {
   exportButton.addEventListener('click', async () => {
     let read;
     try {
-      read = M.readMacros(deps.readRaw());
-    } catch {
+      read = M.readMacros(await deps.readRaw());
+    } catch (error) {
+      // 連不上遊戲分頁：匯出空的會被當成真的備份，不匯出
+      if (error?.unreachable) { messages.show(`匯出失敗：連不上遊戲分頁（${describeError(error)}）`, { level: 'error' }); return; }
       read = { macros: M.readMacros(null).macros, status: 'damaged' };
     }
     let notes = {};
@@ -108,10 +100,10 @@ function setupExport(pick, deps, messages) {
   });
 }
 
-function setupImport(pick, deps, messages, relayout) {
+function setupImport(pick, deps, messages) {
   const M = globalThis.CatworldMacroIO;
   const importBox = pick('.macro-import');
-  const pasteBox = typable(pick('.macro-import-text'));
+  const pasteBox = pick('.macro-import-text');
   const confirmBox = pick('.macro-confirm');
   const confirmMessage = pick('.macro-confirm-msg');
   const restoreButton = pick('.macro-restore');
@@ -120,21 +112,27 @@ function setupImport(pick, deps, messages, relayout) {
   let pending = null;
   const dropPending = () => {
     pending = null;
+    ticket += 1;
     confirmBox.hidden = true;
   };
-  const readCurrentRaw = () => {
+  const readCurrentRaw = async () => {
     try {
-      return { raw: deps.readRaw() };
+      return { raw: await deps.readRaw() };
     } catch (error) {
       return { error };
     }
   };
-  const askToConfirm = next => {
+  // 要問玩家之前得先問遊戲分頁現在有幾列（要等），等的期間貼的文字被改了、又按了別的，這一次就不問了；
+  // ticket 每次 dropPending 都換，確認鈕仍然只套用檢查當下的結果
+  let ticket = 0;
+  const askToConfirm = async next => {
     messages.hide();
-    pending = { ...next, replaced: M.countFilled(M.readMacros(readCurrentRaw().raw).macros) };
+    const mine = ++ticket;
+    const current = await readCurrentRaw();
+    if (mine !== ticket) return;
+    pending = { ...next, replaced: M.countFilled(M.readMacros(current.raw).macros) };
     confirmMessage.textContent = confirmText(pending);
     confirmBox.hidden = false;
-    relayout();
   };
 
   // 有備份才能按「還原上一份」；備份壞掉也讓它按得下去，按了才說明壞在哪
@@ -149,11 +147,16 @@ function setupImport(pick, deps, messages, relayout) {
   refreshRestore();
 
   // 匯入與還原共用的寫入：先寫遊戲的 localStorage（寫不進去就停，什麼都沒動），再寫備註。
-  // 回傳巨集有沒有寫進去（備註失敗時巨集已經換了，算寫進去）
+  // 回傳巨集有沒有寫進去（備註失敗時巨集已經換了，算寫進去；不確定寫了沒的也算，匯入前的新備份才不會被換掉）
   async function apply({ raw, notes }, kind) {
     try {
-      deps.writeMacros(raw);
+      await deps.writeMacros(raw);
     } catch (error) {
+      if (error?.unknown) {
+        messages.show(`不確定遊戲的巨集有沒有寫進去（${describeError(error)}）。請重新整理遊戲頁看看；匯入前的備份已留好，可以按「還原上一份」`, { level: 'warn' });
+        await refreshRestore();
+        return true;
+      }
       messages.show(`${kind.failed}遊戲的儲存寫不進去（${describeError(error)}）`, { level: 'error' });
       return false;
     }
@@ -173,7 +176,7 @@ function setupImport(pick, deps, messages, relayout) {
   // 匯入取代之前先把現在的留起來（原樣的巨集文字加備註），留不住就不匯入，免得一邊沒備份一邊覆蓋。
   // 成功回 { previous }（原本那份備份，之後匯入失敗時要放回去），失敗已經顯示原因並回 null
   async function backupCurrent() {
-    const current = readCurrentRaw();
+    const current = await readCurrentRaw();
     if (current.error) {
       messages.show(`${IMPORT_FAILED}讀不到目前遊戲的巨集，沒辦法留備份（${describeError(current.error)}）`, { level: 'error' });
       return null;
@@ -203,17 +206,11 @@ function setupImport(pick, deps, messages, relayout) {
   pick('.mimport').addEventListener('click', () => {
     importBox.hidden = !importBox.hidden;
     if (importBox.hidden) dropPending();
-    relayout();
   });
-  pasteBox.addEventListener('input', () => {
-    const asked = Boolean(pending);
-    dropPending();
-    if (asked) relayout();
-  });
+  pasteBox.addEventListener('input', dropPending);
   pick('.macro-import-cancel').addEventListener('click', () => {
     importBox.hidden = true;
     dropPending();
-    relayout();
   });
   pick('.macro-import-check').addEventListener('click', () => {
     const result = M.parseImport(pasteBox.value);
@@ -240,10 +237,7 @@ function setupImport(pick, deps, messages, relayout) {
     }
     askToConfirm({ kind: 'restore', raw: backup.raw, notes: backup.notes, at: backup.at, unreadable: M.readMacros(backup.raw).status === 'damaged' });
   });
-  pick('.macro-confirm-cancel').addEventListener('click', () => {
-    dropPending();
-    relayout();
-  });
+  pick('.macro-confirm-cancel').addEventListener('click', dropPending);
   pick('.macro-confirm-ok').addEventListener('click', async () => {
     const data = pending;
     if (!data) return;
@@ -264,16 +258,14 @@ function setupImport(pick, deps, messages, relayout) {
 }
 
 // root：包含 .mexport、.mimport 按鈕與 .macro-import（貼文字、還原上一份）、.macro-confirm（確認）、.macro-io（訊息與手動複製框）區塊的節點
-// deps：readRaw() 回遊戲存的巨集原始文字（讀不到可以丟例外）、readNotes() 回備註（async）、
-//       writeMacros(text) 把文字寫進遊戲存巨集的地方（寫不進去要丟例外）、writeNotes(notes) 寫備註（async）、
-//       readBackup()／writeBackup(backup) 讀寫匯入前的備份（async，沒有備份時 readBackup 回 undefined）、
-//       relayout() 內容變了要重排面板（選用）
+// deps（全部 async）：readRaw() 回遊戲存的巨集原始文字（讀不到丟例外；連不上遊戲分頁的例外帶 unreachable）、readNotes() 回備註、
+//       writeMacros(text) 把文字寫進遊戲存巨集的地方（確定沒寫進去丟例外；不確定寫了沒的例外帶 unknown）、writeNotes(notes) 寫備註、
+//       readBackup()／writeBackup(backup) 讀寫匯入前的備份（沒有備份時 readBackup 回 undefined）
 function attach(root, deps) {
   const pick = selector => root.querySelector(selector);
-  const relayout = () => deps.relayout?.();
-  const messages = createMessage(pick, relayout);
+  const messages = createMessage(pick);
   setupExport(pick, deps, messages);
-  setupImport(pick, deps, messages, relayout);
+  setupImport(pick, deps, messages);
 }
 
 globalThis.CatworldMacroIOUI = { attach };

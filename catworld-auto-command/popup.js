@@ -106,7 +106,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-io-ui.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'chat-script.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'whisper-block.js', 'skill-moves.js', 'force-cap.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'chat-script.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'whisper-block.js', 'skill-moves.js', 'force-cap.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -1166,6 +1166,36 @@ async function refreshLive() {
   renderCountdown(status);
   Object.values(panes).forEach(pane => pane.refresh(status));
 }
+
+// 遊戲巨集的匯入匯出（流程在 macro-io-ui.js）：遊戲的巨集存在遊戲分頁的 localStorage.MACROS，設定頁讀不到，
+// 用 MACRO_READ／MACRO_WRITE 請這個設定頁控制的遊戲分頁（send，和其他按鈕同一條路，連不上會備援注入）代讀代寫；備註與備份在 chrome.storage，直接讀寫。
+// 寫入時：遊戲分頁明確回失敗、或找不到遊戲分頁＝確定沒寫；送出後斷線、沒收到回覆＝不確定寫了沒（unknown），
+// 這時不能把匯入前的備份換回舊的（新的那份可能是唯一的回頭路）
+const UNREACHABLE = /Receiving end does not exist|請先切到|No tab|Could not establish connection/;
+const macroError = (error, extra = {}) => Object.assign(error instanceof Error ? error : new Error(String(error)), extra);
+CatworldMacroIOUI.attach(document.getElementById('sec-macro'), {
+  readRaw: async () => {
+    let reply;
+    try { reply = await send({ type: 'MACRO_READ' }); } catch (error) { throw macroError(error, { unreachable: true }); }
+    if (!reply?.ok) throw macroError(reply?.error || '遊戲分頁沒有回應');
+    return reply.raw;
+  },
+  writeMacros: async raw => {
+    let reply;
+    try {
+      reply = await send({ type: 'MACRO_WRITE', raw });
+    } catch (error) {
+      throw macroError(error, { unknown: !UNREACHABLE.test(String(error?.message || error)) });
+    }
+    if (!reply?.ok) throw macroError(reply?.error || '遊戲分頁沒有回應');
+  },
+  readNotes: async () => (await chrome.storage.local.get('macroNotes')).macroNotes,
+  // 寫入者不是備註模組自己的代號，遊戲頁的備註模組才會把它當成別處的改動、直接更新畫面上的備註框
+  writeNotes: notes => chrome.storage.local.set({ macroNotes: notes, macroNotesWriter: 'macro-io' }),
+  // 匯入前自動留的一份備份（只留一層，只存在本機，不進匯出）
+  readBackup: async () => (await chrome.storage.local.get('macroBackup')).macroBackup,
+  writeBackup: backup => chrome.storage.local.set({ macroBackup: backup }),
+});
 
 // 地圖巡怪：欄位、預設值與檢查都由 map-hunt.js 的 FIELDS 決定；每改一個欄位就存整份（不合法的欄位退回預設並顯示回去）。
 // 欄位依 GROUPS 分成摺疊區塊（id 是 fold-hunt-<組>，展開狀態和其他摺疊一樣記在 popupFolds），收起時標題寫出重點；

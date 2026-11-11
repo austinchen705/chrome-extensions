@@ -423,7 +423,24 @@
       </details>
     </details>
     <details class="group fold" id="grp-data">
-      <summary>資料與連線（共用資料、額外網址、設定備份）</summary>
+      <summary>資料與連線（巨集匯入匯出、共用資料、額外網址、設定備份）</summary>
+      <details class="alertbox fold" id="sec-macro">
+        <summary>遊戲巨集匯入匯出</summary>
+        <p class="hint tight">匯出＝把遊戲的巨集和巨集備註複製成一段文字；匯入＝貼回那段文字，整份取代這個設定頁控制的遊戲分頁的巨集和備註，取代前會自動留一份備份，可以按「還原上一份」寫回去。</p>
+        <div class="addrow"><button class="mexport" type="button">匯出</button><button class="mimport" type="button">匯入</button></div>
+        <div class="macro-import" hidden>
+          <textarea class="macro-import-text" rows="5" placeholder="貼上匯出的巨集文字"></textarea>
+          <div class="addrow"><button class="macro-import-check" type="button">檢查</button><button class="macro-import-cancel" type="button">取消</button><button class="macro-restore" type="button" title="把匯入前自動留的備份寫回去" disabled>還原上一份</button></div>
+        </div>
+        <div class="macro-confirm" hidden>
+          <div class="macro-confirm-msg msg-warn"></div>
+          <div class="addrow"><button class="macro-confirm-ok" type="button">確認取代</button><button class="macro-confirm-cancel" type="button">取消</button></div>
+        </div>
+        <div class="macro-io" hidden>
+          <div class="macro-io-msg"></div>
+          <textarea class="macro-io-text" rows="5" readonly hidden></textarea>
+        </div>
+      </details>
       <details class="alertbox fold" id="sec-shared">
         <summary>共用資料（Google 試算表）</summary>
         <div id="sharedOff" class="hint tight msg-warn" hidden>怪物查詢與解謎都關著，不會抓取共用資料（上面是上次抓到的結果）。</div>
@@ -500,6 +517,8 @@
   <script src="chat-reply.js"></script>
   <script src="chat-script.js"></script>
   <script src="macro-wait.js"></script>
+  <script src="macro-io.js"></script>
+  <script src="macro-io-ui.js"></script>
   <script src="mentor-data.js"></script>
   <script src="mentor-search.js"></script>
   <script src="settings-backup.js"></script>

@@ -68,7 +68,7 @@ async function boot(stored = {}) {
 
 const SECTIONS = ['features', 'alert', 'stopwords', 'chat', 'script', 'reward', 'grade', 'weapon', 'shared', 'map', 'mentor', 'shop', 'hunt', 'extra', 'backup', 'line', 'captcha'];
 
-ui('the tabs end with 設定, and all 17 global blocks live in it, grouped in four folds, none under the trigger tabs', async () => {
+ui('the tabs end with 設定, and all 18 global blocks live in it, grouped in four folds, none under the trigger tabs', async () => {
   const page = await boot();
   try {
     const { doc } = page;
@@ -76,7 +76,7 @@ ui('the tabs end with 設定, and all 17 global blocks live in it, grouped in fo
     const pane = doc.querySelector('[data-pane="settings"]');
     SECTIONS.forEach(name => assert.ok(pane.querySelector(`#sec-${name}`), `sec-${name} is in the settings tab`));
     assert.deepEqual([...pane.querySelectorAll(':scope > details.group')].map(box => box.id), ['grp-assist', 'grp-auto', 'grp-alert', 'grp-data']);
-    assert.equal(pane.querySelectorAll('details.group details.alertbox').length, 17, 'every block sits inside one of the groups');
+    assert.equal(pane.querySelectorAll('details.group details.alertbox').length, 18, 'every block sits inside one of the groups');
     ['combat', 'practice'].forEach(id => assert.equal(doc.querySelectorAll(`[data-pane="${id}"] details.alertbox`).length, 0, `${id} has none of the global blocks`));
     assert.equal(doc.querySelectorAll('details.fold[open]').length, 0, 'folds, groups included, start closed');
   } finally {

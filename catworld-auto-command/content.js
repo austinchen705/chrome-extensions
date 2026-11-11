@@ -1525,12 +1525,6 @@ function initPanel() {
       .mini button.start, .mini button.tstart, .mini button.rstart, .mini button.istart { background: #2f7d4a; }
       .mini button[disabled] { opacity: .35; cursor: default; }
       .line[hidden] { display: none; }
-      .macro-io-msg { font-size: 14px; color: #bbb; }
-      .macro-io-msg.warn { color: #ffb347; }
-      .macro-io-msg.alert { color: #ff8a7a; }
-      .macro-confirm-msg { font-size: 14px; color: #ffb347; margin-bottom: 4px; }
-      .macro-import-text, .macro-io-text { width: 100%; height: 80px; box-sizing: border-box; margin-top: 4px; background: #1e1e20; color: #ddd;
-        border: 1px solid #555; border-radius: 4px; font-size: 13px; }
       .hunt-pick-list { max-height: 150px; overflow-y: auto; font-size: 14px; }
       .hunt-pick-list label { display: block; cursor: pointer; }
       .collapsed .body { display: none; }
@@ -1551,13 +1545,10 @@ function initPanel() {
         ${groupList.map(group => `<div class="line" data-group="${group.id}"><span class="t">${group.name}</span><span class="s trigger-text"></span>
           <span class="mini"><button class="tstart">開始</button><button class="tstop">停止</button></span></div>`).join('\n        ')}
         <div class="line macro-line"><span class="t">巨集</span><span class="s macro-text"></span>
-          <span class="mini"><button class="mexport" title="把遊戲的巨集和備註複製成一段文字">匯出</button><button class="mimport" title="貼上匯出的文字，整份取代遊戲的巨集和備註">匯入</button><button class="mstop">停止</button></span></div>
+          <span class="mini"><button class="mstop">停止</button></span></div>
         <div class="line hunt-line"><span class="t">巡怪</span><span class="s hunt-text"></span>
           <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hscan" title="街景模式：不用選怪，走這一區還沒走過的每一間，看一眼並記下有哪些怪（不打）">掃描</button><button class="hstop">停止</button></span></div>
         <div class="line reward-line" hidden><span class="t">獎勵</span><span class="s reward-text"></span></div>
-        <div class="line macro-import" hidden><span class="t"></span><span class="s"><textarea class="macro-import-text" placeholder="貼上匯出的巨集文字"></textarea><span class="mini"><button class="macro-import-check">檢查</button><button class="macro-import-cancel">取消</button><button class="macro-restore" title="把匯入前自動留的備份寫回去" disabled>還原上一份</button></span></span></div>
-        <div class="line macro-confirm" hidden><span class="t"></span><span class="s"><div class="macro-confirm-msg"></div><span class="mini"><button class="macro-confirm-ok">確認取代</button><button class="macro-confirm-cancel">取消</button></span></span></div>
-        <div class="line macro-io" hidden><span class="t"></span><span class="s"><div class="macro-io-msg"></div><textarea class="macro-io-text" readonly hidden></textarea></span></div>
       </div>
     </div>`;
   const $ = selector => root.querySelector(selector);
@@ -1630,22 +1621,6 @@ function initPanel() {
     });
   } catch (error) {
     console.error('[catworld] 裝備列初始化失敗', error);
-  }
-  // 「巨集」列的匯出：讀遊戲存巨集的 localStorage 與我們的備註；壞了不能牽連後面按鈕的綁定
-  try {
-    CatworldMacroIOUI.attach(root, {
-      readRaw: () => window.localStorage.getItem('MACROS'),
-      readNotes: async () => (await chrome.storage.local.get('macroNotes')).macroNotes,
-      writeMacros: text => window.localStorage.setItem('MACROS', text),
-      // 匯入寫備註時的寫入者不是備註模組自己的代號，備註模組才會把它當成別處的改動、直接更新畫面上的備註框
-      writeNotes: notes => chrome.storage.local.set({ macroNotes: notes, macroNotesWriter: 'macro-io' }),
-      // 匯入前自動留的一份備份（只留一層，只存在本機，不進匯出）
-      readBackup: async () => (await chrome.storage.local.get('macroBackup')).macroBackup,
-      writeBackup: backup => chrome.storage.local.set({ macroBackup: backup }),
-      relayout: () => panel.replace(),
-    });
-  } catch (error) {
-    console.error('[catworld] 巨集匯出初始化失敗', error);
   }
   // 怪物／鑑定（含裝備比較）／解謎三組功能的開關，預設全關；popup 設定頁改了馬上生效
   const applyZapFeatures = features => {
@@ -1995,6 +1970,26 @@ function renderPanel() {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // 設定頁的巨集匯入匯出：遊戲把巨集存在這個頁面的 localStorage.MACROS，設定頁（擴充功能自己的頁面）讀不到，由這裡代讀代寫。
+  // 寫入不檢查內容：還原上一份時要原樣寫回遊戲讀不懂的備份（設定頁已經先警告過）。閒置時也要能用，所以不看 active()
+  if (message.type === 'MACRO_READ') {
+    try {
+      sendResponse({ ok: true, raw: window.localStorage.getItem('MACROS') });
+    } catch (error) {
+      sendResponse({ ok: false, error: String(error?.message || error) });
+    }
+    return;
+  }
+  if (message.type === 'MACRO_WRITE') {
+    if (typeof message.raw !== 'string') { sendResponse({ ok: false, error: '沒有要寫的巨集文字' }); return; }
+    try {
+      window.localStorage.setItem('MACROS', message.raw);
+      sendResponse({ ok: true });
+    } catch (error) {
+      sendResponse({ ok: false, error: String(error?.message || error) });
+    }
+    return;
+  }
   if (message.type === 'START') {
     start(message.settings).then(() => sendResponse({ ok: true }));
     return true;
