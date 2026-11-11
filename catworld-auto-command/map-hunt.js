@@ -19,6 +19,7 @@ const MAX_SKIPS = 3;
 const MAX_WRONG = 3; // 同一個目標走錯房間幾次就略過
 const SAFE_ID = /^[A-Za-z][A-Za-z0-9 _.'-]*$/;
 const MAX_STUCK = 3; // 連續幾次打完指令後怪的數量沒減少就略過這間
+const LOG_MAX = 600; // 巡怪紀錄最多留幾行
 const TICKS_PER_SEC = 1000 / TICK_MS;
 const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
 const NO_TARGET = /你要對誰施展這個招式/;
@@ -206,6 +207,17 @@ function create(deps) {
   let starting = false;
   let cancelled = false;
 
+  // 巡怪紀錄：每間房一行（看到什麼、做了什麼、為什麼略過），只放記憶體、最多 LOG_MAX 行，設定頁「複製巡怪紀錄」用；
+  // 別人的 ID 一律不記（只記人數），貼給別人看才不會洩漏其他玩家
+  const logLines = [];
+  const record = (where, event, text = '') => {
+    const at = new Date(deps.now?.() ?? Date.now());
+    const pad = n => String(n).padStart(2, '0');
+    logLines.push(`${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())} ${where || '-'} ${event}${text ? ' ' + text : ''}`);
+    if (logLines.length > LOG_MAX) logLines.shift();
+  };
+  const lookText = info => `看到 ${info.monsters.length ? info.monsters.map(mob => `${mob.full}${mob.state ? `<${mob.state}>` : ''}${state.mobs.includes(mob.full) ? '✓' : ''}`).join('、') : '沒有怪'}；別人 ${info.people.length} 位；出口 ${info.exits.length}`;
+
   const skippedNote = list => {
     if (!list.length) return '';
     return `（略過 ${list.length} 間：${list.slice(0, 3).map(item => `${item.key} ${item.why}`).join('、')}${list.length > 3 ? '…' : ''}）`;
@@ -223,6 +235,7 @@ function create(deps) {
     clearInterval(timer);
     timer = null;
     const was = state;
+    if (was) record('-', '停止', reason);
     state = null;
     unwatch?.();
     unwatch = null;
@@ -250,6 +263,7 @@ function create(deps) {
 
   const skipTarget = (key, why) => {
     state.progressAt = state.ticks;
+    record(key, '略過', why);
     // 診斷：目標、原因、現在在哪、上一步指令、這間讀到的出口（卡住時請把 console 這幾行貼出來）
     if (state.scan) console.warn('[catworld] 掃描略過', key, why, '現在在', deps.room(), '上一步', state.cmd, '出口', JSON.stringify(state.learned?.[deps.room()]?.exits ?? null));
     // 掃描時走不過去的那一步（鎖著的門）從圖裡拿掉，門後面的房間一下子就判定走不到，不必一間一間等逾時
@@ -270,6 +284,7 @@ function create(deps) {
   // 這間目標處理完了（不管有沒有打）：從目標拿掉，接著走向下一間
   const doneWith = (key, visit) => {
     state.progressAt = state.ticks;
+    record(key, '處理完');
     state.targets.delete(key);
     state.handled += 1;
     if (visit) state.visited.push(visit);
@@ -299,6 +314,7 @@ function create(deps) {
     const now = deps.room();
     if (now && now !== here) { state.phase = 'plan'; return; }
     if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
+    record(here, '看房間', lookText(info));
     learnExits(here, info.exits);
     await learnPlaces(token, here, info);
     if (state !== token) return;
@@ -324,6 +340,7 @@ function create(deps) {
       }
       // 玩家，或 finger 沒回應、讀不懂（一律當玩家）
       state.skipped.push({ key: here, why: `有別人 ${id}` });
+      record(here, '略過', '有別人');
       doneWith(here);
       return;
     }
@@ -352,10 +369,10 @@ function create(deps) {
     const picked = info.monsters.filter(mob => state.mobs.includes(mob.full));
     const mine = picked.filter(mob => mob.state !== KNOCKED_OUT);
     // 診斷：每次決定都印一行，使用者回報「怪還沒死就下 fight」時看這行就知道當時看到什麼、為什麼送
-    const trace = action => console.log('[catworld] 只下 fight：', a.here, `看到 ${picked.length} 隻、昏迷 ${picked.length - mine.length}、戰鬥中 ${mine.filter(mob => mob.state === '戰鬥中').length}`, fresh ? '〔剛到房間或逾時自己看的 l〕' : '〔被動看到的 l〕', '→', action);
+    const trace = action => record(a.here, '只下fight', `${fresh ? '剛到房間或逾時自己看' : '被動看到'}：${lookText(info)} → ${action}`) || console.log('[catworld] 只下 fight：', a.here, `看到 ${picked.length} 隻、昏迷 ${picked.length - mine.length}、戰鬥中 ${mine.filter(mob => mob.state === '戰鬥中').length}`, fresh ? '〔剛到房間或逾時自己看的 l〕' : '〔被動看到的 l〕', '→', action);
     const leave = why => {
       state.assist = null;
-      if (why) state.skipped.push({ key: a.here, why });
+      if (why) { state.skipped.push({ key: a.here, why }); record(a.here, '略過', why); }
       doneWith(a.here, why ? undefined : a.here);
     };
     // 下過 fight 之後要看到死亡的字才再對下一隻下（只靠 l 的狀態判斷，怪沒標 <戰鬥中>、或在逃時，會變成第一隻還沒死就打第二隻）；剛到房間、逾時自己看的不等（沒有死亡的字可等）
@@ -435,12 +452,14 @@ function create(deps) {
       if (!mine.length) { doneWith(here, here); return; }
       // ID 會被放進 fight 指令，和 finger 一樣只收普通英數
       const target = mine.find(mob => SAFE_ID.test(mob.id));
-      if (!target) { state.skipped.push({ key: here, why: '怪的 ID 不能用' }); doneWith(here); return; }
+      if (!target) { state.skipped.push({ key: here, why: '怪的 ID 不能用' }); record(here, '略過', '怪的 ID 不能用'); doneWith(here); return; }
       if (spawnPause()) return;
       if (!(await restGate(token))) return;
       if (!(await notBusy(token))) return;
+      record(here, '開打', target.full);
       let outcome = await fightOne(token, target);
       if (state !== token || outcome === 'stopped') return;
+      record(here, '打完', outcome);
       // 打到昏迷（不是死）：補一個 kill 確實打死，出現死亡的字才算數；然後才撿屍
       if (outcome === 'knockedOut' && state.settings.finishKnockedOut === 'on') {
         outcome = await fightOne(token, target, { finishing: true });
@@ -454,7 +473,8 @@ function create(deps) {
       if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
       const left = info.monsters.filter(mob => token.mobs.includes(mob.full) && mob.state !== KNOCKED_OUT).length;
       stuck = left < mine.length ? 0 : stuck + 1;
-      if (stuck >= MAX_STUCK) { state.skipped.push({ key: here, why: '打不動' }); doneWith(here); return; }
+      if (stuck >= MAX_STUCK) { state.skipped.push({ key: here, why: '打不動' }); record(here, '略過', '打不動'); doneWith(here); return; }
+      record(here, '重數', lookText(info));
     }
   }
 
@@ -1067,7 +1087,7 @@ function create(deps) {
     [...state.targets].forEach(key => {
       const way = Route.route(strictGraph, here, key);
       const loose = way ?? Route.route(looseGraph, here, key);
-      if (!loose) { state.targets.delete(key); state.skipped.push({ key, why: '走不到' }); blockScan(key); return; }
+      if (!loose) { state.targets.delete(key); state.skipped.push({ key, why: '走不到' }); record(key, '略過', '走不到'); blockScan(key); return; }
       if (way) { if (!best || way.length < best.way.length) best = { key, way, graph: strictGraph }; }
       else if (!guess || loose.length < guess.way.length) guess = { key, way: loose, graph: looseGraph };
     });
@@ -1082,6 +1102,7 @@ function create(deps) {
       if (strictGraph.rooms[here].exits[cmd] === undefined) { startTrial(here, cmd); return; }
     }
     if (!sendOrStop(cmd)) return;
+    record(here, '走', `${cmd} → 目標 ${chosen.key}（還要 ${chosen.way.length} 步，剩 ${state.targets.size} 間）`);
     state.cmd = cmd;
     state.phase = 'move';
     state.from = here;
@@ -1117,6 +1138,7 @@ function create(deps) {
     state.waited += 1;
     if (state.phase === 'move') {
       if (here && here !== state.from) {
+        record(here, '走到', here === state.expected ? '' : `不是預期的 ${state.expected ?? '?'}`);
         state.phase = 'plan';
         if (state.learn) {
           // 走到地圖上沒有的區域：記下來、走回來；走到地圖上的房間：記下實測的連線
@@ -1129,7 +1151,7 @@ function create(deps) {
         else if ((state.wrong += 1) >= MAX_WRONG) { skipTarget(state.goal, '走錯房間'); return; }
       } else if (state.waited > MOVE_TIMEOUT_TICKS) {
         // 第一次沒走成就重送一次，再沒走成就略過這間目標
-        if (state.tries < 1) { state.tries += 1; state.phase = 'plan'; } else { skipTarget(state.goal, '走不過去'); return; }
+        if (state.tries < 1) { state.tries += 1; record(state.from, '重送', `${state.cmd} 沒走成`); state.phase = 'plan'; } else { skipTarget(state.goal, '走不過去'); return; }
       } else return;
     }
     if (!here) {
@@ -1209,6 +1231,9 @@ function create(deps) {
         ...roundFields(), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       note = '';
+      record(target.area, '目標房間', `${[...targets].join(' ') || '（沒有）'}`);
+      baseSkipped.forEach(item => record(item.key, '略過', item.why));
+      record(target.area, prescan ? '開始（打怪前補掃）' : scan ? '開始（掃描）' : '開始', `怪 ${scan ? '-' : target.mobs.join('、')}；目標 ${targets.size} 間；從 ${here}；${['fightMode', 'loopRounds', 'stopBeforeSpawnSec', 'healMode', 'prescan', 'learnExits', 'finishKnockedOut'].map(key => `${key}=${settings[key]}`).join(' ')}`);
       unwatch = deps.watch(onText);
       timer = setInterval(tick, TICK_MS);
       tick();
@@ -1258,7 +1283,9 @@ function create(deps) {
   };
   const snapshot = () => ({ on: on(), note, targets: state ? [...state.targets] : [], skipped: state ? state.skipped : [] });
 
-  return { start, stop, on, summary, snapshot };
+  const exportLog = () => logLines.join('\n');
+
+  return { start, stop, on, summary, snapshot, exportLog };
 }
 
 globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, FIELDS, GROUPS, fieldShown, missingFields, normalizeSettings, normalizeVisited, gapMs, splitIds, create };

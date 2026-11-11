@@ -2612,6 +2612,9 @@ ui('assist: it sends fight once, nothing else about the fight, and moves on when
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
     assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT], 'no gc, no special, no kill, no eating');
+    const { text } = await page.ask({ type: 'HUNT_LOG' });
+    assert.match(text, /只下fight 剛到房間或逾時自己看：看到 .*✓.*→ 送 fight/, 'the log says what the first l showed and why fight was sent');
+    assert.match(text, /只下fight 被動看到：看到 沒有怪.*→ 沒有可打的怪，換格/, 'and what the l after the kill showed');
   } finally {
     page.close();
   }
@@ -2800,5 +2803,33 @@ ui('assist: low qi eats when an eat command is set (and not when it is blank), a
     assert.equal(game.log.includes(FIGHT), false);
   } finally {
     danger.close();
+  }
+});
+
+ui('hunt log: records what each room showed and did, counts other people without naming them, and HUNT_LOG hands it over', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c', 'd');
+    world(page, { at: 'a', looks: { c: { lines: [MOB_LINE, PERSON('somebody')] }, d: { lines: [MOB_LINE] } }, fingers: { somebody: PLAYER_FINGER } });
+    await pick(page, MOB);
+    const before = await page.ask({ type: 'HUNT_LOG' });
+    assert.equal(before.ok, true);
+    assert.equal(before.text, '', 'nothing before the first start');
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 5000), huntText(page));
+    const { ok, text } = await page.ask({ type: 'HUNT_LOG' });
+    assert.equal(ok, true);
+    assert.match(text, /開始 怪 測試怪\(test mob\)；目標 2 間/);
+    assert.match(text, /目標房間 t\/c t\/d/, 'which rooms it meant to visit');
+    assert.match(text, /t\/a 走 e → 目標 t\/c（還要 2 步/, 'each step toward a target');
+    assert.match(text, /t\/b 走到\n/, 'and where it landed');
+    assert.match(text, /t\/c 看房間 看到 測試怪\(test mob\)✓；別人 1 位；出口 \d+/);
+    assert.match(text, /t\/c 略過 有別人\n/, 'skipped because of a person, without the id');
+    assert.match(text, /t\/d 開打 測試怪\(test mob\)/);
+    assert.match(text, /t\/d 打完 ended/);
+    assert.match(text, /停止 .*巡完了/);
+    assert.ok(!/somebody|某人/.test(text), 'other players are never named in the log');
+  } finally {
+    page.close();
   }
 });

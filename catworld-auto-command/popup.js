@@ -667,6 +667,16 @@ $('mapCollectCopy').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(text); mapMessage(`已複製 ${rows.length} 列`); }
   catch (e) { mapMessage(`複製失敗：${e.message}`, 'error'); }
 });
+$('huntLogCopy').addEventListener('click', async () => {
+  const say = (text, level) => { $('huntLogMsg').textContent = text; markLevel($('huntLogMsg'), level); };
+  let reply;
+  try { reply = await send({ type: 'HUNT_LOG' }); } catch (error) { say(`讀不到遊戲分頁：${error.message}`, 'error'); return; }
+  if (!reply?.ok) { say('遊戲頁沒有回應（請重新整理遊戲頁後再試）', 'error'); return; }
+  if (!reply.text) { say('還沒有紀錄（先按過「開始」才會有）', 'warn'); return; }
+  const header = `catworld-auto-command v${chrome.runtime.getManifest().version}\n`;
+  try { await navigator.clipboard.writeText(header + reply.text); say(`已複製 ${reply.text.split('\n').length} 行`); }
+  catch (e) { say(`複製失敗：${e.message}`, 'error'); }
+});
 $('mapCollectClear').addEventListener('click', async () => {
   if (!confirm('清除所有已蒐集的地圖怪物紀錄？清掉就回不來了。')) return;
   await chrome.storage.local.remove(MAP_KEY);

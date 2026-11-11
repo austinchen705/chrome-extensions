@@ -1974,6 +1974,11 @@ function renderPanel() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // 設定頁的巨集匯入匯出：遊戲把巨集存在這個頁面的 localStorage.MACROS，設定頁（擴充功能自己的頁面）讀不到，由這裡代讀代寫。
   // 寫入不檢查內容：還原上一份時要原樣寫回遊戲讀不懂的備份（設定頁已經先警告過）。閒置時也要能用，所以不看 active()
+  // 設定頁「複製巡怪紀錄」：紀錄在這個頁面的巡怪引擎裡，由這裡代讀
+  if (message.type === 'HUNT_LOG') {
+    sendResponse({ ok: true, text: hunt?.exportLog?.() ?? '' });
+    return;
+  }
   if (message.type === 'MACRO_READ') {
     try {
       sendResponse({ ok: true, raw: window.localStorage.getItem('MACROS') });
