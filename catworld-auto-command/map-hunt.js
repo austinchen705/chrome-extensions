@@ -20,6 +20,7 @@ const MAX_WRONG = 3; // 同一個目標走錯房間幾次就略過
 const SAFE_ID = /^[A-Za-z][A-Za-z0-9 _.'-]*$/;
 const MAX_STUCK = 3; // 連續幾次打完指令後怪的數量沒減少就略過這間
 const LOG_MAX = 600; // 巡怪紀錄最多留幾行
+const PASS_WAIT_TICKS = 2; // 走到路過的房間後，最多等幾個 tick 讓抵達時的房間描述印出來
 const TICKS_PER_SEC = 1000 / TICK_MS;
 const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
 const NO_TARGET = /你要對誰施展這個招式/;
@@ -516,6 +517,7 @@ function create(deps) {
   // 遊戲新增的輸出（content.js 以 deps.watch 餵進來）：只在打的時候看。拒戰句→改送 kill；結束句（怪死、昏迷）→這一隻打完；
   // 「你要對誰施展這個招式」→這場不再送特攻。忙碌拒絕句不用處理：被拒的特攻不重排，等下一次間隔
   function onText(text) {
+    if (state?.phase === 'move') state.moveText = (state.moveText + text).slice(-3000);
     const eating = state?.eating;
     if (eating?.sent && state.ticks <= eating.until && state.settings.noMedicineKeyword) {
       eating.buffer = (eating.buffer + text).slice(-500);
@@ -723,8 +725,8 @@ function create(deps) {
   };
   const learnedAt = key => (state.learned[key] ??= { exits: null, to: {} });
   // 送指令；送不出去就停止並警報
-  function sendOrStop(command) {
-    if (deps.send(command)) return true;
+  function sendOrStop(command, onSent) {
+    if (deps.send(command, onSent)) return true;
     finish('指令送不出去，已停止', { alert: true });
     return false;
   }
@@ -1114,13 +1116,30 @@ function create(deps) {
       if (!state.looked.has(here) && !learned?.exits && !learned?.to[cmd]) { learnHere(here); return; }
       if (strictGraph.rooms[here].exits[cmd] === undefined) { startTrial(here, cmd); return; }
     }
-    if (!sendOrStop(cmd)) return;
+    if (!sendOrStop(cmd, () => { if (state) state.moveText = ''; })) return; // 指令真的送出時才開始收這一步的輸出（抵達時印的房間描述）
     record(here, '走', `${cmd} → 目標 ${chosen.key}（還要 ${chosen.way.length} 步，剩 ${state.targets.size} 間）`);
     state.cmd = cmd;
     state.phase = 'move';
     state.from = here;
     state.waited = 0;
     deps.notify();
+  }
+
+  // 路過的房間：走路時房間裡新刷的怪（重生、或這一輪已經處理過的房間又有怪）不在目標裡，原本不會停下來。
+  // 到了不是目標的房間，看抵達時遊戲印的描述（走這一步時收的輸出，不多送 l）：有勾選的怪（不是昏迷的）就把這間加進目標（也加進每一輪的目標）、照一般流程看房間與打；
+  // 這一輪已經略過的房間（有別人、打不動）不再加，免得每次路過都問一次；掃描不做
+  const wantsPassCheck = here => !state.scan && !state.targets.has(here) && !!state.graph.rooms[here] && !state.skipped.some(item => item.key === here);
+  function passTick() {
+    const here = deps.room();
+    if (here !== state.passRoom) { state.phase = 'plan'; return; } // 手動走掉了：照一般流程重新規劃
+    const info = Parse.parseLook(state.moveText);
+    if (!info.exits.length && (state.arriveWait += 1) <= PASS_WAIT_TICKS) return; // 房間描述還沒印出來：再等一下
+    if (info.exits.length && info.monsters.some(mob => state.mobs.includes(mob.full) && mob.state !== KNOCKED_OUT)) {
+      state.targets.add(here);
+      state.allTargets.add(here);
+      record(here, '路過', '看到勾選的怪，加進目標');
+    }
+    state.phase = 'plan';
   }
 
   function tick() {
@@ -1146,11 +1165,14 @@ function create(deps) {
     if (state.phase === 'wait' || state.phase === 'standby') { waitTick(); return; }
     if (state.phase === 'sort') return;
     if (state.trial) { trialTick(); return; }
+    if (state.phase === 'pass') { passTick(); return; }
     if (state.phase === 'look') return;
     const here = deps.room();
     state.waited += 1;
+    let arrived = false;
     if (state.phase === 'move') {
       if (here && here !== state.from) {
+        arrived = true;
         record(here, '走到', here === state.expected ? '' : `不是預期的 ${state.expected ?? '?'}`);
         state.phase = 'plan';
         if (state.learn) {
@@ -1167,6 +1189,8 @@ function create(deps) {
         if (state.tries < 1) { state.tries += 1; record(state.from, '重送', `${state.cmd} 沒走成`); state.phase = 'plan'; } else { skipTarget(state.goal, '走不過去'); return; }
       } else return;
     }
+    // 剛走到一間不是目標的房間（路過、或這一輪已經處理過的）：看一下抵達時遊戲印的描述裡有沒有勾選的怪，有就插隊打
+    if (arrived && wantsPassCheck(here)) { state.phase = 'pass'; state.passRoom = here; state.arriveWait = 0; return; }
     if (!here) {
       // 地圖捲動中的一兩個 tick 讀不到不算：連續讀不到超過逾時才停
       state.blind += 1;
@@ -1240,7 +1264,7 @@ function create(deps) {
       state = {
         round: 1, after: deps.now() + offset + settings.aheadSec * 1000, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
         mobs: scan ? [] : target.mobs, area: target.area, offset, scan: scan || prescan, prescan, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph, targets, skipped: [...baseSkipped], fixed: [],
-        settings, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
+        settings, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
         ...roundFields(), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       note = '';

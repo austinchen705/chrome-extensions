@@ -2940,3 +2940,57 @@ ui('assist rest: with enough qi nothing changes, and in eat mode the qi never ho
     eat.close();
   }
 });
+
+// ---- 路過的房間：抵達時印出勾選的怪就停下來打 ----
+ui('passing: a chosen monster shown on arrival in a room that is not a target is fought there, and the walk goes on', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('d'); // 目標只有 d；b 不是目標，但怪重生在 b
+    const game = world(page, { at: 'a', arrivals: { b: { lines: [MOB_LINE] } }, looks: { b: { lines: [MOB_LINE] }, d: { lines: [MOB_LINE] } }, script: (command, { looks }) => {
+      if (command.startsWith('fight ')) looks[game.at]?.lines && (looks[game.at].lines = []);
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.deepEqual(game.log.slice(0, 3), ['e', 'l', FIGHT], 'looked at b as soon as it arrived there, and fought');
+    assert.equal(countOf(game, FIGHT), 2, 'b on the way and d at the end');
+    const { text } = await page.ask({ type: 'HUNT_LOG' });
+    assert.match(text, /t\/b 路過 看到勾選的怪，加進目標/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('passing: a passed room with a player in it is skipped once and not looked at again, and the walk goes on', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('d');
+    const game = world(page, { at: 'a', arrivals: { b: { lines: [MOB_LINE, PERSON('somebody')] } }, looks: { b: { lines: [MOB_LINE, PERSON('somebody')] }, d: { lines: [MOB_LINE] } }, fingers: { somebody: PLAYER_FINGER } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.equal(countOf(game, 'finger somebody'), 1, 'asked about the stranger once');
+    assert.equal(game.log.filter(command => command === FIGHT).length, 1, 'only d was fought');
+    assert.match(huntText(page), /b 有別人 somebody/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('passing: nothing changes when the arrival shows another monster, or no monster at all', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('d');
+    const game = world(page, { at: 'a', arrivals: { b: { lines: ['  ※另一隻怪(other mob) [fight][kill]'] }, c: { lines: [] } }, looks: { d: { lines: [MOB_LINE] } }, script: (command, { looks }) => {
+      if (command.startsWith('fight ')) looks.d.lines = [];
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'e', 'l', FIGHT, 'gc', 'l'], 'walked straight to d, looked there only');
+  } finally {
+    page.close();
+  }
+});
