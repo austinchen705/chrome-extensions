@@ -61,7 +61,7 @@ const FIELDS = [
   { key: 'eatCommand', group: 'heal', show: eatMode, row: 'eat', label: '吃藥指令', hint: '可多個，用 ; 分隔', type: 'text', default: '', required: s => eatMode(s) && full(s) },
   { key: 'restBelow', group: 'heal', show: s => !eatMode(s), row: 'rest', label: '氣低於 % 休息', type: 'number', default: 50, min: 2, max: 99 },
   { key: 'restResume', group: 'heal', show: s => !eatMode(s), row: 'rest', label: '回到 % 才繼續', type: 'number', default: 80, min: 1, max: 100 },
-  { key: 'restCommand', group: 'heal', show: s => !eatMode(s), label: '休息時送的指令', hint: '可空', type: 'text', default: '' },
+  { key: 'restCommand', group: 'heal', show: s => !eatMode(s), label: '休息時送的指令', hint: '可空；每次休息只送一次，角色忙碌時等忙碌結束才送', type: 'text', default: '' },
   { key: 'ginBelow', group: 'heal', row: 'gin', label: '精低於 %', hint: '0＝不看', type: 'number', default: 0, min: 0, max: 99 },
   { key: 'ginCommand', group: 'heal', row: 'gin', label: '精低時的指令', hint: '空白＝不看', type: 'text', default: '' },
   { key: 'senBelow', group: 'heal', row: 'sen', label: '神低於 %', hint: '0＝不看', type: 'number', default: 0, min: 0, max: 99 },
@@ -569,18 +569,21 @@ function create(deps) {
     finish(`${reason}，${home ? '已回家並' : ''}停止`, { alert: true });
     if (home) deps.sendAfterStop(home);
   }
-  // 自己回模式：低於「開始休息 %」就閒置，等回到「繼續 %」；閒置時隔 5 秒送一次休息指令
+  // 自己回模式：低於「開始休息 %」就閒置，等回到「繼續 %」；每次休息只送一次休息指令（例如打坐，一次就會坐到被打斷）
   function restStep(percent) {
     const settings = state.settings;
     state.restPercent = percent;
-    if (!state.resting && percent < settings.restBelow) state.resting = true;
-    else if (state.resting && percent >= settings.restResume) {
+    if (!state.resting && percent < settings.restBelow) {
+      state.resting = true;
+      state.restSent = false;
+    } else if (state.resting && percent >= settings.restResume) {
       state.resting = false;
       state.wake?.();
     }
-    // 看房間（l、finger 在等回應）時不送，免得休息指令的輸出混進回應；走路時與 restGate 等待時才送
-    if (state.resting && settings.restCommand && (state.phase !== 'look' || state.gate) && state.ticks - state.lastRest >= EAT_GAP_TICKS) {
-      state.lastRest = state.ticks;
+    // 看房間（l、finger 在等回應）時不送，免得休息指令的輸出混進回應；角色忙碌時也先不送（會被遊戲拒絕），等忙碌結束；
+    // 走路時與 restGate 等待時才送
+    if (state.resting && settings.restCommand && !state.restSent && (state.phase !== 'look' || state.gate) && !deps.busy?.()) {
+      state.restSent = true;
       deps.send(settings.restCommand);
     }
   }
@@ -1188,7 +1191,7 @@ function create(deps) {
       state = {
         round: 1, after: deps.now() + offset + settings.aheadSec * 1000, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
         mobs: scan ? [] : target.mobs, area: target.area, offset, scan: scan || prescan, prescan, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph, targets, skipped: [...baseSkipped], fixed: [],
-        settings, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastTopUp: {}, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
+        settings, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
         ...roundFields(), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       note = '';

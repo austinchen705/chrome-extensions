@@ -1083,22 +1083,18 @@ ui('heal: when the game says there is no medicine, it goes home, stops and raise
   }
 });
 
-ui('heal: in rest mode a qi below the rest line waits in place (sending the rest command every 5 seconds) until the qi is back to the resume line', async () => {
+ui('heal: in rest mode a qi below the rest line waits in place (sending the rest command once) until the qi is back to the resume line', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
     page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', restBelow: 50, restResume: 80, restCommand: 'dazuo' };
     setKee(page, 30);
-    const times = [];
-    const script = command => {
-      if (command === 'dazuo') times.push(Date.now());
-      return false;
-    };
-    const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script });
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } } });
     await pick(page, MOB);
     click(page, '.hstart');
-    assert.ok(await waitFor(() => countOf(game, 'dazuo') >= 3, 3000), 'the rest command repeats');
-    assert.ok(times[1] - times[0] >= 200 && times[2] - times[1] >= 200, `5 seconds (scaled to 250 ms) apart: ${times[1] - times[0]}, ${times[2] - times[1]}`);
+    assert.ok(await waitFor(() => countOf(game, 'dazuo') >= 1, 3000), 'the rest command is sent');
+    await sleep(600); // 12 秒（縮小後）
+    assert.equal(countOf(game, 'dazuo'), 1, 'only once while resting');
     assert.ok(/休息中 30%→80%/.test(huntText(page)), huntText(page));
     assert.equal(game.log.some(command => command === 'e'), false, 'no step while resting');
     setKee(page, 70);
@@ -1107,6 +1103,29 @@ ui('heal: in rest mode a qi below the rest line waits in place (sending the rest
     setKee(page, 90);
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
     assert.ok(game.log.includes('e'));
+  } finally {
+    page.close();
+  }
+});
+
+ui('heal: the rest command waits while the character is busy, then goes once', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', restBelow: 50, restResume: 80, restCommand: 'dazuo' };
+    setKee(page, 30);
+    const doc = page.w.document;
+    if (!doc.getElementById('status')) doc.body.insertAdjacentHTML('beforeend', '<span id="status"></span>');
+    doc.getElementById('status').textContent = '忙碌';
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    await sleep(400);
+    assert.equal(countOf(game, 'dazuo'), 0, 'nothing while busy');
+    doc.getElementById('status').textContent = '正常';
+    assert.ok(await waitFor(() => countOf(game, 'dazuo') === 1, 3000), game.log.join('|'));
+    await sleep(400);
+    assert.equal(countOf(game, 'dazuo'), 1, 'and only once');
   } finally {
     page.close();
   }
