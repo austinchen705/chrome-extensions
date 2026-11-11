@@ -2833,3 +2833,110 @@ ui('hunt log: records what each room showed and did, counts other people without
     page.close();
   }
 });
+
+// ---- 只下 fight 模式的「自己回」：每次要下 fight 之前先看氣 ----
+const REST = { healMode: 'rest', restBelow: 50, restResume: 80, restCommand: 'dazuo' };
+const endsAfterFight = page => command => {
+  if (command.startsWith('fight ')) { setTimeout(() => lookOut(page), 50); return true; }
+  return false;
+};
+// 氣一開始就低的話，走路階段就先休息了（原本的行為）；這裡要測的是「到了房間、要下 fight 的時候氣太低」，所以送第一個 l 時氣才掉下去
+const dropsAtFirstLook = (page, next = () => false) => {
+  let dropped = false;
+  return command => {
+    if (command === 'l' && !dropped) { dropped = true; setKee(page, 30); }
+    return next(command);
+  };
+};
+
+ui('assist rest: a qi below the rest line is waited out before the fight goes out (rest command once), and the fight goes out once the qi is back', async () => {
+  const page = await assistPage(REST);
+  try {
+    setKee(page, 100);
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: dropsAtFirstLook(page, endsAfterFight(page)) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, 'dazuo') >= 1, 4000), 'the rest command is sent');
+    await sleep(600);
+    assert.equal(countOf(game, 'dazuo'), 1, 'only once while resting');
+    assert.equal(countOf(game, FIGHT), 0, 'no fight while the qi is low');
+    assert.equal(countOf(game, 'l'), 1, 'and no looking around while it rests');
+    setKee(page, 70);
+    await sleep(600);
+    assert.equal(countOf(game, FIGHT), 0, 'still below the resume line');
+    setKee(page, 90);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.equal(countOf(game, FIGHT), 1, 'the fight goes out once the qi is back');
+  } finally {
+    page.close();
+  }
+});
+
+ui('assist rest: the qi is judged again before the next monster, after the first one died', async () => {
+  const page = await assistPage(REST);
+  try {
+    setKee(page, 90);
+    let fights = 0;
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(2) } }, script: command => {
+      if (!command.startsWith('fight ')) return false;
+      fights += 1;
+      if (fights === 1) setTimeout(() => { setKee(page, 20); say(page, '測試怪死了。'); lookOut(page, [MOB_LINE]); }, 80); // 打第一隻時氣掉到 20，死了之後還有一隻
+      if (fights === 2) setTimeout(() => lookOut(page), 50);
+      return true;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, 'dazuo') >= 1, 6000), 'it rests before the second monster');
+    assert.equal(countOf(game, FIGHT), 1, 'the second fight is held back');
+    setKee(page, 95);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.equal(countOf(game, FIGHT), 2);
+  } finally {
+    page.close();
+  }
+});
+
+ui('assist rest: a monster that is fighting is not a reason to rest, the rest waits until nobody is fighting', async () => {
+  const page = await assistPage(REST);
+  try {
+    setKee(page, 100);
+    let fightOver = false; // 戰鬥結束之後，引擎自己送的 l 也要看到怪沒在戰鬥中（真實遊戲不會一直回「戰鬥中」）
+    const dropped = dropsAtFirstLook(page, command => {
+      if (command === 'l' && fightOver) { setTimeout(() => lookOut(page, [MOB_LINE]), 20); return true; }
+      return false;
+    });
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_FIGHTING] } }, script: dropped });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    await sleep(900);
+    assert.equal(countOf(game, 'dazuo'), 0, 'no rest command while a monster is fighting');
+    assert.equal(countOf(game, FIGHT), 0);
+    fightOver = true;
+    lookOut(page, [MOB_LINE]); // 戰鬥結束、怪還在
+    assert.ok(await waitFor(() => countOf(game, 'dazuo') >= 1, 4000), 'now it can rest');
+    assert.equal(countOf(game, FIGHT), 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('assist rest: with enough qi nothing changes, and in eat mode the qi never holds the fight back', async () => {
+  const full = await assistPage(REST);
+  const eat = await assistPage({ healMode: 'eat', eatCommand: '', noMedicineKeyword: '' });
+  try {
+    setKee(full, 100);
+    setKee(eat, 20);
+    const a = world(full, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: endsAfterFight(full) });
+    const b = world(eat, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: endsAfterFight(eat) });
+    await pick(full, MOB);
+    await pick(eat, MOB);
+    click(full, '.hstart');
+    click(eat, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(full)) && /巡完了/.test(huntText(eat)), 8000), huntText(full) + ' / ' + huntText(eat));
+    assert.deepEqual([countOf(a, 'dazuo'), countOf(a, FIGHT)], [0, 1]);
+    assert.deepEqual([countOf(b, 'dazuo'), countOf(b, FIGHT)], [0, 1]);
+  } finally {
+    full.close();
+    eat.close();
+  }
+});

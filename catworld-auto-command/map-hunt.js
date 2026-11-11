@@ -381,7 +381,13 @@ function create(deps) {
     if (picked.length > mine.length && !fresh) { a.waited = 0; trace('等昏迷的怪死掉'); return; }
     if (!mine.length) { trace('沒有可打的怪，換格'); leave(); return; }
     a.waited = 0;
-    if (mine.some(mob => mob.state === '戰鬥中')) { trace('有怪在戰鬥中，繼續等'); return; } // 在打，繼續等
+    if (mine.some(mob => mob.state === '戰鬥中')) { trace('有怪在戰鬥中，繼續等'); return; } // 在打，繼續等（戰鬥中不休息）
+    // 自己回：每次要下 fight 之前（剛打死一隻、或剛到房間）先看氣，低於休息線就先休息等回氣，回到繼續線才下 fight
+    if (state.settings.healMode === 'rest') {
+      const percent = deps.kee();
+      if (Number.isFinite(percent)) restStep(percent);
+      if (state.resting) { a.restWait = true; trace(`氣 ${Math.round(percent)}% 低於 ${state.settings.restBelow}%，先休息等回到 ${state.settings.restResume}%`); return; }
+    }
     a.stuck = mine.length < a.count ? 0 : a.stuck + 1;
     a.count = mine.length;
     if (a.stuck >= MAX_STUCK) { trace('怪數一直沒減少，略過這間'); leave('打不動'); return; }
@@ -410,6 +416,7 @@ function create(deps) {
     if (a.asking) return;
     const room = deps.room();
     if (room && room !== a.here) { state.assist = null; state.phase = 'plan'; return; } // 人已經不在這間（手動走掉了）：重新規劃
+    if (a.restWait) return; // 休息中：回氣的判斷在 vitals（每秒），等回到繼續線才再看一次房間
     a.waited += 1;
     if (a.buffer) {
       a.quietTicks += 1;
@@ -632,6 +639,12 @@ function create(deps) {
     if (state.settings.fightMode === 'assist') {
       if (percent < state.settings.dangerBelow) { goHomeAndStop(`氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`); return; }
       if (state.settings.healMode === 'eat' && state.settings.eatCommand && percent < state.settings.eatBelow && state.ticks - state.lastEat >= EAT_GAP_TICKS) eat();
+      // 自己回：assistJudge 判斷氣太低而等回氣時，這裡每秒看一次，回到繼續線就重新看房間（l）再決定下 fight
+      const waiting = state.assist;
+      if (state.settings.healMode === 'rest' && waiting?.restWait) {
+        restStep(percent);
+        if (!state.resting) { waiting.restWait = false; assistCheck(waiting); }
+      }
       return;
     }
     if (state.settings.healMode === 'rest') { restStep(percent); return; }
