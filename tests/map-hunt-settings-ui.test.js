@@ -112,6 +112,17 @@ ui('the fields are split into closed folds whose titles carry the main values', 
   }
 });
 
+ui('the healing fold goes jing, jing injury, qi, qi injury, shen, shen injury, then the rest command', async () => {
+  const { dom, doc } = await boot({ mapHuntSettings: { healMode: 'rest', homeCommand: 'ride' } });
+  try {
+    const shown = [...doc.querySelectorAll('#fold-hunt-heal .hfield')].filter(cell => !cell.hidden && !cell.closest('.hrow')?.hidden).map(cell => cell.querySelector('label').textContent);
+    assert.deepEqual(shown.slice(0, 13), ['補氣方式', '精低於 %', '精低時的指令', '精內傷低於 %', '精內傷時的指令', '氣低於 % 休息', '回到 % 才繼續', '氣內傷低於 %', '氣內傷時的指令', '神低於 %', '神低時的指令', '神內傷低於 %', '神內傷時的指令']);
+    assert.equal(shown[13], '休息時送的指令');
+  } finally {
+    dom.window.close();
+  }
+});
+
 ui('fields that do not apply are hidden but kept, and come back when the mode changes', async () => {
   const { dom, doc, store } = await boot({ mapHuntSettings: { eatCommand: 'tn', homeCommand: 'ride' } });
   try {
