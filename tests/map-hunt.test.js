@@ -2994,3 +2994,20 @@ ui('passing: nothing changes when the arrival shows another monster, or no monst
     page.close();
   }
 });
+
+ui('hunt: a player who shows no status tag (not idle) still makes the room be skipped', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const NO_STATE_PLAYER = '  某某門派第十七代弟子「某某某」某某某(somebody)'; // 真實輸出的格式，名字換成假的
+    const game = world(page, { at: 'a', looks: { c: { lines: [NO_STATE_PLAYER, MOB_LINE] } }, fingers: { somebody: PLAYER_FINGER } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.equal(countOf(game, 'finger somebody'), 1, 'asked about the stranger');
+    assert.equal(game.log.some(command => command.startsWith('fight ')), false, 'no fight with a player in the room');
+    assert.match(huntText(page), /c 有別人 somebody/);
+  } finally {
+    page.close();
+  }
+});

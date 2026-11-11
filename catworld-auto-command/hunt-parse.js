@@ -45,13 +45,18 @@ function parseMonster(rawLine) {
   return { name, id, full: name + '(' + id + ')', state: /<([^>]*)>/.exec(match[3])?.[1] ?? '' };
 }
 
-// 別人：沒有 ※、行尾有 (英文ID) 並帶 <狀態>（<發呆中> 之類），不是屍體；地上的物品（紙皮水袋(waterskin)）沒有 <狀態>，所以不算
+// 別人：沒有 ※、行尾有 (英文ID)，不是屍體；帶 <狀態>（<發呆中> 之類）的就是。沒在發呆的玩家沒有 <狀態>，行尾只有 (英文ID)，
+// 這種要名字前面有稱號才算（「」括起來的、或稱號與名字之間有空白：天南段家第十七代弟子「悟金」某某某(id)、普通百姓 店小二(id)）；
+// 地上的物品（紙皮水袋(waterskin)）是單純的一個名稱，沒有稱號也沒有 <狀態>，不算
 const PERSON_LINE = /\(([A-Za-z][^()]*)\)\s*<([^>]+)>\s*$/;
+const TITLED_LINE = /^(.*\S)\s*\(([A-Za-z][^()]*)\)$/;
 function parsePerson(rawLine) {
   const line = rawLine.normalize('NFKC').trim();
   if (line.startsWith('※') || /屍體|\[sac\]/.test(line)) return null;
   const match = PERSON_LINE.exec(line);
-  return match ? { id: match[1].trim(), state: match[2] } : null;
+  if (match) return { id: match[1].trim(), state: match[2] };
+  const titled = TITLED_LINE.exec(line);
+  return titled && /[「」\s]/.test(titled[1]) ? { id: titled[2].trim(), state: '' } : null;
 }
 
 // 輸出裡可能有兩份房間描述（抵達時印的、再加 l 印的）：只算最後一份（從最後一個出口行開始，怪物與人物行都在它後面）

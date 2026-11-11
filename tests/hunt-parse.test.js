@@ -143,3 +143,15 @@ test('parseInventory reads name, ID, the * mark and the worn ˇ mark, and number
   assert.deepEqual(items.filter(item => item.id === 'small stone').map(item => item.ref), ['small stone', 'small stone 2'], 'the second of two same-ID items is "ID 2"');
   assert.deepEqual(P.parseInventory('你身上帶著下列這些東西( 載重 29% ):\n> give ring to x\n你給某人一枚銀戒指。'), [], 'the header, echoes and replies are not items');
 });
+
+// 玩家沒在發呆時，名字後面沒有 <狀態>：真實輸出（玩家的稱號、名字已換成假的）
+test('a player without any status tag is a person, because the line carries a title; a lone item name is not', () => {
+  const people = peopleOf(sample('look-player-no-state'));
+  assert.deepEqual(people, [{ id: 'somebody', state: '', ref: 'somebody' }]);
+  const monsters = monstersOf(sample('look-player-no-state'));
+  assert.deepEqual(monsters.map(mob => mob.ref), ['guard', 'guard 2', 'guard 3'], 'the three guards are still counted among themselves');
+  const items = ['這裡明顯的出口是 east。', '  紙皮水袋(waterskin)', '  狗肉(meat)', '  炎蛛的屍體(corpse) [sac]'].join('\n');
+  assert.deepEqual(peopleOf(items), [], 'items and corpses are not people');
+  const titled = ['這裡明顯的出口是 east。', '  普通百姓 店小二(waiter)'].join('\n');
+  assert.deepEqual(peopleOf(titled).map(person => person.id), ['waiter'], 'a title and a name with a space between is a person to ask about');
+});
