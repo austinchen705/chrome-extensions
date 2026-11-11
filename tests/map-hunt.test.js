@@ -715,6 +715,35 @@ ui('vitals: low jing sends its command and an empty shen command is skipped', as
   }
 });
 
+for (const how of ['status', 'bar']) {
+  ui(`busy: while the character is busy (${how === 'status' ? 'the status says 忙碌' : 'the busy cooldown bar runs'}) the hunt neither walks nor fights`, async () => {
+    const page = await boot({ scale: SCALE });
+    try {
+      page.store.mapMonsters = mobsAt('c');
+      page.store.mapHuntSettings = { ...REQUIRED };
+      const doc = page.w.document;
+      let busy = true;
+      if (how === 'status') {
+        if (!doc.getElementById('status')) doc.body.insertAdjacentHTML('beforeend', '<span id="status"></span>');
+        doc.getElementById('status').textContent = '忙碌:3';
+      } else {
+        doc.body.insertAdjacentHTML('beforeend', '<div class="cooldown" id="busy"><div></div></div>');
+        doc.getElementById('busy').firstElementChild.getAnimations = () => [{ playState: busy ? 'running' : 'finished' }];
+      }
+      const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } } });
+      await pick(page, MOB);
+      click(page, '.hstart');
+      await sleep(600);
+      assert.equal(game.log.length, 0, `nothing is sent while busy (${game.log.join('|')})`);
+      busy = false;
+      if (how === 'status') doc.getElementById('status').textContent = '正常';
+      assert.ok(await waitFor(() => countOf(game, FIGHT) >= 1, 4000), game.log.join('|'));
+    } finally {
+      page.close();
+    }
+  });
+}
+
 ui('fight: the special attack waits until the game cooldown bar (#perform) has finished', async () => {
   const page = await boot({ scale: SCALE });
   try {

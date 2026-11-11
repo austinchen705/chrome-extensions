@@ -404,6 +404,7 @@ function create(deps) {
       if (!target) { state.skipped.push({ key: here, why: '怪的 ID 不能用' }); doneWith(here); return; }
       if (spawnPause()) return;
       if (!(await restGate(token))) return;
+      if (!(await notBusy(token))) return;
       let outcome = await fightOne(token, target);
       if (state !== token || outcome === 'stopped') return;
       // 打到昏迷（不是死）：補一個 kill 確實打死，出現死亡的字才算數；然後才撿屍
@@ -411,6 +412,7 @@ function create(deps) {
         outcome = await fightOne(token, target, { finishing: true });
         if (state !== token || outcome === 'stopped') return;
       }
+      if (!(await notBusy(token))) return;
       if (state.settings.afterKillCommand) deps.send(state.settings.afterKillCommand);
       if (state.settings.loadMaxPercent > 0) state.loadDue = true;
       info = Parse.parseLook(await deps.ask('l', 'look'));
@@ -420,6 +422,15 @@ function create(deps) {
       stuck = left < mine.length ? 0 : stuck + 1;
       if (stuck >= MAX_STUCK) { state.skipped.push({ key: here, why: '打不動' }); doneWith(here); return; }
     }
+  }
+
+  // 角色忙碌（狀態欄「忙碌」或忙碌冷卻條在跑）就等到不忙；巡怪停了或換了一次回 false
+  async function notBusy(token) {
+    while (deps.busy?.()) {
+      await new Promise(resolve => setTimeout(resolve, TICK_MS));
+      if (state !== token) return false;
+    }
+    return true;
   }
 
   // 打一隻：送 fight，之後由 onText（拒戰句、結束句）與 fightTick（特攻、補氣、逾時看 l）推進；結束時回 'ended'，被停止回 'stopped'
@@ -601,11 +612,13 @@ function create(deps) {
   function fightTick() {
     const fight = state.fight;
     const settings = state.settings;
-    fight.waited += 1;
     if (state.ticks % TICKS_PER_SEC === 0) {
       healInFight();
       if (!state || state.fight !== fight) return;
     }
+    // 角色忙碌時不送特攻，等候逾時也不算（忙碌中送的會被遊戲拒絕）；補氣照常
+    if (deps.busy?.()) return;
+    fight.waited += 1;
     // 特攻：怪還活著、這場沒被告知沒有目標、距離上次已過最小間隔、而且遊戲的特攻冷卻條（#perform）跑完了才送
     if (settings.specialCommand && !fight.finishing && !fight.noTarget && state.ticks - fight.lastSpecial >= settings.specialIntervalSec * TICKS_PER_SEC && !deps.cooling?.('perform')) {
       fight.lastSpecial = state.ticks;
@@ -1057,6 +1070,8 @@ function create(deps) {
       vitals();
       if (!state) return;
     }
+    // 角色忙碌時（狀態欄「忙碌」或忙碌冷卻條在跑）走路、看房間、下 fight 都先停，逾時也不算；補氣（上面的 vitals）照常
+    if (deps.busy?.() && state.phase !== 'wait' && state.phase !== 'standby' && state.phase !== 'sort') return;
     if (state.assist) { assistTick(); return; }
     if (state.phase === 'wait' || state.phase === 'standby') { waitTick(); return; }
     if (state.phase === 'sort') return;
