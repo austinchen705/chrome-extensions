@@ -404,36 +404,49 @@ function recordDelays(page) {
   return delays;
 }
 
-ui('every message waits a random 5 to 10 seconds before it goes out, however short or long the line is', async () => {
-  // random 0：5 秒；random 趨近 1：10 秒。字數不影響
+ui('every message waits about one second per character, with a little randomness, and between 3 and 30 seconds at the extremes', async () => {
+  // random 0.5：剛好每字 1 秒；random 0：少 20%；random 趨近 1：多 20%；太短的至少 3 秒、太長的最多 30 秒
   const cases = [
-    { text: '在嗎在嗎', random: 0, expected: 5000 },
-    { text: '好'.repeat(100), random: 0, expected: 5000 },
-    { text: '在嗎在嗎', random: 0.999999, expected: 10000 },
-    { text: '好'.repeat(100), random: 0.999999, expected: 10000 },
+    { length: 5, random: 0.5, expected: 5000 },
+    { length: 10, random: 0.5, expected: 10000 },
+    { length: 20, random: 0.5, expected: 20000 },
+    { length: 10, random: 0, expected: 8000 },
+    { length: 10, random: 0.999999, expected: 12000 },
+    { length: 1, random: 0.5, expected: 3000 },
+    { length: 100, random: 0.5, expected: 30000 },
   ];
-  for (const { text, random, expected } of cases) {
-    const script = { id: 'len', lines: [{ who: 'A', text }, { who: 'B', text: '好' }] };
+  for (const { length, random, expected } of cases) {
+    const script = { id: 'len', lines: [{ who: 'A', text: '好'.repeat(length) }, { who: 'B', text: '好' }] };
     const page = await boot({ scale: 20, respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [script] } : {}), initialStore: { chatScript: { enabled: true, typoRate: 0, role: 'A', partner: B.id, partnerName: B.nick } } });
     try {
       page.w.Math.random = () => random;
       const delays = recordDelays(page);
       assert.equal((await start(page)).ok, true);
-      assert.ok(delays.includes(expected), `${text.length} characters with random ${random} should wait ${expected} ms, timers set: ${JSON.stringify(delays)}`);
+      assert.ok(delays.includes(expected), `${length} characters with random ${random} should wait ${expected} ms, timers set: ${JSON.stringify(delays)}`);
     } finally {
       page.close();
     }
   }
 });
 
-ui('a line with ／ goes out as separate tells a random 5 to 10 seconds apart, and B takes the earlier parts in without answering until the last one', async () => {
+test('the wait of one message is worked out from its length by the module, and a correction is always shorter than the shortest wait', () => {
+  require('../catworld-auto-command/chat-script.js');
+  const C = globalThis.CatworldChatScript;
+  assert.deepEqual([5, 10, 20].map(length => C.sendDelayMs('好'.repeat(length), () => 0.5)), [5000, 10000, 20000]);
+  assert.deepEqual([0, 0.5, 1].map(random => C.sendDelayMs('好'.repeat(10), () => random)), [8000, 10000, 12000], 'plus or minus 20 percent');
+  assert.deepEqual([C.sendDelayMs('', () => 0.5), C.sendDelayMs('好', () => 0), C.sendDelayMs('好'.repeat(500), () => 1)], [3000, 3000, 30000], 'bounded to 3 and 30 seconds');
+  assert.equal(C.sendDelayMs('😀'.repeat(10), () => 0.5), 10000, 'characters are counted, not UTF-16 units');
+  assert.ok(C.CORRECTION_DELAY_MS[1] < C.SEND_DELAY_BOUNDS[0], 'the other side cannot answer between a typo and its correction');
+});
+
+ui('a line with ／ goes out as separate tells, each waiting for its own length after the one before, and B takes the earlier parts in without answering until the last one', async () => {
   const split = { id: 't5', lines: [{ who: 'A', text: '欸你看到新聞沒／那個真的很扯' }, { who: 'B', text: '有啊我看到了' }] };
   const both = await pair({ scripts: [split], scale: 5 });
   try {
-    both.pageA.w.Math.random = () => 0.999; // 每一則前都等 5000 + 5000 × 0.999 = 9995 毫秒，所以兩則之間隔 9995
+    both.pageA.w.Math.random = () => 0.5; // 剛好每字 1 秒：第一則 7 個字等 7000 毫秒，第二則 6 個字再等 6000 毫秒
     const delays = recordDelays(both.pageA);
     assert.equal((await start(both.pageA)).ok, true);
-    assert.ok(delays.some((delay, index) => delays[index + 1] - delay === 9995), `the two parts are scheduled 9995 ms apart: ${JSON.stringify(delays)}`);
+    assert.ok(delays.some((delay, index) => delay === 7000 && delays[index + 1] === 13000), `the two parts are scheduled 7000 and 13000 ms after the start: ${JSON.stringify(delays)}`);
     assert.ok(await waitFor(() => both.told.length === 1, 12000), 'the first part goes out alone');
     const during = await status(both.pageB);
     assert.notEqual(during.chatScript, null, 'B recognised the first part as the start of the script');
@@ -455,23 +468,23 @@ const soloWith = (script, role, scale = 20, settings = {}) => boot({
   initialStore: { chatScript: { enabled: true, typoRate: 0, role, partner: role === 'A' ? B.id : A.id, partnerName: role === 'A' ? B.nick : A.nick, ...settings } },
 });
 
-ui('the first part waits 5 seconds at the lowest and the next part another 5 seconds after it', async () => {
+ui('the first part waits 20 percent less than its length at the lowest and the next part its own length again after it', async () => {
   const split = { id: 't5', lines: [{ who: 'A', text: '欸你看到新聞沒／那個真的很扯' }, { who: 'B', text: '有啊我看到了' }] };
   const page = await soloWith(split, 'A');
   try {
     page.w.Math.random = () => 0;
     const delays = recordDelays(page);
     assert.equal((await start(page)).ok, true);
-    const first = delays.indexOf(5000);
-    assert.ok(first >= 0 && delays[first + 1] === 10000, `parts are scheduled at 5000 and 10000 ms: ${JSON.stringify(delays)}`);
+    const first = delays.indexOf(5600); // 7 個字 × 1000 × 0.8
+    assert.ok(first >= 0 && delays[first + 1] === 10400, `parts are scheduled at 5600 and 10400 ms (the second is 6 characters × 800 ms later): ${JSON.stringify(delays)}`);
   } finally {
     page.close();
   }
 });
 
-ui('a correction comes 1 to 3 seconds after its typo, not another 5 to 10, so the other side cannot answer in between', async () => {
+ui('a correction comes 1 to 2.5 seconds after its typo, not another wait of its own, so the other side cannot answer in between', async () => {
   const line = { id: 't7', lines: [{ who: 'A', text: '今天天氣真的很不錯啊' }, { who: 'B', text: '對啊' }] };
-  for (const { random, typoAt, correctionAt } of [{ random: 0, typoAt: 5000, correctionAt: 6000 }, { random: 0.999, typoAt: 9995, correctionAt: 12993 }]) {
+  for (const { random, typoAt, correctionAt } of [{ random: 0, typoAt: 8000, correctionAt: 9000 }, { random: 0.999, typoAt: 11996, correctionAt: 14495 }]) {
     const page = await soloWith(line, 'A', 20, { typoRate: 100 });
     try {
       page.w.Math.random = () => random;
