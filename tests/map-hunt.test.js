@@ -698,6 +698,23 @@ ui('fight: when gc does not make a monster go away three times in a row the room
   }
 });
 
+ui('vitals: low jing sends its command and an empty shen command is skipped', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, ginBelow: 50, ginCommand: 'eatgin', senBelow: 50, senCommand: '' };
+    const doc = page.w.document;
+    doc.body.insertAdjacentHTML('beforeend', '<span id="gin">20</span><span id="eff_gin">100</span><span id="sen">20</span><span id="eff_sen">100</span>');
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, 'eatgin') >= 1, 4000), game.log.join('|'));
+    assert.equal(game.log.some(command => /sen/.test(command)), false, 'nothing is sent for shen without a command');
+  } finally {
+    page.close();
+  }
+});
+
 ui('fight: the special attack waits until the game cooldown bar (#perform) has finished', async () => {
   const page = await boot({ scale: SCALE });
   try {
@@ -1511,6 +1528,26 @@ ui('rounds: it reads the server time at the start, sends the standby command aft
     assert.ok(await waitFor(() => looks.length >= 2, 9000), 'the second round starts');
     assert.ok(looks[1] >= at('10:14:40'), `not before the head start (${new Date(looks[1]).toISOString()})`);
     assert.ok(looks[1] < at('10:15:50'), `and not long after it (${new Date(looks[1]).toISOString()})`);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rounds: with a stop-before-respawn time it fights no new monster that close to the respawn and goes on after it', async () => {
+  const page = await roundPage({ stopBeforeSpawnSec: 120 });
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:14:00+08:00', { scale: 60 }); // 慢一點：沒停打的話，走到怪那裡還不到 10:14:40
+    const fights = [];
+    const script = timeScript(page, clock, command => {
+      if (command === FIGHT) fights.push(clock.server());
+      return false;
+    });
+    world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => fights.length >= 1, 9000), 'it fights after the respawn');
+    assert.ok(fights[0] >= at('10:14:40'), `no fight within two minutes of the 10:15 respawn (${new Date(fights[0]).toISOString()})`);
     await page.ask({ type: 'STOP' });
   } finally {
     page.close();

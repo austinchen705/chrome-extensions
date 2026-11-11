@@ -48,6 +48,10 @@ const FIELDS = [
   { key: 'restResume', label: '自己回：氣回到幾 % 才繼續', type: 'number', default: 80, min: 1, max: 100 },
   { key: 'restCommand', label: '自己回：休息時送的指令（可空）', type: 'text', default: '' },
   { key: 'dangerBelow', label: '自己回：戰鬥中氣低於幾 % 就回家停止（要小於「氣低於幾 % 就休息」，否則自動改小）', type: 'number', default: 20, min: 1, max: 99 },
+  { key: 'ginBelow', label: '精低於幾 % 就送「精低時的指令」（0＝不看精）', type: 'number', default: 0, min: 0, max: 99 },
+  { key: 'ginCommand', label: '精低時的指令（空白＝不看精；送出後看到「沒藥關鍵字」就回家停止）', type: 'text', default: '' },
+  { key: 'senBelow', label: '神低於幾 % 就送「神低時的指令」（0＝不看神）', type: 'number', default: 0, min: 0, max: 99 },
+  { key: 'senCommand', label: '神低時的指令（空白＝不看神；送出後看到「沒藥關鍵字」就回家停止）', type: 'text', default: '' },
   { key: 'learnExits', label: '自動學習出口（記下看到的出口與實際走到的房間；路線不通時才試出口）', type: 'select', options: [['off', '關'], ['on', '開']], default: 'off' },
   { key: 'prescan', label: '打怪前先掃描這一區還沒走過的房間（沒有圖資才掃；走過的、走不到的不再掃；掃完再開始打）', type: 'select', options: [['on', '開'], ['off', '關']], default: 'on' },
   { key: 'loadMaxPercent', label: '負重（i 的「載重」）超過幾 % 就先去整理（0＝不檢查）', type: 'number', default: 90, min: 0, max: 100 },
@@ -69,6 +73,7 @@ const FIELDS = [
   { key: 'loopRounds', label: '巡完一輪後等下一個重生再巡（關＝巡完就停）', type: 'select', options: [['on', '開'], ['off', '關']], default: 'on' },
   { key: 'standbyCommand', label: '巡完一輪後送的待命指令（可空）', type: 'text', default: '' },
   { key: 'aheadSec', label: '提早幾秒開始下一輪', type: 'number', default: 20, min: 0, max: 600 },
+  { key: 'stopBeforeSpawnSec', label: '重生前幾秒停打（0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；要比「提早幾秒開始下一輪」大才有用；沒開「等下一個重生」就直接停）', type: 'number', default: 0, min: 0, max: 600 },
 ];
 
 // 儲存的設定可能缺欄位或被改壞：每個欄位都檢查，不合法用預設
@@ -331,6 +336,7 @@ function create(deps) {
     if (a.stuck >= MAX_STUCK) { trace('怪數一直沒減少，略過這間'); leave('打不動'); return; }
     const target = mine.find(mob => SAFE_ID.test(mob.id));
     if (!target) { leave('怪的 ID 不能用'); return; }
+    if (spawnPause()) { trace('重生前停打'); return; }
     trace(`送 fight ${target.ref ?? target.id}`);
     a.sent = true;
     a.dead = false;
@@ -396,6 +402,7 @@ function create(deps) {
       // ID 會被放進 fight 指令，和 finger 一樣只收普通英數
       const target = mine.find(mob => SAFE_ID.test(mob.id));
       if (!target) { state.skipped.push({ key: here, why: '怪的 ID 不能用' }); doneWith(here); return; }
+      if (spawnPause()) return;
       if (!(await restGate(token))) return;
       let outcome = await fightOne(token, target);
       if (state !== token || outcome === 'stopped') return;
@@ -502,13 +509,29 @@ function create(deps) {
   // 窗口從指令真的送出才開始算（佇列可能塞住），不然慢送出時遊戲的回應會落在窗口外
   function eat() {
     state.lastEat = state.ticks;
+    swallow(state.settings.eatCommand);
+  }
+  function swallow(command) {
     const eating = { sent: false, until: 0, buffer: '' };
     state.eating = eating;
-    deps.send(state.settings.eatCommand, () => {
+    deps.send(command, () => {
       if (state?.eating !== eating) return;
       eating.sent = true;
       eating.until = state.ticks + NO_MEDICINE_WINDOW_TICKS;
     });
+  }
+  // 精、神：比照吃藥，低於門檻送指令（同一項至少隔 5 秒），送出後一樣聽「沒藥關鍵字」；沒填、讀不到都不看（選填的，不能因此停）
+  const TOP_UPS = [['gin', '精'], ['sen', '神']];
+  function topUp() {
+    for (const [key, name] of TOP_UPS) {
+      const below = state.settings[`${key}Below`];
+      const command = state.settings[`${key}Command`];
+      if (!command || !(below > 0)) continue;
+      const percent = deps.percent(name);
+      if (!Number.isFinite(percent) || percent >= below || state.ticks - (state.lastTopUp[key] ?? -Infinity) < EAT_GAP_TICKS) continue;
+      state.lastTopUp[key] = state.ticks;
+      swallow(command);
+    }
   }
   // 吃藥後遊戲回「沒藥」：回家（停止後才送，不會被取消）、停止、警報
   function goHomeAndStop(reason) {
@@ -533,6 +556,7 @@ function create(deps) {
   }
   // 走路與看房間時每秒補氣：讀不到氣就停（不能在不知道氣的情況下亂走）
   function vitals() {
+    topUp();
     const percent = deps.kee();
     if (!Number.isFinite(percent)) { finish('讀不到氣，已停止', { alert: true }); return; }
     // 掃描時整區走動，被主動攻擊的怪打到的機會比巡怪多：氣掉到危險線就回家停止（不管補氣方式，沒有在打架也一樣）
@@ -563,6 +587,7 @@ function create(deps) {
 
   // 戰鬥中補氣（每秒看一次）：吃藥模式低於門檻就送吃藥指令（至少間隔 5 秒）；自己回模式戰鬥中沒辦法閒置，掉到危險線就回家、停止、警報
   function healInFight() {
+    topUp();
     const settings = state.settings;
     const percent = deps.kee();
     if (!Number.isFinite(percent)) { finish('讀不到氣，已停止', { alert: true }); return; }
@@ -908,6 +933,23 @@ function create(deps) {
     state.phase = 'standby';
     deps.notify();
   }
+  // 重生前停打：離下一個重生（伺服器時間每 15 分鐘）不到設定的秒數，就不再開打新的一隻（打到一半的由呼叫端打完才會走到這裡）；
+  // 這一輪已經算進那個重生（after ≥ 它，例如等完重生才開始的這一輪）就不停，否則會一直停。停了之後和一輪結束一樣待命、等那個重生
+  function spawnPause() {
+    const sec = state.settings.stopBeforeSpawnSec;
+    if (!(sec > 0) || state.scan) return false;
+    const now = deps.now() + state.offset;
+    const spawn = nextSpawn(now);
+    if (state.after >= spawn || spawn - now > sec * 1000) return false;
+    state.assist = null;
+    if (state.settings.loopRounds !== 'on') { finish(`重生前 ${sec} 秒停打（${hhmm(spawn)} 重生），已停止`); return true; }
+    console.log(`[catworld] 巡怪：重生前 ${sec} 秒停打，等 ${hhmm(spawn)} 的重生`);
+    state.after = spawn - 1; // calibrate 用 nextSpawn(after) 決定等哪一個重生
+    if (state.settings.standbyCommand && !sendOrStop(state.settings.standbyCommand)) return true;
+    state.phase = 'standby';
+    deps.notify();
+    return true;
+  }
   function calibrate() {
     const token = state;
     state.phase = 'wait';
@@ -1088,7 +1130,7 @@ function create(deps) {
       const learned = learn || settings.prescan === 'on' ? forgetOut(normalizeLearned(await deps.exits())) : {};
       if (cancelled) return fail('已取消', false);
       let offset = 0;
-      if (settings.loopRounds === 'on') {
+      if (settings.loopRounds === 'on' || (!scan && settings.stopBeforeSpawnSec > 0)) {
         const read = await readOffset();
         if (cancelled) return fail('已取消', false);
         if (read === null) return fail('讀不到伺服器時間（time 的輸出），沒有開始');
@@ -1117,7 +1159,7 @@ function create(deps) {
       state = {
         round: 1, after: deps.now() + offset + settings.aheadSec * 1000, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
         mobs: scan ? [] : target.mobs, area: target.area, offset, scan: scan || prescan, prescan, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph, targets, skipped: [...baseSkipped], fixed: [],
-        settings, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
+        settings, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, lastEat: -Infinity, lastTopUp: {}, lastRest: -Infinity, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
         ...roundFields(), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       note = '';

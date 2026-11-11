@@ -1421,6 +1421,11 @@ hunt = CatworldMapHunt.create({
     observer.observe(document.getElementById('content'), { subtree: true, childList: true, characterData: true });
     return () => observer.disconnect();
   },
+  // 精、神這類讀數的百分比（和觸發規則讀同一份）；讀不到回 NaN
+  percent: name => {
+    const stat = readStat(name);
+    return stat && stat.max > 0 ? (stat.value / stat.max) * 100 : NaN;
+  },
   kee: () => {
     const stat = readStat('氣');
     return stat && stat.max > 0 ? (stat.value / stat.max) * 100 : NaN;
