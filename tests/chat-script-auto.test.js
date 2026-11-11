@@ -140,3 +140,74 @@ ui('a scene opened by hand counts as the last scene for the gap, and an automati
     page.close();
   }
 });
+
+// ---- 取消 ----
+const COMBAT = { ...PRACTICE, group: 'combat' };
+const settingsOf = (page, patch) => ({ enabled: true, typoRate: 0, role: 'A', partner: B.id, partnerName: B.nick, autoEveryMin: 1, ...patch });
+const changeSettings = (page, patch) => page.changeListeners.forEach(listener => listener({ chatScript: { newValue: settingsOf(page, patch) } }, 'local'));
+
+ui('stopping the practice group ends the automatic scenes, and starting it again warms up again', async () => {
+  const page = await soloA();
+  try {
+    await page.ask(PRACTICE);
+    assert.ok(await waitFor(() => tells(page).length >= 1, 4000));
+    await page.ask({ type: 'STOP_TRIGGER', group: 'practice' });
+    const before = tells(page).length;
+    await sleep(1200); // 兩場的最小間隔（600 毫秒）早就過了，沒停的話第二場早就開了
+    assert.equal(tells(page).length, before, 'no scene while the practice group is off');
+    const restartedAt = Date.now();
+    await page.ask(PRACTICE);
+    assert.ok(await waitFor(() => tells(page).length > before, 4000), 'and it works again after the restart');
+    assert.ok(Date.now() - restartedAt >= 150, `the warm-up is counted again from the restart, took ${Date.now() - restartedAt} ms`);
+  } finally {
+    page.close();
+  }
+});
+
+ui('stopping everything (here a stop keyword on screen) ends the automatic scenes too', async () => {
+  const page = await soloA();
+  try {
+    await page.ask(PRACTICE);
+    assert.ok(await waitFor(() => tells(page).length >= 1, 4000));
+    page.output('<span>jrealm\n</span>');
+    await sleep(100);
+    const before = tells(page).length;
+    await sleep(1200);
+    assert.equal(tells(page).length, before, 'nothing opens after everything was stopped');
+  } finally {
+    page.close();
+  }
+});
+
+ui('turning the feature off, changing the role, clearing the partner or setting the minutes to 0 each end the automatic scenes', async () => {
+  const patches = [{ enabled: false }, { role: 'B' }, { partner: '' }, { autoEveryMin: 0 }];
+  for (const patch of patches) {
+    const page = await soloA();
+    try {
+      await page.ask(PRACTICE);
+      await sleep(60); // 暖機還沒過
+      changeSettings(page, patch);
+      await sleep(900);
+      assert.equal(tells(page).length, 0, `no scene after ${JSON.stringify(patch)}`);
+    } finally {
+      page.close();
+    }
+  }
+});
+
+ui('the combat group is not a trigger for automatic scenes, and stopping it does not stop the practice group\'s', async () => {
+  const combatOnly = await soloA();
+  const both = await soloA();
+  try {
+    await combatOnly.ask(COMBAT);
+    await both.ask(PRACTICE);
+    await both.ask(COMBAT);
+    await both.ask({ type: 'STOP_TRIGGER', group: 'combat' });
+    await sleep(900);
+    assert.equal(tells(combatOnly).length, 0, 'the combat group alone never opens a scene');
+    assert.ok(tells(both).length >= 1, 'the practice group keeps it going');
+  } finally {
+    combatOnly.close();
+    both.close();
+  }
+});
