@@ -1167,10 +1167,41 @@ async function refreshLive() {
   Object.values(panes).forEach(pane => pane.refresh(status));
 }
 
-// 地圖巡怪：欄位、預設值與檢查都由 map-hunt.js 的 FIELDS 決定；每改一個欄位就存整份（不合法的欄位退回預設並顯示回去）
+// 地圖巡怪：欄位、預設值與檢查都由 map-hunt.js 的 FIELDS 決定；每改一個欄位就存整份（不合法的欄位退回預設並顯示回去）。
+// 欄位依 GROUPS 分成摺疊區塊（id 是 fold-hunt-<組>，展開狀態和其他摺疊一樣記在 popupFolds），收起時標題寫出重點；
+// 用不到的欄位（show 為 false）藏起來但照樣存，開始前必填但沒填的（missingFields）用琥珀色標出來
 let huntSettings = CatworldMapHunt.normalizeSettings(null);
-const showHuntSettings = () => CatworldMapHunt.FIELDS.forEach(item => { $(`hunt-${item.key}`).value = huntSettings[item.key]; });
+const huntGroups = {};
+const showHuntSettings = () => {
+  const missing = new Set(CatworldMapHunt.missingFields(huntSettings).map(field => field.key));
+  CatworldMapHunt.FIELDS.forEach(item => {
+    $(`hunt-${item.key}`).value = huntSettings[item.key];
+    const cell = $(`hunt-${item.key}`).closest('.hfield');
+    cell.hidden = !CatworldMapHunt.fieldShown(item, huntSettings);
+    cell.classList.toggle('hmissing', missing.has(item.key));
+  });
+  document.querySelectorAll('#huntFields .hrow').forEach(row => { row.hidden = [...row.children].every(cell => cell.hidden); });
+  CatworldMapHunt.GROUPS.forEach(group => {
+    const { box, summary } = huntGroups[group.id];
+    box.hidden = [...box.querySelectorAll('.hfield')].every(cell => cell.hidden);
+    const lacking = CatworldMapHunt.FIELDS.some(item => item.group === group.id && missing.has(item.key));
+    summary.textContent = `${group.title}　${lacking ? '⚠ 有必填的沒填　' : ''}${group.summary(huntSettings)}`;
+    summary.classList.toggle('hlacking', lacking);
+  });
+};
+CatworldMapHunt.GROUPS.forEach(group => {
+  const box = document.createElement('details');
+  box.className = 'fold';
+  box.id = `fold-hunt-${group.id}`;
+  const summary = document.createElement('summary');
+  box.append(summary);
+  huntGroups[group.id] = { box, summary };
+  $('huntFields').append(box);
+});
+const huntRows = {};
 CatworldMapHunt.FIELDS.forEach(item => {
+  const cell = document.createElement('div');
+  cell.className = 'hfield';
   const label = document.createElement('label');
   label.htmlFor = `hunt-${item.key}`;
   label.textContent = item.label;
@@ -1184,7 +1215,22 @@ CatworldMapHunt.FIELDS.forEach(item => {
     showHuntSettings();
     chrome.storage.local.set({ [CatworldMapHunt.SETTINGS_KEY]: huntSettings });
   });
-  $('huntFields').append(label, input);
+  cell.append(label, input);
+  if (item.hint) {
+    const hint = document.createElement('div');
+    hint.className = 'hint tight';
+    hint.textContent = item.hint;
+    cell.append(hint);
+  }
+  const box = huntGroups[item.group].box;
+  if (!item.row) { box.append(cell); return; }
+  // 同一個 row 的欄位排同一列（例如門檻與指令）
+  if (!huntRows[item.row]) {
+    huntRows[item.row] = document.createElement('div');
+    huntRows[item.row].className = 'hrow';
+    box.append(huntRows[item.row]);
+  }
+  huntRows[item.row].append(cell);
 });
 showHuntSettings();
 // 自動學到的 NPC（finger 找不到的 ID）：只顯示與清除，寫入在遊戲頁的 content.js

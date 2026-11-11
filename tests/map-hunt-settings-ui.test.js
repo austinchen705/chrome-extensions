@@ -95,6 +95,60 @@ ui('an edit is saved at once with the other fields, and a broken stored value fa
   }
 });
 
+const cellOf = (doc, key) => field(doc, key).closest('.hfield');
+
+ui('the fields are split into closed folds whose titles carry the main values', async () => {
+  const { dom, doc } = await boot({ mapHuntSettings: { eatCommand: 'tn', homeCommand: 'ride', specialCommand: 'ps' } });
+  try {
+    const folds = [...doc.querySelectorAll('#huntFields > details.fold')];
+    assert.deepEqual(folds.map(box => box.id), ['fold-hunt-move', 'fold-hunt-fight', 'fold-hunt-special', 'fold-hunt-heal', 'fold-hunt-sort', 'fold-hunt-rounds', 'fold-hunt-advanced']);
+    assert.ok(folds.every(box => !box.open), 'all closed at first');
+    assert.ok(doc.getElementById('fold-hunt-heal').contains(field(doc, 'ginCommand')), 'jing sits with healing');
+    assert.match(doc.querySelector('#fold-hunt-heal > summary').textContent, /補氣與安全.*吃藥 tn <50%.*回家 ride/);
+    assert.match(doc.querySelector('#fold-hunt-special > summary').textContent, /ps，至少隔 10 秒/);
+    assert.ok(field(doc, 'ginBelow').closest('.hrow') === field(doc, 'ginCommand').closest('.hrow'), 'threshold and command share a row');
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('fields that do not apply are hidden but kept, and come back when the mode changes', async () => {
+  const { dom, doc, store } = await boot({ mapHuntSettings: { eatCommand: 'tn', homeCommand: 'ride' } });
+  try {
+    assert.equal(cellOf(doc, 'restBelow').hidden, true, 'rest fields are hidden in eat mode');
+    assert.equal(cellOf(doc, 'eatCommand').hidden, false);
+    change(dom, field(doc, 'healMode'), 'rest');
+    assert.equal(cellOf(doc, 'restBelow').hidden, false);
+    assert.equal(cellOf(doc, 'eatCommand').hidden, true);
+    assert.ok(await waitFor(() => store.mapHuntSettings?.healMode === 'rest'));
+    assert.equal(store.mapHuntSettings.eatCommand, 'tn', 'the hidden value is still saved');
+    change(dom, field(doc, 'fightMode'), 'assist');
+    assert.equal(doc.getElementById('fold-hunt-special').hidden, true, 'the special attack group is gone in fight-only mode');
+    assert.equal(cellOf(doc, 'killCommand').hidden, true);
+    change(dom, field(doc, 'loadMaxPercent'), '0');
+    assert.equal(cellOf(doc, 'tripCommand').hidden, true, 'no sorting fields without a load check');
+    assert.match(doc.querySelector('#fold-hunt-sort > summary').textContent, /不檢查/);
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('a field that must be filled before starting is marked until it is filled', async () => {
+  const { dom, doc } = await boot();
+  try {
+    assert.ok(cellOf(doc, 'homeCommand').classList.contains('hmissing'));
+    assert.ok(cellOf(doc, 'eatCommand').classList.contains('hmissing'));
+    assert.match(doc.querySelector('#fold-hunt-heal > summary').textContent, /⚠ 有必填的沒填/);
+    change(dom, field(doc, 'homeCommand'), 'ride');
+    assert.equal(cellOf(doc, 'homeCommand').classList.contains('hmissing'), false);
+    change(dom, field(doc, 'fightMode'), 'assist');
+    assert.equal(cellOf(doc, 'eatCommand').classList.contains('hmissing'), false, 'fight-only mode does not need the eat command');
+    assert.doesNotMatch(doc.querySelector('#fold-hunt-heal > summary').textContent, /⚠/);
+  } finally {
+    dom.window.close();
+  }
+});
+
 ui('the learned NPCs are listed, and the clear button forgets them', async () => {
   const { dom, doc, store } = await boot({ mapHuntNpcs: ['smith', 'banker'] });
   try {

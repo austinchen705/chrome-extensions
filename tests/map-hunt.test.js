@@ -1014,7 +1014,7 @@ ui('heal: eat mode without the eat command, the no-medicine keyword and the home
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } } });
     await pick(page, MOB);
     click(page, '.hstart');
-    assert.ok(await waitFor(() => /吃藥指令、沒藥關鍵字、回家指令/.test(huntText(page)), 3000), huntText(page));
+    assert.ok(await waitFor(() => /吃藥指令、沒藥時遊戲回的字、回家指令/.test(huntText(page)), 3000), huntText(page));
     assert.equal(await hunting(page), false);
     await sleep(200);
     assert.deepEqual(game.log, [], 'nothing was sent');
@@ -1032,7 +1032,7 @@ ui('heal: rest mode only needs the home command', async () => {
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /填：回家指令/.test(huntText(page)), 3000), huntText(page));
-    assert.equal(/吃藥指令|沒藥關鍵字/.test(huntText(page)), false);
+    assert.equal(/吃藥指令|沒藥時遊戲回的字/.test(huntText(page)), false);
     page.store.mapHuntSettings = { healMode: 'rest', homeCommand: 'recall', loopRounds: 'off', prescan: 'off' };
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));

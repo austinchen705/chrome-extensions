@@ -34,47 +34,66 @@ const SORT_QUIET_MS = 1000; // 鑑定的指令送完後，再等這麼久沒有�
 const ASSIST_QUIET_TICKS = 2; // 只下 fight 模式：輸出靜止這麼多個 tick 才解析一次（一份 l 或 i 的輸出可能分批到）
 const NO_MEDICINE_WINDOW_TICKS = 10 * TICKS_PER_SEC; // 吃藥指令真的送出後，這麼久內出現沒藥關鍵字才算
 
-// 設定頁的欄位（也決定預設值與檢查）：type 是 text、number 或 select
+// 設定頁的欄位（也決定預設值與檢查）：type 是 text、number 或 select；label 是短標籤、hint 是標籤下的小字說明；
+// group 是設定頁的分組（GROUPS），同一個 row 的欄位排在同一列；show(設定) 為 false 時設定頁藏起來（值照樣保留、照樣存）；
+// required(設定) 為 true 而沒填時，開始巡怪會被擋下、設定頁用琥珀色標出來
+const ON_OFF = [['on', '開'], ['off', '關']];
+const full = s => s.fightMode === 'full';
+const eatMode = s => s.healMode === 'eat';
+const sorting = s => s.loadMaxPercent > 0;
 const FIELDS = [
-  { key: 'commandGapMinMs', label: '巡怪送指令的最短間隔（毫秒，0～3000；走路、看房間、打怪、補氣都算，和「指令間隔」取較大的，所以想更快也要把「指令間隔」調小）', type: 'number', default: 1000, min: 0, max: 3000 },
-  { key: 'commandGapMaxMs', label: '巡怪送指令的最長間隔（毫秒；每次在最短與最長之間隨機）', type: 'number', default: 2000, min: 0, max: 3000 },
-  { key: 'fightMode', label: '戰鬥方式', type: 'select', options: [['full', '完整（巡怪自己打、補氣、撿屍）'], ['assist', '只下 fight（戰鬥、補氣、撿屍交給你的觸發規則；巡怪只看 i 與 l 的輸出；吃藥模式照樣吃藥，氣低於危險線回家）']], default: 'full' },
-  { key: 'healMode', label: '補氣方式', type: 'select', options: [['eat', '吃藥'], ['rest', '自己回']], default: 'eat' },
-  { key: 'eatBelow', label: '氣低於幾 % 就吃藥', type: 'number', default: 50, min: 1, max: 99 },
-  { key: 'eatCommand', label: '吃藥指令（可多個，用 ; 分隔）', type: 'text', default: '' },
-  { key: 'noMedicineKeyword', label: '沒藥時遊戲回的字（吃藥模式）', type: 'text', default: '' },
-  { key: 'homeCommand', label: '回家指令', type: 'text', default: '' },
-  { key: 'restBelow', label: '自己回：氣低於幾 % 就休息', type: 'number', default: 50, min: 2, max: 99 },
-  { key: 'restResume', label: '自己回：氣回到幾 % 才繼續', type: 'number', default: 80, min: 1, max: 100 },
-  { key: 'restCommand', label: '自己回：休息時送的指令（可空）', type: 'text', default: '' },
-  { key: 'dangerBelow', label: '自己回：戰鬥中氣低於幾 % 就回家停止（要小於「氣低於幾 % 就休息」，否則自動改小）', type: 'number', default: 20, min: 1, max: 99 },
-  { key: 'ginBelow', label: '精低於幾 % 就送「精低時的指令」（0＝不看精）', type: 'number', default: 0, min: 0, max: 99 },
-  { key: 'ginCommand', label: '精低時的指令（空白＝不看精；送出後看到「沒藥關鍵字」就回家停止）', type: 'text', default: '' },
-  { key: 'senBelow', label: '神低於幾 % 就送「神低時的指令」（0＝不看神）', type: 'number', default: 0, min: 0, max: 99 },
-  { key: 'senCommand', label: '神低時的指令（空白＝不看神；送出後看到「沒藥關鍵字」就回家停止）', type: 'text', default: '' },
-  { key: 'learnExits', label: '自動學習出口（記下看到的出口與實際走到的房間；路線不通時才試出口）', type: 'select', options: [['off', '關'], ['on', '開']], default: 'off' },
-  { key: 'prescan', label: '打怪前先掃描這一區還沒走過的房間（沒有圖資才掃；走過的、走不到的不再掃；掃完再開始打）', type: 'select', options: [['on', '開'], ['off', '關']], default: 'on' },
-  { key: 'loadMaxPercent', label: '負重（i 的「載重」）超過幾 % 就先去整理（0＝不檢查）', type: 'number', default: 90, min: 0, max: 100 },
-  { key: 'tripCommand', label: '整理：前往整理處的指令／巨集（路線、鑑定全寫在這裡，最後要停在能 sell all 的地方；不要自己寫 sell all，工具會在標記好東西之後才送；可用 ; 與 @等待。前往與回程至少填一個才走自動整理）', type: 'text', default: '' },
-  { key: 'sortKeep', label: '整理：鑑定完要不要留好裝備（留＝好的 secure 或 give 給小號再賣其餘；全賣＝不看背包，直接 sell all，只有你自己 secure 過的不會賣）', type: 'select', options: [['keep', '留好裝備'], ['none', '全賣，不留']], default: 'keep' },
-  { key: 'altId', label: '整理：小號的英文 ID（好東西 give 給它；不填就只用 secure 標記留在身上）', type: 'text', default: '' },
-  { key: 'returnCommand', label: '整理：回到巡怪地圖的指令／巨集（回來後要在原本這一區才會繼續）', type: 'text', default: '' },
-  { key: 'sortPerHour', label: '整理：每小時最多整理幾次（超過就停止並警報）', type: 'number', default: 6, min: 1, max: 60 },
-  { key: 'afterKillCommand', label: '怪倒下後送的指令（可多個，用 ; 分隔）', type: 'text', default: 'gc' },
-  { key: 'specialCommand', label: '特攻指令（可空，可以是你的別名）', type: 'text', default: '' },
-  { key: 'specialIntervalSec', label: '特攻最小間隔（秒）', type: 'number', default: 10, min: 1, max: 600 },
-  { key: 'killCommand', label: '打死用的指令（怪不想打、或補刀時送「這個指令 怪的ID」；預設 kill，可以填你的別名，例如 k）', type: 'text', default: 'kill' },
-  { key: 'refuseKeyword', label: '怪不想打時遊戲回的字（fight 被拒就改 kill）', type: 'text', default: '並不想跟你較量' },
-  { key: 'endKeywords', label: '怪倒下的字（用、分隔）', type: 'text', default: '一動也不動了、死了' },
-  { key: 'knockoutKeywords', label: '其中哪些字代表只是昏迷（用、分隔；昏迷的怪會再補 kill 打死）', type: 'text', default: '一動也不動了' },
-  { key: 'finishKnockedOut', label: '怪昏迷了就補 kill 確實打死再撿屍', type: 'select', options: [['on', '開'], ['off', '關']], default: 'on' },
-  { key: 'fightTimeoutSec', label: '等怪倒下最久幾秒（逾時就用 l 看一眼）', type: 'number', default: 60, min: 5, max: 600 },
-  { key: 'npcWhitelist', label: 'NPC 白名單（英文 ID，用、分隔）', type: 'text', default: '' },
-  { key: 'loopRounds', label: '巡完一輪後等下一個重生再巡（關＝巡完就停）', type: 'select', options: [['on', '開'], ['off', '關']], default: 'on' },
-  { key: 'standbyCommand', label: '巡完一輪後送的待命指令（可空）', type: 'text', default: '' },
-  { key: 'aheadSec', label: '提早幾秒開始下一輪', type: 'number', default: 20, min: 0, max: 600 },
-  { key: 'stopBeforeSpawnSec', label: '重生前幾秒停打（0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；要比「提早幾秒開始下一輪」大才有用；沒開「等下一個重生」就直接停）', type: 'number', default: 0, min: 0, max: 600 },
+  { key: 'commandGapMinMs', group: 'move', row: 'gap', label: '指令間隔最短（毫秒）', hint: '走路、看房間、打怪、補氣都算；和「指令間隔」取較大的，想更快兩個都要調小', type: 'number', default: 1000, min: 0, max: 3000 },
+  { key: 'commandGapMaxMs', group: 'move', row: 'gap', label: '最長（毫秒）', hint: '每次在最短與最長之間隨機', type: 'number', default: 2000, min: 0, max: 3000 },
+  { key: 'learnExits', group: 'move', label: '自動學習出口', hint: '記下看到的出口與實際走到的房間；路線不通時才試出口', type: 'select', options: [['off', '關'], ['on', '開']], default: 'off' },
+  { key: 'prescan', group: 'move', label: '打怪前先補掃沒走過的房間', hint: '沒有圖資的房間才掃，走過的、走不到的不再掃；掃完再開始打', type: 'select', options: ON_OFF, default: 'on' },
+  { key: 'fightMode', group: 'fight', label: '戰鬥方式', hint: '只下 fight：戰鬥、補氣、撿屍交給你的觸發規則，巡怪只看 i 與 l 的輸出；吃藥模式照樣吃藥，氣低於危險線回家', type: 'select', options: [['full', '完整（巡怪自己打、補氣、撿屍）'], ['assist', '只下 fight（交給你的觸發規則）']], default: 'full' },
+  { key: 'killCommand', group: 'fight', show: full, label: '打死用的指令', hint: '怪不想打、或補刀時送「這個指令 怪的ID」；可以填你的別名，例如 k', type: 'text', default: 'kill' },
+  { key: 'afterKillCommand', group: 'fight', show: full, label: '怪倒下後送的指令', hint: '可多個，用 ; 分隔', type: 'text', default: 'gc' },
+  { key: 'fightTimeoutSec', group: 'fight', label: '等怪倒下最久（秒）', hint: '逾時就用 l 看一眼', type: 'number', default: 60, min: 5, max: 600 },
+  { key: 'endKeywords', group: 'fight', label: '怪倒下的字', hint: '用、分隔', type: 'text', default: '一動也不動了、死了' },
+  { key: 'knockoutKeywords', group: 'fight', label: '其中代表只是昏迷的字', hint: '用、分隔；昏迷的怪會再補打死', type: 'text', default: '一動也不動了' },
+  { key: 'finishKnockedOut', group: 'fight', show: full, label: '怪昏迷了就補打死再撿屍', type: 'select', options: ON_OFF, default: 'on' },
+  { key: 'refuseKeyword', group: 'fight', show: full, label: '怪不想打時遊戲回的字', hint: 'fight 被拒就改送「打死用的指令」', type: 'text', default: '並不想跟你較量' },
+  { key: 'specialCommand', group: 'special', show: full, row: 'special', label: '特攻指令', hint: '可空，可以是你的別名；等特攻冷卻條跑完、角色不忙碌才送', type: 'text', default: '' },
+  { key: 'specialIntervalSec', group: 'special', show: full, row: 'special', label: '最小間隔（秒）', type: 'number', default: 10, min: 1, max: 600 },
+  { key: 'healMode', group: 'heal', label: '補氣方式', type: 'select', options: [['eat', '吃藥'], ['rest', '自己回']], default: 'eat' },
+  { key: 'eatBelow', group: 'heal', show: eatMode, row: 'eat', label: '氣低於 %', type: 'number', default: 50, min: 1, max: 99 },
+  { key: 'eatCommand', group: 'heal', show: eatMode, row: 'eat', label: '吃藥指令', hint: '可多個，用 ; 分隔', type: 'text', default: '', required: s => eatMode(s) && full(s) },
+  { key: 'restBelow', group: 'heal', show: s => !eatMode(s), row: 'rest', label: '氣低於 % 休息', type: 'number', default: 50, min: 2, max: 99 },
+  { key: 'restResume', group: 'heal', show: s => !eatMode(s), row: 'rest', label: '回到 % 才繼續', type: 'number', default: 80, min: 1, max: 100 },
+  { key: 'restCommand', group: 'heal', show: s => !eatMode(s), label: '休息時送的指令', hint: '可空', type: 'text', default: '' },
+  { key: 'ginBelow', group: 'heal', row: 'gin', label: '精低於 %', hint: '0＝不看', type: 'number', default: 0, min: 0, max: 99 },
+  { key: 'ginCommand', group: 'heal', row: 'gin', label: '精低時的指令', hint: '空白＝不看', type: 'text', default: '' },
+  { key: 'senBelow', group: 'heal', row: 'sen', label: '神低於 %', hint: '0＝不看', type: 'number', default: 0, min: 0, max: 99 },
+  { key: 'senCommand', group: 'heal', row: 'sen', label: '神低時的指令', hint: '空白＝不看', type: 'text', default: '' },
+  { key: 'noMedicineKeyword', group: 'heal', show: s => eatMode(s) || Boolean(s.ginCommand || s.senCommand), label: '沒藥時遊戲回的字', hint: '吃藥、精、神的指令送出後看到這個字就回家停止', type: 'text', default: '', required: s => eatMode(s) && full(s) },
+  { key: 'dangerBelow', group: 'heal', label: '危險線：氣低於 % 回家停止', hint: '自己回模式的戰鬥中、只下 fight 模式、掃描時都看；要小於「氣低於 % 休息」，否則自動改小', type: 'number', default: 20, min: 1, max: 99 },
+  { key: 'homeCommand', group: 'heal', label: '回家指令', type: 'text', default: '', required: () => true },
+  { key: 'loadMaxPercent', group: 'sort', label: '負重超過 % 就去整理', hint: 'i 的「載重」；0＝不檢查', type: 'number', default: 90, min: 0, max: 100 },
+  { key: 'tripCommand', group: 'sort', show: sorting, label: '前往整理處的指令／巨集', hint: '路線、鑑定全寫在這裡，最後停在能 sell all 的地方；不要自己寫 sell all。前往與回程至少填一個才走自動整理；可用 ; 與 @等待', type: 'text', default: '' },
+  { key: 'sortKeep', group: 'sort', show: sorting, label: '鑑定完留不留好裝備', hint: '留＝好的 secure 或 give 給小號再賣其餘；全賣＝不看背包直接 sell all，只有你自己 secure 過的不會賣', type: 'select', options: [['keep', '留好裝備'], ['none', '全賣，不留']], default: 'keep' },
+  { key: 'altId', group: 'sort', show: s => sorting(s) && s.sortKeep !== 'none', label: '小號的英文 ID', hint: '好東西 give 給它；不填就只用 secure 標記留在身上', type: 'text', default: '' },
+  { key: 'returnCommand', group: 'sort', show: sorting, label: '回到巡怪地圖的指令／巨集', hint: '回來後要在原本這一區才會繼續', type: 'text', default: '' },
+  { key: 'sortPerHour', group: 'sort', show: sorting, label: '每小時最多整理幾次', hint: '超過就停止並警報', type: 'number', default: 6, min: 1, max: 60 },
+  { key: 'loopRounds', group: 'rounds', label: '巡完一輪後等下一個重生', hint: '關＝巡完就停', type: 'select', options: ON_OFF, default: 'on' },
+  { key: 'standbyCommand', group: 'rounds', show: s => s.loopRounds === 'on', label: '巡完一輪後的待命指令', hint: '可空', type: 'text', default: '' },
+  { key: 'aheadSec', group: 'rounds', show: s => s.loopRounds === 'on', label: '提早幾秒開始下一輪', type: 'number', default: 20, min: 0, max: 600 },
+  { key: 'stopBeforeSpawnSec', group: 'rounds', label: '重生前幾秒停打', hint: '0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；要比「提早幾秒」大才有用；沒開「等下一個重生」就直接停', type: 'number', default: 0, min: 0, max: 600 },
+  { key: 'npcWhitelist', group: 'advanced', label: 'NPC 白名單', hint: '英文 ID，用、分隔', type: 'text', default: '' },
 ];
+// 設定頁的分組；summary 是收起時標題後面的重點
+const gapText = s => `${s.commandGapMinMs}～${s.commandGapMaxMs}ms`;
+const GROUPS = [
+  { id: 'move', title: '走路與速度', summary: s => `${gapText(s)}｜學出口 ${s.learnExits === 'on' ? '開' : '關'}｜補掃 ${s.prescan === 'on' ? '開' : '關'}` },
+  { id: 'fight', title: '戰鬥', summary: s => (full(s) ? `完整｜打死用 ${s.killCommand}｜逾時 ${s.fightTimeoutSec} 秒` : `只下 fight｜逾時 ${s.fightTimeoutSec} 秒`) },
+  { id: 'special', title: '特攻', summary: s => (s.specialCommand ? `${s.specialCommand}，至少隔 ${s.specialIntervalSec} 秒` : '沒填') },
+  { id: 'heal', title: '補氣與安全', summary: s => [eatMode(s) ? `吃藥 ${s.eatCommand || '（沒填）'} <${s.eatBelow}%` : `自己回 <${s.restBelow}%`, `回家 ${s.homeCommand || '（沒填）'}`, s.ginCommand && s.ginBelow > 0 ? `精 <${s.ginBelow}%` : '', s.senCommand && s.senBelow > 0 ? `神 <${s.senBelow}%` : ''].filter(Boolean).join('｜') },
+  { id: 'sort', title: '負重與自動整理', summary: s => (sorting(s) ? `>${s.loadMaxPercent}% 整理｜${s.sortKeep === 'none' ? '全賣' : '留好裝備'}` : '不檢查') },
+  { id: 'rounds', title: '輪與重生', summary: s => [s.loopRounds === 'on' ? `等重生｜提早 ${s.aheadSec} 秒` : '巡完就停', s.stopBeforeSpawnSec > 0 ? `重生前 ${s.stopBeforeSpawnSec} 秒停打` : ''].filter(Boolean).join('｜') },
+  { id: 'advanced', title: '進階', summary: s => (s.npcWhitelist ? `白名單 ${s.npcWhitelist}` : '') },
+];
+const fieldShown = (field, settings) => !field.show || field.show(settings);
+const missingFields = settings => FIELDS.filter(field => field.required?.(settings) && !settings[field.key]);
 
 // 儲存的設定可能缺欄位或被改壞：每個欄位都檢查，不合法用預設
 function normalizeSettings(rawSettings) {
@@ -1134,12 +1153,7 @@ function create(deps) {
       const store = await deps.readStore();
       const settings = scan ? { ...await deps.settings(), loopRounds: 'off' } : await deps.settings();
       if (cancelled) return fail('已取消', false);
-      const missing = [];
-      if (settings.healMode === 'eat' && settings.fightMode === 'full') {
-        if (!settings.eatCommand) missing.push('吃藥指令');
-        if (!settings.noMedicineKeyword) missing.push('沒藥關鍵字');
-      }
-      if (!settings.homeCommand) missing.push('回家指令');
+      const missing = missingFields(settings).map(field => field.label);
       if (missing.length) return fail(`請先到設定頁「地圖巡怪」填：${missing.join('、')}`);
       const learn = settings.learnExits === 'on' || scan; // 掃描一定會碰到圖上畫不準的房間（圖上往 s、實際是 su），所以一律照 l 的出口行走
       const learned = learn || settings.prescan === 'on' ? forgetOut(normalizeLearned(await deps.exits())) : {};
@@ -1230,5 +1244,5 @@ function create(deps) {
   return { start, stop, on, summary, snapshot };
 }
 
-globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, FIELDS, normalizeSettings, normalizeVisited, gapMs, splitIds, create };
+globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, FIELDS, GROUPS, fieldShown, missingFields, normalizeSettings, normalizeVisited, gapMs, splitIds, create };
 })();
