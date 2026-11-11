@@ -142,9 +142,10 @@
 1. `/grill-me`：一輪一輪訪談把想法釐清，使用者確認「已有共識」才往下。
 2. `/to-spec`：把共識整理成規格，不再訪談；先跟使用者確認測試接縫（盡量只用一個、用最高層）。規格放 `.scratch/<功能>/spec.md`。
 3. `/to-tickets`：把規格切成垂直切片的票，標明誰擋住誰，使用者批准後寫成 `.scratch/<功能>/issues/<NN>-<名稱>.md`。
-4. `/implement`：依票實作，盡量 TDD；常跑單檔測試，最後跑一次 `npm test`；完成後自動進 `/code-review`；commit 到目前分支。
+4. `/implement`：依票實作，盡量 TDD；常跑單檔測試；完成後自動進 `/code-review`；commit 到目前分支。測試範圍見下面「測試範圍」。
 5. `/code-review`：以固定點（分支或 commit）到 HEAD 做兩軸審查（Standards、Spec），兩份報告分開看，由使用者決定哪些要修。
 
+- **測試範圍**（使用者指定）：bug fix 或小功能，改完跑完整的 `npm test`；大功能切成好幾張票時，每張票只跑和這張票的功能有關的測試檔（新寫的與受影響的），全部的票都做完再跑一次完整的 `npm test`。
 - 這套取代 superpowers 的 brainstorming／writing-plans／executing-plans，兩套不混用，規格只留一份。
 - 專案其他規則仍然優先：改了 extension 的任何檔案都要升 `manifest.json` 版本並在 `CHANGELOG.md` 加一筆；commit 之後要不要 push 一律先問使用者。
 - 這些 skill 只能由使用者用 `/名稱` 觸發；使用者要先跑過一次 `/setup-matt-pocock-skills`，沒有 `docs/agents/` 時 `/to-spec`、`/to-tickets`、`/code-review` 會要求先設定。
