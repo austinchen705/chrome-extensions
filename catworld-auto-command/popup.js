@@ -317,6 +317,7 @@ const saveChatScript = () => {
     partnerName: $('scriptPartnerName').value,
     perDay: $('scriptPerDay').value,
     typoRate: $('scriptTypoRate').value,
+    autoEveryMin: $('scriptAutoEvery').value,
   });
   showChatScript(settings);
   chrome.storage.local.set({ [CatworldChatScript.SETTINGS_KEY]: settings });
@@ -328,11 +329,12 @@ function showChatScript(settings) {
   $('scriptPartnerName').value = settings.partnerName;
   $('scriptPerDay').value = settings.perDay;
   $('scriptTypoRate').value = settings.typoRate;
+  $('scriptAutoEvery').value = settings.autoEveryMin;
   scriptSettings = settings;
   renderScriptStatus();
   $('scriptStart').disabled = settings.role !== 'A';
 }
-['scriptOn', 'scriptRole', 'scriptPartner', 'scriptPartnerName', 'scriptPerDay', 'scriptTypoRate'].forEach(id => $(id).addEventListener('change', saveChatScript));
+['scriptOn', 'scriptRole', 'scriptPartner', 'scriptPartnerName', 'scriptPerDay', 'scriptTypoRate', 'scriptAutoEvery'].forEach(id => $(id).addEventListener('change', saveChatScript));
 function scriptMessage(text, level) { $('scriptMsg').textContent = text; markLevel($('scriptMsg'), level); }
 $('scriptStart').addEventListener('click', async () => {
   try {

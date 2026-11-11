@@ -374,7 +374,9 @@
           <div><label for="scriptPartnerName">對方的角色名（選填）</label><input id="scriptPartnerName" type="text" maxlength="20"></div>
           <div><label for="scriptPerDay">每天最多幾場（0～99）</label><input id="scriptPerDay" type="number" min="0" max="99" step="1"></div>
           <div><label for="scriptTypoRate">錯字機率（每一輪，0～100%）</label><input id="scriptTypoRate" type="number" min="0" max="100" step="1"></div>
+          <div><label for="scriptAutoEvery">平均每幾分鐘自動開一場（0＝不啟用）</label><input id="scriptAutoEvery" type="number" min="0" max="1440" step="1"></div>
         </div>
+        <p class="hint tight">填 0 只能手動按「現在開一場」。填 100 約每 100 分鐘一場，但開場時間是隨機的（可能很快也可能很久）；只在這台是角色 A、「練功」觸發組開始之後才會自動開，每天場數與兩場之間的間隔照樣限制。</p>
         <label for="sharedChatUrl">劇本試算表分頁的 CSV 連結（選填，沒填只用內建劇本）</label>
         <input id="sharedChatUrl" type="text" autocomplete="off" placeholder="https://docs.google.com/spreadsheets/…output=csv">
         <div id="sharedChatResult" class="hint tight">尚未設定</div>

@@ -826,6 +826,10 @@ test('the daily count, the recent list and the status text are worked out by the
   assert.equal(C.normalizeSettings(undefined).perDay, 3);
   assert.deepEqual([-1, 0, 5, '7', 250, 2.9].map(perDay => C.normalizeSettings({ perDay }).perDay), [0, 0, 5, 7, 99, 2]);
   assert.deepEqual(['abc', '', null, NaN].map(perDay => C.normalizeSettings({ perDay }).perDay), [3, 3, 3, 3]);
+  // 平均每幾分鐘自動開一場：預設 0（不啟用）、整數、上限一天，留白或不是數字退回 0
+  assert.equal(C.normalizeSettings(undefined).autoEveryMin, 0);
+  assert.deepEqual([-5, 0, 60, '100', 99999, 2.9].map(autoEveryMin => C.normalizeSettings({ autoEveryMin }).autoEveryMin), [0, 0, 60, 100, 1440, 2]);
+  assert.deepEqual(['abc', '', null, NaN].map(autoEveryMin => C.normalizeSettings({ autoEveryMin }).autoEveryMin), [0, 0, 0, 0]);
   assert.equal(C.todayCount({ date: '2026-11-07', count: 2, recent: [] }, '2026-11-07'), 2);
   assert.equal(C.todayCount({ date: '2026-11-06', count: 2, recent: [] }, '2026-11-07'), 0);
   assert.equal(C.todayCount(C.normalizeState({ date: 5, count: 'x', recent: 'y' }), '2026-11-07'), 0, 'damaged data counts as nothing');

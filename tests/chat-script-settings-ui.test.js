@@ -98,7 +98,7 @@ ui('stored settings are shown, and a change is saved as one chatScript object', 
     assert.equal(doc.getElementById('scriptStart').disabled, false);
     change('scriptPartner', ' akai ');
     assert.ok(await waitFor(() => store.chatScript?.partner === 'akai'));
-    assert.deepEqual(store.chatScript, { enabled: true, role: 'A', partner: 'akai', partnerName: '緋爾', perDay: 3, typoRate: 3 });
+    assert.deepEqual(store.chatScript, { enabled: true, role: 'A', partner: 'akai', partnerName: '緋爾', perDay: 3, typoRate: 3, autoEveryMin: 0 });
     change('scriptRole', 'B');
     assert.ok(await waitFor(() => store.chatScript.role === 'B'));
     assert.equal(doc.getElementById('scriptStart').disabled, true);
@@ -157,7 +157,7 @@ ui('the typo rate shows 3 by default, is saved with the other chatScript fields,
     assert.equal(doc.getElementById('scriptTypoRate').value, '3');
     change('scriptTypoRate', '40');
     assert.ok(await waitFor(() => store.chatScript?.typoRate === 40));
-    assert.deepEqual(store.chatScript, { enabled: false, role: 'B', partner: '', partnerName: '', perDay: 3, typoRate: 40 });
+    assert.deepEqual(store.chatScript, { enabled: false, role: 'B', partner: '', partnerName: '', perDay: 3, typoRate: 40, autoEveryMin: 0 });
     change('scriptTypoRate', '0');
     assert.ok(await waitFor(() => store.chatScript.typoRate === 0));
     assert.equal(doc.getElementById('scriptTypoRate').value, '0', 'zero is kept, not turned back into the default');
@@ -176,6 +176,29 @@ ui('a stored typo rate is shown in the field', async () => {
   const { dom, doc } = await boot({ chatScript: { enabled: true, role: 'A', partner: 'fenrir', partnerName: '', typoRate: 12 } });
   try {
     assert.equal(doc.getElementById('scriptTypoRate').value, '12');
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('the auto-start field shows 0 (off) by default and is saved with the other chatScript fields, whole minutes, clamped to a day, blank back to 0', async () => {
+  const { dom, doc, store, change } = await boot();
+  try {
+    assert.equal(doc.getElementById('scriptAutoEvery').value, '0');
+    change('scriptAutoEvery', '100');
+    assert.ok(await waitFor(() => store.chatScript?.autoEveryMin === 100));
+    change('scriptAutoEvery', '2.9');
+    assert.ok(await waitFor(() => store.chatScript.autoEveryMin === 2));
+    assert.equal(doc.getElementById('scriptAutoEvery').value, '2');
+    change('scriptAutoEvery', '-4');
+    assert.ok(await waitFor(() => store.chatScript.autoEveryMin === 0));
+    assert.equal(doc.getElementById('scriptAutoEvery').value, '0');
+    change('scriptAutoEvery', '99999');
+    assert.ok(await waitFor(() => store.chatScript.autoEveryMin === 1440));
+    assert.equal(doc.getElementById('scriptAutoEvery').value, '1440');
+    change('scriptAutoEvery', '');
+    assert.ok(await waitFor(() => store.chatScript.autoEveryMin === 0));
+    assert.equal(doc.getElementById('scriptAutoEvery').value, '0');
   } finally {
     dom.window.close();
   }

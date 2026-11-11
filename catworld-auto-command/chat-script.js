@@ -17,6 +17,8 @@ const SEND_DELAY_MS = [5000, 10000];
 const CORRECTION_DELAY_MS = [1000, 3000];
 const PER_DAY_DEFAULT = 3; // 每天最多幾場
 const PER_DAY_MAX = 99;
+const AUTO_EVERY_DEFAULT = 0; // 平均每幾分鐘自動開一場（0＝不啟用）
+const AUTO_EVERY_MAX = 1440; // 上限一天
 const RECENT_LIMIT = 5; // A 挑劇本時避開最近用過的幾份
 const TYPO_RATE_DEFAULT = 3; // 每一輪出錯字的機率（%）
 const TYPO_MIN_LENGTH = 6; // 一則至少幾個字才會被打錯
@@ -29,7 +31,7 @@ const safeText = text => typeof text === 'string' && text.trim().length > 0 && !
 
 // 設定（chrome.storage.local.chatScript）：預設關；role 是 A（開場）或 B（接話），預設 B；
 // partner 是對方的英文 ID（tell 用，也用來認出來訊），不合格當沒填；partnerName 是對方的角色名（只給台詞裡的 {對方} 代入，選填；沒填代入 ID）；
-// perDay 是每天最多幾場（0～PER_DAY_MAX 的整數，0 就是不開也不接），typoRate 是每一輪出錯字的機率（0～100 的百分比）；留白或不是數字退回預設
+// perDay 是每天最多幾場（0～PER_DAY_MAX 的整數，0 就是不開也不接），autoEveryMin 是平均每幾分鐘自動開一場（0～AUTO_EVERY_MAX 的整數，0＝不自動開），typoRate 是每一輪出錯字的機率（0～100 的百分比）；留白或不是數字退回預設
 function normalizeNumber(value, [min, max], fallback) {
   const number = value === '' || value == null ? NaN : Number(value);
   return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
@@ -44,6 +46,7 @@ function normalizeSettings(raw) {
     partnerName: name.length <= 20 && (name === '' || safeText(name)) ? name : '',
     perDay: Math.floor(normalizeNumber(raw?.perDay, [0, PER_DAY_MAX], PER_DAY_DEFAULT)),
     typoRate: normalizeNumber(raw?.typoRate, [0, 100], TYPO_RATE_DEFAULT),
+    autoEveryMin: Math.floor(normalizeNumber(raw?.autoEveryMin, [0, AUTO_EVERY_MAX], AUTO_EVERY_DEFAULT)),
   };
 }
 
