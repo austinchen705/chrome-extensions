@@ -153,3 +153,44 @@ test('no week 46 script opens like any other script (first batch, evergreen, bui
     }));
   }));
 });
+
+// 棒壘球那批（docs/data/chat-scripts-baseball.csv）：10 份常青劇本（週留空）
+const baseball = S.buildChatScripts(fs.readFileSync(path.join(__dirname, '..', 'docs', 'data', 'chat-scripts-baseball.csv'), 'utf8').replace(/\r\n/g, '\n'), IN_WEEK46);
+
+test('the baseball batch has 10 evergreen scripts that pass the sheet rules, 8 turns each, opening with A', () => {
+  assert.equal(baseball.ok, true);
+  assert.deepEqual([baseball.report.used, baseball.report.dropped.length, baseball.report.unmatched.length], [10, 0, 0]);
+  assert.equal(C.usableScripts(baseball.scripts).length, 10);
+  baseball.scripts.forEach(script => {
+    assert.equal(turnCount(script), 8, script.id);
+    assert.equal(script.lines[0].who, 'A', script.id);
+  });
+  const weeks = S.parseCsv(fs.readFileSync(path.join(__dirname, '..', 'docs', 'data', 'chat-scripts-baseball.csv'), 'utf8').replace(/\r\n/g, '\n')).slice(1).filter(record => record[0]).map(record => record[5]);
+  assert.ok(weeks.every(week => week === ''), 'evergreen has no week');
+});
+
+test('the baseball lines are short and colloquial, and stay clear of politics, casualties and disasters', () => {
+  const forbidden = ['政治', '選舉', '總統', '政府', '戰爭', '死', '傷', '災', '颱風', '地震', '火災', '車禍', '事故'];
+  baseball.scripts.forEach(script => {
+    script.lines.forEach(line => {
+      relativeWeek.forEach(word => assert.ok(!line.text.includes(word), `${script.id} says ${word}: ${line.text}`));
+      forbidden.forEach(word => assert.ok(!line.text.includes(word), `${script.id} mentions ${word}: ${line.text}`));
+      assert.ok(line.text.split('／').every(part => [...part].length <= 40), `${script.id}: a part is long: ${line.text}`);
+    });
+    const turns = C.toTurns(script);
+    const questions = turns.filter(turn => /[嗎？?沒]$|你呢$/.test(turn.parts[turn.parts.length - 1])).length;
+    assert.ok(questions * 2 <= turns.length, `${script.id}: ${questions} of ${turns.length} turns end as a question`);
+  });
+});
+
+test('no baseball script opens like any other script', () => {
+  const all = [...baseball.scripts, ...built46.scripts, ...built.scripts, ...evergreen.scripts, ...BUILTIN];
+  const openers = script => C.toTurns(script)[0].parts;
+  all.forEach((one, i) => all.slice(i + 1).forEach(other => {
+    if (!baseball.scripts.includes(one) && !baseball.scripts.includes(other)) return;
+    openers(one).forEach(a => openers(other).forEach(b => {
+      const score = globalThis.CatworldChatReply.similarity(a, b);
+      assert.ok(score < C.MATCH_THRESHOLD, `${one.id} and ${other.id} open too alike (${score.toFixed(2)}): ${a} / ${b}`);
+    }));
+  }));
+});
