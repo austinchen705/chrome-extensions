@@ -783,6 +783,36 @@ function showEquipmentKeep() {
   chrome.storage.local.set({ equipmentKeep });
 }));
 
+// 裝備比較計分：存進 equipmentScore，遊戲頁的面板與商人、背包整理都監聽或每次重讀，馬上生效。每次改都交給 normalizeScoreRule 整理、把整理後的值寫回欄位
+// （數字填空白回到預設、清單用「、」分開；清單清空＝沒有）。「還原預設計分」直接拿掉這個鍵
+let equipmentScore = CatworldZapEquipment.normalizeScoreRule(undefined);
+const SCORE_FIELDS = ['scorePrimaryGap', 'scorePrimaryWeight', 'scoreRelatedWeight', 'scoreOtherWeight', 'scoreRelated', 'scoreIgnored'];
+function showEquipmentScore() {
+  $('scorePrimaryGap').value = equipmentScore.primaryGap;
+  $('scorePrimaryWeight').value = equipmentScore.primaryWeight;
+  $('scoreRelatedWeight').value = equipmentScore.relatedWeight;
+  $('scoreOtherWeight').value = equipmentScore.otherWeight;
+  $('scoreRelated').value = equipmentScore.related.join('、');
+  $('scoreIgnored').value = equipmentScore.ignored.join('、');
+}
+SCORE_FIELDS.forEach(id => $(id).addEventListener('change', () => {
+  equipmentScore = CatworldZapEquipment.normalizeScoreRule({
+    primaryGap: $('scorePrimaryGap').value,
+    primaryWeight: $('scorePrimaryWeight').value,
+    relatedWeight: $('scoreRelatedWeight').value,
+    otherWeight: $('scoreOtherWeight').value,
+    related: $('scoreRelated').value,
+    ignored: $('scoreIgnored').value,
+  });
+  showEquipmentScore();
+  chrome.storage.local.set({ equipmentScore });
+}));
+$('scoreReset').addEventListener('click', () => {
+  equipmentScore = CatworldZapEquipment.normalizeScoreRule(undefined);
+  showEquipmentScore();
+  chrome.storage.local.remove('equipmentScore');
+});
+
 // 怪物分級門檻：存起來，遊戲頁的面板監聽 storage 變化，馬上生效。無效的值（需 1 < 綠上限 < 黃上限）不存，欄位還原
 let zapThresholds = CatworldZapMobs.normalizeThresholds(undefined);
 function showZapThresholds() {
@@ -1298,7 +1328,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 });
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'idleSettings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, CatworldChatScript.SETTINGS_KEY, CatworldChatScript.STATE_KEY, 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
+  const data = await chrome.storage.local.get(['settings', 'idleSettings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'equipmentScore', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, CatworldChatScript.SETTINGS_KEY, CatworldChatScript.STATE_KEY, 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
   huntSettings = CatworldMapHunt.normalizeSettings(data[CatworldMapHunt.SETTINGS_KEY]);
   showHuntSettings();
   $('shopSkipNames').value = typeof data[CatworldShopCollect.SKIP_NAMES_KEY] === 'string' ? data[CatworldShopCollect.SKIP_NAMES_KEY] : CatworldShopCollect.DEFAULT_SKIP_NAMES;
@@ -1322,6 +1352,8 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   $('mainWeapon').value = weaponValue(data.mainWeapon);
   equipmentKeep = CatworldZapEquipment.normalizeKeepRule(data.equipmentKeep);
   showEquipmentKeep();
+  equipmentScore = CatworldZapEquipment.normalizeScoreRule(data.equipmentScore);
+  showEquipmentScore();
   zapThresholds = CatworldZapMobs.normalizeThresholds(data.zapThresholds);
   showZapThresholds();
   if (data.settings) $('commandDelayMs').value = data.settings.commandDelayMs ?? 500;

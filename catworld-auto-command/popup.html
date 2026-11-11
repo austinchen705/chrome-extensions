@@ -282,6 +282,21 @@
         <p class="hint tight">用來判斷鑑定後的鑄模與材料是否適合你；未設定時只依等級建議（LV1～2 賣掉、LV3 以上留著）。</p>
         <label class="check"><input id="keepEnabled" type="checkbox"> 附屬能力達到門檻就建議留下</label>
         <div class="row"><div><label for="keepMin">門檻（屬性數值）</label><input id="keepMin" type="number" min="1" step="1"></div></div>
+        <p class="hint tight"><b>比較計分</b>（改了馬上生效，沒改過就是預設）：總分 ＝ 主要數值的分 ＋ 屬性分差，總分大於 0 才算比現在好。主要數值（武器傷害、防具防禦）和現在穿的差「幾點」以上才計分，每 1 點換「幾分」；屬性分＝各屬性數值 × 每點幾分（相關的屬性算得比較重）。</p>
+        <div class="row">
+          <div><label for="scorePrimaryGap">主要數值差幾點以上才計分</label><input id="scorePrimaryGap" type="number" min="0" max="100" step="1"></div>
+          <div><label for="scorePrimaryWeight">主要數值每 1 點換幾分</label><input id="scorePrimaryWeight" type="number" min="0" max="1000" step="any"></div>
+        </div>
+        <div class="row">
+          <div><label for="scoreRelatedWeight">相關屬性每點幾分</label><input id="scoreRelatedWeight" type="number" min="0" max="1000" step="any"></div>
+          <div><label for="scoreOtherWeight">其他屬性每點幾分</label><input id="scoreOtherWeight" type="number" min="0" max="1000" step="any"></div>
+        </div>
+        <label for="scoreRelated">任何人都算相關的屬性（用「、」分開）</label>
+        <input id="scoreRelated" type="text" autocomplete="off">
+        <label for="scoreIgnored">完全不計分的屬性（用「、」分開）</label>
+        <input id="scoreIgnored" type="text" autocomplete="off">
+        <button id="scoreReset" type="button">還原預設計分</button>
+        <p class="hint tight">預設：差 3 點以上才計分、每點 4 分；相關屬性每點 2 分、其他 1 分；相關是「攻擊、輔助氣恢復、內功」再加上主要武器的技能（劍→劍術…）；不計分是「重量、硬度、潛能、損修」。主要數值差的門檻填 1 就是每一點都算；兩個清單清空就是「沒有」。數字填空白會回到預設。</p>
         <p class="hint tight">預設關閉。開啟後，鑑定出的裝備只要有一條屬性的數值達到門檻（例如 +10 攻擊），就算傷害／防禦比現在穿的差、沒有基準或還不能穿，都標「屬性達門檻，建議留下」並排在最上面；重量、硬度、潛能、損修不算。</p>
       </details>
       <details class="alertbox fold" id="sec-mentor">

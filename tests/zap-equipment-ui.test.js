@@ -330,3 +330,12 @@ ui('with the attribute threshold off (the default) the same piece is just worse'
   assert.deepEqual(names(page.rows()), ['相當', '差一', '留著']);
   assert.match(page.rows()[2], /比現在差/);
 });
+
+ui('a stored score rule changes the verdict: with the other-attribute weight at 5 the piece with +10 of an ordinary attribute is better instead of worse', async () => {
+  const page = boot({ stored: { wornEquipment: CLOAK_BASELINE, equipmentScore: { otherWeight: 5 } } });
+  await sleep(30);
+  page.add(KEEP_RUN);
+  await sleep(150);
+  assert.deepEqual(names(page.rows()), ['留著', '相當', '差一']);
+  assert.match(page.rows()[0], /比現在好，建議留下/);
+});

@@ -11,7 +11,7 @@ const BLOCKS = [
   { id: 'timer', label: '定時與隨機', keys: ['settings', 'idleSettings'] },
   { id: 'trigger', label: '觸發', keys: ['triggerGroupSettings', 'triggerSettings'] },
   { id: 'safety', label: '安全與警報', keys: ['stopKeywords', 'persistentAlert', 'autoReward'] },
-  { id: 'helpers', label: '輔助功能', keys: ['zapFeatures', 'zapThresholds', 'mainWeapon', 'forceExtras', 'equipmentKeep', 'whisperColor', 'shopMinPrice', 'shopBuyNames', 'shopSkipNames'] },
+  { id: 'helpers', label: '輔助功能', keys: ['zapFeatures', 'zapThresholds', 'mainWeapon', 'forceExtras', 'equipmentKeep', 'equipmentScore', 'whisperColor', 'shopMinPrice', 'shopBuyNames', 'shopSkipNames'] },
   { id: 'chat', label: '聊天', keys: ['chatReply', 'chatScript'] },
   { id: 'hunt', label: '巡怪', keys: ['mapHuntSettings', 'mapHuntPicks'] },
   { id: 'sources', label: '共用與網址', keys: ['sharedSources', 'extraGameUrls'] },

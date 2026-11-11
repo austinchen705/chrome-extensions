@@ -53,49 +53,80 @@ function parseEquipmentBlocks(text) {
 // 規則（使用者定的：先比攻擊力／防禦力，再比附加屬性，相關屬性加分，主要數值差一點但屬性補得回來也推薦）：
 // 主要數值相差不到 PRIMARY_GAP 時只比屬性分數；相差 PRIMARY_GAP 以上時，每 1 點主要數值換成 PRIMARY_WEIGHT 分，
 // 和屬性分數的差距加在一起，總分大於 0 才算比較好（相關屬性每點 2 分、其他每點 1 分、負值照扣）。
-// PRIMARY_GAP 與兩個權重是設計者的猜測，之後依實際使用校準。
+// 這些數字是設計者的猜測，之後依實際使用校準；現在都可以在設定頁「裝備比較計分」調整（chrome.storage.local.equipmentScore），
+// 這裡的值是沒調過時的預設，沒有設定時行為和以前完全一樣。
 const PRIMARY_GAP = 3;
 const PRIMARY_WEIGHT = 4;
+const RELATED_WEIGHT = 2;
+const OTHER_WEIGHT = 1;
 const IGNORED_ATTRS = ['重量', '硬度', '潛能', '損修'];
 const ALWAYS_RELATED = ['攻擊', '輔助氣恢復', '內功'];
+
+// 計分規則（equipmentScore）：primaryGap 是整數點；四個數字都是 0 以上、有上限；ignored 是完全不計分的屬性、related 是任何人都算相關的屬性
+// （清單可以是文字或陣列，名稱會照 normalizeAttrName 整理、去重；存了空清單就是真的沒有，沒存過才用預設）
+const SCORE_MAX = { primaryGap: 100, weight: 1000 };
+const SCORE_NAMES_MAX = 30;
+const SCORE_NAME_LENGTH = 20;
+const SCORE_DEFAULT = { primaryGap: PRIMARY_GAP, primaryWeight: PRIMARY_WEIGHT, relatedWeight: RELATED_WEIGHT, otherWeight: OTHER_WEIGHT, ignored: IGNORED_ATTRS, related: ALWAYS_RELATED };
+function scoreNumber(value, max, fallback) {
+  const number = value === '' || value == null ? NaN : Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(0, number)) : fallback;
+}
+function scoreNames(value, fallback) {
+  const items = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[、,，;；\n\r]+/) : null;
+  if (!items) return [...fallback];
+  const names = items.map(normalizeAttrName).filter(name => name !== '' && name.length <= SCORE_NAME_LENGTH);
+  return [...new Set(names)].slice(0, SCORE_NAMES_MAX);
+}
+function normalizeScoreRule(raw) {
+  return {
+    primaryGap: Math.floor(scoreNumber(raw?.primaryGap, SCORE_MAX.primaryGap, SCORE_DEFAULT.primaryGap)),
+    primaryWeight: scoreNumber(raw?.primaryWeight, SCORE_MAX.weight, SCORE_DEFAULT.primaryWeight),
+    relatedWeight: scoreNumber(raw?.relatedWeight, SCORE_MAX.weight, SCORE_DEFAULT.relatedWeight),
+    otherWeight: scoreNumber(raw?.otherWeight, SCORE_MAX.weight, SCORE_DEFAULT.otherWeight),
+    ignored: scoreNames(raw?.ignored, SCORE_DEFAULT.ignored),
+    related: scoreNames(raw?.related, SCORE_DEFAULT.related),
+  };
+}
 const RELATED_BY_WEAPON = {
   劍: ['劍術'], 刀: ['刀法'], 杖: ['棒法', '杖法'], 鞭: ['鞭法'], 拳套: ['拳術'], 暗器: ['暗器', '暗器使用'],
 };
 
 // 攻擊、輔助氣恢復、內功對任何人都算相關；主要武器類型沒設定或不認得時只有這三個
-const relatedAttrNames = mainWeapon => [...ALWAYS_RELATED, ...(RELATED_BY_WEAPON[mainWeapon] ?? [])];
+const relatedAttrNames = (mainWeapon, always = ALWAYS_RELATED) => [...always, ...(RELATED_BY_WEAPON[mainWeapon] ?? [])];
 
-function scoreAttrs(attrs, related) {
+function scoreAttrs(attrs, related, rule = SCORE_DEFAULT) {
   return attrs
-    .filter(attr => !IGNORED_ATTRS.includes(attr.name))
-    .reduce((sum, attr) => sum + attr.value * (related.includes(attr.name) ? 2 : 1), 0);
+    .filter(attr => !rule.ignored.includes(attr.name))
+    .reduce((sum, attr) => sum + attr.value * (related.includes(attr.name) ? rule.relatedWeight : rule.otherWeight), 0);
 }
 
 const VERDICT_TEXT = { better: '比現在好，建議留下', keep: '屬性達門檻，建議留下', worse: '比現在差', equal: '相當', none: '沒有基準可比' };
 
 // baseline 是「同類別」現在穿的清單（呼叫端先依類別取出）；同類別有好幾件時（兩枚戒指）和最弱的那一件比，
 // 這樣比較差的裝備不可能被標成比較好
-function compareWithBaseline(candidate, baseline, { mainWeapon, exp } = {}) {
+function compareWithBaseline(candidate, baseline, { mainWeapon, exp, score } = {}) {
+  const rule = normalizeScoreRule(score);
   const blocked = Number.isFinite(exp) && candidate.needExp !== null && candidate.needExp > exp;
   const none = { verdict: 'none', text: VERDICT_TEXT.none, reasons: [], against: null, blocked };
   const usable = (baseline ?? []).filter(item => item.primary !== null);
   if (candidate.primary === null || !usable.length) return none;
-  const related = relatedAttrNames(mainWeapon);
+  const related = relatedAttrNames(mainWeapon, rule.related);
   const weakest = usable
-    .map(item => ({ item, score: scoreAttrs(item.attrs, related) }))
+    .map(item => ({ item, score: scoreAttrs(item.attrs, related, rule) }))
     .sort((a, b) => a.item.primary - b.item.primary || a.score - b.score)[0];
   const diff = candidate.primary - weakest.item.primary;
   const reasons = [];
   if (diff !== 0) reasons.push(`${candidate.kind === 'weapon' ? '傷害' : '防禦'} ${diff > 0 ? '+' : ''}${diff}`);
   const valueOf = (attrs, name) => attrs.find(attr => attr.name === name)?.value ?? 0;
-  const names = [...new Set([...candidate.attrs, ...weakest.item.attrs].map(attr => attr.name))].filter(name => !IGNORED_ATTRS.includes(name));
+  const names = [...new Set([...candidate.attrs, ...weakest.item.attrs].map(attr => attr.name))].filter(name => !rule.ignored.includes(name));
   names.forEach(name => {
     const delta = valueOf(candidate.attrs, name) - valueOf(weakest.item.attrs, name);
     if (delta > 0) reasons.push(`多了 ${name} +${delta}`);
     else if (delta < 0) reasons.push(`少了 ${name} ${-delta}`);
   });
-  const scoreDiff = scoreAttrs(candidate.attrs, related) - weakest.score;
-  const primaryPoints = Math.abs(diff) >= PRIMARY_GAP ? diff * PRIMARY_WEIGHT : 0;
+  const scoreDiff = scoreAttrs(candidate.attrs, related, rule) - weakest.score;
+  const primaryPoints = Math.abs(diff) >= rule.primaryGap ? diff * rule.primaryWeight : 0;
   const decided = primaryPoints + scoreDiff;
   if (primaryPoints < 0 && decided > 0) reasons.push(`屬性補回：屬性 +${scoreDiff} 分，抵過主要數值少的 ${-primaryPoints} 分`);
   const verdict = decided > 0 ? 'better' : decided < 0 ? 'worse' : 'equal';
@@ -111,21 +142,21 @@ function normalizeKeepRule(value) {
   return { enabled: value?.enabled === true, min: Number.isInteger(min) && min >= 1 ? min : KEEP_DEFAULT.min };
 }
 // 好幾條都達門檻時理由寫數值最大的那條
-const keepHit = (attrs, keep) => (keep?.enabled ? attrs.filter(attr => !IGNORED_ATTRS.includes(attr.name) && attr.value >= keep.min).sort((a, b) => b.value - a.value)[0] : undefined);
+const keepHit = (attrs, keep, ignored) => (keep?.enabled ? attrs.filter(attr => !ignored.includes(attr.name) && attr.value >= keep.min).sort((a, b) => b.value - a.value)[0] : undefined);
 
-function compareEquipment(candidate, baseline, { mainWeapon, exp, keep } = {}) {
-  const result = compareWithBaseline(candidate, baseline, { mainWeapon, exp });
-  const hit = keepHit(candidate.attrs, keep);
+function compareEquipment(candidate, baseline, { mainWeapon, exp, keep, score } = {}) {
+  const result = compareWithBaseline(candidate, baseline, { mainWeapon, exp, score });
+  const hit = keepHit(candidate.attrs, keep, normalizeScoreRule(score).ignored);
   if (!hit || result.verdict === 'better') return result;
   return { ...result, verdict: 'keep', text: VERDICT_TEXT.keep, reasons: [`${hit.name} +${hit.value} 達門檻 ${keep.min}`, ...result.reasons] };
 }
 
 // 整理背包時要留下的鑑定結果（巡怪的整理流程用）：武器只留主要武器職業的（沒設定主要武器就不篩）；比現在好或屬性達門檻的留下，
 // 沒有基準可比的（沒穿同類別、或沒讀過穿著）也留下，寧可多留；比現在差或相當的不留。baselineOf(類別) 回該類別現在穿的清單
-function pickKeepers(blocks, { baselineOf, mainWeapon, exp, keep } = {}) {
+function pickKeepers(blocks, { baselineOf, mainWeapon, exp, keep, score } = {}) {
   return blocks.filter(block => {
     if (block.kind === 'weapon' && mainWeapon && !block.category.startsWith(mainWeapon)) return false;
-    const { verdict } = compareEquipment(block, baselineOf?.(block.category), { mainWeapon, exp, keep });
+    const { verdict } = compareEquipment(block, baselineOf?.(block.category), { mainWeapon, exp, keep, score });
     return verdict === 'better' || verdict === 'keep' || verdict === 'none';
   });
 }
@@ -257,7 +288,7 @@ function createTracker({ runTimeoutMs = 30000 } = {}) {
 }
 
 globalThis.CatworldZapEquipment = {
-  PRIMARY_GAP, IGNORED_ATTRS, normalizeAttrName, parseEquipmentBlocks, relatedAttrNames, scoreAttrs, normalizeKeepRule, compareEquipment, pickKeepers,
+  PRIMARY_GAP, IGNORED_ATTRS, SCORE_DEFAULT, normalizeScoreRule, normalizeAttrName, parseEquipmentBlocks, relatedAttrNames, scoreAttrs, normalizeKeepRule, compareEquipment, pickKeepers,
   toBaselineItem, replaceBaseline, upsertBaseline, mergeBaseline, parseWornHtml, createTracker,
 };
 })();

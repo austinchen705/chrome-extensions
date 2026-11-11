@@ -1446,9 +1446,9 @@ hunt = CatworldMapHunt.create({
   // 整理用：從鑑定輸出裡挑出要留的裝備名稱（比現在穿的好或屬性達門檻、沒基準的，武器只留主要武器職業的）
   keepers: async text => {
     const E = CatworldZapEquipment;
-    const data = await chrome.storage.local.get(['wornEquipment', 'mainWeapon', 'equipmentKeep']);
+    const data = await chrome.storage.local.get(['wornEquipment', 'mainWeapon', 'equipmentKeep', 'equipmentScore']);
     const worn = data.wornEquipment?.[characterName()];
-    return E.pickKeepers(E.parseEquipmentBlocks(text), { baselineOf: category => worn?.[category], mainWeapon: data.mainWeapon, exp: readGameNumber('exp'), keep: E.normalizeKeepRule(data.equipmentKeep) }).map(block => block.name);
+    return E.pickKeepers(E.parseEquipmentBlocks(text), { baselineOf: category => worn?.[category], mainWeapon: data.mainWeapon, exp: readGameNumber('exp'), keep: E.normalizeKeepRule(data.equipmentKeep), score: E.normalizeScoreRule(data.equipmentScore) }).map(block => block.name);
   },
   npcs: huntNpcs,
   learnNpc: learnHuntNpc,

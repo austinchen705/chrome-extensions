@@ -218,7 +218,7 @@ function place(box) {
 function classify(block, data) {
   const E = globalThis.CatworldZapEquipment;
   const baseline = data.wornEquipment?.[characterName()]?.[block.category];
-  const result = E.compareEquipment(block, baseline, { mainWeapon: data.mainWeapon, exp: readExp(), keep: E.normalizeKeepRule(data.equipmentKeep) });
+  const result = E.compareEquipment(block, baseline, { mainWeapon: data.mainWeapon, exp: readExp(), keep: E.normalizeKeepRule(data.equipmentKeep), score: E.normalizeScoreRule(data.equipmentScore) });
   const reasons = result.reasons.slice(0, 3).join('，');
   if (result.blocked) return { kind: 'blocked', text: `和現在穿的比：經驗還不夠穿（需要 ${block.needExp}）`, reasons };
   // 讀過目前穿著、但這個類別身上沒穿：穿得了就是值得換（沒東西可比），沒讀過穿著才是沒資料可比
@@ -439,7 +439,7 @@ async function flush() {
   timer = null;
   armedUntil = 0;
   try {
-    const data = await chrome.storage.local.get([DB_KEY, NON_EQUIP_KEY, MIN_PRICE_KEY, BUY_NAMES_KEY, SKIP_NAMES_KEY, 'zapFeatures', 'wornEquipment', 'mainWeapon', 'equipmentKeep']);
+    const data = await chrome.storage.local.get([DB_KEY, NON_EQUIP_KEY, MIN_PRICE_KEY, BUY_NAMES_KEY, SKIP_NAMES_KEY, 'zapFeatures', 'wornEquipment', 'mainWeapon', 'equipmentKeep', 'equipmentScore']);
     if (data.zapFeatures?.shop !== true) return;
     let db = data[DB_KEY] || {};
     const at = text.search(CHECK_PHRASE);

@@ -10,6 +10,7 @@ const E = globalThis.CatworldZapEquipment;
 const WORN_KEY = 'wornEquipment';
 const WEAPON_KEY = 'mainWeapon';
 const KEEP_KEY = 'equipmentKeep';
+const SCORE_KEY = 'equipmentScore';
 const GAME_WINDOWS = '#monitor, #map_table, #macro_table, #setting_table';
 const FLUSH_MS = 600;
 const FLUSH_MAX_WAIT_MS = 3000;
@@ -42,6 +43,7 @@ function attach(root, { overlay, readExp, startSteps }) {
   let stores = {};
   let mainWeapon = '';
   let keep = E.normalizeKeepRule(undefined);
+  let score = E.normalizeScoreRule(undefined);
   let phase = 'idle'; // idle → waitingInventory → reading → idle
   let wornAcc = [];
   let expected = [];
@@ -81,10 +83,11 @@ function attach(root, { overlay, readExp, startSteps }) {
       return false;
     }
   };
-  chrome.storage.local.get([WORN_KEY, WEAPON_KEY, KEEP_KEY]).then(data => {
+  chrome.storage.local.get([WORN_KEY, WEAPON_KEY, KEEP_KEY, SCORE_KEY]).then(data => {
     stores = normalizeStores(data[WORN_KEY]);
     mainWeapon = validWeapon(data[WEAPON_KEY]);
     keep = E.normalizeKeepRule(data[KEEP_KEY]);
+    score = E.normalizeScoreRule(data[SCORE_KEY]);
     updateStatus();
   }).catch(error => note(`讀取已存的基準失敗：${error.message}`, 'error'));
   chrome.storage.onChanged?.addListener((changes, area) => {
@@ -92,6 +95,7 @@ function attach(root, { overlay, readExp, startSteps }) {
     if (changes[WORN_KEY]) stores = normalizeStores(changes[WORN_KEY].newValue);
     if (changes[WEAPON_KEY]) mainWeapon = validWeapon(changes[WEAPON_KEY].newValue);
     if (changes[KEEP_KEY]) keep = E.normalizeKeepRule(changes[KEEP_KEY].newValue);
+    if (changes[SCORE_KEY]) score = E.normalizeScoreRule(changes[SCORE_KEY].newValue);
     updateStatus();
   });
 
@@ -180,7 +184,7 @@ function attach(root, { overlay, readExp, startSteps }) {
   const minutesAgo = at => Math.max(0, Math.round((Date.now() - at) / 60000));
   function candidateNode(block) {
     const list = current()[block.category] ?? [];
-    const result = E.compareEquipment(block, list, { mainWeapon, exp: readExp(), keep });
+    const result = E.compareEquipment(block, list, { mainWeapon, exp: readExp(), keep, score });
     const attrs = block.attrs.map(attr => `${attr.name}${attr.value > 0 ? '+' : ''}${attr.value}`).join('　');
     const head = `${block.name}（${SHORT(block.category)}）　${block.kind === 'weapon' ? '傷' : '防'} ${block.primary ?? '?'}${attrs ? `　${attrs}` : ''}　需經驗 ${block.needExp ?? '?'}`;
     const verdict = el('b', { textContent: result.text });

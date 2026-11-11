@@ -390,3 +390,67 @@ test('keep rule: applies without a baseline and when the piece cannot be worn ye
   assert.deepEqual([blocked.verdict, blocked.blocked], ['keep', true]);
   assert.equal(E.compareEquipment(piece('新披風', 40, [{ name: '攻擊', value: 12 }]), [base('暮歌', 31)], { ...stats, keep: KEEP }).verdict, 'better');
 });
+
+// ---- 比較的計分規則可以調（設定頁「裝備比較計分」，存在 equipmentScore）----
+const DEFAULT_SCORE = { primaryGap: 3, primaryWeight: 4, relatedWeight: 2, otherWeight: 1, ignored: ['重量', '硬度', '潛能', '損修'], related: ['攻擊', '輔助氣恢復', '內功'] };
+
+test('normalizeScoreRule: nothing stored is the built-in rule, bad numbers fall back or are clamped, lists are cleaned', () => {
+  assert.deepEqual(E.normalizeScoreRule(undefined), DEFAULT_SCORE);
+  assert.deepEqual(E.normalizeScoreRule(null), DEFAULT_SCORE);
+  assert.deepEqual(E.normalizeScoreRule({ primaryGap: 0, primaryWeight: 2.5 }), { ...DEFAULT_SCORE, primaryGap: 0, primaryWeight: 2.5 }, 'zero and decimals are fine');
+  const bad = E.normalizeScoreRule({ primaryGap: 'x', primaryWeight: -1, relatedWeight: 1e9, otherWeight: NaN });
+  assert.deepEqual([bad.primaryGap, bad.primaryWeight, bad.relatedWeight, bad.otherWeight], [3, 0, 1000, 1], 'text and NaN fall back, negatives go to 0, huge values are capped');
+  assert.equal(E.normalizeScoreRule({ primaryGap: 2.7 }).primaryGap, 2, 'whole points only');
+});
+
+test('normalizeScoreRule: a list can be text or an array, names are normalised and de-duplicated, an empty list stays empty', () => {
+  assert.deepEqual(E.normalizeScoreRule({ related: '補助氣回復、 攻擊 ,攻擊\n內功' }).related, ['輔助氣恢復', '攻擊', '內功']);
+  assert.deepEqual(E.normalizeScoreRule({ ignored: ['重量', '  ', '重量', '硬度'] }).ignored, ['重量', '硬度']);
+  assert.deepEqual(E.normalizeScoreRule({ ignored: '' }).ignored, [], 'ignore nothing');
+  assert.deepEqual(E.normalizeScoreRule({ related: [] }).related, [], 'nothing counts double');
+  assert.deepEqual(E.normalizeScoreRule({ ignored: 5 }).ignored, DEFAULT_SCORE.ignored, 'not a list: the default');
+  const many = E.normalizeScoreRule({ ignored: Array.from({ length: 40 }, (_, i) => `屬性` + i).concat(['長'.repeat(30)]) }).ignored;
+  assert.equal(many.length, 30, 'at most 30 names');
+  assert.ok(many.every(name => name.length <= 20), 'and no very long ones');
+});
+
+test('compareEquipment without a score rule is exactly the built-in rule', () => {
+  const candidate = armor('近似甲', 44, [{ name: '攻擊', value: 40 }, { name: '內功', value: 5 }]);
+  assert.deepEqual(E.compareEquipment(candidate, [BLACK], stats), E.compareEquipment(candidate, [BLACK], { ...stats, score: E.normalizeScoreRule(undefined) }));
+  assert.deepEqual(E.compareEquipment(candidate, [BLACK], { ...stats, score: {} }), E.compareEquipment(candidate, [BLACK], stats), 'an empty stored object is the default too');
+});
+
+test('compareEquipment: the gap decides when the primary value starts to count, so a gap of 1 counts every point', () => {
+  const verdict = score => E.compareEquipment(armor('甲', 31), [base('乙', 30)], { ...stats, score }).verdict;
+  assert.equal(verdict(undefined), 'equal', 'one point is below the default gap of 3');
+  assert.equal(verdict({ primaryGap: 1 }), 'better');
+  assert.equal(verdict({ primaryGap: 1, primaryWeight: 0 }), 'equal', 'a weight of 0 turns the primary value off');
+});
+
+test('compareEquipment: the weights of related and other attributes change the verdict', () => {
+  // 主要數值少 4（−16 分）；候選的攻擊 +9：預設相關每點 2 分＝18，總分 +2，比較好
+  const candidate = armor('甲', 44, [{ name: '攻擊', value: 9 }]);
+  const verdict = score => E.compareEquipment(candidate, [base('乙', 48)], { ...stats, score }).verdict;
+  assert.equal(verdict(undefined), 'better');
+  assert.equal(verdict({ relatedWeight: 1 }), 'worse', '9 − 16 < 0');
+  assert.equal(verdict({ related: [] }), 'worse', 'attack is not related any more: 9 × 1');
+  assert.equal(verdict({ related: [], otherWeight: 2 }), 'better', 'but 9 × 2 = 18 again');
+});
+
+test('compareEquipment: the ignored list decides which attributes are left out, including for the keep threshold', () => {
+  const heavy = armor('甲', 30, [{ name: '重量', value: 20 }]);
+  const verdict = score => E.compareEquipment(heavy, [base('乙', 30)], { ...stats, score }).verdict;
+  assert.equal(verdict(undefined), 'equal', 'weight is ignored by default');
+  assert.equal(verdict({ ignored: [] }), 'better', 'ignore nothing: weight +20 counts');
+  const keep = { enabled: true, min: 10 };
+  // 主要數值少 10（−40 分）：重量 +20 補不回來，所以不會先變成「比較好」，只剩門檻能留下它
+  assert.equal(E.compareEquipment(heavy, [base('乙', 40)], { ...stats, keep }).verdict, 'worse', 'an ignored attribute never reaches the threshold');
+  assert.equal(E.compareEquipment(heavy, [base('乙', 40)], { ...stats, keep, score: { ignored: [] } }).verdict, 'keep');
+});
+
+test('pickKeepers follows the score rule too', () => {
+  const blocks = [armor('甲', 44, [{ name: '攻擊', value: 9 }])];
+  const baselineOf = () => [base('乙', 48)];
+  assert.equal(E.pickKeepers(blocks, { baselineOf, mainWeapon: '劍', exp: 414748 }).length, 1);
+  assert.equal(E.pickKeepers(blocks, { baselineOf, mainWeapon: '劍', exp: 414748, score: { relatedWeight: 1 } }).length, 0);
+});
