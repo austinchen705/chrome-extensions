@@ -366,7 +366,7 @@ function hearScript({ name, text }) {
 let scriptAutoWarm = null;
 let scriptAutoRoll = null;
 let scriptAutoWarmAt = 0; // 暖機開始的時間（只給 STATUS 算還剩幾秒）
-const scriptAutoWanted = () => chatScript.enabled && chatScript.role === 'A' && !!chatScript.partner && chatScript.autoEveryMin > 0 && triggerGroups.practice?.on === true;
+const scriptAutoWanted = () => chatScript.enabled && scriptAutoEligible() && chatScript.autoEveryMin > 0 && triggerGroups.practice?.on === true;
 function stopScriptAuto() {
   clearTimeout(scriptAutoWarm);
   clearInterval(scriptAutoRoll);
@@ -389,6 +389,16 @@ function syncScriptAuto() {
     scriptAutoRoll = setInterval(rollScriptAuto, CatworldChatScript.AUTO_ROLL_MS);
   }, CatworldChatScript.AUTO_WARMUP_MS);
 }
+// 目前這一場、自動開場的排程（STATUS 與面板的「劇本」列共用）；沒有就是 null
+const scriptSessionStatus = () => (scriptSession ? { ...scriptSession.status(), phase: scriptTimers.size ? 'say' : 'wait' } : null);
+const scriptAutoStatus = () => (scriptAutoWarm
+  ? { phase: 'warmup', secondsLeft: Math.max(0, Math.round((scriptAutoWarmAt + CatworldChatScript.AUTO_WARMUP_MS - Date.now()) / 1000)) }
+  : scriptAutoRoll ? { phase: 'rolling' } : null);
+// 面板「劇本」列的文字：功能沒開是空字串（整列隱藏）；和設定頁狀態行同一份文字
+const scriptSummary = () => (chatScript.enabled
+  ? CatworldChatScript.describeStatus({ session: scriptSessionStatus(), state: scriptState, perDay: chatScript.perDay, today: scriptToday(), auto: scriptAutoStatus(), everyMin: chatScript.autoEveryMin, autoEligible: scriptAutoEligible() })
+  : '');
+const scriptAutoEligible = () => chatScript.role === 'A' && !!chatScript.partner;
 // 現在不能開場的原因（可以開回 null）
 function startBlock() {
   if (!chatScript.enabled) return '劇本對話沒有開';
@@ -1583,6 +1593,7 @@ function initPanel() {
         <div class="line hunt-line"><span class="t">巡怪</span><span class="s hunt-text"></span>
           <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hscan" title="街景模式：不用選怪，走這一區還沒走過的每一間，看一眼並記下有哪些怪（不打）">掃描</button><button class="hstop">停止</button></span></div>
         <div class="line reward-line" hidden><span class="t">獎勵</span><span class="s reward-text"></span></div>
+        <div class="line script-line" hidden><span class="t">劇本</span><span class="s script-text"></span></div>
       </div>
     </div>`;
   const $ = selector => root.querySelector(selector);
@@ -1599,6 +1610,7 @@ function initPanel() {
     macroText: $('.macro-text'), mstop: $('.mstop'),
     huntText: $('.hunt-text'), hstart: $('.hstart'), hscan: $('.hscan'), hstop: $('.hstop'),
     rewardLine: $('.reward-line'), rewardText: $('.reward-text'),
+    scriptLine: $('.script-line'), scriptText: $('.script-text'),
     confirm: $('.confirm'),
   };
   // 「數值」區塊放在面板最上方；壞了不能牽連後面開始／停止按鈕的綁定
@@ -1979,6 +1991,12 @@ function renderPanel() {
     panel.rewardLine.hidden = !rewardText;
     panel.replace();
   }
+  const scriptInfo = scriptSummary();
+  if (panel.scriptText.textContent !== scriptInfo) {
+    panel.scriptText.textContent = scriptInfo;
+    panel.scriptLine.hidden = !scriptInfo;
+    panel.replace();
+  }
   const huntInfo = hunt.summary();
   if (panel.huntText.textContent !== huntInfo.text) {
     panel.huntText.textContent = huntInfo.text;
@@ -2094,8 +2112,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       nextRandomCommand,
       macros: macroRuns.size,
       hunt: hunt.snapshot(),
-      chatScript: scriptSession ? { ...scriptSession.status(), phase: scriptTimers.size ? 'say' : 'wait' } : null,
-      chatScriptAuto: scriptAutoWarm ? { phase: 'warmup', secondsLeft: Math.max(0, Math.round((scriptAutoWarmAt + CatworldChatScript.AUTO_WARMUP_MS - Date.now()) / 1000)) } : scriptAutoRoll ? { phase: 'rolling' } : null,
+      chatScript: scriptSessionStatus(),
+      chatScriptAuto: scriptAutoStatus(),
       stats: readAllStats(),
       triggerGroups: Object.fromEntries(groupList.map(item => [item.id, { on: item.on, note: item.note, warning: macroWarnings(item).join('；'), rules: item.on ? item.engine.snapshot().rules : [] }])),
     });

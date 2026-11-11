@@ -309,3 +309,40 @@ ui('while the real person check is on screen nothing opens by itself', async () 
     page.close();
   }
 });
+
+// ---- 遊戲頁面板的「劇本」列 ----
+const scriptLine = page => page.hosts()[0]?.shadowRoot.querySelector('.script-line');
+const scriptText = page => scriptLine(page)?.querySelector('.script-text').textContent ?? '';
+
+ui('the panel has a script line only while the feature is on, with the count of today and what is going on', async () => {
+  const off = await soloA({ chatScript: { enabled: false } });
+  const page = await soloA({ autoEveryMin: 5, random: 0.999 });
+  try {
+    await sleep(100);
+    assert.equal(scriptLine(off).hidden, true, 'feature off: no line');
+    assert.equal(scriptLine(page).hidden, false);
+    assert.ok(await waitFor(() => scriptText(page) === '今天 0/3 場；目前沒有進行中的一場；自動開場：等「練功」觸發組開始後才會擲骰', 3000), scriptText(page));
+    await page.ask(PRACTICE);
+    assert.ok(await waitFor(() => /自動開場：暖機中，約 \d+ 分鐘後開始擲骰/.test(scriptText(page)), 3000), scriptText(page));
+    assert.ok(await waitFor(() => /自動開場：擲骰中，平均每 5 分鐘一場/.test(scriptText(page)), 4000), scriptText(page));
+    assert.equal((await page.ask({ type: 'START_CHAT_SCRIPT' })).ok, true);
+    assert.ok(await waitFor(() => /^今天 1\/3 場；進行中：劇本 t4，已演 1\/2 輪/.test(scriptText(page)), 3000), scriptText(page));
+  } finally {
+    off.close();
+    page.close();
+  }
+});
+
+ui('turning the feature off hides the script line, turning it on shows it', async () => {
+  const page = await soloA();
+  try {
+    await sleep(100);
+    assert.equal(scriptLine(page).hidden, false);
+    changeSettings(page, { enabled: false });
+    assert.ok(await waitFor(() => scriptLine(page).hidden === true, 3000), 'hidden once the feature is off');
+    changeSettings(page, { enabled: true });
+    assert.ok(await waitFor(() => scriptLine(page).hidden === false && scriptText(page) !== '', 3000), 'shown again');
+  } finally {
+    page.close();
+  }
+});
