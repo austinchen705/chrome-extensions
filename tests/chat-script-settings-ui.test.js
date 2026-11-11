@@ -213,7 +213,7 @@ ui('the status line adds the automatic start: warm-up with the minutes left, the
     reply = { ok: true, chatScript: null, chatScriptAuto: { phase: 'rolling' } };
     assert.ok(await waitFor(() => text() === '今天 1/4 場；目前沒有進行中的一場；自動開場：擲骰中，平均每 60 分鐘一場'), text());
     reply = { ok: true, chatScript: null, chatScriptAuto: null };
-    assert.ok(await waitFor(() => text() === '今天 1/4 場；目前沒有進行中的一場'), text());
+    assert.ok(await waitFor(() => text() === '今天 1/4 場；目前沒有進行中的一場；自動開場：等「練功」觸發組開始後才會擲骰'), text());
   } finally {
     page.dom.window.close();
   }

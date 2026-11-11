@@ -20,13 +20,21 @@ const PRACTICE = { type: 'START_TRIGGER', group: 'practice', config: { rules: [k
 const tells = page => page.sent.filter(command => command === FIRST_TELL);
 
 // random：頁面裡 Math.random 的固定值（0＝一定抽中，0.999＝只有機率 1 才抽得中）
-async function soloA({ autoEveryMin = 1, random = 0, role = 'A', extra = {}, chatScript = {} } = {}) {
+// fastClock：頁面的 Date.now 也快 SCALE 倍（計時器縮小多少，時鐘就快多少），最小間隔（20 分鐘＝600 毫秒）才測得到；
+// 只有要測時鐘的測試開，因為快到幾小時之後跨日會讓每日場數歸零
+async function soloA({ autoEveryMin = 1, random = 0, role = 'A', extra = {}, chatScript = {}, fastClock = false, scripts = [PLAIN] } = {}) {
   const page = await boot({
     scale: SCALE,
-    respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts: [PLAIN] } : {}),
+    respond: message => (message.type === 'CHAT_SCRIPTS' ? { ok: true, scripts } : {}),
     initialStore: { chatScript: { enabled: true, typoRate: 0, role, partner: B.id, partnerName: B.nick, autoEveryMin, ...chatScript }, autoReward: false, ...extra },
   });
   page.w.Math.random = () => random;
+  if (fastClock) {
+    const realNow = page.w.Date.now.bind(page.w.Date);
+    const base = realNow();
+    page.w.Date.now = () => base + (realNow() - base) * SCALE;
+    page.clockNow = () => page.w.Date.now();
+  }
   // 遊戲對送出的每個指令都回一行：沒有回應的話「送出指令 8 秒沒回應」的看門狗（縮小後只有幾毫秒）會把整個練功組停掉，自動開場也跟著停
   page.w.document.getElementById('f').addEventListener('submit', () => setTimeout(() => page.output('<span>遊戲的回應\n</span>'), 1));
   return page;
@@ -36,7 +44,7 @@ test('the chance of one roll is 1 over the minutes asked for, and 0 when it is o
   require('../catworld-auto-command/chat-script.js');
   const C = globalThis.CatworldChatScript;
   assert.deepEqual([0, 1, 4, 100].map(C.autoChance), [0, 1, 0.25, 0.01]);
-  assert.ok(C.AUTO_MIN_GAP_ROLLS >= 1 && C.AUTO_WARMUP_MS > C.AUTO_ROLL_MS);
+  assert.ok(C.AUTO_MIN_GAP_MS >= C.AUTO_ROLL_MS && C.AUTO_WARMUP_MS > C.AUTO_ROLL_MS);
 });
 
 ui('nothing opens by itself while the setting is 0, even with the practice group running and a sure hit', async () => {
@@ -111,8 +119,8 @@ ui('a role of B, a spent daily limit and idle each make a hit give up, and the n
   }
 });
 
-ui('two scenes are at least 20 rolls apart, so a sure hit does not open scene after scene', async () => {
-  const page = await soloA();
+ui('two scenes are at least 20 minutes apart by the clock, so a sure hit does not open scene after scene', async () => {
+  const page = await soloA({ fastClock: true });
   try {
     await page.ask(PRACTICE);
     assert.ok(await waitFor(() => tells(page).length >= 1, 4000));
@@ -125,7 +133,7 @@ ui('two scenes are at least 20 rolls apart, so a sure hit does not open scene af
 });
 
 ui('a scene opened by hand counts as the last scene for the gap, and an automatic scene counts in the daily total', async () => {
-  const page = await soloA();
+  const page = await soloA({ fastClock: true });
   try {
     assert.equal((await page.ask({ type: 'START_CHAT_SCRIPT' })).ok, true);
     assert.ok(await waitFor(() => tells(page).length >= 1, 4000));
@@ -147,7 +155,7 @@ const settingsOf = (page, patch) => ({ enabled: true, typoRate: 0, role: 'A', pa
 const changeSettings = (page, patch) => page.changeListeners.forEach(listener => listener({ chatScript: { newValue: settingsOf(page, patch) } }, 'local'));
 
 ui('stopping the practice group ends the automatic scenes, and starting it again warms up again', async () => {
-  const page = await soloA();
+  const page = await soloA({ fastClock: true });
   try {
     await page.ask(PRACTICE);
     assert.ok(await waitFor(() => tells(page).length >= 1, 4000));
@@ -224,6 +232,79 @@ ui('STATUS says nothing about automatic scenes unless they are scheduled, then w
     assert.ok(await waitFor(async () => (await page.ask({ type: 'STATUS' })).chatScriptAuto?.phase === 'rolling', 4000));
     await page.ask({ type: 'STOP_TRIGGER', group: 'practice' });
     assert.equal((await page.ask({ type: 'STATUS' })).chatScriptAuto, null);
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 最小間隔看時鐘、改對方 ID、放棄的情況 ----
+ui('the gap counts the time the practice group was off, so a restart after a long stop is not held back', async () => {
+  const page = await soloA({ fastClock: true });
+  try {
+    await page.ask(PRACTICE);
+    assert.ok(await waitFor(() => tells(page).length >= 1, 4000));
+    await page.ask({ type: 'STOP_TRIGGER', group: 'practice' });
+    await sleep(800); // 快的時鐘走了 800 × 2000 毫秒 ＝ 約 27 分鐘，比最小間隔久
+    const before = tells(page).length;
+    const restartedAt = Date.now();
+    await page.ask(PRACTICE);
+    assert.ok(await waitFor(() => tells(page).length > before, 4000));
+    assert.ok(Date.now() - restartedAt < 450, `only the warm-up and one roll are needed (about 180 ms), not another 20 rolls: took ` + (Date.now() - restartedAt) + ' ms');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a scene another game tab opened a moment ago holds this tab back too', async () => {
+  const page = await soloA({ fastClock: true });
+  try {
+    await page.ask(PRACTICE);
+    const today = (d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)(new Date(page.clockNow()));
+    page.changeListeners.forEach(listener => listener({ chatScriptState: { newValue: { date: today, count: 1, recent: ['other'], lastAt: page.clockNow() } } }, 'local'));
+    await sleep(400); // 暖機（150 毫秒）過了、擲過好幾次，但別的分頁剛開了一場
+    assert.equal(tells(page).length, 0, 'held back by the scene of the other tab');
+    assert.ok(await waitFor(() => tells(page).length >= 1, 4000), 'and opens once 20 minutes of the clock have passed');
+  } finally {
+    page.close();
+  }
+});
+
+ui('changing the partner id warms up again, like starting the practice group again', async () => {
+  const page = await soloA({ autoEveryMin: 5, random: 0.999 });
+  try {
+    await page.ask(PRACTICE);
+    assert.ok(await waitFor(async () => (await page.ask({ type: 'STATUS' })).chatScriptAuto?.phase === 'rolling', 4000));
+    changeSettings(page, { partner: 'akai', autoEveryMin: 5 });
+    assert.equal((await page.ask({ type: 'STATUS' })).chatScriptAuto.phase, 'warmup', 'the warm-up starts over for the new partner');
+    changeSettings(page, { partner: 'AKAI', autoEveryMin: 5 });
+    assert.ok(await waitFor(async () => (await page.ask({ type: 'STATUS' })).chatScriptAuto?.phase === 'rolling', 4000));
+    changeSettings(page, { partner: 'akai', autoEveryMin: 5 });
+    assert.equal((await page.ask({ type: 'STATUS' })).chatScriptAuto.phase, 'rolling', 'the same id in another case is the same partner');
+  } finally {
+    page.close();
+  }
+});
+
+ui('a hit gives up quietly when there is no usable script, and the next roll tries again', async () => {
+  const page = await soloA({ scripts: [] });
+  try {
+    await page.ask(PRACTICE);
+    await sleep(900);
+    assert.equal(tells(page).length, 0, 'nothing to say');
+    assert.equal((await page.ask({ type: 'STATUS' })).chatScriptAuto.phase, 'rolling', 'still rolling, nothing broke');
+  } finally {
+    page.close();
+  }
+});
+
+ui('while the real person check is on screen nothing opens by itself', async () => {
+  const page = await soloA();
+  try {
+    await page.ask(PRACTICE);
+    await sleep(60);
+    page.w.document.getElementById('presence').classList.remove('invisible'); // 真人驗證出現：整個停下來，要玩家自己處理
+    await sleep(900);
+    assert.equal(tells(page).length, 0);
   } finally {
     page.close();
   }

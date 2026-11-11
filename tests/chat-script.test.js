@@ -846,6 +846,11 @@ test('the daily count, the recent list and the status text are worked out by the
   assert.equal(C.todayCount({ date: '2026-11-07', count: 2, recent: [] }, '2026-11-07'), 2);
   assert.equal(C.todayCount({ date: '2026-11-06', count: 2, recent: [] }, '2026-11-07'), 0);
   assert.equal(C.todayCount(C.normalizeState({ date: 5, count: 'x', recent: 'y' }), '2026-11-07'), 0, 'damaged data counts as nothing');
+  // 上一場開始的時間（毫秒）：自動開場的最小間隔用它算；壞資料當 0
+  assert.equal(C.normalizeState(undefined).lastAt, 0);
+  assert.equal(C.normalizeState({ lastAt: 123456 }).lastAt, 123456);
+  assert.deepEqual(['x', -5, NaN, null, Infinity].map(lastAt => C.normalizeState({ lastAt }).lastAt), [0, 0, 0, 0, 0]);
+  assert.equal(C.recordStart(C.normalizeState(undefined), '2026-11-07', 'a', 5000).lastAt, 5000);
   const after = ['a', 'b', 'c', 'd', 'e', 'f', 'a'].reduce((state, id) => C.recordStart(state, '2026-11-07', id), C.normalizeState(undefined));
   assert.deepEqual(after.recent, ['c', 'd', 'e', 'f', 'a'], 'only the last 5, and a repeat moves to the end');
   assert.equal(after.count, 7);
@@ -855,7 +860,9 @@ test('the daily count, the recent list and the status text are worked out by the
   assert.equal(C.describeStatus({ session: undefined, state: C.normalizeState(undefined), perDay: 3, today: '2026-11-07' }), '今天 0/3 場；遊戲頁沒有回應');
   // 自動開場：沒有排程（null 或沒給）時文字和以前完全一樣；暖機中寫還要幾分鐘（進位），擲骰中寫平均幾分鐘一場
   const none = { session: null, state: C.normalizeState(undefined), perDay: 3, today: '2026-11-07' };
-  assert.equal(C.describeStatus({ ...none, auto: null, everyMin: 100 }), '今天 0/3 場；目前沒有進行中的一場');
+  assert.equal(C.describeStatus({ ...none, auto: null, everyMin: 0 }), '今天 0/3 場；目前沒有進行中的一場', 'off: nothing about it');
+  assert.equal(C.describeStatus({ ...none, auto: null, everyMin: 100 }), '今天 0/3 場；目前沒有進行中的一場；自動開場：等「練功」觸發組開始後才會擲骰', 'on but not scheduled yet');
+  assert.equal(C.describeStatus({ ...none, auto: null, everyMin: 100, autoEligible: false }), '今天 0/3 場；目前沒有進行中的一場', 'this computer is not going to open on its own, so it does not say it waits');
   assert.equal(C.describeStatus({ ...none, auto: { phase: 'warmup', secondsLeft: 125 }, everyMin: 100 }), '今天 0/3 場；目前沒有進行中的一場；自動開場：暖機中，約 3 分鐘後開始擲骰');
   assert.equal(C.describeStatus({ ...none, auto: { phase: 'warmup', secondsLeft: 0 }, everyMin: 100 }), '今天 0/3 場；目前沒有進行中的一場；自動開場：暖機中，約 1 分鐘後開始擲骰', 'never says 0 minutes');
   assert.equal(C.describeStatus({ ...none, auto: { phase: 'rolling' }, everyMin: 100 }), '今天 0/3 場；目前沒有進行中的一場；自動開場：擲骰中，平均每 100 分鐘一場');

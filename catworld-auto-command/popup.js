@@ -303,7 +303,7 @@ let scriptDay = CatworldChatScript.normalizeState(undefined);
 let scriptSession = undefined;
 let scriptAuto = null; // STATUS 的 chatScriptAuto：練功開始後自動開場的排程（沒有排程是 null）
 function renderScriptStatus() {
-  $('scriptStatus').textContent = CatworldChatScript.describeStatus({ session: scriptSession, state: scriptDay, perDay: scriptSettings.perDay, today: CatworldChatScript.dayKey(Date.now()), auto: scriptAuto, everyMin: scriptSettings.autoEveryMin });
+  $('scriptStatus').textContent = CatworldChatScript.describeStatus({ session: scriptSession, state: scriptDay, perDay: scriptSettings.perDay, today: CatworldChatScript.dayKey(Date.now()), auto: scriptAuto, everyMin: scriptSettings.autoEveryMin, autoEligible: scriptSettings.enabled && scriptSettings.role === 'A' && !!scriptSettings.partner });
 }
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !changes[CatworldChatScript.STATE_KEY]) return;
@@ -1368,7 +1368,7 @@ const DEPENDENCIES = [
   { host: 'sec-script', warn: () => isOn('scriptOn') && !blank('scriptPerDay') && Number($('scriptPerDay').value) === 0, text: '每天最多 0 場：不開場也不接話。' },
   { host: 'sec-script', warn: () => isOn('scriptOn') && autoEvery() > 0 && $('scriptRole').value !== 'A', text: '自動開場只有角色 A 會開，這台是 B，不會自動開場。' },
   { host: 'sec-script', warn: () => isOn('scriptOn') && autoEvery() > 0 && blank('scriptPartner'), text: '自動開場要先填對方的英文 ID，現在還沒填，不會自動開。' },
-  { host: 'sec-script', info: () => isOn('scriptOn') && autoEvery() > 0, text: '自動開場只在「練功」觸發組開始之後才會擲骰；每天場數與兩場之間約 20 分鐘的間隔照樣限制。' },
+  { host: 'sec-script', info: () => isOn('scriptOn') && autoEvery() > 0, text: `自動開場只在「練功」觸發組開始之後才會擲骰；每天場數與兩場之間至少 ${CatworldChatScript.AUTO_MIN_GAP_MS / 60000} 分鐘的間隔照樣限制。` },
   { host: 'sec-script', info: () => isOn('scriptOn'), text: '劇本認領的來訊不會進密語區，也不會觸發聊天回覆；兩台電腦要填同一份試算表連結和互相的英文 ID。' },
   { host: 'sec-stopwords', warn: () => isOn('stopKeywordsOn') && blank('stopKeywordsList'), text: '關鍵字清單是空的，不會命中任何詞。' },
 ];

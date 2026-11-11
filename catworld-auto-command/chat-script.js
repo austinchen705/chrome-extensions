@@ -22,10 +22,10 @@ const PER_DAY_DEFAULT = 3; // 每天最多幾場
 const PER_DAY_MAX = 99;
 const AUTO_EVERY_DEFAULT = 0; // 平均每幾分鐘自動開一場（0＝不啟用）
 const AUTO_EVERY_MAX = 1440; // 上限一天
-// 自動開場：練功組開始後先暖機，之後每分鐘擲一次骰子；兩場開始之間至少隔這麼多次擲骰（用次數不用時鐘，測試縮小計時器時才跟著縮）
+// 自動開場：練功組開始後先暖機，之後每分鐘擲一次骰子；兩場開始（手動或自動、這個分頁或別的分頁）之間至少隔 AUTO_MIN_GAP_MS（看 STATE_KEY 的 lastAt）
 const AUTO_WARMUP_MS = 5 * 60 * 1000;
 const AUTO_ROLL_MS = 60 * 1000;
-const AUTO_MIN_GAP_ROLLS = 20;
+const AUTO_MIN_GAP_MS = 20 * 60 * 1000;
 const RECENT_LIMIT = 5; // A 挑劇本時避開最近用過的幾份
 const TYPO_RATE_DEFAULT = 3; // 每一輪出錯字的機率（%）
 const TYPO_MIN_LENGTH = 6; // 一則至少幾個字才會被打錯
@@ -187,7 +187,7 @@ function addTypo(texts, rate, random = Math.random, similarity = globalThis.Catw
   result.splice(pick.index, 1, pick.typed, pick.correction);
   return result;
 }
-// 每日場數與最近用過的劇本（STATE_KEY）：date 是本機日期（dayKey），跨日 count 歸零；recent 舊的在前、最多 RECENT_LIMIT 個
+// 每日場數與最近用過的劇本（STATE_KEY）：date 是本機日期（dayKey），跨日 count 歸零；recent 舊的在前、最多 RECENT_LIMIT 個；lastAt 是上一場開始的時間（毫秒，壞資料當 0）
 const dayKey = ms => {
   const day = new Date(ms);
   return [day.getFullYear(), day.getMonth() + 1, day.getDate()].map((part, index) => String(part).padStart(index ? 2 : 4, '0')).join('-');
@@ -196,12 +196,14 @@ const normalizeState = raw => ({
   date: typeof raw?.date === 'string' ? raw.date : '',
   count: Number.isInteger(raw?.count) && raw.count > 0 ? raw.count : 0,
   recent: Array.isArray(raw?.recent) ? raw.recent.filter(id => typeof id === 'string').slice(-RECENT_LIMIT) : [],
+  lastAt: Number.isFinite(raw?.lastAt) && raw.lastAt > 0 ? raw.lastAt : 0,
 });
 const todayCount = (state, today) => (state.date === today ? state.count : 0);
-const recordStart = (state, today, scriptId) => ({
+const recordStart = (state, today, scriptId, now = 0) => ({
   date: today,
   count: todayCount(state, today) + 1,
   recent: [...state.recent.filter(id => id !== scriptId), scriptId].slice(-RECENT_LIMIT),
+  lastAt: now,
 });
 // 從可開場的劇本挑一份：避開 recent；全都在 recent 裡（劇本不足 6 份）就挑最久以前用過的
 function pickScript(choices, recent, random = Math.random) {
@@ -211,11 +213,12 @@ function pickScript(choices, recent, random = Math.random) {
   return pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))];
 }
 // 設定頁的狀態行；session 是 STATUS 回的 chatScript（沒有進行中是 null，遊戲頁沒回應是 undefined）；
-// auto 是 STATUS 回的 chatScriptAuto（沒有排程是 null 或沒給，狀態行就不多寫），everyMin 是設定的平均每幾分鐘一場
-function describeStatus({ session, state, perDay, today, auto = null, everyMin = 0 }) {
+// auto 是 STATUS 回的 chatScriptAuto（沒有排程是 null 或沒給），everyMin 是設定的平均每幾分鐘一場；
+// 設定了分鐘數而還沒排程時寫「等練功開始」，但這台不會自己開場（autoEligible 為 false：不是 A、沒填對方 ID 等）就不寫
+function describeStatus({ session, state, perDay, today, auto = null, everyMin = 0, autoEligible = true }) {
   const day = '今天 ' + todayCount(state, today) + '/' + perDay + ' 場';
   if (session === undefined) return day + '；遊戲頁沒有回應';
-  const schedule = !auto ? '' : auto.phase === 'warmup'
+  const schedule = !auto ? (everyMin > 0 && autoEligible ? '；自動開場：等「練功」觸發組開始後才會擲骰' : '') : auto.phase === 'warmup'
     ? '；自動開場：暖機中，約 ' + Math.max(1, Math.ceil(auto.secondsLeft / 60)) + ' 分鐘後開始擲骰'
     : '；自動開場：擲骰中，平均每 ' + everyMin + ' 分鐘一場';
   if (!session) return day + '；目前沒有進行中的一場' + schedule;
@@ -228,5 +231,5 @@ const autoChance = everyMin => (everyMin > 0 ? 1 / everyMin : 0);
 // 對方更正錯字的那一則（「*字」）：不是劇本的台詞，但屬於這一場，收下就好
 const isCorrection = text => /^[*＊]\S{1,4}$/u.test(String(text ?? '').trim());
 
-globalThis.CatworldChatScript = { SETTINGS_KEY, STATE_KEY, MATCH_THRESHOLD, AUTO_WARMUP_MS, AUTO_ROLL_MS, AUTO_MIN_GAP_ROLLS, SEND_DELAY_BOUNDS, CORRECTION_DELAY_MS, autoChance, normalizeSettings, partnerIdOf, fill, tellCommand, usableScripts, toTurns, bestStart, createSession, sendDelayMs, correctionDelayMs, addTypo, isCorrection, dayKey, normalizeState, todayCount, recordStart, pickScript, describeStatus };
+globalThis.CatworldChatScript = { SETTINGS_KEY, STATE_KEY, MATCH_THRESHOLD, AUTO_WARMUP_MS, AUTO_ROLL_MS, AUTO_MIN_GAP_MS, SEND_DELAY_BOUNDS, CORRECTION_DELAY_MS, autoChance, normalizeSettings, partnerIdOf, fill, tellCommand, usableScripts, toTurns, bestStart, createSession, sendDelayMs, correctionDelayMs, addTypo, isCorrection, dayKey, normalizeState, todayCount, recordStart, pickScript, describeStatus };
 })();
