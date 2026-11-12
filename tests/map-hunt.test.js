@@ -1581,7 +1581,7 @@ const lookTimer = (clock, times) => command => {
   return false;
 };
 
-ui('rounds: it reads the server time at the start, sends the standby command after a round, and starts the next round at the respawn minus the head start', async () => {
+ui('rounds: it reads the server time at the start, sends the standby command after a round, and starts the next round at the respawn', async () => {
   const page = await roundPage({ standbyCommand: 'home' });
   try {
     const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
@@ -1592,7 +1592,7 @@ ui('rounds: it reads the server time at the start, sends the standby command aft
     assert.ok(await waitFor(() => /等下一個重生 10:15/.test(huntText(page)), 4000), huntText(page));
     assert.deepEqual(game.log.slice(0, 6), ['time', 'e', 'e', 'l', 'home', 'time']);
     assert.ok(await waitFor(() => looks.length >= 2, 9000), 'the second round starts');
-    assert.ok(looks[1] >= at('10:14:40'), `not before the head start (${new Date(looks[1]).toISOString()})`);
+    assert.ok(looks[1] >= at('10:15:00'), `not before the respawn (${new Date(looks[1]).toISOString()})`);
     assert.ok(looks[1] < at('10:15:50'), `and not long after it (${new Date(looks[1]).toISOString()})`);
     await page.ask({ type: 'STOP' });
   } finally {
@@ -1634,8 +1634,8 @@ ui('rounds: each round waits for the next respawn, even when the clock reading i
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => looks.length >= 3, 14000), `three rounds (${looks.length})`);
-    assert.ok(looks[1] >= at('10:14:40') && looks[1] < at('10:15:50'), new Date(looks[1]).toISOString());
-    assert.ok(looks[2] >= at('10:29:40') && looks[2] < at('10:30:50'), `the second respawn is not counted twice (${new Date(looks[2]).toISOString()})`);
+    assert.ok(looks[1] >= at('10:15:00') && looks[1] < at('10:15:50'), new Date(looks[1]).toISOString());
+    assert.ok(looks[2] >= at('10:30:00') && looks[2] < at('10:30:50'), `the second respawn is not counted twice (${new Date(looks[2]).toISOString()})`);
     await page.ask({ type: 'STOP' });
   } finally {
     page.close();

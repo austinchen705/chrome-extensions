@@ -85,8 +85,7 @@ const FIELDS = [
   { key: 'sortPerHour', group: 'sort', show: sorting, label: '每小時最多整理幾次', hint: '超過就停止並警報', type: 'number', default: 6, min: 1, max: 60 },
   { key: 'loopRounds', group: 'rounds', label: '巡完一輪後等下一個重生', hint: '關＝巡完就停', type: 'select', options: ON_OFF, default: 'on' },
   { key: 'standbyCommand', group: 'rounds', show: s => s.loopRounds === 'on', label: '巡完一輪後的待命指令', hint: '可空', type: 'text', default: '' },
-  { key: 'aheadSec', group: 'rounds', show: s => s.loopRounds === 'on', label: '提早幾秒開始下一輪', type: 'number', default: 20, min: 0, max: 600 },
-  { key: 'stopBeforeSpawnSec', group: 'rounds', label: '重生前幾秒停打', hint: '0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；要比「提早幾秒」大才有用；沒開「等下一個重生」就直接停', type: 'number', default: 0, min: 0, max: 600 },
+  { key: 'stopBeforeSpawnSec', group: 'rounds', label: '重生前幾秒停打', hint: '0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；沒開「等下一個重生」就直接停', type: 'number', default: 0, min: 0, max: 600 },
   { key: 'npcWhitelist', group: 'advanced', label: 'NPC 白名單', hint: '英文 ID，用、分隔', type: 'text', default: '' },
 ];
 // 精、神（目前值）與精氣神內傷（傷勢 %）的補充：比照吃藥，各自一組「低於 %」與指令（設定鍵是 key＋Below／Command），沒填就不看。
@@ -106,7 +105,7 @@ const GROUPS = [
   { id: 'special', title: '特攻', summary: s => (s.specialCommand ? `${s.specialCommand}，至少隔 ${s.specialIntervalSec} 秒` : '沒填') },
   { id: 'heal', title: '補氣與安全', summary: s => [eatMode(s) ? `吃藥 ${s.eatCommand || '（沒填）'} <${s.eatBelow}%` : `自己回 <${s.restBelow}%`, `回家 ${s.homeCommand || '（沒填）'}`, ...TOP_UPS.map(item => (s[`${item.key}Command`] && s[`${item.key}Below`] > 0 ? `${item.name} <${s[`${item.key}Below`]}%` : ''))].filter(Boolean).join('｜') },
   { id: 'sort', title: '負重與自動整理', summary: s => (sorting(s) ? `>${s.loadMaxPercent}% 整理｜${s.sortKeep === 'none' ? '全賣' : '留好裝備'}` : '不檢查') },
-  { id: 'rounds', title: '輪與重生', summary: s => [s.loopRounds === 'on' ? `等重生｜提早 ${s.aheadSec} 秒` : '巡完就停', s.stopBeforeSpawnSec > 0 ? `重生前 ${s.stopBeforeSpawnSec} 秒停打` : ''].filter(Boolean).join('｜') },
+  { id: 'rounds', title: '輪與重生', summary: s => [s.loopRounds === 'on' ? '等重生' : '巡完就停', s.stopBeforeSpawnSec > 0 ? `重生前 ${s.stopBeforeSpawnSec} 秒停打` : ''].filter(Boolean).join('｜') },
   { id: 'advanced', title: '進階', summary: s => (s.npcWhitelist ? `白名單 ${s.npcWhitelist}` : '') },
 ];
 const fieldShown = (field, settings) => !field.show || field.show(settings);
@@ -958,7 +957,7 @@ function create(deps) {
   // ---- 輪與輪之間 ----
   // 時間都用伺服器時間（毫秒）：deps.now()＋偏差。state.after 是「這一輪打下來的怪從什麼時候起重生」：
   // 等待之後開始的那一輪＝它等的那個重生本身（精確的整點，不能用算出來的時間，否則偏差差一點就會把同一個重生又算一次）；
-  // 馬上開始的（按開始、或掃描太久而已過）＝現在加提早秒數。下一個重生＝after 之後的第一個 15 分鐘整點
+  // 馬上開始的（按開始、或掃描太久而已過）＝現在。下一個重生＝after 之後的第一個 15 分鐘整點
   const nextSpawn = after => (Math.floor(after / RESPAWN_MS) + 1) * RESPAWN_MS;
   const hhmm = ms => {
     const date = new Date(ms + 8 * 3600 * 1000);
@@ -988,14 +987,14 @@ function create(deps) {
     Object.assign(state, {
       scan: false, prescan: false, learn: state.settings.learnExits === 'on', progressAt: state.ticks,
       targets, allTargets: new Set(targets), baseSkipped, skipped: [...baseSkipped], badEdges: new Set(), deferred: new Set(), retried: false,
-      round: 1, after: deps.now() + state.offset + state.settings.aheadSec * 1000, waiting: null, ...roundFields(),
+      round: 1, after: deps.now() + state.offset, waiting: null, ...roundFields(),
     });
     state.phase = 'plan';
     deps.notify();
   }
   const roundFields = () => ({ skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [] });
   // 每個目標房間都處理過一次＝一輪。沒開「等下一個重生」或這一輪什麼都沒處理（沒有走得到的目標）就停（第 2 輪以後警報）；
-  // 否則送待命指令（是巨集的話等它跑完），用 time 校準，等到下一個重生減「提早秒數」再開始下一輪
+  // 否則送待命指令（是巨集的話等它跑完），用 time 校準，等到下一個重生再開始下一輪
   function endRound() {
     // 第一輪走不到的房間再試一次（門還是過不去才記成走不到）
     if (state.scan && !state.retried && state.deferred.size) {
@@ -1043,11 +1042,10 @@ function create(deps) {
       if (state !== token) return;
       state.calibrating = false;
       if (offset === null) { finish('讀不到伺服器時間（time 的輸出），已停止', { alert: true }); return; }
-      const ahead = state.settings.aheadSec * 1000;
       const spawn = nextSpawn(state.after);
       const now = deps.now() + offset;
-      if (now >= spawn - ahead) { beginRound(now + ahead, offset); return; }
-      state.waiting = { startAt: spawn - ahead, spawn, offset, calibratedAt: deps.now(), asking: false, rounds: state.round, visited: state.visited.length };
+      if (now >= spawn) { beginRound(now, offset); return; }
+      state.waiting = { startAt: spawn, spawn, offset, calibratedAt: deps.now(), asking: false, rounds: state.round, visited: state.visited.length };
       deps.notify();
     }).catch(() => { if (state === token) finish('讀取伺服器時間時出錯，已停止', { alert: true }); });
   }
@@ -1262,7 +1260,7 @@ function create(deps) {
         if (!prescan && !targets.size) return fail('這個區域沒有蒐集到勾選的怪的房間（或那些房間不在地圖上）');
       }
       state = {
-        round: 1, after: deps.now() + offset + settings.aheadSec * 1000, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
+        round: 1, after: deps.now() + offset, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
         mobs: scan ? [] : target.mobs, area: target.area, offset, scan: scan || prescan, prescan, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph, targets, skipped: [...baseSkipped], fixed: [],
         settings, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null,
         ...roundFields(), phase: 'plan', goal: null, expected: null, from: null, waited: 0,

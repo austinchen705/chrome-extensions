@@ -97,6 +97,21 @@ ui('an edit is saved at once with the other fields, and a broken stored value fa
 
 const cellOf = (doc, key) => field(doc, key).closest('.hfield');
 
+ui('there is no start-early field, and an old stored value is ignored and dropped by the next save', async () => {
+  const { dom, doc, store } = await boot({ mapHuntSettings: { aheadSec: 45, loopRounds: 'on', stopBeforeSpawnSec: 30 } });
+  try {
+    assert.equal(field(doc, 'aheadSec'), null, 'the field is gone');
+    assert.doesNotMatch(doc.querySelector('#fold-hunt-rounds > summary').textContent, /提早/, 'and the fold title no longer mentions it');
+    assert.equal(field(doc, 'stopBeforeSpawnSec').value, '30', 'the other round settings are kept');
+    change(dom, field(doc, 'eatCommand'), 'eat pill');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.eatCommand === 'eat pill'));
+    assert.equal('aheadSec' in store.mapHuntSettings, false, 'the old value is not written back');
+    assert.equal(store.mapHuntSettings.stopBeforeSpawnSec, 30);
+  } finally {
+    dom.window.close();
+  }
+});
+
 ui('the fields are split into closed folds whose titles carry the main values', async () => {
   const { dom, doc } = await boot({ mapHuntSettings: { eatCommand: 'tn', homeCommand: 'ride', specialCommand: 'ps' } });
   try {
