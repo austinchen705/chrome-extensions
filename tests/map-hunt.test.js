@@ -2990,17 +2990,26 @@ const pinRandom = (page, value) => {
 };
 const visitOrder = text => [...text.matchAll(/t\/(\w+) 看房間/g)].map(match => match[1]);
 // 在 map（lineWorld 或 DIAMOND）上從 at 出發，目標房間各有一隻怪，跑完一輪；回傳巡怪紀錄與送出的指令
-const huntOnce = async ({ map, at, targets, humanize = 'on', r = 0.5, settings = {} }) => {
+const huntOnce = async ({ map, at, targets, humanize = 'on', r = 0.5, settings = {}, timed = false, worldOptions = {} }) => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt(...targets);
     page.store.mapHuntSettings = { ...REQUIRED, humanize, ...settings };
+    // timed：假時鐘和計時器同一個倍率，times 記下遊戲真正收到每個指令的時間（伺服器時間毫秒）
+    const clock = timed ? fakeClock(page, '2026-11-04T10:00:00+08:00', { scale: SCALE }) : null;
+    const times = [];
     pinRandom(page, r);
-    const game = world(page, { at, ...map, looks: Object.fromEntries(targets.map(id => [id, { lines: [MOB_LINE] }])) });
+    const game = world(page, {
+      at,
+      ...map,
+      looks: Object.fromEntries(targets.map(id => [id, { lines: [MOB_LINE] }])),
+      ...worldOptions,
+      ...(timed && { script: command => { times.push([command, clock.server()]); return false; } }),
+    });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
-    return { text: await huntLog(page), commands: [...game.log] };
+    return { text: await huntLog(page), commands: [...game.log], times };
   } finally {
     page.close();
   }
@@ -3075,6 +3084,49 @@ ui('humanize: the eat line never drops to the danger line, and a stop time under
   const [stop, eatLine] = await jitterOf('on', 0.99, close, EAT_LOG);
   assert.equal(stop, 5);
   assert.ok(eatLine > 22 && eatLine <= 25, String(eatLine));
+});
+
+// 擬人化的長停頓：用 huntOnce 的 timed 選項量遊戲真正收到每個指令的時間
+// 第 n 個指令和前一個指令之間隔了幾毫秒
+const gapBefore = (times, index) => times[index][1] - times[index - 1][1];
+const PAUSE_MIN_MS = 3000; // 停頓最短 3 秒（引擎的 PAUSE_MIN_MS）
+const NO_PAUSE_MS = 2800; // 走路本來就隔 1.6～1.9 秒（共用的指令間隔、等房間換過去）：停頓至少 3 秒再加上這些，所以 2.8 秒以下就是沒停
+const LINE = ['a', 'b', 'c', 'd', 'e2', 'f']; // 從 a 走到 f 要 5 步
+const firstIndex = (times, command, from = 0) => times.findIndex(([cmd], i) => i >= from && cmd === command);
+
+ui('humanize pauses: a drawn pause comes right after arriving (before the look) and after a monster is finished (before the recount), and never in the walk', async () => {
+  const { times, text } = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], r: 0.01, timed: true }); // 0.01 < 5%：每個可以停的點都停
+  const commands = times.map(([command]) => command);
+  assert.deepEqual(commands, ['e', 'e', 'e', 'e', 'e', 'l', FIGHT, 'gc', 'l'], 'the same commands as without pauses');
+  for (let i = 1; i <= 4; i += 1) assert.ok(gapBefore(times, i) < NO_PAUSE_MS, `walking step ${i} was not paused (${gapBefore(times, i)} ms)`);
+  const look = firstIndex(times, 'l');
+  assert.ok(gapBefore(times, look) >= PAUSE_MIN_MS, `the look after arriving waited for the pause (${gapBefore(times, look)} ms)`);
+  const recount = firstIndex(times, 'l', look + 1);
+  // 停頓和撿屍指令排進佇列同時開始，gc 實際送出還要等一個指令間隔，所以從「怪死前最後一個指令」量起才包含整個停頓
+  const killedAt = times[firstIndex(times, FIGHT)][1];
+  assert.ok(times[recount][1] - killedAt >= PAUSE_MIN_MS, `the recount after the kill waited for the pause (${times[recount][1] - killedAt} ms after the fight)`);
+  assert.ok(gapBefore(times, firstIndex(times, 'gc')) < PAUSE_MIN_MS, 'the corpse command right after the kill is not delayed');
+  assert.match(text, /t\/f 停頓 \d\.\d 秒（到房間後）/);
+  assert.match(text, /t\/f 停頓 \d\.\d 秒（打完一隻後）/);
+  const max = Number(text.match(/間隔 最短 [\d.]+／平均 [\d.]+／最長 ([\d.]+) 秒/)[1]);
+  assert.ok(max >= PAUSE_MIN_MS / 1000, `the summary's longest gap includes the pause (${max})`);
+});
+
+ui('humanize pauses: even the longest pause ends before the 8-second no-reply watchdog, after a corpse command that prints nothing', async () => {
+  // 0.0499 剛好在機率以內：同一個抽籤值縮放成長度，就是最長的那一種。gc 不印任何東西（reply: false），房間描述照印
+  const arrivals = Object.fromEntries(LINE.slice(1).map(id => [id, {}]));
+  const { text } = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], r: 0.0499, worldOptions: { reply: false, arrivals } });
+  // huntOnce 會等到「巡完了」：看門狗在停頓裡把巡怪停掉的話，這裡就等不到
+  const pause = Number(text.match(/停頓 ([\d.]+) 秒（打完一隻後）/)?.[1]);
+  assert.ok(pause > 6 && pause < 8, `the longest pause is close to but under the 8 seconds of the watchdog (${pause})`);
+});
+
+ui('humanize pauses: a draw above the chance, or the switch off, adds no wait and no log line', async () => {
+  for (const options of [{ r: 0.99 }, { r: 0.01, humanize: 'off' }]) {
+    const { times, text } = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], timed: true, ...options });
+    for (let i = 1; i < times.length; i += 1) assert.ok(gapBefore(times, i) < NO_PAUSE_MS, `${JSON.stringify(options)}: no long gap (${times[i][0]}: ${gapBefore(times, i)} ms)`);
+    assert.doesNotMatch(text, /停頓/);
+  }
 });
 
 ui('humanize: the respawn mark itself is never shifted (the next round still starts right after it)', async () => {

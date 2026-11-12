@@ -23,6 +23,10 @@ const LOG_MAX = 600; // 巡怪紀錄最多留幾行
 const JITTER_STOP_RATIO = 0.3; // 擬人化：重生前停打秒數每輪偏移 ±30%
 const JITTER_STOP_MIN_SEC = 10; // 小於這個秒數不偏移（取整數會超過 ±30%，例如 2 秒變 1 或 3）
 const JITTER_LINE_POINTS = 3; // 擬人化：吃藥線、休息線每輪偏移 ±3 個百分點
+const PAUSE_CHANCE = 0.05; // 擬人化：可以停的點約有這個機率多停一段
+const PAUSE_MIN_MS = 3000;
+// 上限一定要小於 content.js 的 NO_REPLY_MS（8 秒）：撿屍指令送出後遊戲若什麼都不印，8 秒看門狗會把停頓當成「疑似需要驗證」而停掉一切
+const PAUSE_MAX_MS = 7000;
 const ORDER_STEPS_CAP = 1.2; // 擬人化：洗牌後的目標順序，總步數最多是「最近的先」的這麼多倍
 const PASS_WAIT_TICKS = 2; // 走到路過的房間後，最多等幾個 tick 讓抵達時的房間描述印出來
 const TICKS_PER_SEC = 1000 / TICK_MS;
@@ -90,7 +94,7 @@ const FIELDS = [
   { key: 'loopRounds', group: 'rounds', label: '巡完一輪後等下一個重生', hint: '關＝巡完就停', type: 'select', options: ON_OFF, default: 'on' },
   { key: 'standbyCommand', group: 'rounds', show: s => s.loopRounds === 'on', label: '巡完一輪後的待命指令', hint: '可空', type: 'text', default: '' },
   { key: 'stopBeforeSpawnSec', group: 'rounds', label: '重生前幾秒停打', hint: '0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；沒開「等下一個重生」就直接停', type: 'number', default: 0, min: 0, max: 600 },
-  { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣。開＝每一輪重排目標順序（近的優先）、等長的路線隨機挑一條、重生前停打秒數與吃藥線、休息線隨機偏移一點；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
+  { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣。開＝每一輪重排目標順序（近的優先）、等長的路線隨機挑一條、重生前停打秒數與吃藥線、休息線隨機偏移一點、偶爾在到房間後與打完一隻後多停幾秒；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
   { key: 'npcWhitelist', group: 'advanced', label: 'NPC 白名單', hint: '英文 ID，用、分隔', type: 'text', default: '' },
 ];
 // 精、神（目前值）與精氣神內傷（傷勢 %）的補充：比照吃藥，各自一組「低於 %」與指令（設定鍵是 key＋Below／Command），沒填就不看。
@@ -316,6 +320,8 @@ function create(deps) {
   // 玩家與 NPC（NPC 記下來，下次不再問）；看不到房間（l 沒回應或讀不懂）當成走不過去；其餘進 fightRoom 打怪。
   // 每個 await 之後都要確認這一次巡怪還在（停止或重新開始後，舊的檢查不能再動新的狀態、也不能再送指令）
   async function inspect(token, here) {
+    await humanPause(here, '到房間後');
+    if (state !== token) return;
     const info = Parse.parseLook(await deps.ask('l', 'look'));
     if (state !== token) return;
     // 回應回來時人已經不在這間了（例如自己手動跑掉）：這份輸出是別間的，不能記給這間，丟掉、重新規劃
@@ -486,6 +492,8 @@ function create(deps) {
       if (!(await notBusy(token))) return;
       if (state.settings.afterKillCommand) deps.send(state.settings.afterKillCommand);
       if (state.settings.loadMaxPercent > 0) state.loadDue = true;
+      await humanPause(here, '打完一隻後');
+      if (state !== token) return;
       info = Parse.parseLook(await deps.ask('l', 'look'));
       if (state !== token) return;
       if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
@@ -1107,6 +1115,17 @@ function create(deps) {
     const now = state.settings;
     const line = base.healMode === 'eat' ? `吃藥線 ${now.eatBelow}%` : `休息線 ${now.restBelow}%`;
     record('-', '擬人化', `本輪：目標順序 ${state.order ? state.order.map(key => key.split('/').pop()).join('→') : '最近的先'}；重生前停打 ${now.stopBeforeSpawnSec} 秒；${line}；危險線 ${now.dangerBelow}%`);
+  }
+  // 可以停的點偶爾（PAUSE_CHANCE）在送下一個指令前多停 PAUSE_MIN_MS～PAUSE_MAX_MS（3～7 秒）。只放在「到房間後、看房間之前」和「打完一隻後、重數之前」
+  // （撿屍指令已經先送出），走路途中絕不停（移動逾時只有 5 秒）；停頓在引擎裡等，所以指令真正送出的時間（每輪摘要用的）自然包含它。
+  // 呼叫端在 await 之後要確認這一次巡怪還在
+  async function humanPause(here, when) {
+    if (!humanizeOn()) return;
+    const roll = random(); // 一次抽籤：小於機率才停，同一個值縮放到 0～1 就是這次停多久
+    if (roll >= PAUSE_CHANCE) return;
+    const ms = PAUSE_MIN_MS + (roll / PAUSE_CHANCE) * (PAUSE_MAX_MS - PAUSE_MIN_MS);
+    record(here, '停頓', `${(ms / 1000).toFixed(1)} 秒（${when}）`);
+    await new Promise(resolve => setTimeout(resolve, ms));
   }
   // 最短路線不只一條時，第一步在「走完全程一樣長」的出口裡隨機挑一個；關著、掃描時走原本那條
   function firstStep(route, here) {
