@@ -3886,3 +3886,82 @@ ui('verify: refused while the hunt is running, and nothing is sent', async () =>
     page.close();
   }
 });
+
+// 分頁：第一頁（到「未完繼續」那一行為止）送 alias 時印，之後每次空白行（Enter）印下一頁
+const [ALIAS_PAGE_1, ALIAS_PAGE_2] = (() => {
+  const at = ALIAS_LIST.indexOf('\nrunto11'); // 第二頁的第一個別名
+  return [ALIAS_LIST.slice(0, at).trimEnd(), ALIAS_LIST.slice(at + 1).trimEnd()];
+})();
+
+ui('verify paging: a two-page list is read whole with one Enter, and no q after a last page without the prompt', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const game = world(page, { at: 'a', script: (command, { say: tell }) => {
+      if (command === 'alias') { tell(ALIAS_PAGE_1); return true; }
+      if (command === '') { tell(ALIAS_PAGE_2); return true; }
+      return false;
+    } });
+    const reply = await verify(page, 'wi');
+    assert.match(reply.text, /「wi」＝「wield \$1」/, 'an alias from the second page was read');
+    assert.deepEqual(game.log, ['alias', ''], 'one Enter and nothing else');
+  } finally {
+    page.close();
+  }
+});
+
+ui('verify paging: a one-page list sends neither Enter nor q', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const game = world(page, { at: 'a', script: (command, { say: tell }) => {
+      if (command === 'alias') { tell(ALIAS_PAGE_1.split('\n').filter(line => !line.includes('未完繼續')).join('\n')); return true; }
+      return false;
+    } });
+    const reply = await verify(page, 'f');
+    assert.match(reply.text, /「f」＝「fight \$1」/);
+    assert.deepEqual(game.log, ['alias']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('verify paging: a list that never ends stops after 10 pages, sends q once and says why', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const game = world(page, { at: 'a', script: (command, { say: tell }) => {
+      if (command === 'alias' || command === '') { tell(ALIAS_PAGE_1); return true; }
+      return command === 'q';
+    } });
+    const reply = await verify(page, 'f');
+    assert.match(reply.text, /超過 10 頁/);
+    assert.match(reply.text, /「f」＝「fight \$1」/, 'the verdict on what was read is still given');
+    assert.ok(await waitFor(() => game.log.includes('q'), 1000), 'q goes out (it is queued, so it may follow the reply)');
+    await sleep(100);
+    assert.deepEqual(game.log, ['alias', ...Array(9).fill(''), 'q']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('verify paging: stop-everything or the human verification during paging sends nothing more', async () => {
+  for (const interrupt of ['stop', 'presence']) {
+    const page = await boot({ scale: SCALE });
+    try {
+      const game = world(page, { at: 'a', script: (command, { say: tell }) => {
+        if (command === 'alias') { tell(ALIAS_PAGE_1); return true; }
+        if (command === '') {
+          if (interrupt === 'stop') tell('jrealm 出現了');
+          else page.w.document.getElementById('presence').classList.remove('invisible');
+          tell(ALIAS_PAGE_1); // 遊戲還在分頁：又是一頁「未完繼續」
+          return true;
+        }
+        return false;
+      } });
+      const reply = await verify(page, 'f');
+      await sleep(300);
+      assert.deepEqual(game.log, ['alias', ''], `${interrupt}: no further Enter and no q`);
+      assert.equal(reply.ok, true, interrupt);
+    } finally {
+      page.close();
+    }
+  }
+});

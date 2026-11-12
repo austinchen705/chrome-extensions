@@ -1284,6 +1284,7 @@ function stopTriggers(group, note = '已停止') {
 
 // 驗證碼或送出失敗：定時與兩組觸發、巨集一起停
 function stopEverything(reason) {
+  stopCount += 1;
   cancelIdle({ resume: false });
   groupList.forEach(group => stopTriggers(group));
   hunt?.stop(reason);
@@ -1371,12 +1372,14 @@ const ASK = {
   give: { pattern: /你給|沒有|找不到|什麼|不在|太重/, quietMs: 250 },
   sell: { pattern: /賣掉|沒有|什麼|不能/, quietMs: 1000 },
   alias: { pattern: /你目前設定的 alias 有/, quietMs: 600 },
+  aliasPage: { pattern: /\s=\s|未完繼續/, quietMs: 600 }, // 別名列表的第二頁以後：沒有標題，有別名行或分頁提示就算到了
 };
 const ASK_MAX_MS = 8000;
 const addedText = records => CatworldZapMobs.textFromAdded(records.flatMap(record => (record.type === 'characterData'
   ? [record.target.textContent || '']
   : Array.from(record.addedNodes, node => node.textContent || ''))));
 // send(onSent)：怎麼送出（預設排進巡怪的佇列；送出那一刻要呼叫 onSent，之後的輸出才算這個指令的回應）
+let stopCount = 0; // 停止一切的次數：進行中的多步流程（驗證按鈕翻頁）每送下一步前比對，停過就不再送
 function askGame(command, kind, send = onSent => enqueue(command, 'hunt', null, onSent)) {
   return new Promise(resolve => {
     let text = '';
@@ -1401,6 +1404,28 @@ function askGame(command, kind, send = onSent => enqueue(command, 'hunt', null, 
     limit = setTimeout(done, ASK_MAX_MS);
     send(() => { sent = true; });
   });
+}
+// 設定頁的驗證按鈕：送 alias 讀遊戲的別名列表。列表長時遊戲每頁最後印「== 未完繼續 N% ==」並等 Enter（分頁位置會隨列表長度變，只看這個提示，不數行數）：
+// 有提示就送 Enter（空白行）讀下一頁，最多 ALIAS_MAX_PAGES 頁；讀到最後一頁（沒有提示）遊戲自己結束分頁，什麼都不多送；
+// 滿頁數還有提示才送 q 離開。每送下一步前確認這段期間沒有停止一切、驗證碼、真人驗證，有就不再送（停在分頁裡由玩家自己處理）
+const ALIAS_MAX_PAGES = 10;
+const ALIAS_PAGE_PROMPT = /未完繼續/;
+const sendAliasStep = command => onSent => { if (startMacro(command, 'alias')) onSent(); };
+async function readAliasList() {
+  const startedAt = stopCount;
+  const interrupted = () => stopCount !== startedAt || !!captcha || presenceOpen();
+  let page = await askGame('alias', 'alias', sendAliasStep('alias'));
+  let text = page;
+  for (let pages = 1; ALIAS_PAGE_PROMPT.test(page); pages += 1) {
+    if (interrupted()) return { text, tooLong: false };
+    if (pages >= ALIAS_MAX_PAGES) {
+      startMacro('q', 'alias');
+      return { text, tooLong: true };
+    }
+    page = await askGame('<enter>', 'aliasPage', sendAliasStep('<enter>'));
+    text += `\n${page}`;
+  }
+  return { text, tooLong: false };
 }
 // 不算「別人」的 ID：設定頁的白名單加上自動學到的 NPC
 async function learnedNpcs() {
@@ -2046,9 +2071,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // 巡怪或掃描在跑時不送（別名列表會分頁，卡在分頁時巡怪的指令會被遊戲當成翻頁吃掉）；用巨集送，閒置時也送得出去，停止一切與驗證碼會取消它
   if (message.type === 'HUNT_VERIFY_ALIAS') {
     if (hunt?.on()) { sendResponse({ ok: false, error: '巡怪或掃描進行中，停下來才能驗證（別名列表會分頁，會吃掉巡怪的指令）' }); return; }
-    askGame('alias', 'alias', onSent => { if (startMacro('alias', 'alias')) onSent(); }).then(text => {
+    readAliasList().then(({ text, tooLong }) => {
       const verdict = CatworldHuntParse.judgeAlias(CatworldHuntParse.parseAliases(text), message.command, { verb: message.verb, form: message.form });
-      sendResponse({ ok: true, ...verdict });
+      sendResponse({ ok: true, ...verdict, text: `${tooLong ? `別名列表超過 ${ALIAS_MAX_PAGES} 頁，只讀了前 ${ALIAS_MAX_PAGES} 頁：` : ''}${verdict.text}` });
     });
     return true;
   }
