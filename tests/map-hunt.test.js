@@ -728,7 +728,8 @@ ui('fight: the command that starts a fight is a setting, so f is sent with the m
     const script = (command, { say: tell }) => {
       if (command !== 'f 1') return false;
       starts += 1;
-      if (starts === 2) tell('測試怪死了。'); // 第一次沒有結束句：逾時後看一眼，怪還在、沒在打，就再送一次
+      // 第一次沒有結束句（只印一句話，免得機器慢時撞上 8 秒無回應的看門狗）：逾時後看一眼，怪還在、沒在打，就再送一次
+      tell(starts === 2 ? '測試怪死了。' : '你對著測試怪說道：請指教。');
       return true;
     };
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
@@ -4096,6 +4097,68 @@ ui('manual: a respawn mark with nothing typed in between writes no empty block',
     click(page, '.hmanual');
     const lines = manualLines(await huntLog(page));
     assert.deepEqual(lines.map(line => line.match(/第 (\d+) 段/)[1]), ['1', '1', '1', '2', '2', '2'], 'the empty 10:15 block is skipped and the numbering goes on');
+  } finally {
+    page.close();
+  }
+});
+
+// 遊戲的巨集視窗：每一列是按鍵值的 input.key 後面接指令的 input.command；按鍵用 F1（112）、F2（113）
+const macroWindow = (page, rows) => {
+  const list = page.w.document.createElement('div');
+  list.id = 'macro_list';
+  rows.forEach(([key, command]) => {
+    const keyBox = page.w.document.createElement('input');
+    keyBox.className = 'key';
+    keyBox.name = String(key);
+    const commandBox = page.w.document.createElement('input');
+    commandBox.className = 'command';
+    commandBox.value = command;
+    list.append(keyBox, commandBox);
+  });
+  page.w.document.body.append(list);
+};
+const pressKey = (page, which, target = page.w.document.getElementById('input')) => {
+  const event = new page.w.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'which', { value: which });
+  target.dispatchEvent(event);
+};
+
+ui('manual: pressing a game macro key records each part of that macro at the moment of the press, and leaves the sending to the game', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    world(page, { at: 'a' });
+    macroWindow(page, [[112, 'l;hp;;sc'], [113, '']]);
+    click(page, '.hmanual');
+    pressKey(page, 112);
+    pressKey(page, 113); // 空的格子
+    pressKey(page, 114); // 沒有設定的鍵
+    const other = page.w.document.createElement('input');
+    page.w.document.body.append(other);
+    pressKey(page, 112, other); // 焦點在別的輸入框：遊戲也不會送
+    await sleep(50);
+    assert.deepEqual(page.sent.filter(command => command !== 'time'), [], 'the extension does not send the macro, the game does');
+    click(page, '.hmanual');
+    const lines = manualLines(await huntLog(page));
+    assert.match(lines[1], /指令 3 個：l hp sc$/, lines.join('\n'));
+    assert.match(lines[2], /間隔 最短 0\.0／平均 0\.0／最長 0\.0 秒/, 'all parts at the moment of the press');
+  } finally {
+    page.close();
+  }
+});
+
+ui('manual: a game macro with @等待 that I press is recorded step by step at the moment each step is sent', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    world(page, { at: 'a' });
+    macroWindow(page, [[112, 'p1;@等待 2;p2']]);
+    click(page, '.hmanual');
+    pressKey(page, 112);
+    assert.ok(await waitFor(() => page.sent.includes('p2'), 2000), 'the extension runs the @等待 macro');
+    click(page, '.hmanual');
+    const lines = manualLines(await huntLog(page));
+    assert.match(lines[1], /指令 2 個：p1 p2$/, lines.join('\n'));
+    const gap = Number(lines[2].match(/最短 ([\d.]+)/)[1]);
+    assert.ok(gap >= 0.05, `the second step was recorded when it was sent, after the wait (${gap} s)`);
   } finally {
     page.close();
   }

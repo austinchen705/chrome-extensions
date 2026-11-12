@@ -988,6 +988,7 @@ function pumpQueue() {
     lastSentAt = Date.now();
     lastSentChat = isChatEntry(entry);
     if (isHuntEntry(entry)) hunt?.noteSent(entry.command);
+    if (entry.run?.owner === PRESSED_MACRO_OWNER) noteManualSend(entry.command);
     entry.onSent?.();
     if (entry.run) {
       entry.run.pending -= 1;
@@ -1536,16 +1537,19 @@ hunt = CatworldMapHunt.create({
 });
 
 // 捕獲階段（比遊戲掛在 body 上的處理早）：條件和遊戲一樣，只在焦點在指令輸入框或 body 時處理；
-// 沒有等待的巨集、不是巨集的按鍵一律不碰，交給遊戲
+// 沒有等待的巨集、不是巨集的按鍵一律不碰，交給遊戲（手動紀錄開著時只把那一格的指令記下來）。
+// 有等待的巨集自己跑，owner 是 PRESSED_MACRO_OWNER：手動紀錄在它的每一步真正送出時記（pumpQueue）
+const PRESSED_MACRO_OWNER = 'pressed';
 window.addEventListener('keydown', event => {
   if (event.target !== document.querySelector('#input') && event.target !== document.body) return;
   const value = CatworldMacro.keyValue(event);
   if (!value) return;
   const command = CatworldMacro.findMacroCommand(document, value);
-  if (!command || !CatworldMacro.hasWait(command)) return;
+  if (!command) return;
+  if (!CatworldMacro.hasWait(command)) { noteManualMacro(command); return; }
   event.preventDefault();
   event.stopImmediatePropagation();
-  if (!event.repeat) startMacro(command);
+  if (!event.repeat) startMacro(command, PRESSED_MACRO_OWNER);
 }, true);
 
 // 浮動狀態面板：放在 shadow DOM 並掛在 <html> 下，頁面層級的 MutationObserver 與 body.textContent 都看不到它，
@@ -1617,16 +1621,26 @@ function stopManual() {
   writeManualSegment(record);
   return true;
 }
+// 記一個玩家的指令（空白行與 <enter> 不算）
+function noteManualSend(raw) {
+  const command = CatworldTimer.commandText(String(raw ?? '')).trim();
+  if (!manualRecord || !command) return;
+  rollManual();
+  noteManualRoom();
+  manualRecord.sends.push({ at: Date.now(), command });
+}
+// 遊戲巨集按鍵（沒有 @等待，遊戲自己一次全部送出）：那一格用 ; 分開的每一段都記成一個指令，時間都是按下的這一刻；
+// 不靠回聲（巨集送出的指令在輸出裡是單獨一行，和一般輸出分不開；使用者貼的真實樣本）
+function noteManualMacro(text) {
+  if (!manualRecord) return;
+  text.split(/\s*;\s*/).forEach(noteManualSend);
+}
 // 捕獲階段：在遊戲處理送出（清空輸入框）之前讀輸入框的值
 document.addEventListener('submit', event => {
   if (!manualRecord || sendingOwn) return;
   const input = document.querySelector('#input');
   if (!input || event.target !== input.form) return;
-  const command = input.value.trim();
-  if (!command) return;
-  rollManual();
-  noteManualRoom();
-  manualRecord.sends.push({ at: Date.now(), command });
+  noteManualSend(input.value);
 }, true);
 // 面板最上方的「數值」區塊（stats-block.js）
 let statsBlock = null;
