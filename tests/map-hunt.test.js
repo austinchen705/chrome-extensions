@@ -4051,3 +4051,52 @@ ui('manual: switching the hunt feature off stops the record and writes out what 
     page.close();
   }
 });
+
+ui('manual: starting the record reads the server time once (not counted as mine), and a record that crosses a respawn mark is written as two numbered blocks', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    // 伺服器 10:14:00 起，1 毫秒＝300 毫秒；電腦時鐘比伺服器慢 7 分鐘（fakeClock 的預設），所以只有用伺服器時間才算得出「整點後 84x 秒」
+    const clock = fakeClock(page, '2026-11-04T10:14:00+08:00');
+    world(page, { at: 'a', script: timeScript(page, clock) });
+    click(page, '.hmanual');
+    assert.ok(await waitFor(() => clock.times === 1, 2000), 'time was asked once');
+    await sleep(50);
+    typeIn(page, 'l');
+    assert.ok(await waitFor(() => clock.server() >= at('10:15:30'), 3000), 'past the 10:15 mark');
+    typeIn(page, 'e');
+    typeIn(page, 'l');
+    click(page, '.hmanual');
+    const lines = manualLines(await huntLog(page));
+    assert.equal(lines.length, 6, lines.join('\n'));
+    assert.ok(lines.every(line => !/沒校準/.test(line)), 'calibrated');
+    const seconds = line => Number(line.match(/開始時間在整點後 (\d+) 秒/)[1]);
+    assert.match(lines[0], /第 1 段：/);
+    assert.ok(seconds(lines[0]) >= 840 && seconds(lines[0]) < 900, `the first block started at 10:14:xx server time (${lines[0]})`);
+    assert.match(lines[1], /第 1 段：指令 1 個：l$/, 'time is not one of my commands');
+    assert.match(lines[3], /第 2 段：/);
+    // 假時鐘放大 300 倍，校準時 time 回應的等待也被放大成好幾秒的誤差，所以只要在 10:15 整點之後不久就算對
+    assert.ok(seconds(lines[3]) < 120, `the second block started shortly after the 10:15 mark (${lines[3]})`);
+    assert.match(lines[4], /第 2 段：指令 2 個：e l$/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('manual: a respawn mark with nothing typed in between writes no empty block', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:14:50+08:00');
+    world(page, { at: 'a', script: timeScript(page, clock) });
+    click(page, '.hmanual');
+    assert.ok(await waitFor(() => clock.times === 1, 2000));
+    await sleep(50);
+    typeIn(page, 'l');
+    assert.ok(await waitFor(() => clock.server() >= at('10:30:30'), 6000), 'two marks later');
+    typeIn(page, 'l');
+    click(page, '.hmanual');
+    const lines = manualLines(await huntLog(page));
+    assert.deepEqual(lines.map(line => line.match(/第 (\d+) 段/)[1]), ['1', '1', '1', '2', '2', '2'], 'the empty 10:15 block is skipped and the numbering goes on');
+  } finally {
+    page.close();
+  }
+});

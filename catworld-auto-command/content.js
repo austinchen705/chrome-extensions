@@ -1556,14 +1556,16 @@ const PIP_SIZE_KEY = 'pipSize';
 let panel = null;
 
 // ---- 手動紀錄（面板「巡怪」列的「● 記錄手動」）：開著時記下玩家自己從輸入框送出的指令與送出那一刻的時間、走過的房間；
-// 擴充功能自己送的（sendCommand 送出表單前設 sendingOwn）不記，所以巡怪、觸發、定時、劇本、驗證碼答案、驗證按鈕的 alias 都不算。
+// 擴充功能自己送的（sendCommand 送出表單前設 sendingOwn）不記，所以巡怪、觸發、定時、劇本、驗證碼答案、驗證按鈕的 alias、校準用的 time 都不算。
 // 不靠輸出的回聲：遊戲的回聲有時是「> 指令」、有時是單獨一行的「指令」，單獨一行的和一般輸出分不開（使用者貼的真實輸出）。
-// 關掉時用巡怪輪摘要同一套組字（CatworldMapHunt.summaryLines）寫一段「手動摘要」到同一份巡怪紀錄；一個指令都沒有就不寫。
-// 只在這個頁面的記憶體裡，不存儲存；伺服器時間還沒校準，用電腦時間並註明
-let manualRecord = null; // { startAt, sends: [{ at, command }], path: [房間鍵], room, timer }
+// 開始時用巨集送一次 time 校準伺服器時間（閒置時佇列不送，和驗證按鈕一樣用巨集）；之後按 15 分鐘重生整點（巡怪的 RESPAWN_MS）分段：
+// 每記一個指令、每秒看房間時、關掉時，伺服器時間跨過這一段的整點就把這一段寫成一段「手動摘要」（巡怪輪摘要同一套組字 summaryLines），
+// 段落編號只算寫出來的；一個指令都沒有的段落不寫。讀不到 time 時偏差當 0，摘要第一行註明「伺服器時間沒校準」。只在這個頁面的記憶體裡，不存儲存
+let manualRecord = null; // { sends: [{ at, command }], path: [房間鍵], room, timer, offset, calibrated, segmentEnd, written }
 let sendingOwn = false;
 const MANUAL_ROOM_MS = 1000;
 const currentRoomKey = () => CatworldMapCollect.currentRoom(document)?.key ?? null;
+const nextRespawnMark = serverMs => (Math.floor(serverMs / CatworldMapHunt.RESPAWN_MS) + 1) * CatworldMapHunt.RESPAWN_MS;
 function noteManualRoom() {
   const record = manualRecord;
   const room = currentRoomKey();
@@ -1571,21 +1573,48 @@ function noteManualRoom() {
   record.room = room;
   record.path.push(room);
 }
-function startManual() {
-  manualRecord = { startAt: Date.now(), sends: [], path: [], room: currentRoomKey(), timer: setInterval(noteManualRoom, MANUAL_ROOM_MS) };
+// 這一段寫成摘要（有指令才寫），然後清空，下一段從頭記
+function writeManualSegment(record) {
+  if (record.sends.length) {
+    record.written += 1;
+    const looks = record.sends.filter(send => send.command === 'l').length;
+    const lines = CatworldMapHunt.summaryLines({ startAt: record.sends[0].at + record.offset, sends: record.sends, path: record.path, tail: `l 了 ${looks} 次` });
+    if (!record.calibrated) lines[0] = `（伺服器時間沒校準）${lines[0]}`;
+    lines.forEach(text => hunt.recordLine('手動摘要', `第 ${record.written} 段：${text}`));
+  }
+  record.sends = [];
+  record.path = [];
 }
-// 停止記錄並寫出這一段；原本就沒在記錄回 false
+// 伺服器時間跨過這一段的整點：寫出這一段、換下一段（中間隔了好幾個整點都沒有指令就一次跳過，不寫空的）
+function rollManual(record = manualRecord) {
+  if (!record?.segmentEnd) return;
+  const server = Date.now() + record.offset;
+  if (server < record.segmentEnd) return;
+  writeManualSegment(record);
+  record.segmentEnd = nextRespawnMark(server);
+}
+function startManual() {
+  const record = { sends: [], path: [], room: currentRoomKey(), timer: null, offset: 0, calibrated: false, segmentEnd: null, written: 0 };
+  record.timer = setInterval(() => { rollManual(record); noteManualRoom(); }, MANUAL_ROOM_MS);
+  manualRecord = record;
+  const startedAt = Date.now();
+  askGame('time', 'time', onSent => { if (startMacro('time', 'manual')) onSent(); }).then(text => {
+    if (manualRecord !== record) return;
+    const server = CatworldHuntParse.parseTime(text);
+    if (server !== null) Object.assign(record, { offset: server - Date.now(), calibrated: true });
+    record.segmentEnd = nextRespawnMark(startedAt + record.offset);
+    rollManual(record);
+  });
+}
+// 停止記錄並寫出進行中的這一段；原本就沒在記錄回 false
 function stopManual() {
   const record = manualRecord;
   if (!record) return false;
   clearInterval(record.timer);
+  rollManual(record);
   noteManualRoom();
   manualRecord = null;
-  if (!record.sends.length) return true;
-  const looks = record.sends.filter(send => send.command === 'l').length;
-  const lines = CatworldMapHunt.summaryLines({ startAt: record.startAt, sends: record.sends, path: record.path, tail: `l 了 ${looks} 次` });
-  lines[0] = `（伺服器時間沒校準）${lines[0]}`;
-  lines.forEach(text => hunt.recordLine('手動摘要', `第 1 段：${text}`));
+  writeManualSegment(record);
   return true;
 }
 // 捕獲階段：在遊戲處理送出（清空輸入框）之前讀輸入框的值
@@ -1595,6 +1624,7 @@ document.addEventListener('submit', event => {
   if (!input || event.target !== input.form) return;
   const command = input.value.trim();
   if (!command) return;
+  rollManual();
   noteManualRoom();
   manualRecord.sends.push({ at: Date.now(), command });
 }, true);
