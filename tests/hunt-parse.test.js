@@ -160,3 +160,58 @@ test('a player without any status tag is a person, because the line carries a ti
   const titled = ['這裡明顯的出口是 east。', '  普通百姓 店小二(waiter)'].join('\n');
   assert.deepEqual(peopleOf(titled).map(person => person.id), ['waiter'], 'a title and a name with a space between is a person to ask about');
 });
+
+// ---- alias：遊戲列出的別名（樣本是真實輸出，兩頁中間夾著分頁提示）與「開打／打死用的指令」的檢查 ----
+const aliasesOf = text => Object.fromEntries(P.parseAliases(text));
+
+test('aliases: every "name = expansion" line is read, and the header, the paging prompt and the echo are not aliases', () => {
+  const aliases = aliasesOf(sample('alias-list'));
+  assert.equal(aliases.f, 'fight $1');
+  assert.equal(aliases.fn, 'fight NPC $1');
+  assert.equal(aliases.le, 'learn $1 from $2');
+  assert.equal(aliases.runto1, 'run e 5n o 2s e s t 3sw 2su wu 2su wu w n 3w nw 2wu n', 'a long line is kept whole');
+  assert.equal(aliases.runto11, 'run e 5n 2o sw nw t e ne se ne e t', 'the first alias after the paging prompt is read');
+  assert.equal(aliases.wi, 'wield $1', 'and the last one');
+  assert.equal(Object.keys(aliases).length, 38, '23 on the first page and 15 on the second');
+  assert.ok(!Object.keys(aliases).some(name => name.includes('=') || name === 'alias' || name.startsWith('你')), Object.keys(aliases).join(','));
+});
+
+test('aliases: names are matched whatever the case, and no output means no aliases', () => {
+  assert.equal(P.parseAliases('F               = fight $1').get('f'), 'fight $1');
+  assert.equal(P.parseAliases('').size, 0);
+  assert.equal(P.parseAliases(undefined).size, 0);
+});
+
+const judge = (command, { verb = 'fight', form = 'id', list = null } = {}) => P.judgeAlias(P.parseAliases(list ?? sample('alias-list')), command, { verb, form });
+
+test('alias verdict: each row of the table', () => {
+  const cases = [
+    ['fight', {}, 'info', /不是別名/],
+    ['f', {}, 'info', /「f」＝「fight \$1」/],
+    ['fn', { form: 'position' }, 'info', /fight NPC/],
+    ['fn', { form: 'id' }, 'warn', /NPC.*順位/],
+    ['f', { form: 'position' }, 'info', /順位可能偏掉.*fight NPC \$1/],
+    ['ar', {}, 'warn', /不是 fight 的別名/],
+    ['le', {}, 'warn', /參數位置不對/],
+    ['pd', {}, 'warn', /參數位置不對/],
+    ['ca', {}, 'warn', /參數位置不對/],
+    ['x', { list: 'x               = fight $1;gc' }, 'warn', /多個指令/],
+    ['x', { list: 'x               = fight *' }, 'warn', /全部的 NPC/],
+    ['x', { list: 'x               = fight $1 $1' }, 'warn', /參數位置不對/],
+    ['x', { list: 'x               = fight hard $1' }, 'info', /中間有多出來的字（hard）/],
+    ['k', { verb: 'kill', list: 'k               = kill $1' }, 'info', /「k」＝「kill \$1」/],
+    ['k', { verb: 'kill', list: 'k               = fight $1' }, 'warn', /不是 kill 的別名/],
+  ];
+  cases.forEach(([command, options, level, pattern]) => {
+    const verdict = judge(command, options);
+    const label = command + ' ' + JSON.stringify(options) + ': ' + verdict.text;
+    assert.equal(verdict.level, level, label);
+    assert.match(verdict.text, pattern, label);
+  });
+});
+
+test('alias verdict: no alias list at all is an error that says so', () => {
+  const verdict = P.judgeAlias(new Map(), 'f', { verb: 'fight', form: 'id' });
+  assert.equal(verdict.level, 'error');
+  assert.match(verdict.text, /讀不到別名列表/);
+});

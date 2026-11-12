@@ -22,7 +22,7 @@ const waitFor = async (condition, ms = 3000) => {
   return condition();
 };
 
-async function boot(store = {}) {
+async function boot(store = {}, { game = null } = {}) {
   const dom = await JSDOM.fromFile(path.join(root, 'popup.html'), {
     runScripts: 'dangerously',
     resources: 'usable',
@@ -40,7 +40,9 @@ async function boot(store = {}) {
           session: { get: async () => ({}), set: async () => {} },
           onChanged: { addListener() {} },
         },
-        tabs: { query: async () => [], get: async () => { throw new Error('no tab'); }, sendMessage: async () => { throw new Error('no tab'); }, create: async () => {}, update: async () => {} },
+        tabs: game
+          ? { query: async () => [{ id: 7, url: 'https://catworld.muds.tw/web' }], get: async () => ({ id: 7, url: 'https://catworld.muds.tw/web' }), sendMessage: async (id, message) => game(message), create: async () => {}, update: async () => {} }
+          : { query: async () => [], get: async () => { throw new Error('no tab'); }, sendMessage: async () => { throw new Error('no tab'); }, create: async () => {}, update: async () => {} },
         permissions: { contains: async () => true, request: async () => true, remove: async () => true, onAdded: { addListener() {} }, onRemoved: { addListener() {} } },
         scripting: {},
         windows: { update: async () => {} },
@@ -274,6 +276,41 @@ ui('with nothing learned the list says so', async () => {
   const { dom, doc } = await boot();
   try {
     assert.match(doc.getElementById('huntNpcs').textContent, /尚未學到/);
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('the two command fields have a verify button: it asks the game page with the field, the verb and the target form, shows the verdict in its colour, and is disabled while the hunt runs', async () => {
+  let huntOn = false;
+  const asked = [];
+  const game = message => {
+    if (message.type === 'HUNT_VERIFY_ALIAS') {
+      asked.push({ command: message.command, verb: message.verb, form: message.form });
+      return message.verb === 'kill' ? { ok: false, error: '巡怪或掃描進行中，停下來才能驗證' } : { ok: true, level: 'warn', text: '「fn」＝「fight NPC $1」：NPC 形式後面要接順位' };
+    }
+    if (message.type === 'STATUS') return { hunt: { on: huntOn } };
+    return {};
+  };
+  const { dom, doc } = await boot({ mapHuntSettings: { fightCommand: 'fn', killCommand: 'k' } }, { game });
+  try {
+    const fightButton = cellOf(doc, 'fightCommand').querySelector('.hverify');
+    const killButton = cellOf(doc, 'killCommand').querySelector('.hverify');
+    assert.ok(fightButton && killButton, 'both fields have one');
+    const fightMessage = cellOf(doc, 'fightCommand').querySelector('.hverify-msg');
+    fightButton.click();
+    assert.ok(await waitFor(() => /NPC 形式/.test(fightMessage.textContent)), fightMessage.textContent);
+    assert.deepEqual(asked[0], { command: 'fn', verb: 'fight', form: 'id' });
+    assert.ok(fightMessage.classList.contains('msg-warn'), 'a warning is amber');
+    killButton.click();
+    const killMessage = cellOf(doc, 'killCommand').querySelector('.hverify-msg');
+    assert.ok(await waitFor(() => /進行中/.test(killMessage.textContent)), killMessage.textContent);
+    assert.deepEqual(asked[1], { command: 'k', verb: 'kill', form: 'id' });
+    assert.ok(killMessage.classList.contains('msg-error'), 'a refusal is red');
+    huntOn = true;
+    assert.ok(await waitFor(() => fightButton.disabled && killButton.disabled, 3000), 'disabled while the hunt runs');
+    huntOn = false;
+    assert.ok(await waitFor(() => !fightButton.disabled, 3000), 'and back once it stops');
   } finally {
     dom.window.close();
   }

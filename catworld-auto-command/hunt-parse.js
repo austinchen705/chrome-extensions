@@ -111,5 +111,41 @@ function parseInventory(text) {
   return items;
 }
 
-globalThis.CatworldHuntParse = { parseTime, parseFinger, parseLook, parseLoad, parseInventory };
+// alias：遊戲列出的別名，一行一個「名稱   = 展開內容」（$1、$2 是參數位置）。標題（你目前設定的 alias 有：）、
+// 分頁提示（== 未完繼續 58% == …，名稱不能以 = 開頭）、指令回聲與空行都對不上，不會被當成別名。回傳 Map（名稱小寫 → 展開內容）
+const ALIAS_LINE = /^\s*([^\s=]+)\s+=\s?(.*?)\s*$/;
+function parseAliases(text) {
+  const aliases = new Map();
+  String(text ?? '').split(/\r?\n/).forEach(line => {
+    const match = ALIAS_LINE.exec(line);
+    if (match) aliases.set(match[1].toLowerCase(), match[2]);
+  });
+  return aliases;
+}
+
+// 巡怪「開打／打死用的指令」欄位的檢查：巡怪會送「這個指令 目標」，所以別名展開後要是「verb …… $1」。
+// 只看指令的形狀，不判斷「指令後面接什麼」選得對不對（那要實際打一次才知道）。回 { level: 'info' | 'warn' | 'error', text }
+function judgeAlias(aliases, command, { verb, form }) {
+  const name = String(command ?? '').trim();
+  if (!aliases.size) return { level: 'error', text: '讀不到別名列表（alias 的輸出裡沒有任何別名）' };
+  const expansion = aliases.get(name.toLowerCase());
+  if (expansion === undefined) return { level: 'info', text: `「${name}」不是別名，巡怪會直接送「${name} 目標」` };
+  const shown = `「${name}」＝「${expansion}」`;
+  const warn = text => ({ level: 'warn', text: `${shown}：${text}` });
+  if (/[;；]/.test(expansion)) return warn('含多個指令（分號），巡怪接上的目標只會跟著最後一個');
+  if (expansion.includes('*')) return warn('* 會一次攻擊全部的 NPC，不是打一隻怪');
+  const words = expansion.trim().split(/\s+/);
+  const params = expansion.match(/\$\d/g) || [];
+  if (params.length !== 1 || words[words.length - 1] !== '$1') return warn('參數位置不對（要恰好一個 $1、而且在最後），巡怪接上的目標會放錯地方');
+  if (words[0].toLowerCase() !== verb) return warn(`不是 ${verb} 的別名`);
+  const middle = words.slice(1, -1);
+  const npc = middle.some(word => word.toLowerCase() === 'npc');
+  if (npc && form !== 'position') return warn('NPC 形式後面要接順位，請把「指令後面接什麼」改選順位');
+  const notes = [];
+  if (middle.length && !npc) notes.push(`中間有多出來的字（${middle.join(' ')}），遊戲的說明頁沒寫，請自己確認`);
+  if (form === 'position' && !npc) notes.push('房間裡有玩家或物品排在怪前面時順位可能偏掉，建議用 fight NPC $1');
+  return { level: 'info', text: `${shown}，巡怪會送「${words.slice(0, -1).join(' ')} 目標」${notes.length ? `；${notes.join('；')}` : ''}` };
+}
+
+globalThis.CatworldHuntParse = { parseTime, parseFinger, parseLook, parseLoad, parseInventory, parseAliases, judgeAlias };
 })();

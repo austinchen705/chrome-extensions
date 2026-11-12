@@ -1370,12 +1370,14 @@ const ASK = {
   secure: { pattern: /標記|沒有|找不到|什麼/, quietMs: 250 },
   give: { pattern: /你給|沒有|找不到|什麼|不在|太重/, quietMs: 250 },
   sell: { pattern: /賣掉|沒有|什麼|不能/, quietMs: 1000 },
+  alias: { pattern: /你目前設定的 alias 有/, quietMs: 600 },
 };
 const ASK_MAX_MS = 8000;
 const addedText = records => CatworldZapMobs.textFromAdded(records.flatMap(record => (record.type === 'characterData'
   ? [record.target.textContent || '']
   : Array.from(record.addedNodes, node => node.textContent || ''))));
-function askGame(command, kind) {
+// send(onSent)：怎麼送出（預設排進巡怪的佇列；送出那一刻要呼叫 onSent，之後的輸出才算這個指令的回應）
+function askGame(command, kind, send = onSent => enqueue(command, 'hunt', null, onSent)) {
   return new Promise(resolve => {
     let text = '';
     let sent = false;
@@ -1397,7 +1399,7 @@ function askGame(command, kind) {
     });
     observer.observe(document.getElementById('content'), { subtree: true, childList: true, characterData: true });
     limit = setTimeout(done, ASK_MAX_MS);
-    enqueue(command, 'hunt', null, () => { sent = true; });
+    send(() => { sent = true; });
   });
 }
 // 不算「別人」的 ID：設定頁的白名單加上自動學到的 NPC
@@ -2039,6 +2041,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'HUNT_LOG') {
     sendResponse({ ok: true, text: hunt?.exportLog?.() ?? '' });
     return;
+  }
+  // 設定頁「開打／打死用的指令」旁的驗證：送 alias 讀別名列表，回這個指令展開後是什麼與判斷（CatworldHuntParse.judgeAlias）。
+  // 巡怪或掃描在跑時不送（別名列表會分頁，卡在分頁時巡怪的指令會被遊戲當成翻頁吃掉）；用巨集送，閒置時也送得出去，停止一切與驗證碼會取消它
+  if (message.type === 'HUNT_VERIFY_ALIAS') {
+    if (hunt?.on()) { sendResponse({ ok: false, error: '巡怪或掃描進行中，停下來才能驗證（別名列表會分頁，會吃掉巡怪的指令）' }); return; }
+    askGame('alias', 'alias', onSent => { if (startMacro('alias', 'alias')) onSent(); }).then(text => {
+      const verdict = CatworldHuntParse.judgeAlias(CatworldHuntParse.parseAliases(text), message.command, { verb: message.verb, form: message.form });
+      sendResponse({ ok: true, ...verdict });
+    });
+    return true;
   }
   if (message.type === 'MACRO_READ') {
     try {

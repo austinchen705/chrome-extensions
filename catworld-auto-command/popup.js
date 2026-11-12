@@ -1208,6 +1208,8 @@ async function refreshLive() {
   renderScriptStatus();
   updateHints();
   renderCountdown(status);
+  huntBusy = Boolean(status?.hunt?.on);
+  document.querySelectorAll('.hverify').forEach(button => { if (!button.dataset.busy) button.disabled = huntBusy; });
   Object.values(panes).forEach(pane => pane.refresh(status));
 }
 
@@ -1245,6 +1247,7 @@ CatworldMacroIOUI.attach(document.getElementById('sec-macro'), {
 // 欄位依 GROUPS 分成摺疊區塊（id 是 fold-hunt-<組>，展開狀態和其他摺疊一樣記在 popupFolds），收起時標題寫出重點；
 // 用不到的欄位（show 為 false）藏起來但照樣存，開始前必填但沒填的（missingFields）用琥珀色標出來
 let huntSettings = CatworldMapHunt.normalizeSettings(null);
+let huntBusy = false; // 遊戲分頁的巡怪或掃描正在跑（refreshLive 每秒更新）：驗證按鈕停用
 const huntGroups = {};
 const showHuntSettings = () => {
   const missing = new Set(CatworldMapHunt.missingFields(huntSettings).map(field => field.key));
@@ -1290,12 +1293,39 @@ CatworldMapHunt.FIELDS.forEach(item => {
     chrome.storage.local.set({ [CatworldMapHunt.SETTINGS_KEY]: huntSettings });
   });
   cell.append(label, input);
+  // 開打／打死用的指令：驗證按鈕請遊戲分頁送 alias、讀別名列表，顯示這個指令展開後是什麼（content.js 的 HUNT_VERIFY_ALIAS）；
+  // 巡怪在跑時停用（refreshLive），遊戲分頁那邊也會拒絕
+  let verifyMessage = null;
+  if (item.verify) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'hverify';
+    button.textContent = '驗證';
+    button.title = '送 alias 讀遊戲的別名列表，看這個指令展開後是什麼';
+    verifyMessage = document.createElement('div');
+    verifyMessage.className = 'hint tight hverify-msg';
+    const say = (text, level) => { verifyMessage.textContent = text; markLevel(verifyMessage, level); };
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      button.dataset.busy = '1';
+      say('讀取遊戲的別名列表…', 'info');
+      let reply;
+      try { reply = await send({ type: 'HUNT_VERIFY_ALIAS', command: huntSettings[item.key], verb: item.verify, form: huntSettings.targetForm }); }
+      catch (error) { reply = { ok: false, error: `讀不到遊戲分頁：${error.message}` }; }
+      delete button.dataset.busy;
+      button.disabled = huntBusy;
+      if (!reply?.ok) { say(reply?.error || '遊戲頁沒有回應（請重新整理遊戲頁後再試）', 'error'); return; }
+      say(reply.text, reply.level);
+    });
+    cell.append(button);
+  }
   if (item.hint) {
     const hint = document.createElement('div');
     hint.className = 'hint tight';
     hint.textContent = item.hint;
     cell.append(hint);
   }
+  if (verifyMessage) cell.append(verifyMessage);
   const box = huntGroups[item.group].box;
   if (!item.row) { box.append(cell); return; }
   // 同一個 row 的欄位排同一列（例如門檻與指令）

@@ -3830,3 +3830,59 @@ ui('hunt: a player who shows no status tag (not idle) still makes the room be sk
     page.close();
   }
 });
+
+// ---- 驗證按鈕：設定頁送 HUNT_VERIFY_ALIAS，遊戲頁送 alias、讀別名列表、回判斷 ----
+const ALIAS_LIST = require('node:fs').readFileSync(require('node:path').join(__dirname, 'fixtures', 'hunt', 'alias-list.txt'), 'utf8');
+const verify = (page, command, extra = {}) => page.ask({ type: 'HUNT_VERIFY_ALIAS', command, verb: 'fight', form: 'id', ...extra });
+
+ui('verify: pressing verify sends alias once and answers with what the command expands to', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const game = world(page, { at: 'a', script: (command, { say: tell }) => {
+      if (command === 'alias') { tell(ALIAS_LIST.split('== 未完')[0].trimEnd()); return true; } // 第一頁就有 f
+      return false;
+    } });
+    const reply = await verify(page, 'f');
+    assert.equal(reply.ok, true);
+    assert.equal(reply.level, 'info');
+    assert.match(reply.text, /「f」＝「fight \$1」/);
+    assert.equal(countOf(game, 'alias'), 1, 'sent once');
+    const warned = await verify(page, 'fn');
+    assert.equal(warned.level, 'warn', 'fight NPC with the ID form is a warning');
+    assert.equal(countOf(game, 'alias'), 2, 'each press reads the list again');
+  } finally {
+    page.close();
+  }
+});
+
+ui('verify: no alias output at all gives an error that says the list could not be read', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    world(page, { at: 'a', script: command => command === 'alias' });
+    const reply = await verify(page, 'f');
+    assert.equal(reply.ok, true);
+    assert.equal(reply.level, 'error');
+    assert.match(reply.text, /讀不到別名列表/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('verify: refused while the hunt is running, and nothing is sent', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('d');
+    page.store.mapHuntSettings = { ...REQUIRED, commandGapMinMs: 2000, commandGapMaxMs: 2000 };
+    const game = world(page, { at: 'a' });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => hunting(page), 2000));
+    const reply = await verify(page, 'f');
+    assert.equal(reply.ok, false);
+    assert.match(reply.error, /巡怪/);
+    assert.equal(countOf(game, 'alias'), 0);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
