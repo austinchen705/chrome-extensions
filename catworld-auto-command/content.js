@@ -13,6 +13,7 @@ let queueTimer = null;
 let randomTimer = null;
 const queue = [];
 let lastSentAt = 0;
+let lastSentChat = false; // 上一個從佇列送出的是不是聊天指令
 let stopReason = '';
 // 固定指令每一項各自循環：{ item, timer, at }，at 是下一次送出的時間
 let fixedRuns = [];
@@ -956,13 +957,21 @@ function nextQueued() {
   return current ? queue.findIndex(entry => entry.run === current) : (queue.length ? 0 : -1);
 }
 
+// 聊天指令（自動回覆 reply、劇本 tell，來源或巨集 owner 是 chat／script）與其他指令之間，再隔一段隨機的「切換間隔」，
+// 和下面的間隔取較大的：真人不會在半秒內從打一句話切到下一個練功指令。聊天接聊天、其他接其他維持原本的間隔。
+// 上限一定要小於 NO_REPLY_MS（8 秒無回應看門狗），不開放設定
+const CHAT_OWNERS = ['chat', 'script'];
+const SWITCH_GAP_MS = [1500, 4000];
+const isChatEntry = entry => CHAT_OWNERS.includes(entry.source) || CHAT_OWNERS.includes(entry.run?.owner);
+const switchGapMs = () => Math.round(SWITCH_GAP_MS[0] + (SWITCH_GAP_MS[1] - SWITCH_GAP_MS[0]) * Math.random());
 // 巡怪的指令（單一指令或巡怪巨集拆出來的）另外再隔巡怪自己設的隨機間隔，和共用的 commandDelayMs 取較大的
 let huntSettings = CatworldMapHunt.normalizeSettings(undefined);
 const isHuntEntry = entry => entry.source === 'hunt' || entry.run?.owner === 'hunt';
 function pumpQueue() {
   if (queueTimer || nextQueued() < 0) return;
   const next = queue[nextQueued()];
-  const gap = Math.max(0, Number(settings.commandDelayMs) || 0, isHuntEntry(next) ? CatworldMapHunt.gapMs(huntSettings) : 0);
+  const switched = lastSentChat !== isChatEntry(next);
+  const gap = Math.max(0, Number(settings.commandDelayMs) || 0, isHuntEntry(next) ? CatworldMapHunt.gapMs(huntSettings) : 0, switched ? switchGapMs() : 0);
   const wait = Math.max(0, lastSentAt + gap - Date.now());
   queueTimer = setTimeout(() => {
     queueTimer = null;
@@ -974,6 +983,7 @@ function pumpQueue() {
     const result = sendCommand(entry.command);
     if (!result.ok) { stopEverything(result.error); return; }
     lastSentAt = Date.now();
+    lastSentChat = isChatEntry(entry);
     if (isHuntEntry(entry)) hunt?.noteSent(entry.command);
     entry.onSent?.();
     if (entry.run) {
