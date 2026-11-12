@@ -1691,6 +1691,9 @@ function initPanel() {
       .line.hunt-line, .line.macro-line { flex-wrap: wrap; row-gap: 2px; }
       .hunt-line .s, .macro-line .s { order: 3; flex: 1 1 100%; padding-top: 0; }
       .hunt-line .mini, .macro-line .mini { margin-left: auto; }
+      /* 巡怪列的按鈕最多五顆（選怪、開始、掃描、停止、記錄），面板只有 310px：放不下就換到下一行、靠右 */
+      .hunt-line .mini { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; row-gap: 4px; }
+      .mini button.hmanual.on { background: #8a2b2b; }
       .macro-line .s:empty { display: none; }
       .mini { display: flex; gap: 6px; flex: none; }
       .mini button { all: unset; text-align: center; padding: 3px 12px; border-radius: 6px;
@@ -1720,7 +1723,7 @@ function initPanel() {
         <div class="line macro-line"><span class="t">巨集</span><span class="s macro-text"></span>
           <span class="mini"><button class="mstop">停止</button></span></div>
         <div class="line hunt-line"><span class="t">巡怪</span><span class="s hunt-text"></span>
-          <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hscan" title="街景模式：不用選怪，走這一區還沒走過的每一間，看一眼並記下有哪些怪（不打）">掃描</button><button class="hstop">停止</button><button class="hmanual" title="記錄你自己送出的指令（在輸入框打的），關掉時寫一段「手動摘要」到巡怪紀錄，和巡怪的輪摘要對照">● 記錄手動</button></span></div>
+          <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hscan" title="街景模式：不用選怪，走這一區還沒走過的每一間，看一眼並記下有哪些怪（不打）">掃描</button><button class="hstop">停止</button><button class="hmanual" title="記錄手動：記下你自己送出的指令（輸入框打的、遊戲巨集鍵送出的），每個重生整點與關掉時寫一段「手動摘要」到巡怪紀錄，和巡怪的輪摘要對照">● 記錄</button></span></div>
         <div class="line reward-line" hidden><span class="t">獎勵</span><span class="s reward-text"></span></div>
         <div class="line script-line" hidden><span class="t">劇本</span><span class="s script-text"></span></div>
       </div>
@@ -2142,7 +2145,7 @@ function renderPanel() {
   panel.hstart.disabled = hunt.on();
   panel.hscan.disabled = hunt.on();
   panel.hstop.disabled = !hunt.on();
-  panel.hmanual.textContent = manualRecord ? '● 記錄中' : '● 記錄手動';
+  panel.hmanual.textContent = manualRecord ? '● 記錄中' : '● 記錄';
   panel.hmanual.classList.toggle('on', !!manualRecord);
   panel.mstop.disabled = !macroRuns.size;
   panel.avoidMap();
