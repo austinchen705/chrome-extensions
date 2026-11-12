@@ -74,11 +74,12 @@ function parseLook(text) {
     counts.set(key, n);
     return n === 1 ? id : `${id} ${n}`;
   };
+  // position：這隻怪是第幾個 ※ 怪物行（從 1 起算，沒勾選的、昏迷的都算），給「指令 順位」的寫法用
   const monsters = [];
   const people = [];
   lines.forEach(line => {
     const mob = parseMonster(line);
-    if (mob) { monsters.push({ ...mob, ref: refOf(mob.id) }); return; }
+    if (mob) { monsters.push({ ...mob, ref: refOf(mob.id), position: monsters.length + 1 }); return; }
     const person = parsePerson(line);
     if (person) people.push({ ...person, ref: refOf(person.id) });
   });

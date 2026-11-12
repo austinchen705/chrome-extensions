@@ -97,6 +97,22 @@ ui('an edit is saved at once with the other fields, and a broken stored value fa
 
 const cellOf = (doc, key) => field(doc, key).closest('.hfield');
 
+ui('what follows the fight command is a select in the fight fold: the ID by default, or the position, which the fold title then mentions and the hint explains', async () => {
+  const { dom, doc, store } = await boot();
+  try {
+    assert.ok(doc.getElementById('fold-hunt-fight').contains(field(doc, 'targetForm')));
+    assert.equal(field(doc, 'targetForm').value, 'id');
+    const title = () => doc.querySelector('#fold-hunt-fight > summary').textContent;
+    assert.doesNotMatch(title(), /順位/);
+    assert.match(cellOf(doc, 'targetForm').textContent, /fight NPC/, 'the hint says how the game counts and which form is safer');
+    change(dom, field(doc, 'targetForm'), 'position');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.targetForm === 'position'));
+    assert.match(title(), /接順位/);
+  } finally {
+    dom.window.close();
+  }
+});
+
 ui('the command that starts a fight sits in the fight fold, defaults to fight, falls back to fight for a value that could run as a macro, and shows in the fold title once changed', async () => {
   for (const bad of ['', 'a;b', 'f；g', '@等待 1', 'x'.repeat(21)]) {
     const { dom, doc } = await boot({ mapHuntSettings: { fightCommand: bad } });

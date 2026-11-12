@@ -68,6 +68,7 @@ const FIELDS = [
   { key: 'prescan', group: 'move', label: '打怪前先補掃沒走過的房間', hint: '沒有圖資的房間才掃，走過的、走不到的不再掃；掃完再開始打', type: 'select', options: ON_OFF, default: 'on' },
   { key: 'fightMode', group: 'fight', label: '戰鬥方式', hint: '只下 fight：戰鬥、補氣、撿屍交給你的觸發規則，巡怪只看 i 與 l 的輸出；吃藥模式照樣吃藥，氣低於危險線回家', type: 'select', options: [['full', '完整（巡怪自己打、補氣、撿屍）'], ['assist', '只下 fight（交給你的觸發規則）']], default: 'full' },
   { key: 'fightCommand', group: 'fight', label: '開打用的指令', hint: '開打時送「這個指令 怪的ID」；可以填你的別名，例如 f（不能有 ; 或 @等待，否則用 fight）', type: 'text', default: 'fight' },
+  { key: 'targetForm', group: 'fight', label: '指令後面接什麼', hint: '順位＝這隻怪在 l 列出的 ※ 怪物行裡是第幾個。遊戲的 fight <順位> 數的是 look 顯示的所有東西，前面有玩家或物品時會偏；fight NPC <順位> 只數 NPC，比較準（別名可寫成 fight NPC $1）', type: 'select', options: [['id', '怪的 ID'], ['position', '順位（照 l 的順序）']], default: 'id' },
   { key: 'killCommand', group: 'fight', show: full, label: '打死用的指令', hint: '怪不想打、或補刀時送「這個指令 怪的ID」；可以填你的別名，例如 k', type: 'text', default: 'kill' },
   { key: 'afterKillCommand', group: 'fight', show: full, label: '怪倒下後送的指令', hint: '可多個，用 ; 分隔', type: 'text', default: 'gc' },
   { key: 'fightTimeoutSec', group: 'fight', label: '等怪倒下最久（秒）', hint: '逾時就用 l 看一眼', type: 'number', default: 60, min: 5, max: 600 },
@@ -122,7 +123,7 @@ const TOP_UPS = [
 const gapText = s => `${s.commandGapMinMs}～${s.commandGapMaxMs}ms`;
 const GROUPS = [
   { id: 'move', title: '走路與速度', summary: s => `${gapText(s)}｜學出口 ${s.learnExits === 'on' ? '開' : '關'}｜補掃 ${s.prescan === 'on' ? '開' : '關'}` },
-  { id: 'fight', title: '戰鬥', summary: s => { const opener = s.fightCommand && s.fightCommand !== 'fight' ? `開打用 ${s.fightCommand}｜` : ''; return full(s) ? `完整｜${opener}打死用 ${s.killCommand}｜逾時 ${s.fightTimeoutSec} 秒` : `只下 fight｜${opener}逾時 ${s.fightTimeoutSec} 秒`; } },
+  { id: 'fight', title: '戰鬥', summary: s => { const opener = `${s.fightCommand && s.fightCommand !== 'fight' ? `開打用 ${s.fightCommand}｜` : ''}${s.targetForm === 'position' ? '接順位｜' : ''}`; return full(s) ? `完整｜${opener}打死用 ${s.killCommand}｜逾時 ${s.fightTimeoutSec} 秒` : `只下 fight｜${opener}逾時 ${s.fightTimeoutSec} 秒`; } },
   { id: 'special', title: '特攻', summary: s => (s.specialCommand ? `${s.specialCommand}，至少隔 ${s.specialIntervalSec} 秒` : '沒填') },
   { id: 'heal', title: '補氣與安全', summary: s => [eatMode(s) ? `吃藥 ${s.eatCommand || '（沒填）'} <${s.eatBelow}%` : `自己回 <${s.restBelow}%`, `回家 ${s.homeCommand || '（沒填）'}`, ...TOP_UPS.map(item => (s[`${item.key}Command`] && s[`${item.key}Below`] > 0 ? `${item.name} <${s[`${item.key}Below`]}%` : ''))].filter(Boolean).join('｜') },
   { id: 'sort', title: '負重與自動整理', summary: s => (sorting(s) ? `>${s.loadMaxPercent}% 整理｜${s.sortKeep === 'none' ? '全賣' : '留好裝備'}` : '不檢查') },
@@ -452,11 +453,11 @@ function create(deps) {
     const target = mine.find(mob => SAFE_ID.test(mob.id));
     if (!target) { leave('怪的 ID 不能用'); return; }
     if (spawnPause()) { trace('重生前停打'); return; }
-    trace(`送 ${fightCmd()} ${target.ref ?? target.id}`);
+    trace(`送 ${fightCmd()} ${targetOf(target)}`);
     a.sent = true;
     a.dead = false;
     a.tail = '';
-    if (!deps.send(`${fightCmd()} ${target.ref ?? target.id}`)) finish('指令送不出去，已停止', { alert: true });
+    if (!deps.send(`${fightCmd()} ${targetOf(target)}`)) finish('指令送不出去，已停止', { alert: true });
   }
   // 玩家的觸發送了 i 而且負重超標：結束這間的等待，下一次規劃時走既有的負重檢查與整理
   function assistOverweight(load) {
@@ -571,6 +572,8 @@ function create(deps) {
   // finishing 為真＝補刀：直接送 kill，只認死亡的字（結束字裡扣掉代表昏迷的），不送特攻；結束時回 'ended'、昏迷結束回 'knockedOut'
   const killCmd = () => state.settings.killCommand || 'kill';
   const fightCmd = () => state.settings.fightCommand || 'fight';
+  // 指令後面接的：怪的 ID（同 ID 第 N 個是「ID N」），或順位（這份 l／抵達描述裡第幾個 ※ 怪物行）
+  const targetOf = mob => (state.settings.targetForm === 'position' && mob.position ? String(mob.position) : (mob.ref ?? mob.id));
   function fightOne(token, mob, { finishing = false } = {}) {
     return new Promise(resolve => {
       const knockout = splitIds(state.settings.knockoutKeywords);
@@ -578,7 +581,7 @@ function create(deps) {
       // 特攻從開打算起隔一個間隔才送第一次，免得緊跟在 fight 後面被拒戰時得到「你要對誰施展這個招式」
       state.fight = { mob, resolve, finishing, knockout, knockedOut: false, killSent: finishing, buffer: '', noTarget: false, waited: 0, lastSpecial: state.ticks, checking: false, silentChecks: 0, endWords };
       deps.notify();
-      if (!deps.send(`${finishing ? killCmd() : fightCmd()} ${mob.ref ?? mob.id}`)) finish('指令送不出去，已停止', { alert: true });
+      if (!deps.send(`${finishing ? killCmd() : fightCmd()} ${targetOf(mob)}`)) finish('指令送不出去，已停止', { alert: true });
     });
   }
   const endFight = fight => {
@@ -624,7 +627,7 @@ function create(deps) {
       fight.killSent = true;
       fight.noTarget = false; // 前面的特攻對著還沒開打的怪，不算這場沒有目標
       fight.buffer = '';
-      deps.send(`${killCmd()} ${fight.mob.ref ?? fight.mob.id}`);
+      deps.send(`${killCmd()} ${targetOf(fight.mob)}`);
       return;
     }
     const hit = fight.endWords.find(word => fight.buffer.includes(word));
@@ -649,7 +652,7 @@ function create(deps) {
       if (mine.some(mob => mob.state === '戰鬥中')) return;
       // 重送時用這次 l 看到的位置（前面的怪倒下後，第幾個會變）
       const again = mine.find(mob => mob.state !== KNOCKED_OUT && SAFE_ID.test(mob.id));
-      if (again && (fight.silentChecks += 1) < MAX_STUCK) { deps.send(`${fight.killSent ? killCmd() : fightCmd()} ${again.ref}`); return; }
+      if (again && (fight.silentChecks += 1) < MAX_STUCK) { deps.send(`${fight.killSent ? killCmd() : fightCmd()} ${targetOf(again)}`); return; }
       fight.knockedOut = !fight.finishing && mine.some(mob => mob.id === fight.mob.id && mob.state === KNOCKED_OUT);
       endFight(fight);
     }).catch(() => { if (state === token) finish('看房間時出錯，已停止', { alert: true }); });

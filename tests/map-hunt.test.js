@@ -742,6 +742,71 @@ ui('fight: the command that starts a fight is a setting, so f is sent with the m
   }
 });
 
+const OTHER_LINE = '  ※另一隻怪(other mob) [fight][kill]';
+const KNOCKED_LINE = '  ※測試怪(test mob) <昏迷不醒> [fight][kill]';
+
+ui('position: with the position form the fight command is followed by the place among the monster lines of the arrival description, counting unticked and knocked-out ones', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, targetForm: 'position' };
+    const lines = [OTHER_LINE, KNOCKED_LINE, MOB_LINE];
+    const game = world(page, { at: 'a', arrivals: { c: { lines } }, looks: { c: { lines: [...lines] } }, script: (command, { say: tell }) => {
+      if (command === 'fight 3') { tell('測試怪死了。'); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'fight 3', 'gc'], 'the ticked monster is the third monster line');
+  } finally {
+    page.close();
+  }
+});
+
+ui('position: after a kill the recount gives the next monster its new position', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, targetForm: 'position' };
+    const looks = { c: { lines: [MOB_LINE, OTHER_LINE, MOB_LINE] } };
+    const game = world(page, { at: 'a', looks, script: (command, { say: tell }) => {
+      if (/^fight \d$/.test(command)) {
+        looks.c.lines.splice(Number(command.slice(6)) - 1, 1); // 打的那一隻倒下、從房間消失
+        tell('測試怪死了。');
+        return true;
+      }
+      return command === 'gc';
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight 1', 'gc', 'l', 'fight 2', 'gc'], 'first at 1; after it is gone the other ticked one moved from 3 to 2');
+  } finally {
+    page.close();
+  }
+});
+
+ui('position: the kill command after a refusal and the finishing kill use the position too', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, targetForm: 'position', killCommand: 'k' };
+    let kills = 0;
+    const game = world(page, { at: 'a', looks: { c: { lines: [OTHER_LINE, MOB_LINE] } }, script: (command, { say: tell }) => {
+      if (command === 'fight 2') { tell('看起來測試怪並不想跟你較量。'); return true; }
+      if (command === 'k 2') { kills += 1; tell(kills === 1 ? '測試怪一動也不動了。' : '測試怪死了。'); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight 2', 'k 2', 'k 2', 'gc'], 'refused: k 2; knocked out: k 2 again to finish it');
+  } finally {
+    page.close();
+  }
+});
+
 ui('fight: the kill command is a setting, so a refusal gets k when the user set that', async () => {
   const page = await boot({ scale: SCALE });
   try {
@@ -2758,6 +2823,22 @@ const assistPage = async (settings = {}) => {
   return page;
 };
 const MOB_FIGHTING = '  ※測試怪(test mob) <戰鬥中> [fight][kill]';
+
+ui('assist: the position form is used there too', async () => {
+  const page = await assistPage({ targetForm: 'position' });
+  try {
+    const game = world(page, { at: 'a', looks: { c: { lines: ['  ※另一隻怪(other mob) [fight][kill]', MOB_LINE] } }, script: command => {
+      if (command === 'fight 2') { setTimeout(() => lookOut(page), 50); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight 2']);
+  } finally {
+    page.close();
+  }
+});
 
 ui('assist: the command that starts a fight is the setting there too', async () => {
   const page = await assistPage({ fightCommand: 'f' });
