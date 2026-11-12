@@ -3327,6 +3327,31 @@ ui('rest: a captcha during a rest ends it and stops the hunt like everything els
   }
 });
 
+ui('chat: a chat reply in the middle of a hunt is a switch gap away from the hunt commands before and after it', async () => {
+  const REPLY = 'reply 對啊出去走走';
+  const page = await boot({ scale: SCALE, initialStore: { autoReward: false, chatReply: { enabled: true, threshold: 0.4, cooldownSec: 0, perHour: 100, delayMin: 0, delayMax: 0 }, chatPairs: [{ said: '今天天氣真好', reply: '對啊出去走走', at: 1 }] } });
+  const times = [];
+  const watcher = setInterval(() => { while (times.length < page.sent.length) times.push({ command: page.sent[times.length], at: Date.now() }); }, 2);
+  try {
+    page.store.mapMonsters = mobsAt('d');
+    world(page, { at: 'a', looks: { d: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => times.length >= 1, 5000), 'the hunt sends its first command');
+    page.output('<span>[P]有氣質回答你：今天天氣不錯\n</span>');
+    assert.ok(await waitFor(() => { const i = times.findIndex(item => item.command === REPLY); return i > 0 && i < times.length - 1; }, 15000), 'the reply goes out with a hunt command before and after it');
+    const i = times.findIndex(item => item.command === REPLY);
+    const min = 1500 / SCALE - 10; // 頁面計時器縮小 SCALE 倍，切換間隔下限的真實時間；計時器只會晚、不會早，所以只扣 10 ms 的誤差（沒有切換間隔時兩個指令只隔約 25～35 ms）
+    assert.ok(times[i].at - times[i - 1].at >= min, 'before the reply: ' + (times[i].at - times[i - 1].at) + ' ms');
+    assert.ok(times[i + 1].at - times[i].at >= min, 'after the reply: ' + (times[i + 1].at - times[i].at) + ' ms');
+    assert.equal(await hunting(page), true, 'the hunt is still running');
+    await page.ask({ type: 'STOP' });
+  } finally {
+    clearInterval(watcher);
+    page.close();
+  }
+});
+
 ui('humanize: the respawn mark itself is never shifted (the next round still starts right after it)', async () => {
   const page = await roundPage({ humanize: 'on', stopBeforeSpawnSec: 100 });
   try {

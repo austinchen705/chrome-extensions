@@ -11,7 +11,7 @@ const SWITCH_MAX_MS = 4000 / SCALE;
 const TOLERANCE_MS = 40; // 輪詢（2 ms）與計時器的誤差：頁面計時器已縮小，jsdom 的計時器誤差大約在這個量級
 const NO_GAP_MS = 60; // 指令間隔設成 0：沒有切換間隔時，兩個指令幾乎同時送出
 
-const keyword = (pattern, commands) => ({ kind: 'keyword', enabled: true, pattern, commands, cooldown: 0 });
+const keyword = (pattern, commands, extra) => ({ kind: 'keyword', enabled: true, pattern, commands, cooldown: 0, ...extra });
 const PAIRS = [{ said: '今天天氣真好', reply: '對啊出去走走', at: 1 }, { said: '今天天氣真好', reply: '對啊出去走走', at: 2 }];
 const CHAT_ON = { enabled: true, threshold: 0.4, cooldownSec: 0, perHour: 100, delayMin: 0, delayMax: 0 };
 
@@ -35,7 +35,7 @@ async function setup({ scripted = false } = {}) {
       page.output('<span>好。\n</span>');
     }
   }, 2);
-  await page.ask({ type: 'START_TRIGGER', group: 'practice', config: { rules: [keyword('口渴', ['p1']), keyword('肚子餓', ['p2'])], delayMax: 0, requireNormal: false } });
+  await page.ask({ type: 'START_TRIGGER', group: 'practice', config: { rules: [keyword('口渴', ['p1']), keyword('肚子餓', ['p2']), keyword('要休息', ['m1;@等待 3;m2']), keyword('急事', ['q1;@等待 3;q2'], { priority: true })], delayMax: 0, requireNormal: false } });
   return { page, times, close: () => { clearInterval(watcher); page.close(); } };
 }
 const sentAt = (times, command) => times.find(item => item.command === command)?.at;
@@ -105,6 +105,128 @@ ui('two chat replies in a row keep the plain command gap', async () => {
     tellMe(page, '小明', '今天天氣不錯');
     assert.ok(await waitFor(() => times.length >= 2, 2000), `both replies are sent (${JSON.stringify(page.sent)})`);
     assert.ok(times[1].at - times[0].at < NO_GAP_MS, `chat after chat is not stretched (${times[1].at - times[0].at} ms)`);
+  } finally {
+    close();
+  }
+});
+
+// 一則聊天指令前後各一個相鄰的指令：和它們都隔著切換間隔（只比下限，上限已在前面的測試量過）
+const REPLY = 'reply 對啊出去走走';
+const assertAroundChat = (times, label) => {
+  const i = times.findIndex(item => item.command === REPLY);
+  assert.ok(i > 0 && i < times.length - 1, `${label}: the reply has a command before and after it (${JSON.stringify(times.map(item => item.command))})`);
+  assert.ok(times[i].at - times[i - 1].at >= SWITCH_MIN_MS - TOLERANCE_MS, `${label}: before the reply (${times[i].at - times[i - 1].at} ms)`);
+  assert.ok(times[i + 1].at - times[i].at >= SWITCH_MIN_MS - TOLERANCE_MS, `${label}: after the reply (${times[i + 1].at - times[i].at} ms)`);
+};
+const START_FIXED = { type: 'START', settings: { fixedItems: [{ command: 't1', minSeconds: 600, maxSeconds: 600 }], randomItems: [], commandDelayMs: 0 } };
+
+ui('a fixed timer command is separated from a chat reply in both directions', async () => {
+  const first = await setup();
+  try {
+    await first.page.ask(START_FIXED);
+    assert.ok(await waitFor(() => sentAt(first.times, 't1'), 1000), 'the timer command goes out at start');
+    tellMe(first.page, '有氣質', '今天天氣不錯');
+    assert.ok(await waitFor(() => sentAt(first.times, REPLY), 2000));
+    assertSwitchGap(sentAt(first.times, REPLY) - sentAt(first.times, 't1'), 'the reply after the timer command');
+  } finally {
+    first.close();
+  }
+  const second = await setup();
+  try {
+    tellMe(second.page, '有氣質', '今天天氣不錯');
+    assert.ok(await waitFor(() => sentAt(second.times, REPLY), 2000));
+    await second.page.ask(START_FIXED);
+    assert.ok(await waitFor(() => sentAt(second.times, 't1'), 2000), 'the timer command follows the reply');
+    assertSwitchGap(sentAt(second.times, 't1') - sentAt(second.times, REPLY), 'the timer command after the reply');
+  } finally {
+    second.close();
+  }
+});
+
+ui('a random timer command that keeps coming is separated from a chat reply on both sides', async () => {
+  const { page, times, close } = await setup();
+  try {
+    await page.ask({ type: 'START_RANDOM', settings: { fixedItems: [], randomItems: [{ command: 'r1', minSeconds: 1, maxSeconds: 1 }], commandDelayMs: 0 } });
+    assert.ok(await waitFor(() => sentAt(times, 'r1'), 2000), 'the random command goes out');
+    tellMe(page, '有氣質', '今天天氣不錯');
+    assert.ok(await waitFor(() => { const i = times.findIndex(item => item.command === REPLY); return i >= 0 && i < times.length - 1; }, 3000), 'the reply goes out and a random command follows');
+    assertAroundChat(times, 'random');
+  } finally {
+    close();
+  }
+});
+
+ui('a chat reply that lands in the middle of a trigger macro with @等待 has the gap before it and the next step has the gap after it, in first-in-first-out order', async () => {
+  const { page, times, close } = await setup();
+  try {
+    page.output('<span>你要休息了。\n</span>');
+    assert.ok(await waitFor(() => sentAt(times, 'm1'), 1000), 'the first step goes out and the macro is waiting');
+    tellMe(page, '有氣質', '今天天氣不錯');
+    assert.ok(await waitFor(() => sentAt(times, 'm2') && sentAt(times, REPLY), 3000), 'both the reply and the last step go out');
+    assert.deepEqual(times.map(item => item.command), ['m1', REPLY, 'm2'], 'the reply was queued first, so it goes before the last step');
+    assertAroundChat(times, 'macro');
+  } finally {
+    close();
+  }
+});
+
+ui('the queue stays first in, first out around a chat reply', async () => {
+  const { page, times, close } = await setup();
+  try {
+    page.output('<span>你覺得口渴。\n</span>');
+    assert.ok(await waitFor(() => sentAt(times, 'p1'), 1000));
+    tellMe(page, '有氣質', '今天天氣不錯');
+    await sleep(20);
+    page.output('<span>你覺得肚子餓。\n</span>');
+    assert.ok(await waitFor(() => times.length >= 3, 4000), `all three go out (${JSON.stringify(page.sent)})`);
+    assert.deepEqual(times.map(item => item.command), ['p1', REPLY, 'p2']);
+    assertAroundChat(times, 'first in first out');
+  } finally {
+    close();
+  }
+});
+
+ui('a priority macro still keeps a chat reply back until it is done, its own steps are not stretched, and the reply then waits the switch gap', async () => {
+  const { page, times, close } = await setup();
+  try {
+    page.output('<span>有急事。\n</span>');
+    assert.ok(await waitFor(() => sentAt(times, 'q1'), 1000));
+    tellMe(page, '有氣質', '今天天氣不錯');
+    assert.ok(await waitFor(() => sentAt(times, REPLY), 4000), 'the reply goes out in the end');
+    assert.deepEqual(times.map(item => item.command), ['q1', 'q2', REPLY], 'the reply waited for the whole priority macro');
+    const wait = sentAt(times, 'q2') - sentAt(times, 'q1');
+    assert.ok(wait >= 300 - TOLERANCE_MS && wait <= 300 + 2 * TOLERANCE_MS, `the two steps of the priority macro keep their own 3 s wait (${wait} ms)`);
+    assertSwitchGap(sentAt(times, REPLY) - sentAt(times, 'q2'), 'the reply after the priority macro');
+  } finally {
+    close();
+  }
+});
+
+ui('stop-everything (a stop keyword) while a chat reply waits out its gap sends nothing more', async () => {
+  const { page, times, close } = await setup();
+  try {
+    page.output('<span>你覺得口渴。\n</span>');
+    assert.ok(await waitFor(() => sentAt(times, 'p1'), 1000));
+    tellMe(page, '有氣質', '今天天氣不錯');
+    await sleep(20);
+    page.output('<span>jrealm 出現了\n</span>');
+    await sleep(600);
+    assert.deepEqual(times.map(item => item.command), ['p1'], 'the waiting reply was cancelled');
+  } finally {
+    close();
+  }
+});
+
+ui('the human verification appearing while a chat reply waits out its gap sends nothing more', async () => {
+  const { page, times, close } = await setup();
+  try {
+    page.output('<span>你覺得口渴。\n</span>');
+    assert.ok(await waitFor(() => sentAt(times, 'p1'), 1000));
+    tellMe(page, '有氣質', '今天天氣不錯');
+    await sleep(20);
+    page.w.document.getElementById('presence').classList.remove('invisible');
+    await sleep(600);
+    assert.deepEqual(times.map(item => item.command), ['p1'], 'nothing goes out while the check is open');
   } finally {
     close();
   }
