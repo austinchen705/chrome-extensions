@@ -974,6 +974,7 @@ function pumpQueue() {
     const result = sendCommand(entry.command);
     if (!result.ok) { stopEverything(result.error); return; }
     lastSentAt = Date.now();
+    if (isHuntEntry(entry)) hunt?.noteSent(entry.command);
     entry.onSent?.();
     if (entry.run) {
       entry.run.pending -= 1;

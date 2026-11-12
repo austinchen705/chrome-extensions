@@ -97,6 +97,20 @@ ui('an edit is saved at once with the other fields, and a broken stored value fa
 
 const cellOf = (doc, key) => field(doc, key).closest('.hfield');
 
+ui('the human-like switch is off by default, has its own fold, is saved with the other fields, and the fold title says which way it is', async () => {
+  const { dom, doc, store } = await boot();
+  try {
+    assert.equal(field(doc, 'humanize').value, 'off');
+    assert.ok(doc.getElementById('fold-hunt-human').contains(field(doc, 'humanize')), 'it sits in its own fold');
+    assert.match(doc.querySelector('#fold-hunt-human > summary').textContent, /擬人化.*關/);
+    change(dom, field(doc, 'humanize'), 'on');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.humanize === 'on'));
+    assert.match(doc.querySelector('#fold-hunt-human > summary').textContent, /擬人化.*開/);
+  } finally {
+    dom.window.close();
+  }
+});
+
 ui('there is no start-early field, and an old stored value is ignored and dropped by the next save', async () => {
   const { dom, doc, store } = await boot({ mapHuntSettings: { aheadSec: 45, loopRounds: 'on', stopBeforeSpawnSec: 30 } });
   try {
@@ -116,7 +130,7 @@ ui('the fields are split into closed folds whose titles carry the main values', 
   const { dom, doc } = await boot({ mapHuntSettings: { eatCommand: 'tn', homeCommand: 'ride', specialCommand: 'ps' } });
   try {
     const folds = [...doc.querySelectorAll('#huntFields > details.fold')];
-    assert.deepEqual(folds.map(box => box.id), ['fold-hunt-move', 'fold-hunt-fight', 'fold-hunt-special', 'fold-hunt-heal', 'fold-hunt-sort', 'fold-hunt-rounds', 'fold-hunt-advanced']);
+    assert.deepEqual(folds.map(box => box.id), ['fold-hunt-move', 'fold-hunt-fight', 'fold-hunt-special', 'fold-hunt-heal', 'fold-hunt-sort', 'fold-hunt-rounds', 'fold-hunt-human', 'fold-hunt-advanced']);
     assert.ok(folds.every(box => !box.open), 'all closed at first');
     assert.ok(doc.getElementById('fold-hunt-heal').contains(field(doc, 'ginCommand')), 'jing sits with healing');
     assert.match(doc.querySelector('#fold-hunt-heal > summary').textContent, /補氣與安全.*吃藥 tn <50%.*回家 ride/);

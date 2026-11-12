@@ -2834,6 +2834,146 @@ ui('hunt log: records what each room showed and did, counts other people without
   }
 });
 
+// ---- 每輪摘要：每一輪結束時寫進巡怪紀錄（路線、指令、用真正送出時間算的間隔、看了幾間有怪幾間、是否和上一輪相同）----
+const huntLog = async page => (await page.ask({ type: 'HUNT_LOG' })).text;
+const summaryLines = text => text.split('\n').filter(line => /輪摘要/.test(line));
+
+ui('round summary: a finished round writes its route, commands, gaps from the real send times and rooms with monsters, naming no player', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c', 'd');
+    // 間隔固定 1 秒、怪倒下後送三個指令的巨集：巨集的每一步都要用「真正送出」的時間算，只記決定送出的時間的話這三步的間隔會是 0
+    page.store.mapHuntSettings = { ...REQUIRED, commandGapMinMs: 1000, commandGapMaxMs: 1000, afterKillCommand: 'gc;gc;gc' };
+    fakeClock(page, '2026-11-04T10:00:00+08:00', { scale: SCALE });
+    world(page, { at: 'a', looks: { c: { lines: [MOB_LINE, PERSON('somebody')] }, d: { lines: [MOB_LINE] } }, fingers: { somebody: PLAYER_FINGER } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    const text = await huntLog(page);
+    const lines = summaryLines(text);
+    assert.ok(lines.length >= 3, `the summary has lines (${lines.length})\n${text}`);
+    assert.match(lines.join('\n'), /輪摘要 第 1 輪：開始時間在整點後 \d+ 秒；路線 b→c.*（共 \d+ 步）；看了 2 間，有怪 2 間/);
+    assert.match(lines.join('\n'), /輪摘要 第 1 輪：指令 \d+ 個：.*finger.*gc/, 'the commands are listed (a finger shows no id)');
+    const gaps = lines.join('\n').match(/間隔 最短 ([\d.]+)／平均 ([\d.]+)／最長 ([\d.]+) 秒/);
+    assert.ok(gaps, 'the gap statistics are there');
+    assert.ok(Number(gaps[1]) >= 1, `every gap, macro steps included, is at least the one second between sends (min ${gaps[1]})`);
+    assert.ok(Number(gaps[1]) <= Number(gaps[2]) && Number(gaps[2]) <= Number(gaps[3]), 'min <= average <= max');
+    assert.ok(!/somebody|某人/.test(text), 'other players are never named');
+  } finally {
+    page.close();
+  }
+});
+
+ui('round summary: a round with the same route as the one before says so', async () => {
+  const page = await roundPage({ standbyCommand: 'home' });
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const looks = [];
+    const base = timeScript(page, clock, lookTimer(clock, looks));
+    // 待命指令把角色送回 a，每一輪才都是 a → b → c；角色停在 c 的話，下一輪的目標就在腳下、沒有路線可比
+    const script = (command, ...rest) => {
+      if (command === 'home') rest[0].game.at = 'a';
+      return base(command, ...rest);
+    };
+    world(page, { at: 'a', looks: { c: { lines: [] } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => looks.length >= 3, 14000), `three rounds (${looks.length})`);
+    assert.ok(await waitFor(async () => summaryLines(await huntLog(page)).some(line => /第 2 輪：路線和上一輪相同/.test(line)), 3000), summaryLines(await huntLog(page)).join('\n'));
+    const first = summaryLines(await huntLog(page)).filter(line => /第 1 輪/.test(line)).join('\n');
+    assert.doesNotMatch(first, /和上一輪/, 'the first round has nothing to compare with');
+    const second = summaryLines(await huntLog(page)).find(line => /第 2 輪：開始時間/.test(line));
+    const after = Number(second.match(/整點後 (\d+) 秒/)[1]);
+    assert.ok(after < 50, `the second round starts right after the respawn mark (${after} seconds)`);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('round summary: names no id from a give command either, and keeps only the command name', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, afterKillCommand: 'give gem to myalt' };
+    world(page, { at: 'a', looks: { c: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    const lines = summaryLines(await huntLog(page)).join('\n');
+    assert.match(lines, /指令 \d+ 個：.*give/, 'the give is listed');
+    assert.ok(!/myalt|gem/.test(lines), `no id or item in the summary\n${lines}`);
+  } finally {
+    page.close();
+  }
+});
+
+ui('round summary: a round cut short by the stop-before-respawn time still gets its summary', async () => {
+  const page = await roundPage({ stopBeforeSpawnSec: 120 });
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:14:00+08:00', { scale: 60 });
+    const fights = [];
+    const script = timeScript(page, clock, command => {
+      if (command === FIGHT) fights.push(clock.server());
+      return false;
+    });
+    world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(async () => summaryLines(await huntLog(page)).some(line => /第 1 輪：指令/.test(line)), 9000), summaryLines(await huntLog(page)).join('\n'));
+    assert.equal(fights.length, 0, 'the summary was written at the pause, before any fight');
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('round summary: a later round counts its start from the offset just measured, not the one from the start', async () => {
+  const page = await roundPage({ standbyCommand: 'home' });
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const looks = [];
+    const base = timeScript(page, clock, lookTimer(clock, looks));
+    // 第一次對時準確；待命之後遊戲回的時間快了 20 秒（伺服器時間讀數變了）：第二輪開始時新量到的偏差和最開始的差 20 秒
+    const script = (command, ...rest) => {
+      if (command === 'home') clock.replyError = 20000;
+      return base(command, ...rest);
+    };
+    world(page, { at: 'a', looks: { c: { lines: [] } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => looks.length >= 2, 12000), `two rounds (${looks.length})`);
+    assert.ok(await waitFor(async () => summaryLines(await huntLog(page)).some(line => /第 2 輪：開始時間/.test(line)), 3000), summaryLines(await huntLog(page)).join('\n'));
+    const second = summaryLines(await huntLog(page)).find(line => /第 2 輪：開始時間/.test(line));
+    const after = Number(second.match(/整點後 (\d+) 秒/)[1]);
+    assert.ok(after < 50, `counted from the fresh offset, so just after the mark and not nearly a quarter of an hour late (${after} seconds)`);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('round summary: with the switch off the hunt sends exactly the commands it always did (and the same with it on)', async () => {
+  const run = async humanize => {
+    const page = await boot({ scale: SCALE });
+    try {
+      page.store.mapMonsters = mobsAt('c', 'd');
+      page.store.mapHuntSettings = { ...REQUIRED, humanize };
+      const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE] }, d: { lines: [MOB_LINE] } } });
+      await pick(page, MOB);
+      click(page, '.hstart');
+      assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+      return [...game.log];
+    } finally {
+      page.close();
+    }
+  };
+  // 這一串是開關加進來之前這個情境就送出的指令（對照固定的序列，不是只比開和關的結果）
+  const GOLDEN = ['e', 'e', 'l', FIGHT, 'gc', 'l', 'e', 'l', FIGHT, 'gc', 'l'];
+  assert.deepEqual(await run('off'), GOLDEN);
+  assert.deepEqual(await run('on'), GOLDEN);
+});
+
 // ---- 只下 fight 模式的「自己回」：每次要下 fight 之前先看氣 ----
 const REST = { healMode: 'rest', restBelow: 50, restResume: 80, restCommand: 'dazuo' };
 const endsAfterFight = page => command => {
