@@ -20,6 +20,10 @@ const MAX_WRONG = 3; // 同一個目標走錯房間幾次就略過
 const SAFE_ID = /^[A-Za-z][A-Za-z0-9 _.'-]*$/;
 const MAX_STUCK = 3; // 連續幾次打完指令後怪的數量沒減少就略過這間
 const LOG_MAX = 600; // 巡怪紀錄最多留幾行
+const JITTER_STOP_RATIO = 0.3; // 擬人化：重生前停打秒數每輪偏移 ±30%
+const JITTER_STOP_MIN_SEC = 10; // 小於這個秒數不偏移（取整數會超過 ±30%，例如 2 秒變 1 或 3）
+const JITTER_LINE_POINTS = 3; // 擬人化：吃藥線、休息線每輪偏移 ±3 個百分點
+const ORDER_STEPS_CAP = 1.2; // 擬人化：洗牌後的目標順序，總步數最多是「最近的先」的這麼多倍
 const PASS_WAIT_TICKS = 2; // 走到路過的房間後，最多等幾個 tick 讓抵達時的房間描述印出來
 const TICKS_PER_SEC = 1000 / TICK_MS;
 const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
@@ -86,7 +90,7 @@ const FIELDS = [
   { key: 'loopRounds', group: 'rounds', label: '巡完一輪後等下一個重生', hint: '關＝巡完就停', type: 'select', options: ON_OFF, default: 'on' },
   { key: 'standbyCommand', group: 'rounds', show: s => s.loopRounds === 'on', label: '巡完一輪後的待命指令', hint: '可空', type: 'text', default: '' },
   { key: 'stopBeforeSpawnSec', group: 'rounds', label: '重生前幾秒停打', hint: '0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；沒開「等下一個重生」就直接停', type: 'number', default: 0, min: 0, max: 600 },
-  { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
+  { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣。開＝每一輪重排目標順序（近的優先）、等長的路線隨機挑一條、重生前停打秒數與吃藥線、休息線隨機偏移一點；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
   { key: 'npcWhitelist', group: 'advanced', label: 'NPC 白名單', hint: '英文 ID，用、分隔', type: 'text', default: '' },
 ];
 // 精、神（目前值）與精氣神內傷（傷勢 %）的補充：比照吃藥，各自一組「低於 %」與指令（設定鍵是 key＋Below／Command），沒填就不看。
@@ -202,8 +206,8 @@ function create(deps) {
   const Parse = globalThis.CatworldHuntParse;
   let state = null;
   let timer = null;
-  // 擬人化的所有隨機都從這一個來源取，測試注入固定值
-  const random = deps.random ?? Math.random;
+  // 擬人化的所有隨機都從這一個來源取（deps.random，預設在呼叫時才取 Math.random），測試注入固定值
+  const random = deps.random ?? (() => Math.random());
   let unwatch = null; // 取消「看遊戲輸出」的訂閱
   let note = '';
   let noteAlert = false;
@@ -996,6 +1000,7 @@ function create(deps) {
       targets, allTargets: new Set(targets), baseSkipped, skipped: [...baseSkipped], badEdges: new Set(), deferred: new Set(), retried: false,
       round: 1, after: deps.now() + state.offset, waiting: null, ...roundFields(state.offset),
     });
+    humanizeRound(deps.room());
     state.phase = 'plan';
     deps.notify();
   }
@@ -1032,6 +1037,88 @@ function create(deps) {
     state.lastRoute = routeKey;
     lines.forEach(text => record('-', '輪摘要', `第 ${state.round} 輪：${text}`));
   }
+  // ---- 擬人化：每輪的設定抖動與目標順序（humanize 開著、不是掃描才作用；關著 state.settings 就是原本的設定物件）----
+  const clampTo = (value, min, max) => Math.min(max, Math.max(min, value));
+  const swing = spread => (random() * 2 - 1) * spread;
+  // 吃藥線、休息線在欄位的範圍內偏移 ±JITTER_LINE_POINTS 個百分點；floor 是不能低於的值
+  const jitterLine = (key, value, floor = 0) => {
+    const { min, max } = FIELDS.find(field => field.key === key);
+    return clampTo(Math.round(value + swing(JITTER_LINE_POINTS)), Math.max(min, floor), max);
+  };
+  function roundSettings(base) {
+    const out = { ...base };
+    if (base.stopBeforeSpawnSec >= JITTER_STOP_MIN_SEC) out.stopBeforeSpawnSec = Math.round(base.stopBeforeSpawnSec * (1 + swing(JITTER_STOP_RATIO)));
+    if (base.healMode === 'eat') {
+      // 吃藥線原本高於危險線的話要維持，不然會先回家、永遠吃不到藥
+      out.eatBelow = jitterLine('eatBelow', base.eatBelow, base.eatBelow > base.dangerBelow ? base.dangerBelow + 1 : 0);
+    } else {
+      out.restBelow = jitterLine('restBelow', base.restBelow);
+      if (base.restBelow < base.restResume) out.restBelow = Math.min(out.restBelow, base.restResume - 1); // 不能高過「回到 %」，不然休息與繼續會來回跳
+      if (out.dangerBelow >= out.restBelow) out.dangerBelow = out.restBelow - 1; // 危險線一定低於休息線
+    }
+    return out;
+  }
+  // 這一輪的目標順序：從現在的位置起，每次在剩下的目標裡抽一個，越近機率越高（權重 1/(步數+1)²）；
+  // 排出來的總步數超過「最近的先」的 ORDER_STEPS_CAP 倍就不用（回 null，照原本最近的先走）
+  function planOrder(from) {
+    const graph = state.graph;
+    const keys = [...state.targets];
+    if (keys.length < 2 || !from || !graph.rooms[from]) return null;
+    const memo = new Map();
+    const dist = (a, b) => {
+      if (a === b) return 0;
+      const id = `${a}|${b}`;
+      if (!memo.has(id)) { const way = Route.route(graph, a, b); memo.set(id, way ? way.length : null); }
+      return memo.get(id);
+    };
+    const walk = choose => {
+      const left = [...keys];
+      const order = [];
+      let at = from;
+      let total = 0;
+      while (left.length) {
+        const reachable = left.filter(key => dist(at, key) !== null);
+        const key = reachable.length ? choose(at, reachable) : left[0];
+        total += dist(at, key) ?? 0;
+        order.push(key);
+        left.splice(left.indexOf(key), 1);
+        at = key;
+      }
+      return { order, total };
+    };
+    const nearest = walk((at, list) => list.reduce((best, key) => (dist(at, key) < dist(at, best) ? key : best)));
+    const drawn = walk((at, list) => {
+      const sorted = [...list].sort((a, b) => dist(at, a) - dist(at, b));
+      const weights = sorted.map(key => 1 / (dist(at, key) + 1) ** 2);
+      let rest = random() * weights.reduce((sum, weight) => sum + weight, 0);
+      return sorted.find((key, i) => (rest -= weights[i]) < 0) ?? sorted[sorted.length - 1];
+    });
+    return drawn.total > nearest.total * ORDER_STEPS_CAP ? null : drawn.order;
+  }
+  const humanizeOn = () => state.baseSettings.humanize === 'on' && !state.scan;
+  // 每一輪開始時呼叫（按開始、打怪前補掃完、等完重生）：換這一輪用的設定、排這一輪的順序，寫一行紀錄。
+  // state.settings 是這一輪用的設定：擬人化開著時是 baseSettings（使用者存的）抖動過的副本，關著時就是 baseSettings 本身
+  function humanizeRound(from) {
+    const base = state.baseSettings;
+    const on = humanizeOn();
+    state.settings = on ? roundSettings(base) : base;
+    state.order = on ? planOrder(from) : null;
+    if (!on) return;
+    const now = state.settings;
+    const line = base.healMode === 'eat' ? `吃藥線 ${now.eatBelow}%` : `休息線 ${now.restBelow}%`;
+    record('-', '擬人化', `本輪：目標順序 ${state.order ? state.order.map(key => key.split('/').pop()).join('→') : '最近的先'}；重生前停打 ${now.stopBeforeSpawnSec} 秒；${line}；危險線 ${now.dangerBelow}%`);
+  }
+  // 最短路線不只一條時，第一步在「走完全程一樣長」的出口裡隨機挑一個；關著、掃描時走原本那條
+  function firstStep(route, here) {
+    if (!humanizeOn()) return route.way[0];
+    const steps = Object.entries(route.graph.rooms[here].exits).filter(([, to]) => {
+      if (to === route.key) return route.way.length === 1;
+      const rest = Route.route(route.graph, to, route.key);
+      return rest && rest.length === route.way.length - 1;
+    }).map(([cmd]) => cmd);
+    return steps.length > 1 ? steps[Math.floor(random() * steps.length)] : route.way[0];
+  }
+
   // 每個目標房間都處理過一次＝一輪。沒開「等下一個重生」或這一輪什麼都沒處理（沒有走得到的目標）就停（第 2 輪以後警報）；
   // 否則送待命指令（是巨集的話等它跑完），用 time 校準，等到下一個重生再開始下一輪
   function endRound() {
@@ -1097,6 +1184,7 @@ function create(deps) {
     state.targets = new Set(state.allTargets);
     state.skipped = [...state.baseSkipped];
     Object.assign(state, roundFields(offset));
+    humanizeRound(deps.room());
     state.phase = 'plan';
     deps.notify();
   }
@@ -1138,16 +1226,24 @@ function create(deps) {
     if (state.learn && !looseGraph.rooms[here]) { finish('走到地圖外的房間，已停止', { alert: true }); return; }
     let best = null;
     let guess = null;
+    const routes = new Map();
     [...state.targets].forEach(key => {
       const way = Route.route(strictGraph, here, key);
       const loose = way ?? Route.route(looseGraph, here, key);
       if (!loose) { state.targets.delete(key); state.skipped.push({ key, why: '走不到' }); record(key, '略過', '走不到'); blockScan(key); return; }
-      if (way) { if (!best || way.length < best.way.length) best = { key, way, graph: strictGraph }; }
-      else if (!guess || loose.length < guess.way.length) guess = { key, way: loose, graph: looseGraph };
+      const route = way ? { key, way, graph: strictGraph, strict: true } : { key, way: loose, graph: looseGraph, strict: false };
+      routes.set(key, route);
+      if (way) { if (!best || way.length < best.way.length) best = route; }
+      else if (!guess || loose.length < guess.way.length) guess = route;
     });
-    const chosen = best ?? guess;
+    let chosen = best ?? guess;
     if (!chosen) { endRound(); return; }
-    const cmd = chosen.way[0];
+    // 擬人化排好的順序：下一個還在、走得到的目標（有嚴格圖的路線時只在那些裡面挑，和原本「嚴格的優先」一樣）
+    if (state.order) {
+      const next = state.order.find(key => routes.has(key) && (routes.get(key).strict || !best));
+      if (next) chosen = routes.get(next);
+    }
+    const cmd = firstStep(chosen, here);
     state.goal = chosen.key;
     state.expected = chosen.graph.rooms[here].exits[cmd];
     if (state.learn) {
@@ -1304,9 +1400,10 @@ function create(deps) {
       state = {
         round: 1, after: deps.now() + offset, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
         mobs: scan ? [] : target.mobs, area: target.area, offset, scan: scan || prescan, prescan, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph, targets, skipped: [...baseSkipped], fixed: [],
-        settings, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null,
+        settings, baseSettings: settings, order: null, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null,
         ...roundFields(offset), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
+      humanizeRound(here);
       note = '';
       record(target.area, '目標房間', `${[...targets].join(' ') || '（沒有）'}`);
       baseSkipped.forEach(item => record(item.key, '略過', item.why));

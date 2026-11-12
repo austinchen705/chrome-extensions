@@ -2974,6 +2974,154 @@ ui('round summary: with the switch off the hunt sends exactly the commands it al
   assert.deepEqual(await run('on'), GOLDEN);
 });
 
+// ---- 擬人化：每輪路線隨機與抖動（隨機數固定成 r.value，測試可以指定要哪個分支）----
+const lineWorld = ids => ({
+  row: ids.map(ROOM).join('─'),
+  moves: Object.fromEntries(ids.map((id, i) => [id, { ...(i > 0 && { w: ids[i - 1] }), ...(i < ids.length - 1 && { e: ids[i + 1] }) }])),
+});
+const DIAMOND = {
+  row: `${ROOM('a')}─${ROOM('b')}\n│　│\n${ROOM('c')}─${ROOM('d')}`,
+  moves: { a: { e: 'b', s: 'c' }, b: { w: 'a', s: 'd' }, c: { n: 'a', e: 'd' }, d: { n: 'b', w: 'c' } },
+};
+const pinRandom = (page, value) => {
+  const r = { value };
+  page.w.Math.random = () => r.value;
+  return r;
+};
+const visitOrder = text => [...text.matchAll(/t\/(\w+) 看房間/g)].map(match => match[1]);
+// 在 map（lineWorld 或 DIAMOND）上從 at 出發，目標房間各有一隻怪，跑完一輪；回傳巡怪紀錄與送出的指令
+const huntOnce = async ({ map, at, targets, humanize = 'on', r = 0.5, settings = {} }) => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt(...targets);
+    page.store.mapHuntSettings = { ...REQUIRED, humanize, ...settings };
+    pinRandom(page, r);
+    const game = world(page, { at, ...map, looks: Object.fromEntries(targets.map(id => [id, { lines: [MOB_LINE] }])) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    return { text: await huntLog(page), commands: [...game.log] };
+  } finally {
+    page.close();
+  }
+};
+
+ui('humanize: the order of the targets is drawn with the nearer ones favoured, and the switch off keeps nearest first', async () => {
+  const map = lineWorld(['q4', 'q3', 'q2', 'q1', 'a', 'p1', 'p2', 'p3']); // 從 a 出發：p3 距離 3、q4 距離 4，兩間之間 7 步
+  const first = async options => visitOrder((await huntOnce({ map, at: 'a', targets: ['p3', 'q4'], ...options })).text)[0];
+  assert.equal(await first({ r: 0.2 }), 'p3', 'a small draw takes the nearer one');
+  assert.equal(await first({ r: 0.5 }), 'p3', 'the nearer one owns the lower part of the draw');
+  assert.equal(await first({ r: 0.8 }), 'q4', 'a high draw takes the farther one (11 steps in all, within 120% of the 10 of nearest-first)');
+  assert.equal(await first({ r: 0.8, humanize: 'off' }), 'p3', 'with the switch off the draw is not used at all');
+});
+
+ui('humanize: an order that needs more than 120% of the steps of nearest-first falls back to nearest-first', async () => {
+  // 從 a 出發：p2 距離 2、q4 距離 4，兩間之間 6 步。先 q4 再 p2 要 10 步，最近的先只要 8 步，10 > 9.6
+  // （兩條臂分開：先走遠的不會路過近的，不然抽到哪個結果都一樣，測不出上限）
+  const map = lineWorld(['q4', 'q3', 'q2', 'q1', 'a', 'p1', 'p2']);
+  const firsts = [];
+  for (const r of [0.1, 0.9]) firsts.push(visitOrder((await huntOnce({ map, at: 'a', targets: ['p2', 'q4'], r })).text)[0]);
+  assert.deepEqual(firsts, ['p2', 'p2'], 'both draws end up nearest first, even the one that drew the far room');
+});
+
+ui('humanize: among equally short routes the draw picks one, and the switch off takes the usual one', async () => {
+  const first = async options => (await huntOnce({ map: DIAMOND, at: 'a', targets: ['d'], ...options })).commands[0];
+  const low = await first({ r: 0 });
+  const high = await first({ r: 0.99 });
+  assert.ok(['e', 's'].includes(low) && ['e', 's'].includes(high), `both are first steps of a shortest route (${low}, ${high})`);
+  assert.notEqual(low, high, 'a different draw takes the other route');
+  assert.equal(await first({ humanize: 'off', r: 0.99 }), await first({ humanize: 'off', r: 0 }), 'off: the draw makes no difference');
+});
+
+const EAT_LOG = /擬人化 本輪：.*重生前停打 (\d+) 秒；吃藥線 (\d+)%；危險線 (\d+)%/;
+const REST_LOG = /擬人化 本輪：.*重生前停打 (\d+) 秒；休息線 (\d+)%；危險線 (\d+)%/;
+// 開始一輪，回傳那一行「擬人化」紀錄裡的三個數字（沒有這一行回 null）
+const jitterOf = async (humanize, r, settings, pattern) => {
+  const page = await roundPage({ humanize, stopBeforeSpawnSec: 100, ...settings });
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    pinRandom(page, r);
+    world(page, { at: 'a', looks: { c: { lines: [] } }, script: timeScript(page, clock) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(async () => /開始 /.test(await huntLog(page)), 4000));
+    const text = await huntLog(page);
+    await page.ask({ type: 'STOP' });
+    return text.match(pattern)?.slice(1).map(Number) ?? null;
+  } finally {
+    page.close();
+  }
+};
+
+ui('humanize: each round the stop-before-respawn seconds and the line the heal mode uses shift within their bounds', async () => {
+  // 吃藥模式：只抖吃藥線，危險線不動
+  const eat = { healMode: 'eat', eatBelow: 50, restBelow: 50, dangerBelow: 20 };
+  assert.deepEqual(await jitterOf('on', 0, eat, EAT_LOG), [70, 47, 20], 'the lowest draw: 30% less, 3 points lower, the danger line untouched');
+  const [highStop, highEat, highDanger] = await jitterOf('on', 0.99, eat, EAT_LOG);
+  assert.ok(highStop > 100 && highStop <= 130, `the highest draw: up to 30% more (${highStop})`);
+  assert.ok(highEat > 50 && highEat <= 53, `up to 3 points higher (${highEat})`);
+  assert.equal(highDanger, 20);
+  // 自己回模式：只抖休息線，危險線一定低於它
+  const rest = { healMode: 'rest', restBelow: 50, dangerBelow: 49 };
+  assert.deepEqual(await jitterOf('on', 0, rest, REST_LOG), [70, 47, 46], 'the danger line is pushed below the lowered rest line');
+  const [, highRest, highRestDanger] = await jitterOf('on', 0.99, rest, REST_LOG);
+  assert.ok(highRest > 50 && highRest <= 53 && highRestDanger < highRest, `${highRest}, ${highRestDanger}`);
+  assert.equal(await jitterOf('off', 0, eat, EAT_LOG), null, 'with the switch off nothing is shifted or logged');
+});
+
+ui('humanize: the eat line never drops to the danger line, and a stop time under ten seconds is left alone', async () => {
+  const close = { healMode: 'eat', eatBelow: 22, dangerBelow: 20, stopBeforeSpawnSec: 5 };
+  assert.deepEqual(await jitterOf('on', 0, close, EAT_LOG), [5, 21, 20], 'the lowest draw would give 19, but the eat line stays above the danger line; 5 seconds is not shifted');
+  const [stop, eatLine] = await jitterOf('on', 0.99, close, EAT_LOG);
+  assert.equal(stop, 5);
+  assert.ok(eatLine > 22 && eatLine <= 25, String(eatLine));
+});
+
+ui('humanize: the respawn mark itself is never shifted (the next round still starts right after it)', async () => {
+  const page = await roundPage({ humanize: 'on', stopBeforeSpawnSec: 100 });
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const looks = [];
+    pinRandom(page, 0.99);
+    world(page, { at: 'a', looks: { c: { lines: [] } }, script: timeScript(page, clock, lookTimer(clock, looks)) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => looks.length >= 2, 12000), `two rounds (${looks.length})`);
+    assert.ok(looks[1] >= at('10:15:00') && looks[1] < at('10:15:50'), new Date(looks[1]).toISOString());
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('humanize: the summary shows the route actually taken each round and flags a round that took a different one', async () => {
+  const page = await roundPage({ humanize: 'on', standbyCommand: 'home' });
+  try {
+    page.store.mapMonsters = mobsAt('d');
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const looks = [];
+    const r = pinRandom(page, 0);
+    const base = timeScript(page, clock, lookTimer(clock, looks));
+    // 待命指令把角色送回 a；第二輪改用另一個抽籤值，走另一條一樣長的路
+    const script = (command, ...rest) => {
+      if (command === 'home') { rest[0].game.at = 'a'; r.value = 0.99; }
+      return base(command, ...rest);
+    };
+    world(page, { at: 'a', ...DIAMOND, looks: { d: { lines: [] } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => looks.length >= 2, 12000), `two rounds (${looks.length})`);
+    assert.ok(await waitFor(async () => summaryLines(await huntLog(page)).some(line => /第 2 輪：路線和上一輪/.test(line)), 3000), summaryLines(await huntLog(page)).join('\n'));
+    const lines = summaryLines(await huntLog(page));
+    const route = n => lines.find(line => new RegExp(`第 ${n} 輪：開始時間`).test(line)).match(/路線 ([a-z→]+)/)[1];
+    assert.notEqual(route(1), route(2), `the two rounds took different routes (${route(1)}, ${route(2)})`);
+    assert.ok(lines.some(line => /第 2 輪：路線和上一輪不同/.test(line)));
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
 // ---- 只下 fight 模式的「自己回」：每次要下 fight 之前先看氣 ----
 const REST = { healMode: 'rest', restBelow: 50, restResume: 80, restCommand: 'dazuo' };
 const endsAfterFight = page => command => {
