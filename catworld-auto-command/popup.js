@@ -1310,7 +1310,7 @@ CatworldMapHunt.FIELDS.forEach(item => {
       button.dataset.busy = '1';
       say('讀取遊戲的別名列表…', 'info');
       let reply;
-      try { reply = await send({ type: 'HUNT_VERIFY_ALIAS', command: huntSettings[item.key], verb: item.verify, form: huntSettings.targetForm }); }
+      try { reply = await send({ type: 'HUNT_VERIFY_ALIAS', command: huntSettings[item.key], verb: item.verify }); }
       catch (error) { reply = { ok: false, error: `讀不到遊戲分頁：${error.message}` }; }
       delete button.dataset.busy;
       button.disabled = huntBusy;

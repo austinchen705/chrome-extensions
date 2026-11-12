@@ -399,7 +399,7 @@ ui('hunt: a room with a player in it is skipped, and the panel says who', async 
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 5000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'finger somebody', 'e', 'l', 'fight test mob', 'gc'], 'looked at c, asked about the unknown id, left for d and fought there');
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'finger somebody', 'e', 'l', 'fight 1', 'gc'], 'looked at c, asked about the unknown id, left for d and fought there');
     assert.match(huntText(page), /略過 1 間.*t\/c 有別人 somebody/);
     assert.equal(alerts(page).length, 0, 'meeting a player is not an alarm');
   } finally {
@@ -416,7 +416,7 @@ ui('hunt: an id that finger cannot find is an NPC: remembered, the room is not s
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 5000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'finger smith', 'fight test mob', 'gc', 'e', 'l', 'fight test mob', 'gc'], 'asked once, at the first room only');
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'finger smith', 'fight 1', 'gc', 'e', 'l', 'fight 1', 'gc'], 'asked once, at the first room only');
     assert.deepEqual([...page.store.mapHuntNpcs], ['smith']);
     assert.doesNotMatch(huntText(page), /略過/);
   } finally {
@@ -449,7 +449,7 @@ ui('hunt: an id on the whitelist is never asked about and does not count as some
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight 1', 'gc']);
     assert.doesNotMatch(huntText(page), /略過/);
   } finally {
     page.close();
@@ -478,7 +478,7 @@ ui('arrival: a target room is read from the arrival description, so no l is sent
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'fight test mob', 'gc'], 'no l at all: the look came from the arrival and the only monster needs no recount');
+    assert.deepEqual(game.log, ['e', 'e', 'fight 1', 'gc'], 'no l at all: the look came from the arrival and the only monster needs no recount');
     assert.match(await huntLog(page), /t\/c 看房間 .*來源 抵達描述/);
   } finally {
     page.close();
@@ -508,7 +508,7 @@ ui('arrival: with no arrival description at all it falls back to one l', async (
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight 1', 'gc']);
     assert.match(await huntLog(page), /t\/c 看房間 .*來源 l/);
   } finally {
     page.close();
@@ -523,7 +523,7 @@ ui('arrival: a description without an exit line is not used, and one l is sent i
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc'], 'the l shows the monster that the arrival text did not');
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight 1', 'gc'], 'the l shows the monster that the arrival text did not');
   } finally {
     page.close();
   }
@@ -551,7 +551,7 @@ ui('arrival: a description that arrives in two packets (the monster lines after 
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'fight test mob', 'gc'], 'the monster that came in the second packet was fought, with no l before the fight');
+    assert.deepEqual(game.log, ['e', 'e', 'fight 1', 'gc'], 'the monster that came in the second packet was fought, with no l before the fight');
   } finally {
     page.close();
   }
@@ -595,7 +595,7 @@ ui('arrival: a description that comes a little late is still waited for', async 
     await pick(late, MOB);
     click(late, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(late)), 4000), huntText(late));
-    assert.deepEqual(game.log, ['e', 'e', 'fight test mob', 'gc'], 'a description 15 ms late is within the short wait');
+    assert.deepEqual(game.log, ['e', 'e', 'fight 1', 'gc'], 'a description 15 ms late is within the short wait');
   } finally {
     late.close();
   }
@@ -656,7 +656,7 @@ ui('hunt: whitelist and learned NPCs match whatever the case, and a learned NPC 
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc'], 'neither is asked about, neither counts as someone');
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight 1', 'gc'], 'neither is asked about, neither counts as someone');
   } finally {
     page.close();
   }
@@ -691,7 +691,7 @@ ui('hunt: stopping while an NPC is being remembered does not send another finger
 
 // ---- 票 05：打怪 ----
 // 假遊戲預設：fight／kill 立刻印「測試怪死了。」，gc 把房間裡的一隻怪（第一個 ※ 行）清掉；要改行為用 world 的 script
-const FIGHT = 'fight test mob';
+const FIGHT = 'fight 1';
 const KO_LINE = '測試怪腳下一個不穩，跌在地上一動也不動了。';
 const mobsLines = count => Array.from({ length: count }, () => MOB_LINE);
 const setKee = (page, value, max = 100) => {
@@ -726,7 +726,7 @@ ui('fight: the command that starts a fight is a setting, so f is sent with the m
     page.store.mapHuntSettings = { ...REQUIRED, fightCommand: 'f', fightTimeoutSec: 5 };
     let starts = 0;
     const script = (command, { say: tell }) => {
-      if (command !== 'f test mob') return false;
+      if (command !== 'f 1') return false;
       starts += 1;
       if (starts === 2) tell('測試怪死了。'); // 第一次沒有結束句：逾時後看一眼，怪還在、沒在打，就再送一次
       return true;
@@ -735,7 +735,7 @@ ui('fight: the command that starts a fight is a setting, so f is sent with the m
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
-    assert.equal(countOf(game, 'f test mob'), 2, `started with f and retried with f (${game.log.join(',')})`);
+    assert.equal(countOf(game, 'f 1'), 2, `started with f and retried with f (${game.log.join(',')})`);
     assert.equal(game.log.filter(command => command.startsWith('fight ')).length, 0, 'fight itself is never sent');
   } finally {
     page.close();
@@ -749,7 +749,7 @@ ui('position: with the position form the fight command is followed by the place 
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { ...REQUIRED, targetForm: 'position' };
+    page.store.mapHuntSettings = { ...REQUIRED };
     const lines = [OTHER_LINE, KNOCKED_LINE, MOB_LINE];
     const game = world(page, { at: 'a', arrivals: { c: { lines } }, looks: { c: { lines: [...lines] } }, script: (command, { say: tell }) => {
       if (command === 'fight 3') { tell('測試怪死了。'); return true; }
@@ -768,7 +768,7 @@ ui('position: after a kill the recount gives the next monster its new position',
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { ...REQUIRED, targetForm: 'position' };
+    page.store.mapHuntSettings = { ...REQUIRED };
     const looks = { c: { lines: [MOB_LINE, OTHER_LINE, MOB_LINE] } };
     const game = world(page, { at: 'a', looks, script: (command, { say: tell }) => {
       if (/^fight \d$/.test(command)) {
@@ -791,7 +791,7 @@ ui('position: the kill command after a refusal and the finishing kill use the po
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { ...REQUIRED, targetForm: 'position', killCommand: 'k' };
+    page.store.mapHuntSettings = { ...REQUIRED, killCommand: 'k' };
     let kills = 0;
     const game = world(page, { at: 'a', looks: { c: { lines: [OTHER_LINE, MOB_LINE] } }, script: (command, { say: tell }) => {
       if (command === 'fight 2') { tell('看起來測試怪並不想跟你較量。'); return true; }
@@ -814,14 +814,14 @@ ui('fight: the kill command is a setting, so a refusal gets k when the user set 
     page.store.mapHuntSettings = { ...REQUIRED, killCommand: 'k' };
     const script = (command, { say: tell }) => {
       if (command === FIGHT) { tell('看起來測試怪並不想跟你較量。'); return true; }
-      if (command === 'k test mob') { tell('測試怪死了。'); return true; }
+      if (command === 'k 1') { tell('測試怪死了。'); return true; }
       return false;
     };
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'k test mob', 'gc']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'k 1', 'gc']);
   } finally {
     page.close();
   }
@@ -833,14 +833,14 @@ ui('fight: a monster that does not want to fight gets kill after the refusal; wh
     page.store.mapMonsters = mobsAt('c');
     const script = (command, { say: tell }) => {
       if (command === FIGHT) { tell('看起來測試怪並不想跟你較量。'); return true; }
-      if (command === 'kill test mob') { tell(countOf(game, 'kill test mob') === 1 ? KO_LINE : '測試怪死了。'); return true; }
+      if (command === 'kill 1') { tell(countOf(game, 'kill 1') === 1 ? KO_LINE : '測試怪死了。'); return true; }
       return false;
     };
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kill test mob', 'kill test mob', 'gc']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kill 1', 'kill 1', 'gc']);
   } finally {
     page.close();
   }
@@ -869,14 +869,14 @@ ui('fight: no end sentence for a long time means an l: a monster that is knocked
     const room = { lines: mobsLines(1) };
     const script = command => {
       if (command === FIGHT) { room.lines[0] = '  ※測試怪(test mob) <昏迷不醒> [fight][kill]'; return true; }
-      if (command === 'kill test mob') { say(page, '測試怪死了。'); room.lines.splice(0, 1); return true; }
+      if (command === 'kill 1') { say(page, '測試怪死了。'); room.lines.splice(0, 1); return true; }
       return false;
     };
     const game = world(page, { at: 'a', looks: { c: room }, script });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'l', 'kill test mob', 'gc']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'l', 'kill 1', 'gc']);
   } finally {
     page.close();
   }
@@ -1186,12 +1186,12 @@ ui('fight: after the wait, a monster that was told kill is sent kill again, not 
     page.store.mapHuntSettings = { ...REQUIRED, fightTimeoutSec: 5 };
     const script = command => {
       if (command === FIGHT) { say(page, '看起來測試怪並不想跟你較量。'); return true; }
-      return command === 'kill test mob';
+      return command === 'kill 1';
     };
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
     await pick(page, MOB);
     click(page, '.hstart');
-    assert.ok(await waitFor(() => countOf(game, 'kill test mob') >= 2, 4000), game.log.join(','));
+    assert.ok(await waitFor(() => countOf(game, 'kill 1') >= 2, 4000), game.log.join(','));
     assert.equal(countOf(game, FIGHT), 1, 'fight is not sent again after the refusal');
     await page.ask({ type: 'STOP' });
   } finally {
@@ -1212,13 +1212,13 @@ ui('fight: a refusal that follows a special attack with no target does not end t
         if (asked === 1) say(page, '你要對誰施展這個招式?\n看起來測試怪並不想跟你較量。');
         return true;
       }
-      return command === 'kill test mob';
+      return command === 'kill 1';
     };
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => countOf(game, 'pt') >= 3, 4000), 'special attacks continue once the fight really starts');
-    assert.equal(countOf(game, 'kill test mob'), 1);
+    assert.equal(countOf(game, 'kill 1'), 1);
     await page.ask({ type: 'STOP' });
   } finally {
     page.close();
@@ -1232,15 +1232,14 @@ ui('fight: a knocked-out monster is not a target, and a room with only knocked-o
     page.store.mapMonsters = { 't/c': { area: 't', room: 'c', areaName: '測試區', mobs: [MOB, other], seen: 1 } };
     const room = { lines: ['  ※另一隻怪(other mob) <昏迷不醒> [fight][kill]', MOB_LINE] };
     const script = command => {
-      if (command === FIGHT) { say(page, '測試怪死了。'); room.lines.splice(1, 1); return true; }
+      if (command === 'fight 2') { say(page, '測試怪死了。'); room.lines.splice(1, 1); return true; }
       return command === 'gc';
     };
     const game = world(page, { at: 'a', looks: { c: room }, script });
     await pick(page, MOB, other);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.equal(game.log.includes('fight other mob'), false);
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight 2', 'gc'], 'the knocked-out one at 1 is never fought; the ticked one is the second monster line');
   } finally {
     page.close();
   }
@@ -2055,7 +2054,7 @@ ui('fight: a monster that is only knocked out is finished with kill before the c
     let knocked = false;
     const script = command => {
       if (command === FIGHT) { say(page, knocked ? '測試怪死了。' : KO_LINE); knocked = true; return true; }
-      if (command === 'kill test mob') { say(page, '測試怪死了。'); return true; }
+      if (command === 'kill 1') { say(page, '測試怪死了。'); return true; }
       if (command === 'gc') { room.lines.shift(); return true; }
       return false;
     };
@@ -2063,7 +2062,7 @@ ui('fight: a monster that is only knocked out is finished with kill before the c
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kill test mob', 'gc', 'l', FIGHT, 'gc'], 'knocked out: kill, then gc; the second one died at once: no kill');
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kill 1', 'gc', 'l', FIGHT, 'gc'], 'knocked out: kill, then gc; the second one died at once: no kill');
   } finally {
     page.close();
   }
@@ -2096,7 +2095,7 @@ ui('fight: the finishing kill does not send the special attack, and a knocked-ou
     let kills = 0;
     const script = command => {
       if (command === FIGHT) { say(page, KO_LINE); return true; }
-      if (command === 'kill test mob') {
+      if (command === 'kill 1') {
         kills += 1;
         setTimeout(() => say(page, kills === 1 ? KO_LINE : '測試怪死了。'), 0);
         return true;
@@ -2106,7 +2105,7 @@ ui('fight: the finishing kill does not send the special attack, and a knocked-ou
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
     await pick(page, MOB);
     click(page, '.hstart');
-    assert.ok(await waitFor(() => game.log.includes('kill test mob'), 4000));
+    assert.ok(await waitFor(() => game.log.includes('kill 1'), 4000));
     const ptBefore = countOf(game, 'pt');
     await sleep(300);
     assert.equal(countOf(game, 'pt'), ptBefore, 'no special attack while finishing');
@@ -2248,7 +2247,7 @@ test('hunt settings: the old gap in seconds is converted to milliseconds, and th
 });
 
 // 同一個房間有好幾隻 ID 一樣的怪（襄陽守軍 小隊長(guard)、中隊長(guard)、中隊長(guard)）：fight guard 會打第一隻，所以要用第幾個（guard 2）指定勾選的那一隻
-ui('hunt: monsters sharing one id are told apart by their place in the room (fight guard 2, not fight guard)', async () => {
+ui('hunt: monsters sharing one id are told apart by their position in the room (fight 2), never by the id', async () => {
   const page = await boot({ scale: SCALE });
   try {
     const CAPTAIN = '襄陽守軍 中隊長(guard)';
@@ -2260,12 +2259,10 @@ ui('hunt: monsters sharing one id are told apart by their place in the room (fig
       at: 'a',
       looks: { c: { lines } },
       script: (command, { say, looks }) => {
-        const match = /^(?:fight|kill) (guard)(?: (\d+))?$/.exec(command);
+        const match = /^(?:fight|kill) (\d+)$/.exec(command);
         if (!match) return false;
         fights.push(command);
-        const nth = Number(match[2] || 1);
-        const index = looks.c.lines.map((line, i) => [line, i]).filter(([line]) => line.includes('(guard)'))[nth - 1][1];
-        looks.c.lines.splice(index, 1); // 被打的那一隻倒下
+        looks.c.lines.splice(Number(match[1]) - 1, 1); // 第幾個 ※ 行的那一隻倒下
         say('守軍死了。');
         return true;
       },
@@ -2273,7 +2270,7 @@ ui('hunt: monsters sharing one id are told apart by their place in the room (fig
     await pick(page, CAPTAIN);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(fights, ['fight guard 2', 'fight guard 2'], 'both captains, never the first guard (the squad leader)');
+    assert.deepEqual(fights, ['fight 2', 'fight 2'], 'both captains (the first at 2, then the second moved up to 2), never the squad leader at 1');
   } finally {
     page.close();
   }
@@ -2595,7 +2592,7 @@ ui('prescan: a hunt in an area with rooms never visited first scans them, so a m
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 20000), huntText(page));
     assert.ok(['a', 'b', 'c', 'd'].every(room => seenState(page, `t/${room}`) === 'seen'), JSON.stringify(page.store.mapVisited));
     assert.ok(page.store.mapMonsters['t/d']?.mobs.includes(MOB), 'the scan recorded the monster in d');
-    assert.equal(countOf(game, 'fight test mob'), 2, `fought in c and in d: ${game.log.join()}`);
+    assert.equal(countOf(game, 'fight 1'), 2, `fought in c and in d: ${game.log.join()}`);
   } finally {
     page.close();
   }
@@ -2825,7 +2822,7 @@ const assistPage = async (settings = {}) => {
 const MOB_FIGHTING = '  ※測試怪(test mob) <戰鬥中> [fight][kill]';
 
 ui('assist: the position form is used there too', async () => {
-  const page = await assistPage({ targetForm: 'position' });
+  const page = await assistPage();
   try {
     const game = world(page, { at: 'a', looks: { c: { lines: ['  ※另一隻怪(other mob) [fight][kill]', MOB_LINE] } }, script: command => {
       if (command === 'fight 2') { setTimeout(() => lookOut(page), 50); return true; }
@@ -2844,13 +2841,13 @@ ui('assist: the command that starts a fight is the setting there too', async () 
   const page = await assistPage({ fightCommand: 'f' });
   try {
     const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: command => {
-      if (command === 'f test mob') { setTimeout(() => lookOut(page), 50); return true; }
+      if (command === 'f 1') { setTimeout(() => lookOut(page), 50); return true; }
       return false;
     } });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'f test mob']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'f 1']);
   } finally {
     page.close();
   }
@@ -3833,7 +3830,7 @@ ui('hunt: a player who shows no status tag (not idle) still makes the room be sk
 
 // ---- 驗證按鈕：設定頁送 HUNT_VERIFY_ALIAS，遊戲頁送 alias、讀別名列表、回判斷 ----
 const ALIAS_LIST = require('node:fs').readFileSync(require('node:path').join(__dirname, 'fixtures', 'hunt', 'alias-list.txt'), 'utf8');
-const verify = (page, command, extra = {}) => page.ask({ type: 'HUNT_VERIFY_ALIAS', command, verb: 'fight', form: 'id', ...extra });
+const verify = (page, command, extra = {}) => page.ask({ type: 'HUNT_VERIFY_ALIAS', command, verb: 'fight', ...extra });
 
 ui('verify: pressing verify sends alias once and answers with what the command expands to', async () => {
   const page = await boot({ scale: SCALE });
@@ -3847,8 +3844,8 @@ ui('verify: pressing verify sends alias once and answers with what the command e
     assert.equal(reply.level, 'info');
     assert.match(reply.text, /「f」＝「fight \$1」/);
     assert.equal(countOf(game, 'alias'), 1, 'sent once');
-    const warned = await verify(page, 'fn');
-    assert.equal(warned.level, 'warn', 'fight NPC with the ID form is a warning');
+    const warned = await verify(page, 'ar');
+    assert.equal(warned.level, 'warn', 'an alias that is not fight is a warning');
     assert.equal(countOf(game, 'alias'), 2, 'each press reads the list again');
   } finally {
     page.close();

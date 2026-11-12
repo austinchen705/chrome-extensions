@@ -99,22 +99,6 @@ ui('an edit is saved at once with the other fields, and a broken stored value fa
 
 const cellOf = (doc, key) => field(doc, key).closest('.hfield');
 
-ui('what follows the fight command is a select in the fight fold: the ID by default, or the position, which the fold title then mentions and the hint explains', async () => {
-  const { dom, doc, store } = await boot();
-  try {
-    assert.ok(doc.getElementById('fold-hunt-fight').contains(field(doc, 'targetForm')));
-    assert.equal(field(doc, 'targetForm').value, 'id');
-    const title = () => doc.querySelector('#fold-hunt-fight > summary').textContent;
-    assert.doesNotMatch(title(), /順位/);
-    assert.match(cellOf(doc, 'targetForm').textContent, /fight NPC/, 'the hint says how the game counts and which form is safer');
-    change(dom, field(doc, 'targetForm'), 'position');
-    assert.ok(await waitFor(() => store.mapHuntSettings?.targetForm === 'position'));
-    assert.match(title(), /接順位/);
-  } finally {
-    dom.window.close();
-  }
-});
-
 ui('the command that starts a fight sits in the fight fold, defaults to fight, falls back to fight for a value that could run as a macro, and shows in the fold title once changed', async () => {
   for (const bad of ['', 'a;b', 'f；g', '@等待 1', 'x'.repeat(21)]) {
     const { dom, doc } = await boot({ mapHuntSettings: { fightCommand: bad } });
@@ -281,13 +265,13 @@ ui('with nothing learned the list says so', async () => {
   }
 });
 
-ui('the two command fields have a verify button: it asks the game page with the field, the verb and the target form, shows the verdict in its colour, and is disabled while the hunt runs', async () => {
+ui('the two command fields have a verify button: it asks the game page with the field and the verb, shows the verdict in its colour, and is disabled while the hunt runs', async () => {
   let huntOn = false;
   const asked = [];
   const game = message => {
     if (message.type === 'HUNT_VERIFY_ALIAS') {
-      asked.push({ command: message.command, verb: message.verb, form: message.form });
-      return message.verb === 'kill' ? { ok: false, error: '巡怪或掃描進行中，停下來才能驗證' } : { ok: true, level: 'warn', text: '「fn」＝「fight NPC $1」：NPC 形式後面要接順位' };
+      asked.push({ command: message.command, verb: message.verb });
+      return message.verb === 'kill' ? { ok: false, error: '巡怪或掃描進行中，停下來才能驗證' } : { ok: true, level: 'warn', text: '「fn」＝「fight NPC $1」：測試用的警告' };
     }
     if (message.type === 'STATUS') return { hunt: { on: huntOn } };
     return {};
@@ -299,13 +283,13 @@ ui('the two command fields have a verify button: it asks the game page with the 
     assert.ok(fightButton && killButton, 'both fields have one');
     const fightMessage = cellOf(doc, 'fightCommand').querySelector('.hverify-msg');
     fightButton.click();
-    assert.ok(await waitFor(() => /NPC 形式/.test(fightMessage.textContent)), fightMessage.textContent);
-    assert.deepEqual(asked[0], { command: 'fn', verb: 'fight', form: 'id' });
+    assert.ok(await waitFor(() => /測試用的警告/.test(fightMessage.textContent)), fightMessage.textContent);
+    assert.deepEqual(asked[0], { command: 'fn', verb: 'fight' });
     assert.ok(fightMessage.classList.contains('msg-warn'), 'a warning is amber');
     killButton.click();
     const killMessage = cellOf(doc, 'killCommand').querySelector('.hverify-msg');
     assert.ok(await waitFor(() => /進行中/.test(killMessage.textContent)), killMessage.textContent);
-    assert.deepEqual(asked[1], { command: 'k', verb: 'kill', form: 'id' });
+    assert.deepEqual(asked[1], { command: 'k', verb: 'kill' });
     assert.ok(killMessage.classList.contains('msg-error'), 'a refusal is red');
     huntOn = true;
     assert.ok(await waitFor(() => fightButton.disabled && killButton.disabled, 3000), 'disabled while the hunt runs');

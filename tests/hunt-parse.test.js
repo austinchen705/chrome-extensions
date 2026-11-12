@@ -182,15 +182,14 @@ test('aliases: names are matched whatever the case, and no output means no alias
   assert.equal(P.parseAliases(undefined).size, 0);
 });
 
-const judge = (command, { verb = 'fight', form = 'id', list = null } = {}) => P.judgeAlias(P.parseAliases(list ?? sample('alias-list')), command, { verb, form });
+const judge = (command, { verb = 'fight', list = null } = {}) => P.judgeAlias(P.parseAliases(list ?? sample('alias-list')), command, { verb });
 
 test('alias verdict: each row of the table', () => {
   const cases = [
-    ['fight', {}, 'info', /不是別名/],
-    ['f', {}, 'info', /「f」＝「fight \$1」/],
-    ['fn', { form: 'position' }, 'info', /fight NPC/],
-    ['fn', { form: 'id' }, 'warn', /NPC.*順位/],
-    ['f', { form: 'position' }, 'info', /順位可能偏掉.*fight NPC \$1/],
+    ['fight', {}, 'info', /不是別名.*fight 順位/],
+    ['f', {}, 'info', /「f」＝「fight \$1」，巡怪送「f 順位」，遊戲執行「fight 順位」/],
+    ['fn', {}, 'info', /遊戲執行「fight NPC 順位」$/],
+    ['f', {}, 'info', /順位可能偏掉.*fight NPC \$1/],
     ['ar', {}, 'warn', /不是 fight 的別名/],
     ['le', {}, 'warn', /參數位置不對/],
     ['pd', {}, 'warn', /參數位置不對/],
@@ -211,7 +210,7 @@ test('alias verdict: each row of the table', () => {
 });
 
 test('alias verdict: no alias list at all is an error that says so', () => {
-  const verdict = P.judgeAlias(new Map(), 'f', { verb: 'fight', form: 'id' });
+  const verdict = P.judgeAlias(new Map(), 'f', { verb: 'fight' });
   assert.equal(verdict.level, 'error');
   assert.match(verdict.text, /讀不到別名列表/);
 });

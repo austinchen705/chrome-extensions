@@ -2072,7 +2072,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'HUNT_VERIFY_ALIAS') {
     if (hunt?.on()) { sendResponse({ ok: false, error: '巡怪或掃描進行中，停下來才能驗證（別名列表會分頁，會吃掉巡怪的指令）' }); return; }
     readAliasList().then(({ text, tooLong }) => {
-      const verdict = CatworldHuntParse.judgeAlias(CatworldHuntParse.parseAliases(text), message.command, { verb: message.verb, form: message.form });
+      const verdict = CatworldHuntParse.judgeAlias(CatworldHuntParse.parseAliases(text), message.command, { verb: message.verb });
       sendResponse({ ok: true, ...verdict, text: `${tooLong ? `別名列表超過 ${ALIAS_MAX_PAGES} 頁，只讀了前 ${ALIAS_MAX_PAGES} 頁：` : ''}${verdict.text}` });
     });
     return true;

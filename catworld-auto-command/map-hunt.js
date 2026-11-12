@@ -67,9 +67,8 @@ const FIELDS = [
   { key: 'learnExits', group: 'move', label: '自動學習出口', hint: '記下看到的出口與實際走到的房間；路線不通時才試出口', type: 'select', options: [['off', '關'], ['on', '開']], default: 'off' },
   { key: 'prescan', group: 'move', label: '打怪前先補掃沒走過的房間', hint: '沒有圖資的房間才掃，走過的、走不到的不再掃；掃完再開始打', type: 'select', options: ON_OFF, default: 'on' },
   { key: 'fightMode', group: 'fight', label: '戰鬥方式', hint: '只下 fight：戰鬥、補氣、撿屍交給你的觸發規則，巡怪只看 i 與 l 的輸出；吃藥模式照樣吃藥，氣低於危險線回家', type: 'select', options: [['full', '完整（巡怪自己打、補氣、撿屍）'], ['assist', '只下 fight（交給你的觸發規則）']], default: 'full' },
-  { key: 'fightCommand', group: 'fight', verify: 'fight', label: '開打用的指令', hint: '開打時送「這個指令 怪的ID」；可以填你的別名，例如 f（不能有 ; 或 @等待，否則用 fight）', type: 'text', default: 'fight' },
-  { key: 'targetForm', group: 'fight', label: '指令後面接什麼', hint: '順位＝這隻怪在 l 列出的 ※ 怪物行裡是第幾個。遊戲的 fight <順位> 數的是 look 顯示的所有東西，前面有玩家或物品時會偏；fight NPC <順位> 只數 NPC，比較準（別名可寫成 fight NPC $1）', type: 'select', options: [['id', '怪的 ID'], ['position', '順位（照 l 的順序）']], default: 'id' },
-  { key: 'killCommand', group: 'fight', verify: 'kill', show: full, label: '打死用的指令', hint: '怪不想打、或補刀時送「這個指令 怪的ID」；可以填你的別名，例如 k', type: 'text', default: 'kill' },
+  { key: 'fightCommand', group: 'fight', verify: 'fight', label: '開打用的指令', hint: '開打時送「這個指令 順位」，順位＝這隻怪在 l 列出的 ※ 怪物行裡是第幾個（例如 fight 3）。遊戲的 fight 順位數的是 look 顯示的所有東西，前面有玩家或物品時會偏；fight NPC 順位只數 NPC，比較準。可以填你的別名，例如 f 或 fn（不能有 ; 或 @等待，否則用 fight）', type: 'text', default: 'fight' },
+  { key: 'killCommand', group: 'fight', verify: 'kill', show: full, label: '打死用的指令', hint: '怪不想打、或補刀時送「這個指令 順位」；可以填你的別名，例如 k', type: 'text', default: 'kill' },
   { key: 'afterKillCommand', group: 'fight', show: full, label: '怪倒下後送的指令', hint: '可多個，用 ; 分隔', type: 'text', default: 'gc' },
   { key: 'fightTimeoutSec', group: 'fight', label: '等怪倒下最久（秒）', hint: '逾時就用 l 看一眼', type: 'number', default: 60, min: 5, max: 600 },
   { key: 'endKeywords', group: 'fight', label: '怪倒下的字', hint: '用、分隔', type: 'text', default: '一動也不動了、死了' },
@@ -123,7 +122,7 @@ const TOP_UPS = [
 const gapText = s => `${s.commandGapMinMs}～${s.commandGapMaxMs}ms`;
 const GROUPS = [
   { id: 'move', title: '走路與速度', summary: s => `${gapText(s)}｜學出口 ${s.learnExits === 'on' ? '開' : '關'}｜補掃 ${s.prescan === 'on' ? '開' : '關'}` },
-  { id: 'fight', title: '戰鬥', summary: s => { const opener = `${s.fightCommand && s.fightCommand !== 'fight' ? `開打用 ${s.fightCommand}｜` : ''}${s.targetForm === 'position' ? '接順位｜' : ''}`; return full(s) ? `完整｜${opener}打死用 ${s.killCommand}｜逾時 ${s.fightTimeoutSec} 秒` : `只下 fight｜${opener}逾時 ${s.fightTimeoutSec} 秒`; } },
+  { id: 'fight', title: '戰鬥', summary: s => { const opener = s.fightCommand && s.fightCommand !== 'fight' ? `開打用 ${s.fightCommand}｜` : ''; return full(s) ? `完整｜${opener}打死用 ${s.killCommand}｜逾時 ${s.fightTimeoutSec} 秒` : `只下 fight｜${opener}逾時 ${s.fightTimeoutSec} 秒`; } },
   { id: 'special', title: '特攻', summary: s => (s.specialCommand ? `${s.specialCommand}，至少隔 ${s.specialIntervalSec} 秒` : '沒填') },
   { id: 'heal', title: '補氣與安全', summary: s => [eatMode(s) ? `吃藥 ${s.eatCommand || '（沒填）'} <${s.eatBelow}%` : `自己回 <${s.restBelow}%`, `回家 ${s.homeCommand || '（沒填）'}`, ...TOP_UPS.map(item => (s[`${item.key}Command`] && s[`${item.key}Below`] > 0 ? `${item.name} <${s[`${item.key}Below`]}%` : ''))].filter(Boolean).join('｜') },
   { id: 'sort', title: '負重與自動整理', summary: s => (sorting(s) ? `>${s.loadMaxPercent}% 整理｜${s.sortKeep === 'none' ? '全賣' : '留好裝備'}` : '不檢查') },
@@ -572,8 +571,9 @@ function create(deps) {
   // finishing 為真＝補刀：直接送 kill，只認死亡的字（結束字裡扣掉代表昏迷的），不送特攻；結束時回 'ended'、昏迷結束回 'knockedOut'
   const killCmd = () => state.settings.killCommand || 'kill';
   const fightCmd = () => state.settings.fightCommand || 'fight';
-  // 指令後面接的：怪的 ID（同 ID 第 N 個是「ID N」），或順位（這份 l／抵達描述裡第幾個 ※ 怪物行）
-  const targetOf = mob => (state.settings.targetForm === 'position' && mob.position ? String(mob.position) : (mob.ref ?? mob.id));
+  // 指令後面接順位：這份 l／抵達描述裡第幾個 ※ 怪物行。不用怪的 ID：遊戲的別名 $1 只帶第一個字，
+  // 「f soldier 2」會變成 fight soldier（打到第一隻），ID 有空格的怪也打不到（使用者實測）；順位只有一個字，別名照樣帶得進去
+  const targetOf = mob => String(mob.position ?? mob.ref ?? mob.id);
   function fightOne(token, mob, { finishing = false } = {}) {
     return new Promise(resolve => {
       const knockout = splitIds(state.settings.knockoutKeywords);

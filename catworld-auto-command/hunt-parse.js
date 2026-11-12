@@ -124,12 +124,12 @@ function parseAliases(text) {
 }
 
 // 巡怪「開打／打死用的指令」欄位的檢查：巡怪會送「這個指令 目標」，所以別名展開後要是「verb …… $1」。
-// 只看指令的形狀，不判斷「指令後面接什麼」選得對不對（那要實際打一次才知道）。回 { level: 'info' | 'warn' | 'error', text }
-function judgeAlias(aliases, command, { verb, form }) {
+// 巡怪一律接順位（一個數字）。只看指令的形狀，不判斷順位對不對（那要實際打一次才知道）。回 { level: 'info' | 'warn' | 'error', text }
+function judgeAlias(aliases, command, { verb }) {
   const name = String(command ?? '').trim();
   if (!aliases.size) return { level: 'error', text: '讀不到別名列表（alias 的輸出裡沒有任何別名）' };
   const expansion = aliases.get(name.toLowerCase());
-  if (expansion === undefined) return { level: 'info', text: `「${name}」不是別名，巡怪會直接送「${name} 目標」` };
+  if (expansion === undefined) return { level: 'info', text: `「${name}」不是別名，巡怪會直接送「${name} 順位」` };
   const shown = `「${name}」＝「${expansion}」`;
   const warn = text => ({ level: 'warn', text: `${shown}：${text}` });
   if (/[;；]/.test(expansion)) return warn('含多個指令（分號），巡怪接上的目標只會跟著最後一個');
@@ -140,11 +140,10 @@ function judgeAlias(aliases, command, { verb, form }) {
   if (words[0].toLowerCase() !== verb) return warn(`不是 ${verb} 的別名`);
   const middle = words.slice(1, -1);
   const npc = middle.some(word => word.toLowerCase() === 'npc');
-  if (npc && form !== 'position') return warn('NPC 形式後面要接順位，請把「指令後面接什麼」改選順位');
   const notes = [];
   if (middle.length && !npc) notes.push(`中間有多出來的字（${middle.join(' ')}），遊戲的說明頁沒寫，請自己確認`);
-  if (form === 'position' && !npc) notes.push('房間裡有玩家或物品排在怪前面時順位可能偏掉，建議用 fight NPC $1');
-  return { level: 'info', text: `${shown}，巡怪會送「${words.slice(0, -1).join(' ')} 目標」${notes.length ? `；${notes.join('；')}` : ''}` };
+  if (!npc) notes.push('房間裡有玩家或物品排在怪前面時順位可能偏掉，建議用 fight NPC $1');
+  return { level: 'info', text: `${shown}，巡怪送「${name} 順位」，遊戲執行「${words.slice(0, -1).join(' ')} 順位」${notes.length ? `；${notes.join('；')}` : ''}` };
 }
 
 globalThis.CatworldHuntParse = { parseTime, parseFinger, parseLook, parseLoad, parseInventory, parseAliases, judgeAlias };
