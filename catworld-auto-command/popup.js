@@ -1252,7 +1252,7 @@ const showHuntSettings = () => {
     $(`hunt-${item.key}`).value = huntSettings[item.key];
     const cell = $(`hunt-${item.key}`).closest('.hfield');
     cell.hidden = !CatworldMapHunt.fieldShown(item, huntSettings);
-    cell.classList.toggle('hmissing', missing.has(item.key));
+    cell.classList.toggle('hmissing', missing.has(item.key) || !!item.advise?.(huntSettings));
   });
   document.querySelectorAll('#huntFields .hrow').forEach(row => { row.hidden = [...row.children].every(cell => cell.hidden); });
   CatworldMapHunt.GROUPS.forEach(group => {

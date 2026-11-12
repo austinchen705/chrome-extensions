@@ -38,6 +38,12 @@ const RECALIBRATE_LEAD_MS = 30 * 1000; // 距開始時間不到這麼久（或�
 const RECALIBRATE_GAP_MS = 20 * 1000;
 const FRESH_MS = 60 * 1000; // 開始下一輪前，最近一次校準不能比這更舊
 const QI_WAIT_TICKS = 60 * TICKS_PER_SEC; // 試出口前等氣回復最多等這麼久，等不到就略過這個目標
+const REST_EVERY_MIN = 6; // 擬人化的掛機休息：每跑 6～12 輪休息一次
+const REST_EVERY_MAX = 12;
+const REST_SKIP_MAX = 3; // 一次休息跳過 1～3 輪
+const RETURN_QI_WAIT_TICKS = 120 * TICKS_PER_SEC; // 休息結束要走回去時，氣沒回到「回到 %」最多等這麼久，再沒回到就停止並警報
+const RETURN_WALK_TICKS = 60 * TICKS_PER_SEC; // 送出回程指令、巨集跑完之後，地圖房間還不在巡怪區最多等這麼久，再沒回到就停止並警報（不重送）
+const RETURN_SETTLE_TICKS = 3 * TICKS_PER_SEC; // 回到巡怪區後再等這麼久，讓地圖的房間穩定下來（家在巡怪區的地圖上時，送出回程指令的當下房間還是舊的）
 const SCAN_STALL_TICKS = 180 * TICKS_PER_SEC; // 掃描這麼久沒換過房間、沒處理完任何一間，就當成卡住，停下來並說明在等什麼
 const SORT_STEP_TICKS = 120 * TICKS_PER_SEC; // 整理的單一步驟（走一趟、鑑定、回程）最久等這麼久
 const SORT_QUIET_MS = 1000; // 鑑定的指令送完後，再等這麼久沒有新輸出才當成鑑定結束
@@ -94,7 +100,8 @@ const FIELDS = [
   { key: 'loopRounds', group: 'rounds', label: '巡完一輪後等下一個重生', hint: '關＝巡完就停', type: 'select', options: ON_OFF, default: 'on' },
   { key: 'standbyCommand', group: 'rounds', show: s => s.loopRounds === 'on', label: '巡完一輪後的待命指令', hint: '可空', type: 'text', default: '' },
   { key: 'stopBeforeSpawnSec', group: 'rounds', label: '重生前幾秒停打', hint: '0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；沒開「等下一個重生」就直接停', type: 'number', default: 0, min: 0, max: 600 },
-  { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣。開＝每一輪重排目標順序（近的優先）、等長的路線隨機挑一條、重生前停打秒數與吃藥線、休息線隨機偏移一點、偶爾在到房間後與打完一隻後多停幾秒；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
+  { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣。開＝每一輪重排目標順序（近的優先）、等長的路線隨機挑一條、重生前停打秒數與吃藥線、休息線隨機偏移一點、偶爾在到房間後與打完一隻後多停幾秒、每跑 6～12 輪回家休息跳過 1～3 輪（要填下面的回程指令）；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
+  { key: 'restReturnCommand', group: 'human', show: s => s.humanize === 'on', advise: s => s.loopRounds === 'on' && !s.restReturnCommand, label: '休息後回到巡怪區的指令／巨集', hint: '掛機休息結束時從家走回巡怪區用，重生整點才送，可用 ; 與 @巨集 N；沒填就不會掛機休息（要開著「巡完一輪後等下一個重生」）', type: 'text', default: '' },
   { key: 'npcWhitelist', group: 'advanced', label: 'NPC 白名單', hint: '英文 ID，用、分隔', type: 'text', default: '' },
 ];
 // 精、神（目前值）與精氣神內傷（傷勢 %）的補充：比照吃藥，各自一組「低於 %」與指令（設定鍵是 key＋Below／Command），沒填就不看。
@@ -115,7 +122,7 @@ const GROUPS = [
   { id: 'heal', title: '補氣與安全', summary: s => [eatMode(s) ? `吃藥 ${s.eatCommand || '（沒填）'} <${s.eatBelow}%` : `自己回 <${s.restBelow}%`, `回家 ${s.homeCommand || '（沒填）'}`, ...TOP_UPS.map(item => (s[`${item.key}Command`] && s[`${item.key}Below`] > 0 ? `${item.name} <${s[`${item.key}Below`]}%` : ''))].filter(Boolean).join('｜') },
   { id: 'sort', title: '負重與自動整理', summary: s => (sorting(s) ? `>${s.loadMaxPercent}% 整理｜${s.sortKeep === 'none' ? '全賣' : '留好裝備'}` : '不檢查') },
   { id: 'rounds', title: '輪與重生', summary: s => [s.loopRounds === 'on' ? '等重生' : '巡完就停', s.stopBeforeSpawnSec > 0 ? `重生前 ${s.stopBeforeSpawnSec} 秒停打` : ''].filter(Boolean).join('｜') },
-  { id: 'human', title: '擬人化', summary: s => (s.humanize === 'on' ? '開' : '關') },
+  { id: 'human', title: '擬人化', summary: s => (s.humanize === 'on' ? (s.restReturnCommand ? '開' : '開｜沒填回程指令，不會掛機休息') : '關') },
   { id: 'advanced', title: '進階', summary: s => (s.npcWhitelist ? `白名單 ${s.npcWhitelist}` : '') },
 ];
 const fieldShown = (field, settings) => !field.show || field.show(settings);
@@ -504,10 +511,11 @@ function create(deps) {
     }
   }
 
+  const sleepTick = () => new Promise(resolve => setTimeout(resolve, TICK_MS));
   // 角色忙碌（狀態欄「忙碌」或忙碌冷卻條在跑）就等到不忙；巡怪停了或換了一次回 false
   async function notBusy(token) {
     while (deps.busy?.()) {
-      await new Promise(resolve => setTimeout(resolve, TICK_MS));
+      await sleepTick();
       if (state !== token) return false;
     }
     return true;
@@ -1041,6 +1049,10 @@ function create(deps) {
       `指令 ${sends.length} 個：${compactCommands(sends)}`,
       gaps.length ? `間隔 最短 ${secText(Math.min(...gaps))}／平均 ${secText(gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length)}／最長 ${secText(Math.max(...gaps))} 秒` : '間隔 不到兩個指令',
     ];
+    if (state.restReturn) {
+      lines.push(`休息回來：跳過 ${state.restReturn.skip} 輪，回程花了 ${secText(state.restReturn.walkMs)} 秒`);
+      state.restReturn = null;
+    }
     if (state.lastRoute !== null) lines.push(`路線和上一輪${routeKey === state.lastRoute ? '相同' : '不同'}`);
     state.lastRoute = routeKey;
     lines.forEach(text => record('-', '輪摘要', `第 ${state.round} 輪：${text}`));
@@ -1138,6 +1150,82 @@ function create(deps) {
     return steps.length > 1 ? steps[Math.floor(random() * steps.length)] : route.way[0];
   }
 
+  // ---- 擬人化：掛機休息（跳過整輪）。擬人化開著、輪與輪之間開著、有填「休息後回到巡怪區的指令」才作用 ----
+  const drawRestAfter = () => REST_EVERY_MIN + Math.floor(random() * (REST_EVERY_MAX - REST_EVERY_MIN + 1));
+  // 每個跑完的一輪算一次（會動 sinceRest、第一次還會抽輪數），數到抽好的輪數就休息（第一次抽在第一輪跑完時，所以一定要先跑滿 REST_EVERY_MIN 輪）。
+  // 回程指令一律讀 baseSettings：它不是每輪抖動的設定，休息與否也和這一輪的 state.settings 無關
+  const countRoundForRest = () => {
+    if (!humanizeOn() || !state.baseSettings.restReturnCommand) return false;
+    state.sinceRest += 1;
+    state.restAfter ??= drawRestAfter();
+    return state.sinceRest >= state.restAfter;
+  };
+  // 開始休息：抽要跳過幾輪。回家指令在待命指令（可能是巨集）跑完之後才送（waitTick），免得兩個交錯；
+  // 回家指令和待命指令一樣就不再送一次，待命指令這一輪結束時已經送過了
+  function beginRest() {
+    const skip = 1 + Math.floor(random() * REST_SKIP_MAX);
+    const { homeCommand, standbyCommand } = state.settings;
+    state.rest = { skip, homed: !homeCommand || homeCommand === standbyCommand };
+    record('-', '休息', `跳過 ${skip} 輪`);
+  }
+  // 休息結束時等氣到哪裡才送回程指令：吃藥模式是吃藥線（在家 vitals 低於它會吃藥），自己回模式是休息線（低於它在家會休息、
+  // 休息中要等回到「回到 %」才解除）；兩種都只看設定頁上看得到的欄位
+  const returnQiLine = () => {
+    const settings = state.settings;
+    if (settings.healMode === 'eat') return settings.eatBelow;
+    return state.resting ? settings.restResume : settings.restBelow;
+  };
+  const qiBack = () => {
+    const percent = deps.kee();
+    return percent >= returnQiLine() && !(state.settings.healMode === 'rest' && state.resting);
+  };
+  // 等到的那個重生：休息中就先走回巡怪區（再開始下一輪），否則直接開始下一輪
+  function startRound(after, offset) {
+    if (!state.rest) { beginRound(after, offset); return; }
+    const token = state;
+    returnFromRest(token, after, offset).catch(() => { if (state === token) finish('休息後走回巡怪區時出錯，已停止', { alert: true }); });
+  }
+  // 休息結束的那個重生整點：等氣回到「回到 %」（在家補氣照常，vitals 每秒都在跑）→ 送回程指令 → 等到地圖房間回到巡怪區（巨集跑完）→ 一般的開始一輪。
+  // 氣一直沒回到、或回程後一直回不到巡怪區就停止並警報，不重送回程指令；每個 await 之後要確認這一次巡怪還在
+  async function returnFromRest(token, after, offset) {
+    state.waiting = null;
+    state.phase = 'return';
+    state.returnStage = 'qi';
+    for (let waited = 0; !qiBack(); waited += 1) {
+      if (waited >= RETURN_QI_WAIT_TICKS) { finish(`休息結束後氣一直沒回到 ${returnQiLine()}%，已停止（回程指令沒有送）`, { alert: true }); return; }
+      await sleepTick();
+      if (state !== token) return;
+    }
+    state.returnStage = 'walk';
+    const sentAt = deps.now();
+    let sent = false;
+    let arrivedAt = null;
+    if (!sendOrStop(state.baseSettings.restReturnCommand, () => { sent = true; })) return;
+    const inArea = () => !!deps.room()?.startsWith(`${state.area}/`);
+    // 逾時分兩段：指令還沒送出（被佇列擋住、或參照的巨集讀不到而什麼都沒送）另外算；送出之後只算回程巨集跑完的 tick
+    // （巨集自己的 @等待 不算）。回程花的時間量到第一次回到巡怪區為止
+    let unsent = 0;
+    for (let waited = 0; !(sent && !deps.macroRunning() && inArea()); ) {
+      if (sent && arrivedAt === null && inArea()) arrivedAt = deps.now();
+      if (!sent) unsent += 1;
+      else if (!deps.macroRunning()) waited += 1;
+      if (unsent >= RETURN_WALK_TICKS) { finish(`休息結束後回程指令 ${RETURN_WALK_TICKS / TICKS_PER_SEC} 秒內沒有送出（指令被擋住，或 @巨集 讀不到），已停止`, { alert: true }); return; }
+      if (waited >= RETURN_WALK_TICKS) { finish(`休息後送出回程指令，${RETURN_WALK_TICKS / TICKS_PER_SEC} 秒內沒有回到巡怪區（${state.area}），已停止`, { alert: true }); return; }
+      await sleepTick();
+      if (state !== token) return;
+    }
+    arrivedAt ??= deps.now();
+    for (let i = 0; i < RETURN_SETTLE_TICKS; i += 1) {
+      await sleepTick();
+      if (state !== token) return;
+    }
+    const walkMs = arrivedAt - sentAt;
+    record('-', '休息', `回到巡怪區，回程花了 ${secText(walkMs)} 秒`);
+    state.restReturn = { skip: state.rest.skip, walkMs };
+    Object.assign(state, { rest: null, sinceRest: 0, restAfter: null, returnStage: null }); // 下一次休息的輪數重新抽
+    beginRound(after, offset);
+  }
+
   // 每個目標房間都處理過一次＝一輪。沒開「等下一個重生」或這一輪什麼都沒處理（沒有走得到的目標）就停（第 2 輪以後警報）；
   // 否則送待命指令（是巨集的話等它跑完），用 time 校準，等到下一個重生再開始下一輪
   function endRound() {
@@ -1159,6 +1247,7 @@ function create(deps) {
     const message = state.handled ? `這一輪巡完了（到過 ${state.visited.length} 間）` : '沒有走得到的目標房間了';
     if (state.settings.loopRounds !== 'on' || !state.handled) { finish(message, { alert: !state.handled && state.round > 1 }); return; }
     if (state.settings.standbyCommand && !sendOrStop(state.settings.standbyCommand)) return;
+    if (countRoundForRest()) beginRest();
     state.phase = 'standby';
     deps.notify();
   }
@@ -1189,9 +1278,11 @@ function create(deps) {
       if (state !== token) return;
       state.calibrating = false;
       if (offset === null) { finish('讀不到伺服器時間（time 的輸出），已停止', { alert: true }); return; }
-      const spawn = nextSpawn(state.after);
       const now = deps.now() + offset;
-      if (now >= spawn) { beginRound(now, offset); return; }
+      // 上一輪跑得比一個週期還久時 after 之後的整點早就過了，所以休息從「現在之後的第一個整點」起算
+      const spawn = nextSpawn(state.rest ? Math.max(state.after, now) : state.after) + (state.rest ? state.rest.skip * RESPAWN_MS : 0);
+      if (now >= spawn) { startRound(now, offset); return; }
+      if (state.rest) record('-', '休息', `約 ${hhmm(spawn)} 回來`);
       state.waiting = { startAt: spawn, spawn, offset, calibratedAt: deps.now(), asking: false, rounds: state.round, visited: state.visited.length };
       deps.notify();
     }).catch(() => { if (state === token) finish('讀取伺服器時間時出錯，已停止', { alert: true }); });
@@ -1210,7 +1301,14 @@ function create(deps) {
   // 等待中：快到時（或電腦時鐘被調過、估計已經到了）先重新校準，確認剛校準過（一分鐘內）才開始；校準讀不到也停止
   function waitTick() {
     if (state.phase === 'standby') {
-      if (!deps.macroRunning()) calibrate();
+      if (deps.macroRunning()) return;
+      if (state.rest && !state.rest.homed) { // 待命指令（巨集）跑完了才回家，回家也是巨集的話下一個 tick 再等它跑完
+        state.rest.homed = true;
+        const home = state.settings.homeCommand;
+        sendOrStop(home);
+        return;
+      }
+      calibrate();
       return;
     }
     const waiting = state.waiting;
@@ -1229,7 +1327,7 @@ function create(deps) {
       }).catch(() => { if (state === token) finish('讀取伺服器時間時出錯，已停止', { alert: true }); });
       return;
     }
-    if (estimate >= waiting.startAt && now - waiting.calibratedAt <= FRESH_MS) beginRound(waiting.spawn, waiting.offset);
+    if (estimate >= waiting.startAt && now - waiting.calibratedAt <= FRESH_MS) startRound(waiting.spawn, waiting.offset);
   }
 
   // 規劃下一步：到了目標就看房間；否則挑路線最短的目標，送出路線的第一個指令
@@ -1317,7 +1415,7 @@ function create(deps) {
     if (deps.busy?.() && state.phase !== 'wait' && state.phase !== 'standby' && state.phase !== 'sort') return;
     if (state.assist) { assistTick(); return; }
     if (state.phase === 'wait' || state.phase === 'standby') { waitTick(); return; }
-    if (state.phase === 'sort') return;
+    if (state.phase === 'sort' || state.phase === 'return') return;
     if (state.trial) { trialTick(); return; }
     if (state.phase === 'pass') { passTick(); return; }
     if (state.phase === 'look') return;
@@ -1419,7 +1517,7 @@ function create(deps) {
       state = {
         round: 1, after: deps.now() + offset, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
         mobs: scan ? [] : target.mobs, area: target.area, offset, scan: scan || prescan, prescan, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph, targets, skipped: [...baseSkipped], fixed: [],
-        settings, baseSettings: settings, order: null, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null,
+        settings, baseSettings: settings, order: null, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
         ...roundFields(offset), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       humanizeRound(here);
@@ -1456,6 +1554,10 @@ function create(deps) {
     // 面板那一行要短：怪只寫名稱（拿掉括號 ID），房間只寫房間代號（區域在地圖上看得到）；完整的放在 title
     const who = state.prescan ? '打怪前先掃描' : state.scan ? '掃描' : state.mobs.length === 1 ? state.mobs[0].replace(/\s*\([^()]*\)\s*$/, '') : `${state.mobs.length} 種怪`;
     const room = key => (typeof key === 'string' ? key.split('/').pop() : key);
+    if (state.rest) {
+      if (state.phase === 'return') return { text: `${who}：休息結束，${state.returnStage === 'walk' ? '走回巡怪區…' : `等氣回到 ${returnQiLine()}%（現在 ${Number.isFinite(deps.kee()) ? `${Math.round(deps.kee())}%` : '—'}）`}`, alert: noteAlert };
+      return { text: `${who}：休息中，${state.waiting ? `約 ${hhmm(state.waiting.spawn)} 回來` : '等待指令送完…'}（跳過 ${state.rest.skip} 輪）${skippedShort(state.skipped)}`, alert: noteAlert };
+    }
     if (state.resting) return { text: `${who}：休息中 ${Math.round(state.restPercent)}%→${state.settings.restResume}%${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.waiting) return { text: `${who}：等下一個重生 ${hhmm(state.waiting.spawn)}（第 ${state.waiting.rounds} 輪到過 ${state.waiting.visited} 間）${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.phase === 'sort') return { text: `${who}：負重 ${state.load}%，整理中（${SORT_PHASE_TEXT[state.sortStage] ?? '…'}，第 ${state.sortCount + 1} 次）${skippedShort(state.skipped)}`, alert: noteAlert };

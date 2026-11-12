@@ -3129,6 +3129,204 @@ ui('humanize pauses: a draw above the chance, or the switch off, adds no wait an
   }
 });
 
+// ---- 擬人化：掛機休息（跳過整輪、回家、整點回程）----
+// 待命指令 home 把角色送回 a（每一輪都是 a → b → c）；回家指令 recall 把角色送到地圖外（zz）；回程指令 back 送回 a。
+// 一般的一輪結束時把時鐘撥快 16 分鐘（下一輪馬上開始，不用真的等一刻鐘）；決定休息的那一輪（看到 recall）不撥，才會真的等到跳過的整點。
+// r 是固定亂數：r.value 可以改。0.2 → 7 輪後休息（6 ＋ ⌊0.2×7⌋）、跳過 1 輪（1 ＋ ⌊0.2×3⌋），而且不會抽中停頓
+const MINUTE = 60 * 1000;
+const MARK_MS = 15 * MINUTE;
+const restRun = async ({ settings = {}, r = 0.2, onCommand = null, swallow = null, keepAway = false }) => {
+  const page = await roundPage({ humanize: 'on', standbyCommand: 'home', homeCommand: 'recall', restReturnCommand: 'back', ...settings });
+  const clock = fakeClock(page, '2026-11-04T10:00:00+08:00', { scale: 600 });
+  const looks = [];
+  const times = { recall: [], back: [] };
+  const draw = pinRandom(page, r);
+  const base = timeScript(page, clock, lookTimer(clock, looks));
+  let pendingJump = false;
+  let recalled = false;
+  const game = world(page, {
+    at: 'a',
+    looks: { c: { lines: [] } },
+    script: (command, ...rest) => {
+      const state = rest[0].game;
+      if (command === 'home') { state.at = 'a'; pendingJump = true; recalled = false; }
+      if (command === 'recall') { state.at = 'zz'; recalled = true; times.recall.push(clock.server()); }
+      if (command === 'back') { times.back.push(clock.server()); if (!keepAway) state.at = 'a'; }
+      if (command === 'time' && pendingJump) { pendingJump = false; if (!recalled) clock.jump += 16 * MINUTE; }
+      onCommand?.(command, { page, clock, times });
+      return swallow?.(command) || base(command, ...rest);
+    },
+  });
+  await pick(page, MOB);
+  click(page, '.hstart');
+  return { page, clock, game, looks, times, draw };
+};
+const restLines = text => text.split('\n').filter(line => / 休息 /.test(line));
+const roundsIn = text => (text.match(/輪摘要 第 \d+ 輪：開始時間/g) ?? []).length;
+
+ui('rest: after the drawn number of rounds it skips whole rounds, goes home, comes back at the mark that ends the rest, and draws a new count', async () => {
+  const { page, game, looks, times, draw } = await restRun({});
+  try {
+    assert.ok(await waitFor(async () => restLines(await huntLog(page)).length >= 1, 15000), (await huntLog(page)).slice(-600));
+    let text = await huntLog(page);
+    assert.match(restLines(text)[0], /休息 跳過 1 輪/);
+    assert.equal(roundsIn(text.slice(0, text.indexOf(' 休息 '))), 7, 'seven rounds were completed before the first rest, none earlier');
+    assert.ok(await waitFor(() => /休息中，約 \d\d:\d\d 回來/.test(huntText(page)), 3000), huntText(page));
+    assert.equal(times.back.length, 0, 'the return command is not sent while the rest lasts');
+    assert.equal(countOf(game, 'recall'), 1, 'the home command was sent once');
+    assert.equal(countOf(game, 'home'), 7, 'the standby command once per finished round');
+    draw.value = 0.4; // 下一個要隔幾輪：6 ＋ ⌊0.4×7⌋ = 8，跳過 1 ＋ ⌊0.4×3⌋ = 2
+    assert.ok(await waitFor(() => looks.length >= 8, 15000), `round 8 starts after the return (${looks.length} looks)`);
+    assert.equal(times.back.length, 1);
+    assert.ok(times.back[0] - times.recall[0] >= 10 * MINUTE, `a whole round was skipped (${(times.back[0] - times.recall[0]) / MINUTE} minutes)`);
+    assert.ok(times.back[0] % MARK_MS < 5 * MINUTE, `the return command went out right after a respawn mark, not before it (${(times.back[0] % MARK_MS) / 1000} s after)`);
+    assert.ok(await waitFor(async () => /輪摘要 第 8 輪：休息回來：跳過 1 輪，回程花了 [\d.]+ 秒/.test(await huntLog(page)), 5000), 'the summary of the round after the rest records the walk back');
+    assert.ok(await waitFor(async () => restLines(await huntLog(page)).filter(line => /休息 跳過/.test(line)).length >= 2, 20000), 'a second rest comes');
+    text = await huntLog(page);
+    const second = text.slice(text.indexOf(' 休息 跳過 1 輪') + 1);
+    assert.match(second, /休息 跳過 2 輪/, 'the second rest skips the newly drawn number');
+    assert.equal(roundsIn(second.slice(0, second.indexOf(' 休息 跳過 2 輪'))), 8, 'and comes after the newly drawn number of rounds');
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rest: a home command equal to the standby command is not sent twice', async () => {
+  const { page, game, looks, times } = await restRun({ settings: { homeCommand: 'home' } });
+  try {
+    assert.ok(await waitFor(() => looks.length >= 8, 20000), `back in the area after the rest (${looks.length} looks)`);
+    assert.equal(countOf(game, 'recall'), 0, 'the home command is the standby command');
+    assert.equal(times.back.length, 1, 'the return command was still sent once');
+    assert.ok(await waitFor(async () => /輪摘要 第 8 輪：休息回來/.test(await huntLog(page)), 5000));
+    // 數回程指令之前送了幾個 home（和第 8 輪結束時再送的那個無關）：七輪各一個，休息沒有多送
+    const beforeReturn = game.log.slice(0, game.log.indexOf('back'));
+    assert.equal(countOf({ log: beforeReturn }, 'home'), 7, 'one standby command per finished round and nothing more for the rest');
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rest: with the return command empty, or the switch off, the hunt never rests', async () => {
+  for (const settings of [{ restReturnCommand: '' }, { humanize: 'off' }]) {
+    const { page, looks, times } = await restRun({ settings });
+    try {
+      assert.ok(await waitFor(() => looks.length >= 9, 20000), `${JSON.stringify(settings)}: rounds go on (${looks.length})`);
+      assert.deepEqual(restLines(await huntLog(page)), [], JSON.stringify(settings));
+      assert.equal(times.back.length, 0);
+      await page.ask({ type: 'STOP' });
+    } finally {
+      page.close();
+    }
+  }
+});
+
+ui('rest: the return waits for the qi to reach the resume line, then goes', async () => {
+  const { page, times, looks } = await restRun({ settings: { healMode: 'rest', restBelow: 50, restResume: 80 }, onCommand: (command, { page: p }) => { if (command === 'recall') setKee(p, 30); } });
+  try {
+    assert.ok(await waitFor(() => /等氣回到 80%/.test(huntText(page)), 15000), huntText(page));
+    await sleep(300); // 伺服器時間過了好幾分鐘，氣還是低
+    assert.equal(times.back.length, 0, 'not sent while the qi is under the resume line');
+    setKee(page, 90);
+    assert.ok(await waitFor(() => times.back.length === 1, 3000), 'sent once the qi is back');
+    assert.ok(await waitFor(() => looks.length >= 8, 8000), 'and the next round goes on');
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rest: a qi that never comes back stops the hunt with an alert and the return command is never sent', async () => {
+  const { page, times } = await restRun({ settings: { healMode: 'rest', restBelow: 50, restResume: 80 }, onCommand: (command, { page: p }) => { if (command === 'recall') setKee(p, 30); } });
+  try {
+    assert.ok(await waitFor(() => alerts(page).some(message => /氣一直沒回到/.test(message.reason)), 25000), JSON.stringify(alerts(page)));
+    assert.equal(await hunting(page), false);
+    assert.equal(times.back.length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('rest: the qi to wait for is a line the settings page shows, so a qi between the two lines in rest mode, or above the eat line in eat mode, goes at once', async () => {
+  // 自己回：休息線 50、回到 80，氣 70（在兩條線之間，家裡不會有人補氣）；吃藥：回到 % 欄位藏起來，目標是吃藥線
+  for (const settings of [{ healMode: 'rest', restBelow: 50, restResume: 80 }, { healMode: 'eat', eatCommand: 'eat', eatBelow: 50, restResume: 95 }]) {
+    const { page, times, looks } = await restRun({ settings, onCommand: (command, { page: p }) => { if (command === 'recall') setKee(p, 70); } });
+    try {
+      assert.ok(await waitFor(() => times.back.length === 1, 25000), `${JSON.stringify(settings)}: the return command went out`);
+      assert.ok(await waitFor(() => looks.length >= 8, 8000), 'and the next round goes on');
+      assert.equal(alerts(page).length, 0, 'no alert');
+      await page.ask({ type: 'STOP' });
+    } finally {
+      page.close();
+    }
+  }
+});
+
+ui('rest: when the previous round ran longer than a period, the rest still lasts the drawn number of marks after the end of it', async () => {
+  // 決定休息的那一輪在 recall 送出後「已經跑了 20 分鐘」：休息要從現在之後的第一個整點起算再跳過 1 輪（至少 35 分鐘），不是馬上回來
+  const { page, times } = await restRun({ onCommand: (command, { clock }) => { if (command === 'recall') clock.jump += 20 * MINUTE; } });
+  try {
+    assert.ok(await waitFor(() => times.back.length === 1, 25000), 'the return command went out');
+    assert.ok(times.back[0] - times.recall[0] >= 35 * MINUTE, `the rest was not cut short (${(times.back[0] - times.recall[0]) / MINUTE} minutes)`);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rest: a return command that sends nothing (an unreadable @巨集) stops the hunt with an alert about that, not about the hunting area', async () => {
+  const { page, times } = await restRun({ settings: { restReturnCommand: '@巨集 90' } });
+  try {
+    assert.ok(await waitFor(() => alerts(page).some(message => /沒有送出/.test(message.reason)), 25000), JSON.stringify(alerts(page)));
+    assert.equal(await hunting(page), false);
+    assert.equal(times.back.length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('rest: a return that does not reach the hunting area stops the hunt with an alert and is not retried', async () => {
+  const { page, game, times } = await restRun({ keepAway: true });
+  try {
+    assert.ok(await waitFor(() => alerts(page).some(message => /沒有回到巡怪區/.test(message.reason)), 25000), JSON.stringify(alerts(page)));
+    assert.equal(await hunting(page), false);
+    await sleep(300);
+    assert.equal(times.back.length, 1, 'sent once, no retry');
+    assert.equal(countOf(game, 'back'), 1);
+  } finally {
+    page.close();
+  }
+});
+
+ui('rest: stopping during a rest sends nothing more, even after the mark has passed', async () => {
+  const { page, game, clock } = await restRun({});
+  try {
+    assert.ok(await waitFor(() => /休息中，約 \d\d:\d\d 回來/.test(huntText(page)), 15000), huntText(page));
+    click(page, '.hstop');
+    assert.equal(await hunting(page), false);
+    const count = game.log.length;
+    clock.jump += 60 * MINUTE;
+    await sleep(500);
+    assert.equal(game.log.length, count, 'no return command and nothing else');
+  } finally {
+    page.close();
+  }
+});
+
+ui('rest: a captcha during a rest ends it and stops the hunt like everything else', async () => {
+  const { page, times } = await restRun({ swallow: command => /^\d+$/.test(command) });
+  try {
+    assert.ok(await waitFor(() => /休息中，約 \d\d:\d\d 回來/.test(huntText(page)), 15000), huntText(page));
+    page.output(fixture('sprite-62044.html'));
+    assert.ok(await waitFor(() => alerts(page).length >= 1, 8000), 'three unanswered tries stop everything');
+    assert.equal(await hunting(page), false);
+    assert.equal(times.back.length, 0);
+  } finally {
+    page.close();
+  }
+});
+
 ui('humanize: the respawn mark itself is never shifted (the next round still starts right after it)', async () => {
   const page = await roundPage({ humanize: 'on', stopBeforeSpawnSec: 100 });
   try {

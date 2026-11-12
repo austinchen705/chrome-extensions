@@ -111,6 +111,33 @@ ui('the human-like switch is off by default, has its own fold, is saved with the
   }
 });
 
+ui('the rest return command shows only with the switch on, is marked (but does not block starting) while empty, and is saved', async () => {
+  const { dom, doc, store } = await boot({ mapHuntSettings: { humanize: 'on' } });
+  try {
+    const cell = cellOf(doc, 'restReturnCommand');
+    assert.equal(cell.hidden, false);
+    assert.ok(cell.classList.contains('hmissing'), 'marked while it is empty');
+    const title = () => doc.querySelector('#fold-hunt-human > summary').textContent;
+    assert.match(title(), /沒填回程指令，不會掛機休息/);
+    assert.doesNotMatch(title(), /有必填的沒填/, 'it only turns the rest off, so it is not a field that must be filled to start');
+    change(dom, field(doc, 'restReturnCommand'), '@巨集 5');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.restReturnCommand === '@巨集 5'));
+    assert.equal(cell.classList.contains('hmissing'), false);
+    assert.doesNotMatch(title(), /沒填回程指令/);
+    change(dom, field(doc, 'restReturnCommand'), '');
+    assert.ok(await waitFor(() => cell.classList.contains('hmissing')));
+    change(dom, field(doc, 'loopRounds'), 'off');
+    assert.ok(await waitFor(() => !cell.classList.contains('hmissing')), 'not marked when waiting for the next respawn is off: it can never rest then');
+    change(dom, field(doc, 'restReturnCommand'), '@巨集 5');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.restReturnCommand === '@巨集 5'));
+    change(dom, field(doc, 'humanize'), 'off');
+    assert.ok(await waitFor(() => cell.hidden === true), 'hidden again when the switch is off');
+    assert.equal(store.mapHuntSettings.restReturnCommand, '@巨集 5', 'but kept');
+  } finally {
+    dom.window.close();
+  }
+});
+
 ui('there is no start-early field, and an old stored value is ignored and dropped by the next save', async () => {
   const { dom, doc, store } = await boot({ mapHuntSettings: { aheadSec: 45, loopRounds: 'on', stopBeforeSpawnSec: 30 } });
   try {
