@@ -719,6 +719,29 @@ ui('fight: three monsters with the same name are fought one at a time, each foll
   }
 });
 
+ui('fight: the command that starts a fight is a setting, so f is sent with the monster ID, and the retry after a timeout uses it too', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, fightCommand: 'f', fightTimeoutSec: 5 };
+    let starts = 0;
+    const script = (command, { say: tell }) => {
+      if (command !== 'f test mob') return false;
+      starts += 1;
+      if (starts === 2) tell('測試怪死了。'); // 第一次沒有結束句：逾時後看一眼，怪還在、沒在打，就再送一次
+      return true;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.equal(countOf(game, 'f test mob'), 2, `started with f and retried with f (${game.log.join(',')})`);
+    assert.equal(game.log.filter(command => command.startsWith('fight ')).length, 0, 'fight itself is never sent');
+  } finally {
+    page.close();
+  }
+});
+
 ui('fight: the kill command is a setting, so a refusal gets k when the user set that', async () => {
   const page = await boot({ scale: SCALE });
   try {
@@ -2735,6 +2758,22 @@ const assistPage = async (settings = {}) => {
   return page;
 };
 const MOB_FIGHTING = '  ※測試怪(test mob) <戰鬥中> [fight][kill]';
+
+ui('assist: the command that starts a fight is the setting there too', async () => {
+  const page = await assistPage({ fightCommand: 'f' });
+  try {
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: command => {
+      if (command === 'f test mob') { setTimeout(() => lookOut(page), 50); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'f test mob']);
+  } finally {
+    page.close();
+  }
+});
 
 ui('assist: it sends fight once, nothing else about the fight, and moves on when an l it sees has no monster left', async () => {
   const page = await assistPage();

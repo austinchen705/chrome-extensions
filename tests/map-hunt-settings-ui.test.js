@@ -97,6 +97,31 @@ ui('an edit is saved at once with the other fields, and a broken stored value fa
 
 const cellOf = (doc, key) => field(doc, key).closest('.hfield');
 
+ui('the command that starts a fight sits in the fight fold, defaults to fight, falls back to fight for a value that could run as a macro, and shows in the fold title once changed', async () => {
+  for (const bad of ['', 'a;b', 'f；g', '@等待 1', 'x'.repeat(21)]) {
+    const { dom, doc } = await boot({ mapHuntSettings: { fightCommand: bad } });
+    try {
+      assert.equal(field(doc, 'fightCommand').value, 'fight', JSON.stringify(bad));
+    } finally {
+      dom.window.close();
+    }
+  }
+  const { dom, doc, store } = await boot();
+  try {
+    assert.ok(doc.getElementById('fold-hunt-fight').contains(field(doc, 'fightCommand')));
+    const title = () => doc.querySelector('#fold-hunt-fight > summary').textContent;
+    assert.doesNotMatch(title(), /開打用/, 'the default leaves the title as it was');
+    change(dom, field(doc, 'fightCommand'), 'f');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.fightCommand === 'f'));
+    assert.match(title(), /開打用 f/);
+    change(dom, field(doc, 'fightMode'), 'assist');
+    assert.ok(await waitFor(() => /開打用 f/.test(title()) && /只下 fight/.test(title())), 'the assist mode shows it too');
+    assert.equal(cellOf(doc, 'fightCommand').hidden, false, 'and the field stays visible there');
+  } finally {
+    dom.window.close();
+  }
+});
+
 ui('the human-like switch is off by default, has its own fold, is saved with the other fields, and the fold title says which way it is', async () => {
   const { dom, doc, store } = await boot();
   try {
