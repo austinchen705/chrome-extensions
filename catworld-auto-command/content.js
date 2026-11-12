@@ -44,6 +44,8 @@ function retire() {
   clearTimers();
   groupList.forEach(group => stopTriggers(group, ''));
   hunt?.stop('');
+  if (manualRecord) clearInterval(manualRecord.timer);
+  manualRecord = null;
   cancelMacros();
   cancelChatReplies();
   cancelScript();
@@ -864,7 +866,8 @@ function sendCommand(command, { answer = false } = {}) {
   input.focus();
   input.value = CatworldTimer.commandText(command);
   input.dispatchEvent(new Event('input', { bubbles: true }));
-  input.form.requestSubmit();
+  sendingOwn = true;
+  try { input.form.requestSubmit(); } finally { sendingOwn = false; }
   // 遊戲送出後會清空輸入框或全選剛送出的指令，把使用者原本正在輸入的文字還回去
   if (typed) {
     input.value = typed;
@@ -1551,6 +1554,50 @@ const PANEL_UI_KEY = 'panelUi';
 // 置頂浮窗上次調整後的大小：只存在這台瀏覽器的本機儲存
 const PIP_SIZE_KEY = 'pipSize';
 let panel = null;
+
+// ---- 手動紀錄（面板「巡怪」列的「● 記錄手動」）：開著時記下玩家自己從輸入框送出的指令與送出那一刻的時間、走過的房間；
+// 擴充功能自己送的（sendCommand 送出表單前設 sendingOwn）不記，所以巡怪、觸發、定時、劇本、驗證碼答案、驗證按鈕的 alias 都不算。
+// 不靠輸出的回聲：遊戲的回聲有時是「> 指令」、有時是單獨一行的「指令」，單獨一行的和一般輸出分不開（使用者貼的真實輸出）。
+// 關掉時用巡怪輪摘要同一套組字（CatworldMapHunt.summaryLines）寫一段「手動摘要」到同一份巡怪紀錄；一個指令都沒有就不寫。
+// 只在這個頁面的記憶體裡，不存儲存；伺服器時間還沒校準，用電腦時間並註明
+let manualRecord = null; // { startAt, sends: [{ at, command }], path: [房間鍵], room, timer }
+let sendingOwn = false;
+const MANUAL_ROOM_MS = 1000;
+const currentRoomKey = () => CatworldMapCollect.currentRoom(document)?.key ?? null;
+function noteManualRoom() {
+  const record = manualRecord;
+  const room = currentRoomKey();
+  if (!record || !room || room === record.room) return;
+  record.room = room;
+  record.path.push(room);
+}
+function startManual() {
+  manualRecord = { startAt: Date.now(), sends: [], path: [], room: currentRoomKey(), timer: setInterval(noteManualRoom, MANUAL_ROOM_MS) };
+}
+// 停止記錄並寫出這一段；原本就沒在記錄回 false
+function stopManual() {
+  const record = manualRecord;
+  if (!record) return false;
+  clearInterval(record.timer);
+  noteManualRoom();
+  manualRecord = null;
+  if (!record.sends.length) return true;
+  const looks = record.sends.filter(send => send.command === 'l').length;
+  const lines = CatworldMapHunt.summaryLines({ startAt: record.startAt, sends: record.sends, path: record.path, tail: `l 了 ${looks} 次` });
+  lines[0] = `（伺服器時間沒校準）${lines[0]}`;
+  lines.forEach(text => hunt.recordLine('手動摘要', `第 1 段：${text}`));
+  return true;
+}
+// 捕獲階段：在遊戲處理送出（清空輸入框）之前讀輸入框的值
+document.addEventListener('submit', event => {
+  if (!manualRecord || sendingOwn) return;
+  const input = document.querySelector('#input');
+  if (!input || event.target !== input.form) return;
+  const command = input.value.trim();
+  if (!command) return;
+  noteManualRoom();
+  manualRecord.sends.push({ at: Date.now(), command });
+}, true);
 // 面板最上方的「數值」區塊（stats-block.js）
 let statsBlock = null;
 let statsRenderFailed = false;
@@ -1629,7 +1676,7 @@ function initPanel() {
         <div class="line macro-line"><span class="t">巨集</span><span class="s macro-text"></span>
           <span class="mini"><button class="mstop">停止</button></span></div>
         <div class="line hunt-line"><span class="t">巡怪</span><span class="s hunt-text"></span>
-          <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hscan" title="街景模式：不用選怪，走這一區還沒走過的每一間，看一眼並記下有哪些怪（不打）">掃描</button><button class="hstop">停止</button></span></div>
+          <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hscan" title="街景模式：不用選怪，走這一區還沒走過的每一間，看一眼並記下有哪些怪（不打）">掃描</button><button class="hstop">停止</button><button class="hmanual" title="記錄你自己送出的指令（在輸入框打的），關掉時寫一段「手動摘要」到巡怪紀錄，和巡怪的輪摘要對照">● 記錄手動</button></span></div>
         <div class="line reward-line" hidden><span class="t">獎勵</span><span class="s reward-text"></span></div>
         <div class="line script-line" hidden><span class="t">劇本</span><span class="s script-text"></span></div>
       </div>
@@ -1646,7 +1693,7 @@ function initPanel() {
     randomText: $('.random-text'), rstart: $('.rstart'), rstop: $('.rstop'),
     idleText: $('.idle-text'), istart: $('.istart'), istop: $('.istop'),
     macroText: $('.macro-text'), mstop: $('.mstop'),
-    huntText: $('.hunt-text'), hstart: $('.hstart'), hscan: $('.hscan'), hstop: $('.hstop'),
+    huntText: $('.hunt-text'), hstart: $('.hstart'), hscan: $('.hscan'), hstop: $('.hstop'), hmanual: $('.hmanual'),
     rewardLine: $('.reward-line'), rewardText: $('.reward-text'),
     scriptLine: $('.script-line'), scriptText: $('.script-text'),
     confirm: $('.confirm'),
@@ -1720,6 +1767,7 @@ function initPanel() {
       const pickBox = root.querySelector('.hunt-pick');
       if (pickBox) pickBox.hidden = true;
       if (hunt.on()) hunt.stop('巡怪功能已在設定頁關閉，已停止');
+      if (stopManual()) renderPanel();
     }
   };
   applyZapFeatures(null);
@@ -1801,6 +1849,11 @@ function initPanel() {
     await hunt.start({ scan: true });
   });
   panel.hstop.addEventListener('click', () => hunt.stop());
+  panel.hmanual.addEventListener('click', () => {
+    if (manualRecord) stopManual();
+    else startManual();
+    renderPanel();
+  });
   panel.confirm.addEventListener('click', confirmAlert);
   // ⚙：交給背景腳本在新分頁開啟設定頁，再按一次關閉
   $('.gear').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'TOGGLE_SETTINGS' }));
@@ -2045,6 +2098,8 @@ function renderPanel() {
   panel.hstart.disabled = hunt.on();
   panel.hscan.disabled = hunt.on();
   panel.hstop.disabled = !hunt.on();
+  panel.hmanual.textContent = manualRecord ? '● 記錄中' : '● 記錄手動';
+  panel.hmanual.classList.toggle('on', !!manualRecord);
   panel.mstop.disabled = !macroRuns.size;
   panel.avoidMap();
   panel.timerText.classList.toggle('alert', captchaStopped);

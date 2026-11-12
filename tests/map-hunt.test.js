@@ -3962,3 +3962,92 @@ ui('verify paging: stop-everything or the human verification during paging sends
     }
   }
 });
+
+// ---- 手動紀錄：面板「● 記錄手動」開著時，記下玩家自己從輸入框送出的指令，關掉時寫一段「手動摘要」 ----
+// 玩家在輸入框打字按 Enter：填輸入框、送出表單（和遊戲收到 Enter 一樣會觸發 submit）
+const typeIn = (page, text) => {
+  const input = page.w.document.getElementById('input');
+  input.value = text;
+  input.form.requestSubmit();
+};
+const manualButton = page => panelRoot(page).querySelector('.hmanual');
+const manualLines = text => text.split('\n').filter(line => / 手動摘要 /.test(line));
+
+ui('manual: with the toggle on, what I type is recorded with the route, and turning it off writes a manual summary', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const game = world(page, { at: 'a' });
+    await sleep(100);
+    click(page, '.hmanual');
+    assert.match(manualButton(page).textContent, /記錄中/);
+    typeIn(page, 'e');
+    await sleep(120);
+    typeIn(page, 'e');
+    await sleep(120);
+    typeIn(page, 'l');
+    typeIn(page, 'tell somebody 嗨');
+    typeIn(page, '');
+    await sleep(120);
+    assert.equal(game.at, 'c');
+    click(page, '.hmanual');
+    assert.doesNotMatch(manualButton(page).textContent, /記錄中/);
+    const lines = manualLines(await huntLog(page));
+    assert.equal(lines.length, 3, lines.join('\n'));
+    assert.match(lines[0], /手動摘要 第 1 段：（伺服器時間沒校準）開始時間在整點後 \d+ 秒；路線 b→c（共 2 步）；l 了 1 次/);
+    assert.match(lines[1], /手動摘要 第 1 段：指令 4 個：e×2 l tell somebody 嗨$/, 'chat is kept, the blank line is not a command');
+    assert.match(lines[2], /手動摘要 第 1 段：間隔 最短 [\d.]+／平均 [\d.]+／最長 [\d.]+ 秒/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('manual: commands the extension sends itself (a trigger, the verify button) are not recorded', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    world(page, { at: 'a', script: (command, { say: tell }) => {
+      if (command === 'alias') { tell('你目前設定的 alias 有：\nf               = fight $1'); return true; }
+      return false;
+    } });
+    await page.ask({ type: 'START_TRIGGER', group: 'practice', config: { rules: [{ kind: 'keyword', enabled: true, pattern: '口渴', commands: ['drink'], cooldown: 0 }], delayMax: 0, requireNormal: false } });
+    click(page, '.hmanual');
+    typeIn(page, 'l');
+    page.output('<span>你覺得口渴。\n</span>');
+    assert.ok(await waitFor(() => page.sent.includes('drink'), 2000), 'the trigger sent its command');
+    await page.ask({ type: 'HUNT_VERIFY_ALIAS', command: 'f', verb: 'fight' });
+    assert.ok(page.sent.includes('alias'));
+    click(page, '.hmanual');
+    const lines = manualLines(await huntLog(page));
+    assert.match(lines[1], /指令 1 個：l$/, lines.join('\n'));
+  } finally {
+    page.close();
+  }
+});
+
+ui('manual: nothing typed means no summary, and the record is off until the toggle is pressed', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    world(page, { at: 'a' });
+    typeIn(page, 'l'); // 還沒開
+    click(page, '.hmanual');
+    click(page, '.hmanual');
+    assert.deepEqual(manualLines(await huntLog(page)), []);
+  } finally {
+    page.close();
+  }
+});
+
+ui('manual: switching the hunt feature off stops the record and writes out what was recorded', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    world(page, { at: 'a' });
+    const features = on => page.changeListeners.forEach(listener => listener({ zapFeatures: { newValue: { hunt: on } } }, 'local'));
+    features(true);
+    click(page, '.hmanual');
+    typeIn(page, 'l');
+    features(false);
+    assert.ok(await waitFor(async () => manualLines(await huntLog(page)).length === 3, 1000), 'written when the feature goes off');
+    assert.doesNotMatch(manualButton(page).textContent, /記錄中/);
+  } finally {
+    page.close();
+  }
+});

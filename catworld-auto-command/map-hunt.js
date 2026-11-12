@@ -219,6 +219,32 @@ function dropEdges(graph, bad) {
   return { ...graph, rooms };
 }
 
+// 每輪摘要的組字（巡怪的「輪摘要」與手動紀錄的「手動摘要」共用）：玩家的 ID 不記（finger、give 只留指令名）；連續重複的指令壓成「指令×次數」。
+// startAt 是這一段開始的伺服器時間、sends 是 [{ at, command }]（at 是真正送出的時間）、path 是走到的房間鍵、tail 接在第一行最後
+const SUMMARY_TEXT_MAX = 240;
+const SUMMARY_ROOMS_MAX = 40;
+const secText = ms => (ms / 1000).toFixed(1);
+const compactCommands = sends => {
+  const runs = [];
+  sends.forEach(({ command }) => {
+    const name = command.match(/^(finger|give)\b/)?.[1] ?? command;
+    const last = runs[runs.length - 1];
+    if (last?.name === name) last.count += 1; else runs.push({ name, count: 1 });
+  });
+  const text = runs.map(run => (run.count > 1 ? `${run.name}×${run.count}` : run.name)).join(' ');
+  return text.length > SUMMARY_TEXT_MAX ? `${text.slice(0, SUMMARY_TEXT_MAX)}…` : text;
+};
+function summaryLines({ startAt, sends, path, tail }) {
+  const rooms = path.map(key => key.split('/').pop());
+  const route = rooms.length > SUMMARY_ROOMS_MAX ? `${rooms.slice(0, SUMMARY_ROOMS_MAX).join('→')}…` : rooms.join('→');
+  const gaps = sends.slice(1).map((send, i) => send.at - sends[i].at);
+  return [
+    `開始時間在整點後 ${Math.round((startAt % RESPAWN_MS) / 1000)} 秒；路線 ${route || '（沒走）'}（共 ${path.length} 步）；${tail}`,
+    `指令 ${sends.length} 個：${compactCommands(sends)}`,
+    gaps.length ? `間隔 最短 ${secText(Math.min(...gaps))}／平均 ${secText(gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length)}／最長 ${secText(Math.max(...gaps))} 秒` : '間隔 不到兩個指令',
+  ];
+}
+
 function create(deps) {
   const Route = globalThis.CatworldMapRoute;
   const Collect = globalThis.CatworldMapCollect;
@@ -1080,31 +1106,11 @@ function create(deps) {
   // 不是引擎決定要送的時間，所以排隊等指令間隔、巨集拆出來的每一步都量得到
   const roundFields = offset => ({ skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [], stats: { startAt: deps.now() + offset, sends: [], path: [], lookedCount: 0, mobRooms: 0 } });
   const noteSent = command => { state?.stats?.sends.push({ at: deps.now(), command }); };
-  // 每輪摘要：寫進巡怪紀錄。玩家的 ID 不記（finger、give 只留指令名）；連續重複的指令壓成「指令×次數」
-  const SUMMARY_TEXT_MAX = 240;
-  const SUMMARY_ROOMS_MAX = 40;
-  const secText = ms => (ms / 1000).toFixed(1);
-  const compactCommands = sends => {
-    const runs = [];
-    sends.forEach(({ command }) => {
-      const name = command.match(/^(finger|give)\b/)?.[1] ?? command;
-      const last = runs[runs.length - 1];
-      if (last?.name === name) last.count += 1; else runs.push({ name, count: 1 });
-    });
-    const text = runs.map(run => (run.count > 1 ? `${run.name}×${run.count}` : run.name)).join(' ');
-    return text.length > SUMMARY_TEXT_MAX ? `${text.slice(0, SUMMARY_TEXT_MAX)}…` : text;
-  };
+  // 每輪摘要：寫進巡怪紀錄（組字在模組層的 summaryLines，手動紀錄也用它）
   function logRound() {
     const { startAt, sends, path, lookedCount, mobRooms } = state.stats;
-    const rooms = path.map(key => key.split('/').pop());
-    const route = rooms.length > SUMMARY_ROOMS_MAX ? `${rooms.slice(0, SUMMARY_ROOMS_MAX).join('→')}…` : rooms.join('→');
-    const gaps = sends.slice(1).map((send, i) => send.at - sends[i].at);
     const routeKey = path.join('>');
-    const lines = [
-      `開始時間在整點後 ${Math.round((startAt % RESPAWN_MS) / 1000)} 秒；路線 ${route || '（沒走）'}（共 ${path.length} 步）；看了 ${lookedCount} 間，有怪 ${mobRooms} 間`,
-      `指令 ${sends.length} 個：${compactCommands(sends)}`,
-      gaps.length ? `間隔 最短 ${secText(Math.min(...gaps))}／平均 ${secText(gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length)}／最長 ${secText(Math.max(...gaps))} 秒` : '間隔 不到兩個指令',
-    ];
+    const lines = summaryLines({ startAt, sends, path, tail: `看了 ${lookedCount} 間，有怪 ${mobRooms} 間` });
     if (state.restReturn) {
       lines.push(`休息回來：跳過 ${state.restReturn.skip} 輪，回程花了 ${secText(state.restReturn.walkMs)} 秒`);
       state.restReturn = null;
@@ -1638,8 +1644,11 @@ function create(deps) {
 
   const exportLog = () => logLines.join('\n');
 
-  return { start, stop, on, summary, snapshot, exportLog, noteSent };
+  // 別的功能（手動紀錄）寫一行到同一份巡怪紀錄，和巡怪自己的紀錄共用上限
+  const recordLine = (event, text) => record('-', event, text);
+
+  return { start, stop, on, summary, snapshot, exportLog, noteSent, recordLine };
 }
 
-globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, FIELDS, GROUPS, fieldShown, missingFields, normalizeSettings, normalizeVisited, gapMs, splitIds, create };
+globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, FIELDS, GROUPS, fieldShown, missingFields, normalizeSettings, normalizeVisited, gapMs, splitIds, summaryLines, RESPAWN_MS, create };
 })();
