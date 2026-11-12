@@ -399,7 +399,7 @@ ui('hunt: a room with a player in it is skipped, and the panel says who', async 
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 5000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'finger somebody', 'e', 'l', 'fight test mob', 'gc', 'l'], 'looked at c, asked about the unknown id, left for d and fought there');
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'finger somebody', 'e', 'l', 'fight test mob', 'gc'], 'looked at c, asked about the unknown id, left for d and fought there');
     assert.match(huntText(page), /略過 1 間.*t\/c 有別人 somebody/);
     assert.equal(alerts(page).length, 0, 'meeting a player is not an alarm');
   } finally {
@@ -416,7 +416,7 @@ ui('hunt: an id that finger cannot find is an NPC: remembered, the room is not s
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 5000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'finger smith', 'fight test mob', 'gc', 'l', 'e', 'l', 'fight test mob', 'gc', 'l'], 'asked once, at the first room only');
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'finger smith', 'fight test mob', 'gc', 'e', 'l', 'fight test mob', 'gc'], 'asked once, at the first room only');
     assert.deepEqual([...page.store.mapHuntNpcs], ['smith']);
     assert.doesNotMatch(huntText(page), /略過/);
   } finally {
@@ -449,7 +449,7 @@ ui('hunt: an id on the whitelist is never asked about and does not count as some
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc', 'l']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc']);
     assert.doesNotMatch(huntText(page), /略過/);
   } finally {
     page.close();
@@ -478,7 +478,7 @@ ui('arrival: a target room is read from the arrival description, so no l is sent
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'fight test mob', 'gc', 'l'], 'one l fewer: the first look came from the arrival; the l at the end is the recount after the kill');
+    assert.deepEqual(game.log, ['e', 'e', 'fight test mob', 'gc'], 'no l at all: the look came from the arrival and the only monster needs no recount');
     assert.match(await huntLog(page), /t\/c 看房間 .*來源 抵達描述/);
   } finally {
     page.close();
@@ -508,7 +508,7 @@ ui('arrival: with no arrival description at all it falls back to one l', async (
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc', 'l']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc']);
     assert.match(await huntLog(page), /t\/c 看房間 .*來源 l/);
   } finally {
     page.close();
@@ -523,7 +523,7 @@ ui('arrival: a description without an exit line is not used, and one l is sent i
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc', 'l'], 'the l shows the monster that the arrival text did not');
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc'], 'the l shows the monster that the arrival text did not');
   } finally {
     page.close();
   }
@@ -551,7 +551,7 @@ ui('arrival: a description that arrives in two packets (the monster lines after 
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'fight test mob', 'gc', 'l'], 'the monster that came in the second packet was fought, with no l before the fight');
+    assert.deepEqual(game.log, ['e', 'e', 'fight test mob', 'gc'], 'the monster that came in the second packet was fought, with no l before the fight');
   } finally {
     page.close();
   }
@@ -595,7 +595,7 @@ ui('arrival: a description that comes a little late is still waited for', async 
     await pick(late, MOB);
     click(late, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(late)), 4000), huntText(late));
-    assert.deepEqual(game.log, ['e', 'e', 'fight test mob', 'gc', 'l'], 'a description 15 ms late is within the short wait');
+    assert.deepEqual(game.log, ['e', 'e', 'fight test mob', 'gc'], 'a description 15 ms late is within the short wait');
   } finally {
     late.close();
   }
@@ -656,7 +656,7 @@ ui('hunt: whitelist and learned NPCs match whatever the case, and a learned NPC 
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc', 'l'], 'neither is asked about, neither counts as someone');
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc'], 'neither is asked about, neither counts as someone');
   } finally {
     page.close();
   }
@@ -704,7 +704,7 @@ const hunting = async page => (await page.ask({ type: 'STATUS' })).hunt.on;
 const countOf = (game, command) => game.log.filter(item => item === command).length;
 const say = (page, text) => page.output(`<span>${text}\n</span>`);
 
-ui('fight: three monsters with the same name are fought one at a time, each followed by gc and a fresh l', async () => {
+ui('fight: three monsters with the same name are fought one at a time, each followed by gc, with a fresh l only before the next one', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
@@ -712,7 +712,7 @@ ui('fight: three monsters with the same name are fought one at a time, each foll
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'l', FIGHT, 'gc', 'l', FIGHT, 'gc', 'l']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'l', FIGHT, 'gc', 'l', FIGHT, 'gc']);
     assert.equal(await hunting(page), false);
   } finally {
     page.close();
@@ -733,7 +733,7 @@ ui('fight: the kill command is a setting, so a refusal gets k when the user set 
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'k test mob', 'gc', 'l']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'k test mob', 'gc']);
   } finally {
     page.close();
   }
@@ -752,7 +752,7 @@ ui('fight: a monster that does not want to fight gets kill after the refusal; wh
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kill test mob', 'kill test mob', 'gc', 'l']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kill test mob', 'kill test mob', 'gc']);
   } finally {
     page.close();
   }
@@ -767,7 +767,7 @@ ui('fight: the after-kill command can be several commands and is the one from th
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'get corpse', 'gc', 'l']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'get corpse', 'gc']);
   } finally {
     page.close();
   }
@@ -788,7 +788,7 @@ ui('fight: no end sentence for a long time means an l: a monster that is knocked
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'l', 'kill test mob', 'gc', 'l']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'l', 'kill test mob', 'gc']);
   } finally {
     page.close();
   }
@@ -814,7 +814,7 @@ ui('fight: a monster still in <戰鬥中> after the wait keeps the fight going',
   }
 });
 
-ui('fight: when gc does not make a monster go away three times in a row the room is given up', async () => {
+ui('fight: when gc does not make a monster go away three times in a row the room is given up (a recount happens only while a second monster is left to fight)', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
@@ -822,7 +822,7 @@ ui('fight: when gc does not make a monster go away three times in a row the room
       if (command === 'gc') { return true; }
       return false;
     };
-    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(2) } }, script });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(async () => !(await hunting(page)), 8000), huntText(page));
@@ -1152,7 +1152,7 @@ ui('fight: a knocked-out monster is not a target, and a room with only knocked-o
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
     assert.equal(game.log.includes('fight other mob'), false);
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'l']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc']);
   } finally {
     page.close();
   }
@@ -1975,7 +1975,7 @@ ui('fight: a monster that is only knocked out is finished with kill before the c
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kill test mob', 'gc', 'l', FIGHT, 'gc', 'l'], 'knocked out: kill, then gc; the second one died at once: no kill');
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kill test mob', 'gc', 'l', FIGHT, 'gc'], 'knocked out: kill, then gc; the second one died at once: no kill');
   } finally {
     page.close();
   }
@@ -1994,7 +1994,7 @@ ui('fight: with the finishing switched off a knocked-out monster goes straight t
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'l']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc']);
   } finally {
     page.close();
   }
@@ -2048,7 +2048,7 @@ ui('load: after a fight it looks at i, and under the limit nothing else happens'
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'l', 'i']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'i']);
   } finally {
     page.close();
   }
@@ -2596,7 +2596,7 @@ ui('sort: over the limit it goes, identifies, marks the good armor, sells, comes
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'l', 'i', 'go', 'identify', 'i', 'secure black armor', 'sell all', 'back', 'i']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'i', 'go', 'identify', 'i', 'secure black armor', 'sell all', 'back', 'i']);
     assert.deepEqual(state.secured, ['black armor'], 'only the identified good armor; the marked tea and the worn cloth are left alone, the gloves are sold');
     assert.equal(alerts(page).length, 0);
   } finally {
@@ -2628,7 +2628,7 @@ ui('sort: sell-everything mode skips the inventory and marking and sells right a
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'l', 'i', 'go', 'identify', 'sell all', 'back', 'i']);
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'i', 'go', 'identify', 'sell all', 'back', 'i']);
     assert.deepEqual(state.secured, []);
     assert.deepEqual(state.given, []);
     assert.equal(alerts(page).length, 0);
@@ -3104,7 +3104,7 @@ ui('round summary: with the switch off the hunt sends exactly the commands it al
     }
   };
   // 這一串是開關加進來之前這個情境就送出的指令（對照固定的序列，不是只比開和關的結果）
-  const GOLDEN = ['e', 'e', 'l', FIGHT, 'gc', 'l', 'e', 'l', FIGHT, 'gc', 'l'];
+  const GOLDEN = ['e', 'e', 'l', FIGHT, 'gc', 'e', 'l', FIGHT, 'gc'];
   assert.deepEqual(await run('off'), GOLDEN);
   assert.deepEqual(await run('on'), GOLDEN);
 });
@@ -3230,9 +3230,10 @@ const LINE = ['a', 'b', 'c', 'd', 'e2', 'f']; // 從 a 走到 f 要 5 步
 const firstIndex = (times, command, from = 0) => times.findIndex(([cmd], i) => i >= from && cmd === command);
 
 ui('humanize pauses: a drawn pause comes right after arriving (before the look) and after a monster is finished (before the recount), and never in the walk', async () => {
-  const { times, text } = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], r: 0.01, timed: true }); // 0.01 < 5%：每個可以停的點都停
+  // 0.01 < 5%：每個可以停的點都停。f 放兩隻怪：打完第一隻還有第二隻，才會重數（只有一隻時打完不重數）
+  const { times, text } = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], r: 0.01, timed: true, worldOptions: { looks: { f: { lines: [MOB_LINE, MOB_LINE] } } } });
   const commands = times.map(([command]) => command);
-  assert.deepEqual(commands, ['e', 'e', 'e', 'e', 'e', 'l', FIGHT, 'gc', 'l'], 'the same commands as without pauses');
+  assert.deepEqual(commands, ['e', 'e', 'e', 'e', 'e', 'l', FIGHT, 'gc', 'l', FIGHT, 'gc'], 'the same commands as without pauses');
   for (let i = 1; i <= 4; i += 1) assert.ok(gapBefore(times, i) < NO_PAUSE_MS, `walking step ${i} was not paused (${gapBefore(times, i)} ms)`);
   const look = firstIndex(times, 'l');
   assert.ok(gapBefore(times, look) >= PAUSE_MIN_MS, `the look after arriving waited for the pause (${gapBefore(times, look)} ms)`);
@@ -3687,7 +3688,7 @@ ui('passing: nothing changes when the arrival shows another monster, or no monst
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'e', 'l', FIGHT, 'gc', 'l'], 'walked straight to d, looked there only');
+    assert.deepEqual(game.log, ['e', 'e', 'e', 'l', FIGHT, 'gc'], 'walked straight to d, looked there only');
   } finally {
     page.close();
   }

@@ -33,6 +33,7 @@ const ARRIVAL_QUIET_TICKS = 3; // 目標房間：出口行之後要這麼多個 
 const ARRIVAL_WAIT_TICKS = PASS_WAIT_TICKS + 6; // 已經看到出口行時，等它印完（安靜）的上限，到了還沒印完就退回送 l；連出口行都沒有時只等 PASS_WAIT_TICKS
 const MOVE_TEXT_PHASES = ['move', 'pass', 'look']; // 這幾個階段把遊戲的輸出接進 moveText
 const TICKS_PER_SEC = 1000 / TICK_MS;
+const CORPSE_WAIT_TICKS = 5 * TICKS_PER_SEC; // 打完最後一隻、不重數就離開時，最多等撿屍指令送完這麼久（巡怪結束會丟掉還沒送出的指令）
 const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
 const NO_TARGET = /你要對誰施展這個招式/;
 const KNOCKED_OUT = '昏迷不醒';
@@ -502,7 +503,8 @@ function create(deps) {
     }).catch(() => { if (state === token) finish('看房間時出錯，已停止', { alert: true }); });
   }
 
-  // 把房間裡勾選的怪一隻一隻打完：fight（被拒就 kill）→ 倒下就送打完指令 → 再 l 重數；連續 MAX_STUCK 次數量沒減少就略過這間
+  // 把房間裡勾選的怪一隻一隻打完：fight（被拒就 kill）→ 倒下就送打完指令 → 還有下一隻要打才 l 重數（位置會變）；
+  // 剛打倒的是最後一隻就不重數、直接換下一間。重數時連續 MAX_STUCK 次數量沒減少就略過這間（只有一隻時不會重數，所以不會判成打不動，下一輪再來）
   async function fightRoom(token, here, first) {
     let info = first;
     let stuck = 0;
@@ -526,10 +528,21 @@ function create(deps) {
         if (state !== token || outcome === 'stopped') return;
       }
       if (!(await notBusy(token))) return;
-      if (state.settings.afterKillCommand) deps.send(state.settings.afterKillCommand);
+      let corpseSent = !state.settings.afterKillCommand;
+      if (state.settings.afterKillCommand) deps.send(state.settings.afterKillCommand, () => { corpseSent = true; });
       if (state.settings.loadMaxPercent > 0) state.loadDue = true;
       await humanPause(here, '打完一隻後');
       if (state !== token) return;
+      if (mine.length <= 1) {
+        // 不重數就離開：撿屍指令（或巨集）還在排隊時先等它送完，不然這一輪剛好結束時會被一起丟掉
+        for (let waited = 0; !(corpseSent && !deps.macroRunning()) && waited < CORPSE_WAIT_TICKS; waited += 1) {
+          await sleepTick();
+          if (state !== token) return;
+        }
+        record(here, '打完這間', '最後一隻，不重數');
+        doneWith(here, here);
+        return;
+      }
       info = Parse.parseLook(await deps.ask('l', 'look'));
       if (state !== token) return;
       if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
