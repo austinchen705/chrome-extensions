@@ -24,7 +24,7 @@ const MOB_B = '另一隻怪(other mob)';
 // 假遊戲：moves[現在][指令] = 下一間（沒有就留在原地）；reply 為 false 時不回任何輸出（看門狗會因為沒回應而停）
 // looks[房間] = { exits, lines }：l 的輸出（出口行與後面的怪物、人物行）；silentLook 為 true 時 l 不回應；
 // fingers[ID] = finger 的輸出，沒寫就不回應
-function world(page, { at, moves = MOVES, reply = true, stuck = false, looks = {}, fingers = {}, silentLook = false, arrivals = {}, arrivalDelayMs = 0, lookDelayMs = 0, script = null, row = ROW } = {}) {
+function world(page, { at, moves = MOVES, reply = true, stuck = false, looks = {}, fingers = {}, silentLook = false, arrivals = {}, arrivalDelayMs = 0, lookDelayMs = 0, script = null, row = ROW, arrivalSplitMs = 0 } = {}) {
   const doc = page.w.document;
   doc.body.insertAdjacentHTML('beforeend', `<div id="map_table"><span id="map_header">地圖 (<span data-default-grid="□">測試區</span>)</span><div id="map_wrapper"><div id="m-t">${row}</div></div><div id="map_anchor"></div></div>`);
   if (!doc.getElementById('kee')) setKee(page, 100); // 氣讀不到會停，預設滿的
@@ -59,7 +59,13 @@ function world(page, { at, moves = MOVES, reply = true, stuck = false, looks = {
       if (reply) tell('…');
     } else if (next && arrivals[state.at]) {
       const info = arrivals[state.at];
-      const show = () => page.output(`<span>${['測試房間 - ', '    這裡是房間。', `    這裡明顯的出口是 ${info.exits ?? 'east'}。`, ...(info.lines || [])].join('\n')}\n</span>`);
+      const head = ['測試房間 - ', '    這裡是房間。', `    這裡明顯的出口是 ${info.exits ?? 'east'}。`];
+      // arrivalSplitMs：出口行先到，怪物行等一下才到（描述分成兩個封包）
+      const show = () => {
+        if (!arrivalSplitMs) { page.output(`<span>${[...head, ...(info.lines || [])].join('\n')}\n</span>`); return; }
+        page.output(`<span>${head.join('\n')}\n</span>`);
+        setTimeout(() => page.output(`<span>${(info.lines || []).join('\n')}\n</span>`), arrivalSplitMs);
+      };
       if (arrivalDelayMs) setTimeout(show, arrivalDelayMs);
       else show();
     } else if (reply) page.output('<span>…\n</span>');
@@ -464,17 +470,146 @@ ui('hunt: a room whose look gets no answer is skipped like a door that does not 
   }
 });
 
-ui('hunt: what the move itself printed on arrival is not the answer to l (a player who is in the arrival text but gone from l does not count)', async () => {
+ui('arrival: a target room is read from the arrival description, so no l is sent for it', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    // 抵達描述比 l 的回應早到（l 還在佇列裡等指令間隔）：它有人、l 沒有人
-    const game = world(page, { at: 'a', arrivalDelayMs: 15, lookDelayMs: 120, arrivals: { c: { lines: [MOB_LINE, PERSON('somebody')] } }, looks: { c: { lines: [MOB_LINE] } } });
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [MOB_LINE] } }, looks: { c: { lines: [MOB_LINE] } } });
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
-    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc', 'l'], 'no finger: the answer to l says the room is empty');
-    assert.doesNotMatch(huntText(page), /略過/);
+    assert.deepEqual(game.log, ['e', 'e', 'fight test mob', 'gc', 'l'], 'one l fewer: the first look came from the arrival; the l at the end is the recount after the kill');
+    assert.match(await huntLog(page), /t\/c 看房間 .*來源 抵達描述/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('arrival: a person in the arrival description is asked about with finger, as with l', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [MOB_LINE, PERSON('somebody')] } }, fingers: { somebody: PLAYER_FINGER } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'finger somebody'], 'no l, a player means the room is skipped');
+    assert.match(huntText(page), /有別人/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('arrival: with no arrival description at all it falls back to one l', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc', 'l']);
+    assert.match(await huntLog(page), /t\/c 看房間 .*來源 l/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('arrival: a description without an exit line is not used, and one l is sent instead', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', arrivals: { c: { exits: '', lines: [] } }, looks: { c: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight test mob', 'gc', 'l'], 'the l shows the monster that the arrival text did not');
+  } finally {
+    page.close();
+  }
+});
+
+ui('arrival: when the target is the room the hunt starts in there was no walking in, so the look is an l', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('a');
+    const game = world(page, { at: 'a', arrivals: { a: { lines: [MOB_LINE] } }, looks: { a: { lines: [] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['l']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('arrival: a description that arrives in two packets (the monster lines after the exit line) is judged whole, not by its first half', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', arrivalSplitMs: 12, arrivals: { c: { lines: [MOB_LINE] } }, looks: { c: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'fight test mob', 'gc', 'l'], 'the monster that came in the second packet was fought, with no l before the fight');
+  } finally {
+    page.close();
+  }
+});
+
+ui('arrival: the only-send-fight mode judges the room from the arrival description too', async () => {
+  const page = await assistPage();
+  try {
+    const game = world(page, { at: 'a', arrivals: { c: { lines: mobsLines(1) } }, looks: { c: { lines: mobsLines(1) } }, script: command => {
+      if (command.startsWith('fight ')) { setTimeout(() => lookOut(page), 50); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', FIGHT], 'fight right away, without an l first');
+  } finally {
+    page.close();
+  }
+});
+
+ui('arrival: the monsters seen in the arrival description are learned for the room', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    world(page, { at: 'a', arrivals: { c: { lines: [MOB_LINE, '  ※另一隻怪(other mob) [fight][kill]'] } }, looks: { c: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 4000), huntText(page));
+    assert.ok(await waitFor(() => page.store.mapMonsters['t/c'].mobs.includes('另一隻怪(other mob)'), 2000), JSON.stringify(page.store.mapMonsters['t/c']));
+  } finally {
+    page.close();
+  }
+});
+
+ui('arrival: a description that comes a little late is still waited for', async () => {
+  const late = await boot({ scale: SCALE });
+  try {
+    late.store.mapMonsters = mobsAt('c');
+    const game = world(late, { at: 'a', arrivalDelayMs: 15, arrivals: { c: { lines: [MOB_LINE] } }, looks: { c: { lines: [MOB_LINE] } } });
+    await pick(late, MOB);
+    click(late, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(late)), 4000), huntText(late));
+    assert.deepEqual(game.log, ['e', 'e', 'fight test mob', 'gc', 'l'], 'a description 15 ms late is within the short wait');
+  } finally {
+    late.close();
+  }
+});
+
+ui('arrival: scanning still sends l in every room', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapHuntSettings = { ...REQUIRED, learnExits: 'off' };
+    const arrivals = Object.fromEntries(['b', 'c', 'd'].map(id => [id, { lines: [] }]));
+    const game = world(page, { at: 'a', arrivals, looks: { a: { lines: [] }, b: { lines: [] }, c: { lines: [] }, d: { lines: [] } } });
+    click(page, '.hscan');
+    assert.ok(await waitFor(() => !/巡怪中|掃描中/.test(huntText(page)) && game.log.filter(c => c === 'l').length >= 4, 8000), huntText(page));
+    assert.ok(game.log.filter(command => command === 'l').length >= 4, 'an l for each of the four rooms (' + JSON.stringify(game.log) + ')');
   } finally {
     page.close();
   }
@@ -3114,7 +3249,7 @@ ui('humanize pauses: a drawn pause comes right after arriving (before the look) 
 
 ui('humanize pauses: even the longest pause ends before the 8-second no-reply watchdog, after a corpse command that prints nothing', async () => {
   // 0.0499 剛好在機率以內：同一個抽籤值縮放成長度，就是最長的那一種。gc 不印任何東西（reply: false），房間描述照印
-  const arrivals = Object.fromEntries(LINE.slice(1).map(id => [id, {}]));
+  const arrivals = Object.fromEntries(LINE.slice(1).map(id => [id, id === 'f' ? { lines: [MOB_LINE] } : {}])); // 目標 f 的抵達描述就是看房間的依據
   const { text } = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], r: 0.0499, worldOptions: { reply: false, arrivals } });
   // huntOnce 會等到「巡完了」：看門狗在停頓裡把巡怪停掉的話，這裡就等不到
   const pause = Number(text.match(/停頓 ([\d.]+) 秒（打完一隻後）/)?.[1]);
@@ -3516,7 +3651,7 @@ ui('passing: a chosen monster shown on arrival in a room that is not a target is
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
-    assert.deepEqual(game.log.slice(0, 3), ['e', 'l', FIGHT], 'looked at b as soon as it arrived there, and fought');
+    assert.deepEqual(game.log.slice(0, 3), ['e', FIGHT, 'gc'], 'fought at b as soon as it arrived there, with no l: the arrival description that made it a target is also its look');
     assert.equal(countOf(game, FIGHT), 2, 'b on the way and d at the end');
     const { text } = await page.ask({ type: 'HUNT_LOG' });
     assert.match(text, /t\/b 路過 看到勾選的怪，加進目標/);

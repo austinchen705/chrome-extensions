@@ -28,7 +28,10 @@ const PAUSE_MIN_MS = 3000;
 // 上限一定要小於 content.js 的 NO_REPLY_MS（8 秒）：撿屍指令送出後遊戲若什麼都不印，8 秒看門狗會把停頓當成「疑似需要驗證」而停掉一切
 const PAUSE_MAX_MS = 7000;
 const ORDER_STEPS_CAP = 1.2; // 擬人化：洗牌後的目標順序，總步數最多是「最近的先」的這麼多倍
-const PASS_WAIT_TICKS = 2; // 走到路過的房間後，最多等幾個 tick 讓抵達時的房間描述印出來
+const PASS_WAIT_TICKS = 2; // 走到房間後（路過的、目標的），最多等幾個 tick 讓抵達時的房間描述印出來
+const ARRIVAL_QUIET_TICKS = 3; // 目標房間：出口行之後要這麼多個 tick（約 0.4～0.6 秒）沒有新輸出才算描述印完，不比 l 的回應等得短（content.js ASK 表 look 的 400 ms）
+const ARRIVAL_WAIT_TICKS = PASS_WAIT_TICKS + 6; // 已經看到出口行時，等它印完（安靜）的上限，到了還沒印完就退回送 l；連出口行都沒有時只等 PASS_WAIT_TICKS
+const MOVE_TEXT_PHASES = ['move', 'pass', 'look']; // 這幾個階段把遊戲的輸出接進 moveText
 const TICKS_PER_SEC = 1000 / TICK_MS;
 const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
 const NO_TARGET = /你要對誰施展這個招式/;
@@ -323,19 +326,45 @@ function create(deps) {
     }
   }
 
-  // 到了目標房間：送 l 看房間。沒有勾選的怪就直接換下一間（不必問人）；有別人就略過這間；沒見過的 ID 用 finger 分辨
+  // 看房間：走進來的目標房間，遊戲在抵達時已經印了房間描述（和 l 一樣的內容，路過的房間也是用它判斷），所以先用那份、不多送 l；
+  // 描述沒及時印出來（沒有出口行）、一開始就站在這間（沒有走進來）、掃描（每間都要確認）才送 l。回傳 { info, source }，巡怪停了或換了回 null
+  async function lookRoom(token, here, walked) {
+    if (walked && !token.scan) {
+      // 出口行在怪物行前面，描述可能分好幾個封包到：要有出口行、而且 ARRIVAL_QUIET_TICKS 個 tick 沒有新輸出才算印完，不能拿半份描述就判斷
+      // 上限與安靜都用 tick 數算（睡眠的計時器和 tick 的計時器各自漂移，混著算會不同步）；
+      // 連出口行都還沒有時只等 PASS_WAIT_TICKS（遊戲沒印描述就不要拖慢），有出口行之後才等它印完
+      const begin = state.ticks;
+      for (;;) {
+        const info = Parse.parseLook(state.moveText);
+        const waited = state.ticks - begin;
+        if (info.exits.length) {
+          if (state.ticks - state.moveTextTick >= ARRIVAL_QUIET_TICKS) return { info, source: '抵達描述' };
+          if (waited > ARRIVAL_WAIT_TICKS) break;
+        } else if (waited > PASS_WAIT_TICKS) break;
+        await sleepTick();
+        if (state !== token) return null;
+      }
+    }
+    const info = Parse.parseLook(await deps.ask('l', 'look'));
+    return state === token ? { info, source: 'l' } : null;
+  }
+
+  // 到了目標房間：看房間（見 lookRoom）。沒有勾選的怪就直接換下一間（不必問人）；有別人就略過這間；沒見過的 ID 用 finger 分辨
   // 玩家與 NPC（NPC 記下來，下次不再問）；看不到房間（l 沒回應或讀不懂）當成走不過去；其餘進 fightRoom 打怪。
   // 每個 await 之後都要確認這一次巡怪還在（停止或重新開始後，舊的檢查不能再動新的狀態、也不能再送指令）
   async function inspect(token, here) {
+    const walked = state.walkedTo === here; // 走進來的：抵達時印的描述還在 moveText 裡
+    state.walkedTo = null;
     await humanPause(here, '到房間後');
     if (state !== token) return;
-    const info = Parse.parseLook(await deps.ask('l', 'look'));
-    if (state !== token) return;
+    const seen = await lookRoom(token, here, walked);
+    if (!seen) return;
+    const { info, source } = seen;
     // 回應回來時人已經不在這間了（例如自己手動跑掉）：這份輸出是別間的，不能記給這間，丟掉、重新規劃
     const now = deps.room();
     if (now && now !== here) { state.phase = 'plan'; return; }
     if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
-    record(here, '看房間', lookText(info));
+    record(here, '看房間', `${lookText(info)}（來源 ${source}）`);
     const wanted = info.monsters.some(mob => token.mobs.includes(mob.full));
     state.stats.lookedCount += 1;
     if (wanted) state.stats.mobRooms += 1;
@@ -543,7 +572,10 @@ function create(deps) {
   // 遊戲新增的輸出（content.js 以 deps.watch 餵進來）：只在打的時候看。拒戰句→改送 kill；結束句（怪死、昏迷）→這一隻打完；
   // 「你要對誰施展這個招式」→這場不再送特攻。忙碌拒絕句不用處理：被拒的特攻不重排，等下一次間隔
   function onText(text) {
-    if (state?.phase === 'move') state.moveText = (state.moveText + text).slice(-3000);
+    if (state && MOVE_TEXT_PHASES.includes(state.phase)) { // 走這一步到看完房間為止：抵達時印的描述可能比房間判斷晚一點到
+      state.moveText = (state.moveText + text).slice(-3000);
+      state.moveTextTick = state.ticks;
+    }
     const eating = state?.eating;
     if (eating?.sent && state.ticks <= eating.until && state.settings.noMedicineKeyword) {
       eating.buffer = (eating.buffer + text).slice(-500);
@@ -794,6 +826,7 @@ function create(deps) {
   }
   // 要走的邊還沒驗證、房間的出口也沒讀過：先 l 看一次（每個房間每次最多一次）
   function learnHere(here) {
+    state.walkedTo = null;
     const token = state;
     state.looked.add(here);
     state.phase = 'look';
@@ -810,6 +843,7 @@ function create(deps) {
   // 路線需要的邊在這個房間的出口裡找不到：把沒試過的出口一個一個試（每個房間每個指令只試一次）
   // want＝路線要走、但出口裡沒有的那個指令（圖上畫的方向）：試出口時先試和它相符的（圖上往 s，實際是 su／sd 這種上下坡）
   function startTrial(here, want) {
+    state.walkedTo = null;
     state.trial = { room: here, cmd: null, want, stage: 'pick', waited: 0 };
     state.phase = 'trial';
     deps.notify();
@@ -819,6 +853,7 @@ function create(deps) {
   // 走到地圖外：記成 out，用反方向走回來（走回來之前也要氣夠）；不知道反方向就停止並警報。
   // exploring 為真＝是試出口走出去的，走回來之後接著試下一個；否則走回來就結束
   function backOut(room, cmd, { exploring }) {
+    state.walkedTo = null;
     learnEdge(room, cmd, 'out');
     const back = OPPOSITE[cmd];
     if (!back) { finish(`走到地圖外的房間，而且不知道怎麼走回來（${cmd}），已停止`, { alert: true }); return; }
@@ -1288,6 +1323,7 @@ function create(deps) {
     }).catch(() => { if (state === token) finish('讀取伺服器時間時出錯，已停止', { alert: true }); });
   }
   function beginRound(after, offset) {
+    state.walkedTo = null; // 新的一輪：上一輪走進哪間的描述已經過期
     state.round += 1;
     state.waiting = null;
     state.after = after;
@@ -1368,7 +1404,7 @@ function create(deps) {
       if (!state.looked.has(here) && !learned?.exits && !learned?.to[cmd]) { learnHere(here); return; }
       if (strictGraph.rooms[here].exits[cmd] === undefined) { startTrial(here, cmd); return; }
     }
-    if (!sendOrStop(cmd, () => { if (state) state.moveText = ''; })) return; // 指令真的送出時才開始收這一步的輸出（抵達時印的房間描述）
+    if (!sendOrStop(cmd, () => { if (state) { state.moveText = ''; state.walkedTo = null; } })) return; // 指令真的送出時才開始收這一步的輸出（抵達時印的房間描述）
     record(here, '走', `${cmd} → 目標 ${chosen.key}（還要 ${chosen.way.length} 步，剩 ${state.targets.size} 間）`);
     state.cmd = cmd;
     state.phase = 'move';
@@ -1425,6 +1461,7 @@ function create(deps) {
     if (state.phase === 'move') {
       if (here && here !== state.from) {
         arrived = true;
+        state.walkedTo = here;
         record(here, '走到', here === state.expected ? '' : `不是預期的 ${state.expected ?? '?'}`);
         state.stats.path.push(here);
         state.phase = 'plan';
@@ -1517,7 +1554,7 @@ function create(deps) {
       state = {
         round: 1, after: deps.now() + offset, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
         mobs: scan ? [] : target.mobs, area: target.area, offset, scan: scan || prescan, prescan, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph, targets, skipped: [...baseSkipped], fixed: [],
-        settings, baseSettings: settings, order: null, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
+        settings, baseSettings: settings, order: null, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
         ...roundFields(offset), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       };
       humanizeRound(here);
