@@ -70,6 +70,8 @@ const FIELDS = [
   { key: 'fightCommand', group: 'fight', verify: 'fight', label: '開打用的指令', hint: '開打時送「這個指令 順位」，順位＝這隻怪在 l 列出的 ※ 怪物行裡是第幾個（例如 fight 3）。遊戲的 fight 順位數的是 look 顯示的所有東西，前面有玩家或物品時會偏；fight NPC 順位只數 NPC，比較準。可以填你的別名，例如 f 或 fn（不能有 ; 或 @等待，否則用 fight）', type: 'text', default: 'fight' },
   { key: 'killCommand', group: 'fight', verify: 'kill', show: full, label: '打死用的指令', hint: '怪不想打、或補刀時送「這個指令 順位」；可以填你的別名，例如 k', type: 'text', default: 'kill' },
   { key: 'afterKillCommand', group: 'fight', show: full, label: '怪倒下後送的指令', hint: '可多個，用 ; 分隔', type: 'text', default: 'gc' },
+  { key: 'reactMinMs', group: 'fight', row: 'react', label: '看完房間到開打（毫秒）最短', hint: '看到房間裡有怪（l 或抵達描述）後，等這麼久才下開打的指令，像人的反應時間；完整與只下 fight 模式都用，走路、補刀不受影響', type: 'number', default: 800, min: 0, max: 5000 },
+  { key: 'reactMaxMs', group: 'fight', row: 'react', label: '最長（毫秒）', hint: '每次在最短與最長之間隨機；0～0＝不等', type: 'number', default: 1500, min: 0, max: 5000 },
   { key: 'fightTimeoutSec', group: 'fight', label: '等怪倒下最久（秒）', hint: '逾時就用 l 看一眼', type: 'number', default: 60, min: 5, max: 600 },
   { key: 'endKeywords', group: 'fight', label: '怪倒下的字', hint: '用、分隔', type: 'text', default: '一動也不動了、死了' },
   { key: 'knockoutKeywords', group: 'fight', label: '其中代表只是昏迷的字', hint: '用、分隔；昏迷的怪會再補打死', type: 'text', default: '一動也不動了' },
@@ -157,6 +159,7 @@ function normalizeSettings(rawSettings) {
   // 危險線要比休息線低，不然休息時永遠碰不到危險線
   if (out.dangerBelow >= out.restBelow) out.dangerBelow = Math.min(FIELDS.find(field => field.key === 'dangerBelow').default, out.restBelow - 1);
   if (out.commandGapMaxMs < out.commandGapMinMs) out.commandGapMaxMs = out.commandGapMinMs;
+  if (out.reactMaxMs < out.reactMinMs) out.reactMaxMs = out.reactMinMs;
   // 開打用的指令後面會接上怪的 ID 再送出：空的、含分號或 @等待（會被當成巨集）、換行、太長的都退回 fight
   if (!out.fightCommand || out.fightCommand.length > FIGHT_COMMAND_MAX || /[;；\r\n]|@等待/.test(out.fightCommand)) out.fightCommand = 'fight';
   return out;
@@ -450,6 +453,7 @@ function create(deps) {
   // 這種情況不再等昏迷的怪（沒有人在補刀就不會有下一份 l，等下去會卡到逾時）
   function assistJudge(info, fresh = false) {
     const a = state.assist;
+    if (a.reacting) return; // 已經決定要開打、正在等反應時間
     const picked = info.monsters.filter(mob => state.mobs.includes(mob.full));
     const mine = picked.filter(mob => mob.state !== KNOCKED_OUT);
     // 診斷：每次決定都印一行，使用者回報「怪還沒死就下 fight」時看這行就知道當時看到什麼、為什麼送
@@ -479,11 +483,18 @@ function create(deps) {
     if (!target) { leave('怪的 ID 不能用'); return; }
     if (spawnPause()) { trace('重生前停打'); return; }
     trace(`送 ${fightCmd()} ${targetOf(target)}`);
-    a.sent = true;
-    a.target = target;
-    a.dead = false;
-    a.tail = '';
-    if (!deps.send(`${fightCmd()} ${targetOf(target)}`)) finish('指令送不出去，已停止', { alert: true });
+    const token = state;
+    const send = () => {
+      a.reacting = false;
+      if (state !== token || state.assist !== a) return;
+      a.sent = true;
+      a.target = target;
+      a.dead = false;
+      a.tail = '';
+      if (!deps.send(`${fightCmd()} ${targetOf(target)}`)) finish('指令送不出去，已停止', { alert: true });
+    };
+    const ms = reactMs();
+    if (ms > 0) { a.reacting = true; setTimeout(send, ms); } else send();
   }
   // 玩家的觸發送了 i 而且負重超標：結束這間的等待，下一次規劃時走既有的負重檢查與整理
   function assistOverweight(load) {
@@ -548,6 +559,7 @@ function create(deps) {
       if (!target) { state.skipped.push({ key: here, why: '怪的 ID 不能用' }); record(here, '略過', '怪的 ID 不能用'); doneWith(here); return; }
       if (spawnPause()) return;
       if (!(await restGate(token))) return;
+      if (!(await reactWait(token))) return;
       if (!(await notBusy(token))) return;
       record(here, '開打', target.full);
       let outcome = await fightOne(token, target);
@@ -619,6 +631,16 @@ function create(deps) {
     const name = shortName(mob);
     const lines = buffer.normalize('NFKC').split(/\r?\n/);
     return words.find(word => lines.some(line => line.includes(word) && (!name || line.includes(name))));
+  };
+  // 看完房間到開打的反應時間（reactMinMs～reactMaxMs 隨機，毫秒）；0 就不等
+  const reactMs = () => {
+    const { reactMinMs: min, reactMaxMs: max } = state.settings;
+    return min + random() * (max - min);
+  };
+  const reactWait = async token => {
+    const ms = reactMs();
+    if (ms > 0) await new Promise(resolve => setTimeout(resolve, ms));
+    return state === token;
   };
   const endFight = fight => {
     if (state?.fight !== fight) return;

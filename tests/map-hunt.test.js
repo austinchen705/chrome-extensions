@@ -6,7 +6,7 @@ const { ui, boot: bootPage, sleep, waitFor, fixture } = require('./helpers/game-
 
 const SCALE = 20;
 // 開始前必填的欄位（吃藥指令、沒藥關鍵字、回家指令）：各測試預設都填好，要測缺欄位的自己清掉
-const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, commandGapMinMs: 0, commandGapMaxMs: 0, prescan: 'off' };
+const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, commandGapMinMs: 0, commandGapMaxMs: 0, reactMinMs: 0, reactMaxMs: 0, prescan: 'off' };
 const boot = async options => {
   const page = await bootPage(options);
   page.store.mapHuntSettings = { ...REQUIRED };
@@ -4203,6 +4203,45 @@ ui('assist: another monster dying in the room is not taken as mine dying', async
     await sleep(400); // 誤判成死了的話，3 秒（縮小後 150 ms）就會自己送 l 再看一次
     assert.deepEqual(game.log, ['e', 'e', 'l', 'fight 1'], 'still waiting for my monster');
     await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 看完房間到開打的反應時間（reactMinMs～reactMaxMs）：完整模式與只下 fight 模式都用；測試共用設定是 0～0 ----
+ui('react: in full mode the fight starts a reaction time after the room was read, while walking keeps the plain command gap', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, reactMinMs: 3000, reactMaxMs: 3000 };
+    const times = {};
+    world(page, { at: 'a', looks: { c: { lines: [MOB_LINE] } }, script: command => { (times[command] ??= []).push(Date.now()); return false; } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    const wait = times['fight 1'][0] - times.l[0];
+    assert.ok(wait >= 3000 / SCALE - 10, `the fight waited for the reaction time after the look (${wait} ms)`);
+    assert.ok(times.e[1] - times.e[0] < 3000 / SCALE - 10, 'walking is not slowed by it');
+  } finally {
+    page.close();
+  }
+});
+
+ui('react: in only-send-fight mode the fight also waits the reaction time after the look', async () => {
+  const page = await assistPage({ reactMinMs: 3000, reactMaxMs: 3000 });
+  try {
+    const times = {};
+    world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: command => {
+      (times[command] ??= []).push(Date.now());
+      if (command === 'fight 1') { setTimeout(() => lookOut(page), 50); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    const wait = times['fight 1'][0] - times.l[0];
+    assert.ok(wait >= 3000 / SCALE - 10, `the fight waited for the reaction time (${wait} ms)`);
+    assert.equal(times['fight 1'].length, 1, 'one fight, not two while waiting');
   } finally {
     page.close();
   }

@@ -99,6 +99,21 @@ ui('an edit is saved at once with the other fields, and a broken stored value fa
 
 const cellOf = (doc, key) => field(doc, key).closest('.hfield');
 
+ui('the reaction time before a fight sits in the fight fold on one row, defaults to 800-1500 ms, and a longest below the shortest is raised to it', async () => {
+  const { dom, doc, store } = await boot();
+  try {
+    assert.ok(doc.getElementById('fold-hunt-fight').contains(field(doc, 'reactMinMs')));
+    assert.ok(field(doc, 'reactMinMs').closest('.hrow') === field(doc, 'reactMaxMs').closest('.hrow'), 'shortest and longest share a row');
+    assert.equal(field(doc, 'reactMinMs').value, '800');
+    assert.equal(field(doc, 'reactMaxMs').value, '1500');
+    change(dom, field(doc, 'reactMinMs'), '2000');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.reactMinMs === 2000));
+    assert.equal(store.mapHuntSettings.reactMaxMs, 2000, 'the longest follows the shortest up');
+  } finally {
+    dom.window.close();
+  }
+});
+
 ui('the command that starts a fight sits in the fight fold, defaults to fight, falls back to fight for a value that could run as a macro, and shows in the fold title once changed', async () => {
   for (const bad of ['', 'a;b', 'f；g', '@等待 1', 'x'.repeat(21)]) {
     const { dom, doc } = await boot({ mapHuntSettings: { fightCommand: bad } });
