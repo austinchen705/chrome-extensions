@@ -2264,7 +2264,7 @@ ui('hunt: monsters sharing one id are told apart by their position in the room (
         if (!match) return false;
         fights.push(command);
         looks.c.lines.splice(Number(match[1]) - 1, 1); // 第幾個 ※ 行的那一隻倒下
-        say('守軍死了。');
+        say('中隊長死了。'); // 遊戲的戰鬥訊息只寫短名稱（不帶「襄陽守軍」）
         return true;
       },
     });
@@ -4159,6 +4159,50 @@ ui('manual: a game macro with @等待 that I press is recorded step by step at t
     assert.match(lines[1], /指令 2 個：p1 p2$/, lines.join('\n'));
     const gap = Number(lines[2].match(/最短 ([\d.]+)/)[1]);
     assert.ok(gap >= 0.05, `the second step was recorded when it was sent, after the wait (${gap} s)`);
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 結束的字要和這隻怪的名字在同一行：同房間別的怪（或別人的戰鬥）「死了」不能當成我這隻死了 ----
+ui('fight: another monster dying in the room does not end the fight with mine; only a line with my monster\'s name does', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    let mineDead = false;
+    let corpseAfterDeath = null;
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE, '  ※另一隻怪(other mob) [fight][kill]'] } }, script: (command, { say: tell }) => {
+      if (command === 'fight 1') {
+        tell('另一隻怪死了。'); // 別人打的那一隻
+        setTimeout(() => { mineDead = true; say(page, '測試怪腳下一個不穩，跌在地上死了。'); }, 150);
+        return true;
+      }
+      if (command === 'gc') { corpseAfterDeath = mineDead; return false; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.equal(corpseAfterDeath, true, 'the corpse command waited for my monster\'s own death line');
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight 1', 'gc']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('assist: another monster dying in the room is not taken as mine dying', async () => {
+  const page = await assistPage({ fightTimeoutSec: 60 });
+  try {
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE, '  ※另一隻怪(other mob) [fight][kill]'] } }, script: (command, { say: tell }) => {
+      if (command === 'fight 1') { tell('另一隻怪死了。'); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => game.log.includes('fight 1'), 4000));
+    await sleep(400); // 誤判成死了的話，3 秒（縮小後 150 ms）就會自己送 l 再看一次
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight 1'], 'still waiting for my monster');
+    await page.ask({ type: 'STOP' });
   } finally {
     page.close();
   }

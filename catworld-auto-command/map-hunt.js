@@ -480,6 +480,7 @@ function create(deps) {
     if (spawnPause()) { trace('重生前停打'); return; }
     trace(`送 ${fightCmd()} ${targetOf(target)}`);
     a.sent = true;
+    a.target = target;
     a.dead = false;
     a.tail = '';
     if (!deps.send(`${fightCmd()} ${targetOf(target)}`)) finish('指令送不出去，已停止', { alert: true });
@@ -610,6 +611,15 @@ function create(deps) {
       if (!deps.send(`${finishing ? killCmd() : fightCmd()} ${targetOf(mob)}`)) finish('指令送不出去，已停止', { alert: true });
     });
   }
+  // 遊戲的戰鬥訊息只寫短名稱（「蒙古兵死了。」），不帶稱號：取最後一個空白或」之後的那一段（千夫長 蒙古兵→蒙古兵、落第才子「…」衰老頭→衰老頭）
+  const shortName = mob => String(mob?.name ?? '').split(/[\s」]/).filter(Boolean).pop() ?? '';
+  // 結束的字要和這隻怪的名字出現在同一行才算：只看字的話，同房間別的怪或別人的戰鬥印出「某某死了」會被當成這隻死了，
+  // 就去打下一隻、或最後一隻時直接離開（使用者實際遇到）。同名的怪（同一間好幾隻蒙古兵）分不出來，這是遊戲訊息本身的限制
+  const endWordFor = (buffer, words, mob) => {
+    const name = shortName(mob);
+    const lines = buffer.normalize('NFKC').split(/\r?\n/);
+    return words.find(word => lines.some(line => line.includes(word) && (!name || line.includes(name))));
+  };
   const endFight = fight => {
     if (state?.fight !== fight) return;
     state.fight = null;
@@ -638,7 +648,7 @@ function create(deps) {
     }
     if (assist?.sent && !assist.dead) {
       assist.tail = (assist.tail + text).slice(-500);
-      if (deathWords().some(word => assist.tail.includes(word))) {
+      if (endWordFor(assist.tail, deathWords(), assist.target)) {
         assist.dead = true;
         // 死了之後如果一直沒有新的 l（你的觸發沒送），過幾秒自己看一次，才不會等到整個逾時
         assist.waited = Math.max(assist.waited, state.settings.fightTimeoutSec * TICKS_PER_SEC - 3 * TICKS_PER_SEC);
@@ -656,7 +666,7 @@ function create(deps) {
       deps.send(`${killCmd()} ${targetOf(fight.mob)}`);
       return;
     }
-    const hit = fight.endWords.find(word => fight.buffer.includes(word));
+    const hit = endWordFor(fight.buffer, fight.endWords, fight.mob);
     if (hit) {
       fight.knockedOut = !fight.finishing && fight.knockout.includes(hit);
       fight.buffer = '';
