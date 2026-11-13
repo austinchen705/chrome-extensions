@@ -102,6 +102,8 @@ const FIELDS = [
   { key: 'tripCommand', group: 'sort', show: sorting, label: '前往整理處的指令／巨集', hint: '路線、鑑定全寫在這裡，最後停在能 sell all 的地方；不要自己寫 sell all。前往與回程至少填一個才走自動整理；可用 ; 與 @等待', type: 'text', default: '' },
   { key: 'sortKeep', group: 'sort', show: sorting, label: '鑑定完留不留好裝備', hint: '留＝好的 secure 或 give 給小號再賣其餘；全賣＝不看背包直接 sell all，只有你自己 secure 過的不會賣', type: 'select', options: [['keep', '留好裝備'], ['none', '全賣，不留']], default: 'keep' },
   { key: 'altId', group: 'sort', show: s => sorting(s) && s.sortKeep !== 'none', label: '小號的英文 ID', hint: '好東西 give 給它；不填就只用 secure 標記留在身上', type: 'text', default: '' },
+  { key: 'sortLookMinSec', group: 'sort', show: sorting, row: 'sortLook', label: '賣完後停留（秒）最短', hint: 'sell all 之後不馬上回去，先停一會、中間送一次 i 看看身上的裝備，像人在整理；0～0＝賣完馬上回去', type: 'number', default: 20, min: 0, max: 300 },
+  { key: 'sortLookMaxSec', group: 'sort', show: sorting, row: 'sortLook', label: '最長（秒）', hint: '每次在最短與最長之間隨機', type: 'number', default: 60, min: 0, max: 300 },
   { key: 'returnCommand', group: 'sort', show: sorting, label: '回到巡怪地圖的指令／巨集', hint: '回來後要在原本這一區才會繼續', type: 'text', default: '' },
   { key: 'sortPerHour', group: 'sort', show: sorting, label: '每小時最多整理幾次', hint: '超過就停止並警報', type: 'number', default: 6, min: 1, max: 60 },
   { key: 'loopRounds', group: 'rounds', label: '巡完一輪後等下一個重生', hint: '關＝巡完就停', type: 'select', options: ON_OFF, default: 'on' },
@@ -160,6 +162,7 @@ function normalizeSettings(rawSettings) {
   if (out.dangerBelow >= out.restBelow) out.dangerBelow = Math.min(FIELDS.find(field => field.key === 'dangerBelow').default, out.restBelow - 1);
   if (out.commandGapMaxMs < out.commandGapMinMs) out.commandGapMaxMs = out.commandGapMinMs;
   if (out.reactMaxMs < out.reactMinMs) out.reactMaxMs = out.reactMinMs;
+  if (out.sortLookMaxSec < out.sortLookMinSec) out.sortLookMaxSec = out.sortLookMinSec;
   // 開打用的指令後面會接上怪的 ID 再送出：空的、含分號或 @等待（會被當成巨集）、換行、太長的都退回 fight
   if (!out.fightCommand || out.fightCommand.length > FIGHT_COMMAND_MAX || /[;；\r\n]|@等待/.test(out.fightCommand)) out.fightCommand = 'fight';
   return out;
@@ -1010,7 +1013,7 @@ function create(deps) {
   // 前往（路線與鑑定都寫在裡面，抓輸出裡的裝備區塊）、回程兩個指令只要填了任何一個就走這條：前往 → i → 把好東西 secure 標記或 give 給小號 → sell all → 回程 →
   // 確認還在這一區 → 回去繼續巡怪（下一次 plan 會再看一次負重）。任何一步沒成功就停止並警報，不賣東西
   const sortConfigured = settings => Boolean(settings.tripCommand || settings.returnCommand);
-  const SORT_PHASE_TEXT = { trip: '前往整理處與鑑定', inventory: '看背包', keep: '標記或轉給小號', sell: '賣東西', back: '回到巡怪地圖' };
+  const SORT_PHASE_TEXT = { trip: '前往整理處與鑑定', inventory: '看背包', keep: '標記或轉給小號', sell: '賣東西', look: '賣完看一下裝備', back: '回到巡怪地圖' };
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
   const SORT_REPLY = { secure: /標記完成/, give: /你給/ };
   // 送一個指令／巨集並等它送完；null＝巡怪已經停了或換了一次，false＝等太久
@@ -1074,6 +1077,20 @@ function create(deps) {
       stage('sell');
       await deps.ask('sell all', 'sell');
       if (state !== token) return;
+      // 賣完不馬上回去：停 sortLookMinSec～sortLookMaxSec 秒（隨機），停到一部分時送一次 i 看身上的裝備。
+      // 停的期間不送別的指令（看門狗只在送出指令後才計時），補氣照常（vitals 在 sort 階段也跑）
+      const lookMs = (settings.sortLookMinSec + random() * (settings.sortLookMaxSec - settings.sortLookMinSec)) * 1000;
+      if (lookMs > 0) {
+        stage('look');
+        record('-', '整理', `賣完停留 ${Math.round(lookMs / 1000)} 秒`);
+        const before = lookMs * (0.2 + 0.3 * random());
+        await pause(before);
+        if (state !== token) return;
+        await deps.ask('i', 'inventory');
+        if (state !== token) return;
+        await pause(lookMs - before);
+        if (state !== token) return;
+      }
       stage('back');
       ok = await runStep(settings.returnCommand, token);
       if (ok === null) return;

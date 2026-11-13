@@ -6,7 +6,7 @@ const { ui, boot: bootPage, sleep, waitFor, fixture } = require('./helpers/game-
 
 const SCALE = 20;
 // 開始前必填的欄位（吃藥指令、沒藥關鍵字、回家指令）：各測試預設都填好，要測缺欄位的自己清掉
-const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, commandGapMinMs: 0, commandGapMaxMs: 0, reactMinMs: 0, reactMaxMs: 0, prescan: 'off' };
+const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, commandGapMinMs: 0, commandGapMaxMs: 0, reactMinMs: 0, reactMaxMs: 0, sortLookMinSec: 0, sortLookMaxSec: 0, prescan: 'off' };
 const boot = async options => {
   const page = await bootPage(options);
   page.store.mapHuntSettings = { ...REQUIRED };
@@ -2685,6 +2685,25 @@ ui('sort: over the limit it goes, identifies, marks the good armor, sells, comes
     assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'i', 'go', 'identify', 'i', 'secure black armor', 'sell all', 'back', 'i']);
     assert.deepEqual(state.secured, ['black armor'], 'only the identified good armor; the marked tea and the worn cloth are left alone, the gloves are sold');
     assert.equal(alerts(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+// 賣完停留（sortLookMinSec～sortLookMaxSec）：sell all 之後先停一會、中間送一次 i，再送回程；測試共用設定是 0～0
+ui('sort: after selling it stays a while and checks the inventory once before going back', async () => {
+  const page = await sortPage({ sortLookMinSec: 40, sortLookMaxSec: 40 });
+  try {
+    const state = sortState();
+    const times = {};
+    const script = sortScript(page, state);
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: (command, ctx) => { (times[command] ??= []).push(Date.now()); return script(command, ctx); } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 15000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'i', 'go', 'identify', 'i', 'secure black armor', 'sell all', 'i', 'back', 'i']);
+    const waited = (times.back[0] - times['sell all'][0]) * SCALE;
+    assert.ok(waited >= 38000, `stayed about 40 s (scaled) before going back, got ${waited}`);
   } finally {
     page.close();
   }
