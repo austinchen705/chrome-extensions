@@ -1353,33 +1353,44 @@ function create(deps) {
       if (state !== token) return;
     }
     state.returnStage = 'walk';
+    const secs = RETURN_WALK_TICKS / TICKS_PER_SEC;
+    const walkMs = await walkToArea(token, state.baseSettings.restReturnCommand, state.area, {
+      unsent: `休息結束後回程指令 ${secs} 秒內沒有送出（指令被擋住，或 @巨集 讀不到），已停止`,
+      missed: `休息後送出回程指令，${secs} 秒內沒有回到巡怪區（${state.area}），已停止`,
+    });
+    if (walkMs === null) return;
+    record('-', '休息', `回到巡怪區，回程花了 ${secText(walkMs)} 秒`);
+    state.restReturn = { skip: state.rest.skip, walkMs };
+    Object.assign(state, { rest: null, sinceRest: 0, restAfter: null, returnStage: null }); // 下一次休息的輪數重新抽
+    beginRound(after, offset);
+  }
+
+  // 送出一個指令（可以是巨集）走到某一區：等指令真的送出、巨集跑完、地圖房間在那一區，到了再等 RETURN_SETTLE_TICKS 讓地圖穩定。
+  // 休息回程用。逾時分兩段：指令還沒送出（被佇列擋住、或參照的巨集讀不到而什麼都沒送）另外算；
+  // 送出之後只算巨集跑完的 tick（巨集自己的 @等待 不算）。沒送出、沒走到都停止並警報（texts.unsent／texts.missed），不重送。
+  // 回傳花的毫秒數（量到第一次到那一區為止）；停止了或這一次巡怪已經不在就回 null
+  async function walkToArea(token, command, area, texts) {
     const sentAt = deps.now();
     let sent = false;
     let arrivedAt = null;
-    if (!sendOrStop(state.baseSettings.restReturnCommand, () => { sent = true; })) return;
-    const inArea = () => !!deps.room()?.startsWith(`${state.area}/`);
-    // 逾時分兩段：指令還沒送出（被佇列擋住、或參照的巨集讀不到而什麼都沒送）另外算；送出之後只算回程巨集跑完的 tick
-    // （巨集自己的 @等待 不算）。回程花的時間量到第一次回到巡怪區為止
+    if (!sendOrStop(command, () => { sent = true; })) return null;
+    const inArea = () => !!deps.room()?.startsWith(`${area}/`);
     let unsent = 0;
     for (let waited = 0; !(sent && !deps.macroRunning() && inArea()); ) {
       if (sent && arrivedAt === null && inArea()) arrivedAt = deps.now();
       if (!sent) unsent += 1;
       else if (!deps.macroRunning()) waited += 1;
-      if (unsent >= RETURN_WALK_TICKS) { finish(`休息結束後回程指令 ${RETURN_WALK_TICKS / TICKS_PER_SEC} 秒內沒有送出（指令被擋住，或 @巨集 讀不到），已停止`, { alert: true }); return; }
-      if (waited >= RETURN_WALK_TICKS) { finish(`休息後送出回程指令，${RETURN_WALK_TICKS / TICKS_PER_SEC} 秒內沒有回到巡怪區（${state.area}），已停止`, { alert: true }); return; }
+      if (unsent >= RETURN_WALK_TICKS) { finish(texts.unsent, { alert: true }); return null; }
+      if (waited >= RETURN_WALK_TICKS) { finish(texts.missed, { alert: true }); return null; }
       await sleepTick();
-      if (state !== token) return;
+      if (state !== token) return null;
     }
     arrivedAt ??= deps.now();
     for (let i = 0; i < RETURN_SETTLE_TICKS; i += 1) {
       await sleepTick();
-      if (state !== token) return;
+      if (state !== token) return null;
     }
-    const walkMs = arrivedAt - sentAt;
-    record('-', '休息', `回到巡怪區，回程花了 ${secText(walkMs)} 秒`);
-    state.restReturn = { skip: state.rest.skip, walkMs };
-    Object.assign(state, { rest: null, sinceRest: 0, restAfter: null, returnStage: null }); // 下一次休息的輪數重新抽
-    beginRound(after, offset);
+    return arrivedAt - sentAt;
   }
 
   // 每個目標房間都處理過一次＝一輪。沒開「等下一個重生」或這一輪什麼都沒處理（沒有走得到的目標）就停（第 2 輪以後警報）；
