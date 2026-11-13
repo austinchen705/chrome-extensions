@@ -40,7 +40,8 @@ const TICKS_PER_SEC = 1000 / TICK_MS;
 const CORPSE_WAIT_TICKS = 5 * TICKS_PER_SEC; // 打完最後一隻、不重數就離開時，最多等撿屍指令送完這麼久（巡怪結束會丟掉還沒送出的指令）
 const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
 const NO_TARGET = /你要對誰施展這個招式|只能對戰鬥中的對手使用/; // 特攻沒有對象：這一場不再送
-const ENGAGE = /你對著(\S+?)(?:說道|喝道)/; // 開打時遊戲印的句子，名字是實際打到的那一隻
+const ENGAGE = /你對著(\S+?)(?:說道|喝道)/;
+const NO_SUCH_TARGET = /你想攻擊誰/; // fight／kill 的順位上沒有東西（使用者貼的真實輸出）：順位已經過期 // 開打時遊戲印的句子，名字是實際打到的那一隻
 const LEAVE = /往\S{1,6}離開/; // 有東西離開房間，順位會變
 const KNOCKED_OUT = '昏迷不醒';
 const RESPAWN_MS = 15 * 60 * 1000; // 怪在伺服器時間的每小時 00、15、30、45 分重生
@@ -610,6 +611,7 @@ function create(deps) {
     let info = first;
     let stuck = 0;
     let recounts = 0;
+    let stale = 0; // 連續幾次遊戲回「你想攻擊誰」
     // 重新 l 一次：讀不到房間就略過這間，回 null
     const lookAgain = async () => {
       const again = Parse.parseLook(await deps.ask('l', 'look'));
@@ -629,10 +631,11 @@ function create(deps) {
       if (!(await restGate(token))) return;
       if (!(await reactWait(token))) return;
       if (!(await notBusy(token))) return;
-      // 看完房間之後有東西離開（同一份輸出裡、或等反應時間的期間）：順位已經不準，先重看一次（最多連續 MAX_STUCK 次）
-      if ((info.moved || state.leftTick >= state.readTick) && recounts < MAX_STUCK) {
+      // 看完房間之後有東西離開（同一份輸出裡、或等反應時間的期間）、或停下來休息過：順位已經不準，先重看一次（最多連續 MAX_STUCK 次）
+      const rested = state.restedTick >= state.readTick;
+      if ((info.moved || state.leftTick >= state.readTick || rested) && recounts < MAX_STUCK) {
         recounts += 1;
-        record(here, '重數', '有東西離開房間，順位可能變了');
+        record(here, '重數', rested ? '休息過，順位可能變了' : '有東西離開房間，順位可能變了');
         info = await lookAgain();
         if (!info) return;
         continue;
@@ -642,6 +645,15 @@ function create(deps) {
       let outcome = await fightOne(token, target);
       if (state !== token || outcome === 'stopped') return;
       record(here, '打完', outcome);
+      // 那個順位沒有東西（遊戲回「你想攻擊誰」）：馬上重看房間再打；連續 MAX_STUCK 次就略過這間，免得一直來回
+      if (outcome === 'missing') {
+        stale += 1;
+        if (stale >= MAX_STUCK) { state.skipped.push({ key: here, why: '打不到（順位對不上）' }); record(here, '略過', '打不到（順位對不上）'); doneWith(here); return; }
+        info = await lookAgain();
+        if (!info) return;
+        continue;
+      }
+      stale = 0;
       // 打到的不是這一隻（順位偏了）：那一隻倒下後重看房間再打，不補刀、不撿屍、不算打不動
       if (outcome === 'wrong') {
         info = await lookAgain();
@@ -688,7 +700,8 @@ function create(deps) {
     return true;
   }
 
-  // 打一隻：送 fight，之後由 onText（拒戰句、結束句）與 fightTick（特攻、補氣、逾時看 l）推進；結束時回 'ended'，被停止回 'stopped'
+  // 打一隻：送 fight，之後由 onText（拒戰句、結束句）與 fightTick（特攻、補氣、逾時看 l）推進；結束時回 'ended'，被停止回 'stopped'，
+  // 打到別隻回 'wrong'，那個順位沒有東西（「你想攻擊誰」）回 'missing'
   // finishing 為真＝補刀：直接送 kill，只認死亡的字（結束字裡扣掉代表昏迷的），不送特攻；結束時回 'ended'、昏迷結束回 'knockedOut'
   const killCmd = () => state.settings.killCommand || 'kill';
   const fightCmd = () => state.settings.fightCommand || 'fight';
@@ -727,7 +740,7 @@ function create(deps) {
   const endFight = fight => {
     if (state?.fight !== fight) return;
     state.fight = null;
-    fight.resolve(fight.wrong ? 'wrong' : fight.knockedOut ? 'knockedOut' : 'ended');
+    fight.resolve(fight.missing ? 'missing' : fight.wrong ? 'wrong' : fight.knockedOut ? 'knockedOut' : 'ended');
   };
 
   // 遊戲新增的輸出（content.js 以 deps.watch 餵進來）：只在打的時候看。拒戰句→改送 kill；結束句（怪死、昏迷）→這一隻打完；
@@ -769,6 +782,13 @@ function create(deps) {
       fight.noTarget = false; // 前面的特攻對著還沒開打的怪，不算這場沒有目標
       fight.buffer = '';
       deps.send(`${killCmd()} ${targetOf(fight.mob)}`);
+      return;
+    }
+    // 還沒開打就回「你想攻擊誰」：那個順位沒有東西，結束這一場（回 missing），由 fightRoom 重看房間；不然要等到逾時才看
+    if (!fight.engaged && NO_SUCH_TARGET.test(fight.buffer)) {
+      fight.missing = true;
+      record(deps.room() ?? '-', '順位沒有東西', `${fight.killSent ? killCmd() : fightCmd()} ${targetOf(fight.mob)}`);
+      endFight(fight);
       return;
     }
     // 開打的句子寫的是別隻（順位偏了）：改看那一隻的結束字，那一隻倒下就結束這一場（回 wrong），不然會一直以為還在打
@@ -892,11 +912,13 @@ function create(deps) {
       if (Number.isFinite(percent)) restStep(percent);
     }
     state.gate = state.resting;
+    const rested = state.resting;
     while (state.resting) {
       await new Promise(resolve => { state.wake = resolve; });
       if (state !== token) return false;
     }
     state.gate = false;
+    if (rested) state.restedTick = state.ticks; // 休息過：之前看的順位可能已經不準（休息的時候怪被別人打死、走掉）
     return true;
   }
 

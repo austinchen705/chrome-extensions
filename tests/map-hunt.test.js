@@ -4907,3 +4907,75 @@ ui('alert: an alert carries the character name from the tab title, and a second 
     page.close();
   }
 });
+
+// 順位過期：遊戲回「你想攻擊誰？」（那個順位沒有東西）就馬上重看房間再打，不等逾時；休息回氣之後開打前也先重看（休息時房間可能變了）
+
+ui('fight: when the game answers 你想攻擊誰 the position is stale, so it looks again at once and fights the new position', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const looks = { c: { lines: [OTHER_LINE, MOB_LINE] } };
+    const times = {};
+    const game = world(page, {
+      at: 'a', looks,
+      script: (command, { say: tell }) => {
+        (times[command] ??= []).push(Date.now());
+        if (command === 'fight 2') { looks.c.lines = [MOB_LINE]; tell('你想攻擊誰？'); return true; }
+        return false;
+      },
+    });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    const at = game.log.indexOf('fight 2');
+    assert.deepEqual(game.log.slice(at, at + 3), ['fight 2', 'l', 'fight 1'], game.log.join(','));
+    assert.ok(times['fight 1'][0] - times['fight 2'][0] < 1500, 'did not wait for the fight timeout');
+    assert.match(await huntLog(page), /順位沒有東西/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('fight: 你想攻擊誰 three times in a row skips the room instead of looping', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, {
+      at: 'a', looks: { c: { lines: [OTHER_LINE, MOB_LINE] } },
+      script: (command, { say: tell }) => { if (command === 'fight 2') { tell('你想攻擊誰？'); return true; } return false; },
+    });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => !/走向|看房間|打/.test(huntText(page)) || /巡完了|略過/.test(huntText(page)), 8000), huntText(page));
+    assert.ok(await waitFor(async () => /略過 打不到/.test(await huntLog(page)), 8000), (await huntLog(page)).slice(-600));
+    assert.equal(game.log.filter(command => command === 'fight 2').length, 3);
+  } finally {
+    page.close();
+  }
+});
+
+ui('fight: after resting before a fight, it looks again first, since the room may have changed while it rested', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...page.store.mapHuntSettings, healMode: 'rest', restBelow: 50, restResume: 80, dangerBelow: 10 };
+    const looks = { c: { lines: [OTHER_LINE, MOB_LINE] } };
+    let looked = 0;
+    const game = world(page, {
+      at: 'a', looks,
+      script: command => { if (command === 'l' && (looked += 1) === 1) setKee(page, 40); return false; },
+    });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /休息中/.test(huntText(page)), 6000), huntText(page));
+    looks.c.lines = [MOB_LINE]; // 休息的時候前面那隻被別人打死了
+    setKee(page, 100);
+    assert.ok(await waitFor(() => game.log.some(command => command.startsWith('fight ')), 6000), game.log.join(','));
+    const fightAt = game.log.findIndex(command => command.startsWith('fight '));
+    assert.equal(game.log[fightAt], 'fight 1', game.log.join(','));
+    assert.equal(game.log[fightAt - 1], 'l', 'looked again after the rest');
+    assert.match(await huntLog(page), /重數 休息過/);
+  } finally {
+    page.close();
+  }
+});
