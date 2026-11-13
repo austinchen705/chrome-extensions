@@ -1710,18 +1710,22 @@ function initPanel() {
       .line .s { flex: 1; min-width: 0; color: #bbb; font-size: 15px; overflow-wrap: anywhere; white-space: pre-line; padding-top: 4px; }
       .line .s.alert { color: #ff8a7a; }
       .line .s.warn { color: #ffb347; }
-      /* 巡怪、巨集這兩行有按鈕：文字跟按鈕擠在同一列會被擠成又窄又高的一條，所以標籤與按鈕在第一列、狀態文字獨佔下面一整列 */
+      /* 巨集這一行有按鈕：文字跟按鈕擠在同一列會被擠成又窄又高的一條，所以標籤與按鈕在第一列、狀態文字獨佔下面一整列 */
       .line.hunt-line, .line.macro-line { flex-wrap: wrap; row-gap: 2px; }
-      .hunt-line .s, .macro-line .s { order: 3; flex: 1 1 100%; padding-top: 0; }
-      .hunt-line .mini, .macro-line .mini { margin-left: auto; }
-      /* 巡怪列的按鈕最多五顆（選怪、開始、掃描、停止、記錄），面板只有 310px：放不下就換到下一行、靠右 */
-      .hunt-line .mini { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; row-gap: 4px; }
+      .macro-line .s { order: 3; flex: 1 1 100%; padding-top: 0; }
+      .macro-line .mini { margin-left: auto; }
+      /* 巡怪：標籤與狀態文字在第一列（和其他列一樣），五顆按鈕（選怪、開始、掃描、停止、記錄）排成下面一整列：
+         前四顆一樣寬、記錄照字的長度（「● 記錄中」比較長），面板只有 310px，不會再換行 */
+      .line.hunt-line { row-gap: 6px; }
+      .hunt-line .mini { order: 3; flex: 1 1 100%; display: grid; grid-template-columns: repeat(4, 1fr) auto; gap: 6px; }
+      .hunt-line .mini button { padding: 3px 0; white-space: nowrap; }
+      .hunt-line .mini button.hmanual { padding: 3px 10px; }
       .mini button.hmanual.on { background: #8a2b2b; }
       .macro-line .s:empty { display: none; }
       .mini { display: flex; gap: 6px; flex: none; }
       .mini button { all: unset; text-align: center; padding: 3px 12px; border-radius: 6px;
         background: #3a3a3e; cursor: pointer; font-size: 14px; font-weight: 600; }
-      .mini button.start, .mini button.tstart, .mini button.rstart, .mini button.istart { background: #2f7d4a; }
+      .mini button.start, .mini button.tstart, .mini button.rstart, .mini button.istart, .mini button.hstart { background: #2f7d4a; }
       .mini button[disabled] { opacity: .35; cursor: default; }
       .line[hidden] { display: none; }
       .hunt-pick-list { max-height: 150px; overflow-y: auto; font-size: 14px; }
