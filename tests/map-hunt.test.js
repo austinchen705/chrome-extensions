@@ -2788,6 +2788,21 @@ ui('sort: a weapon is kept only when it is the main weapon type', async () => {
   }
 });
 
+ui('sort: when the over-the-limit choice is stop, it stops with an alert and goes nowhere', async () => {
+  const page = await sortPage({ overloadAction: 'stop' });
+  try {
+    const state = sortState();
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(message => /負重 95%.*已停止/.test(message.reason)), 10000), JSON.stringify(alerts(page)));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'i']);
+    assert.equal(countOf(game, 'sell all'), 0);
+  } finally {
+    page.close();
+  }
+});
+
 ui('sort: still over the limit after selling stops with an alert instead of going again', async () => {
   const page = await sortPage();
   try {
