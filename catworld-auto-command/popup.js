@@ -1209,7 +1209,7 @@ async function refreshLive() {
   updateHints();
   renderCountdown(status);
   huntBusy = Boolean(status?.hunt?.on);
-  document.querySelectorAll('.hverify').forEach(button => { if (!button.dataset.busy) button.disabled = huntBusy; });
+  document.querySelectorAll('.hverify, .htrial').forEach(button => { if (!button.dataset.busy) button.disabled = huntBusy; });
   Object.values(panes).forEach(pane => pane.refresh(status));
 }
 
@@ -1338,11 +1338,11 @@ CatworldMapHunt.FIELDS.forEach(item => {
 });
 showHuntSettings();
 // 跨區路線編輯器（map-hunt-chain-ui.js）：路線、勾選、蒐集資料任何一個變了（包括遊戲頁改的）就重讀重畫
-const huntChainKeys = [CatworldMapHunt.CHAIN_KEY, CatworldMapHuntUI.PICKS_KEY, CatworldMapCollect.STORAGE_KEY];
+const huntChainKeys = [CatworldMapHunt.CHAIN_KEY, CatworldMapHuntUI.PICKS_KEY, CatworldMapCollect.STORAGE_KEY, CatworldMapHunt.CHAIN_TRIAL_KEY];
 const huntChain = CatworldMapHuntChainUI.attach($('huntChain'), {
   load: async () => {
     const data = await chrome.storage.local.get(huntChainKeys);
-    return { chain: data[CatworldMapHunt.CHAIN_KEY], picks: data[CatworldMapHuntUI.PICKS_KEY], store: data[CatworldMapCollect.STORAGE_KEY] };
+    return { chain: data[CatworldMapHunt.CHAIN_KEY], picks: data[CatworldMapHuntUI.PICKS_KEY], store: data[CatworldMapCollect.STORAGE_KEY], trial: data[CatworldMapHunt.CHAIN_TRIAL_KEY] };
   },
   saveChain: chain => chrome.storage.local.set({ [CatworldMapHunt.CHAIN_KEY]: chain }),
   // 讀最新的勾選再只換這一區，不蓋掉遊戲頁剛存的別區（和面板「選怪」一樣）
@@ -1355,6 +1355,21 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && huntChainKeys.some(key => changes[key])) huntChain.refresh();
 });
 huntChain.refresh();
+// 試跑：請遊戲分頁照路線只走不打（content.js 的 HUNT_CHAIN_TRIAL），逐段結果寫進儲存、由上面的編輯器顯示在箭頭上；
+// 巡怪或試跑進行中停用（refreshLive），遊戲分頁那邊也會拒絕
+$('huntChainTrial').addEventListener('click', async () => {
+  const button = $('huntChainTrial');
+  const say = (text, level) => { $('huntChainTrialMsg').textContent = text; markLevel($('huntChainTrialMsg'), level); };
+  button.disabled = true;
+  button.dataset.busy = '1';
+  let reply;
+  try { reply = await send({ type: 'HUNT_CHAIN_TRIAL' }); }
+  catch (error) { reply = { ok: false, error: `讀不到遊戲分頁：${error.message}` }; }
+  delete button.dataset.busy;
+  button.disabled = reply?.ok || huntBusy; // 開始了就維持停用，等 refreshLive 看到試跑結束
+  if (!reply?.ok) { say(reply?.error || '遊戲頁沒有回應（請重新整理遊戲頁後再試）', 'error'); return; }
+  say('試跑開始：只走不打，每一段的結果會顯示在箭頭上；面板「巡怪」列的停止可以中斷', 'info');
+});
 // 自動學到的 NPC（finger 找不到的 ID）：只顯示與清除，寫入在遊戲頁的 content.js
 async function showHuntNpcs() {
   const list = (await chrome.storage.local.get(CatworldMapHunt.NPCS_KEY))[CatworldMapHunt.NPCS_KEY];

@@ -4767,3 +4767,100 @@ ui('chain: a humanized rest counts the whole route as one round, and the round s
     page.close();
   }
 });
+
+// ---- 跨區路線的試跑（hunt-chain 06）----
+// 儲存裡的值是 jsdom 那邊建的陣列，deepEqual 比不了原型，先轉成 JSON 再比
+const trialOf = page => (page.store.mapHuntChainTrial === undefined ? undefined : JSON.parse(JSON.stringify(page.store.mapHuntChainTrial)));
+
+ui('chain trial: it sends each move and the way back, only walking: no l and no fight, and stores each leg as a success', async () => {
+  const page = await chainPage();
+  try {
+    const game = chainWorld(page);
+    const reply = await page.ask({ type: 'HUNT_CHAIN_TRIAL' });
+    assert.equal(reply.ok, true, JSON.stringify(reply));
+    assert.ok(await waitFor(() => /試跑完成/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['go-u', 'go-t'], 'nothing but the move commands');
+    const results = trialOf(page);
+    assert.equal(results.length, 2);
+    assert.deepEqual(results.map(item => [item.command, item.from, item.to, item.ok]), [['go-u', 't', 'u', true], ['go-t', 'u', 't', true]]);
+    assert.ok(results.every(item => Number.isFinite(item.ms)));
+    assert.equal(await hunting(page), false);
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain trial: the first failure stops it with the reason and where the character was; the later legs have no result', async () => {
+  const page = await chainPage();
+  try {
+    const game = chainWorld(page, { move: { 'go-t': ['t', 'a'] } });
+    await page.ask({ type: 'HUNT_CHAIN_TRIAL' });
+    assert.ok(await waitFor(() => trialOf(page), 8000), huntText(page));
+    const [first, second] = trialOf(page);
+    assert.equal(first.ok, false);
+    assert.match(first.why, /沒有走到 u/);
+    assert.equal(first.where, 't/a');
+    assert.equal(second, null);
+    assert.deepEqual(game.log, ['go-u'], 'the way back was never sent');
+    assert.ok(alerts(page).some(message => /試跑/.test(message.reason)));
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain trial: it does not run unless the character is in the first area, nor while the hunt runs', async () => {
+  const page = await chainPage({ settings: { loopRounds: 'off' } });
+  try {
+    const game = chainWorld(page, { start: ['u', 'p'] });
+    const away = await page.ask({ type: 'HUNT_CHAIN_TRIAL' });
+    assert.equal(away.ok, false);
+    assert.match(away.error, /試跑要從第一區（t）開始/);
+    assert.deepEqual(game.log, []);
+    click(page, '.hstart');
+    assert.ok(await waitFor(async () => hunting(page), 3000));
+    const busy = await page.ask({ type: 'HUNT_CHAIN_TRIAL' });
+    assert.equal(busy.ok, false);
+    assert.match(busy.error, /進行中/);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain trial: stop ends it, the leg under way gets no result, and the hunt cannot start while it runs', async () => {
+  const page = await chainPage();
+  try {
+    const game = chainWorld(page, { move: { 'go-t': ['t', 'a'] } });
+    await page.ask({ type: 'HUNT_CHAIN_TRIAL' });
+    assert.ok(await waitFor(() => game.log.includes('go-u'), 3000));
+    assert.ok(panelRoot(page).querySelector('.hstart').disabled || await waitFor(() => panelRoot(page).querySelector('.hstart').disabled, 2000), 'start is disabled during the trial');
+    assert.match(huntText(page), /試跑/);
+    click(page, '.hstop');
+    assert.ok(await waitFor(() => trialOf(page), 3000));
+    assert.deepEqual(trialOf(page), [null, null]);
+    assert.equal(await hunting(page), false);
+    await sleep(300);
+    assert.deepEqual(game.log, ['go-u']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain trial: falling under the danger line on a leg sends the character home, and that leg is a failure saying why and where', async () => {
+  const page = await chainPage();
+  try {
+    const game = chainWorld(page, { move: { 'go-t': ['t', 'a'] } });
+    await page.ask({ type: 'HUNT_CHAIN_TRIAL' });
+    assert.ok(await waitFor(() => game.log.includes('go-u'), 3000));
+    setKee(page, 10);
+    assert.ok(await waitFor(() => trialOf(page), 4000), huntText(page));
+    const [first, second] = trialOf(page);
+    assert.equal(first.ok, false);
+    assert.match(first.why, /試跑中氣只剩 10%/);
+    assert.equal(first.where, 't/a');
+    assert.equal(second, null);
+    assert.ok(await waitFor(() => game.log.includes('recall'), 3000), 'went home');
+  } finally {
+    page.close();
+  }
+});

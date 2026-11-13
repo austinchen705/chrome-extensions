@@ -853,6 +853,8 @@ function create(deps) {
     topUp();
     const percent = deps.kee();
     if (!Number.isFinite(percent)) { finish('讀不到氣，已停止', { alert: true }); return; }
+    // 試跑走在換區的路上：氣掉到危險線就回家停止（不管補氣方式）
+    if (state.trialRun && percent < state.settings.dangerBelow) { goHomeAndStop(`試跑中氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`); return; }
     // 掃描時整區走動，被主動攻擊的怪打到的機會比巡怪多：氣掉到危險線就回家停止（不管補氣方式，沒有在打架也一樣）
     if (state.scan && percent < state.settings.dangerBelow) { goHomeAndStop(`掃描中氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`); return; }
     // 只下 fight：休息是玩家的觸發規則的事；危險線照樣回家停止，吃藥模式有填吃藥指令時照樣吃（戰鬥中也每秒看，因為這個模式沒有 fightTick）
@@ -867,7 +869,8 @@ function create(deps) {
       }
       return;
     }
-    if (state.settings.healMode === 'rest') { restStep(percent); return; }
+    // 自己回模式在換區（含試跑）的路上不休息：休息指令會打斷換區的巨集，走不到下一區
+    if (state.settings.healMode === 'rest') { if (state.phase !== 'area') restStep(percent); return; }
     if (percent < state.settings.eatBelow && state.ticks - state.lastEat >= EAT_GAP_TICKS) eat();
   }
   // 打下一隻之前：自己回模式氣太低就在這裡等到回復（打完這一隻再休息）
@@ -1755,6 +1758,93 @@ function create(deps) {
     plan(here);
   }
 
+  // 巡怪（與試跑）一開始的狀態：fields 蓋過預設值（settings 同時是 baseSettings）
+  function freshState(fields) {
+    const offset = fields.offset ?? 0;
+    return {
+      round: 1, after: deps.now() + offset, allTargets: new Set(), baseSkipped: [], waiting: null, calibrating: false,
+      mobs: [], area: '', offset, scan: false, prescan: false, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph: { rooms: {} }, targets: new Set(), skipped: [], fixed: [],
+      baseSettings: fields.settings, chain: null, trialRun: false, resume: null, order: null, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: false, learned: {}, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
+      ...roundFields(offset), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
+      ...fields,
+    };
+  }
+  // 跨區路線開始前的檢查（巡怪與試跑共用）：每段換區指令與回到第一區的指令都要有填；回傳錯誤文字或 null
+  const chainProblem = chain => {
+    const blank = chain.moves.findIndex(command => !command);
+    if (blank >= 0) return `跨區路線第 ${blank + 1} 段（${chain.areas[blank].area} → ${chain.areas[blank + 1].area}）的換區指令沒填`;
+    return chain.back ? null : '跨區路線回到第一區的指令沒填';
+  };
+
+  // 試跑：照跨區路線只走不打（不送 l、不打怪），從第一區逐段送換區指令、用 walkToArea 確認走到，最後送回到第一區的指令。
+  // 角色要在第一區。每段結果（試跑當時的指令與從哪區到哪區、成功與毫秒數，或失敗原因與當時在哪一間）交給 deps.saveTrial，第一個失敗就停、之後的段沒有結果。
+  // 算巡怪進行中（on()），停止、驗證碼、停止一切都會停它；補氣照常，氣低於危險線回家停止（vitals）。回傳 { ok, error }（開始了就回，不等走完）
+  async function trialRun() {
+    if (state || starting) return { ok: false, error: '巡怪或試跑進行中' };
+    starting = true;
+    cancelled = false;
+    note = '試跑準備中…';
+    noteAlert = false;
+    deps.notify();
+    try {
+      const settings = await deps.settings();
+      const chain = normalizeChain(await deps.chain?.());
+      if (cancelled) return fail('已取消', false);
+      if (chain.areas.length < 2) return fail('跨區路線要有兩區以上才能試跑');
+      const problem = chainProblem(chain);
+      if (problem) return fail(problem);
+      const missing = missingFields(settings).map(field => field.label);
+      if (missing.length) return fail(`請先到設定頁「地圖巡怪」填：${missing.join('、')}`);
+      const first = chain.areas[0].area;
+      const here = deps.room();
+      if (!here?.startsWith(`${first}/`)) return fail(`試跑要從第一區（${first}）開始，目前在 ${here ?? '讀不到房間'}，請先走到第一區`);
+      state = freshState({ settings, area: first, trialRun: true, phase: 'area', chain: { ...chain, index: 0, to: 1, pendingScan: null, partial: false } });
+      note = '';
+      record(first, '試跑', `開始，共 ${chain.areas.length} 段`);
+      unwatch = deps.watch(onText);
+      timer = setInterval(tick, TICK_MS);
+      const token = state;
+      runTrial(token).catch(() => { if (state === token) finish('試跑時出錯，已停止', { alert: true }); });
+      deps.notify();
+      return { ok: true };
+    } finally {
+      starting = false;
+      deps.notify();
+    }
+  }
+  async function runTrial(token) {
+    const { areas, moves, back } = state.chain;
+    const secs = RETURN_WALK_TICKS / TICKS_PER_SEC;
+    const results = areas.map(() => null);
+    for (let i = 0; i < areas.length; i += 1) {
+      const next = (i + 1) % areas.length;
+      const from = areas[i].area;
+      const to = areas[next].area;
+      const command = i < moves.length ? moves[i] : back;
+      state.chain.to = next;
+      deps.notify();
+      const leg = { command, from, to };
+      const walkMs = await walkToArea(token, command, to, {
+        unsent: `試跑：換區指令（${from} → ${to}）${secs} 秒內沒有送出（指令被擋住，或 @巨集 讀不到），已停止`,
+        missed: `試跑：送出換區指令，${secs} 秒內沒有走到 ${to}，已停止`,
+        failed: reason => {
+          results[i] = { ...leg, ok: false, why: reason, where: deps.room() ?? '', at: deps.now() };
+          record('-', '試跑', `${from} → ${to} 沒有成功：${reason}`);
+        },
+      });
+      if (walkMs === null) {
+        // 走到一半被警報停下（例如氣低於危險線回家）也算這一段失敗；按停止中斷的不算（沒試完）
+        if (!results[i] && noteAlert) results[i] = { ...leg, ok: false, why: note, where: deps.room() ?? '', at: deps.now() };
+        break;
+      }
+      results[i] = { ...leg, ok: true, ms: walkMs, at: deps.now() };
+      record('-', '試跑', `${from} → ${to}，花了 ${secText(walkMs)} 秒`);
+      state.chain.index = next;
+    }
+    try { await deps.saveTrial?.(results); } catch { /* 存不進去不影響試跑 */ }
+    if (state === token) finish(`試跑完成：${areas.length} 段都走得到`);
+  }
+
   // 按「開始」：把勾選的怪與目前顯示的區域固定下來；回傳 { ok, error }
   // options.scan＝街景模式：不用勾怪，走這一區還沒走過的每一間，每間 l 一次記下怪與走過（不打、不問人、不等重生）
   async function start(options = {}) {
@@ -1784,9 +1874,8 @@ function create(deps) {
       const chain = route?.areas.length >= 2 ? route : null;
       if (chain) {
         if (!chain.areas.some(item => item.area === target.area)) return fail(`目前所在的區域（${target.area}）不在跨區路線裡，請先走到路線裡的某一區`);
-        const blank = chain.moves.findIndex(command => !command);
-        if (blank >= 0) return fail(`跨區路線第 ${blank + 1} 段（${chain.areas[blank].area} → ${chain.areas[blank + 1].area}）的換區指令沒填`);
-        if (!chain.back) return fail('跨區路線回到第一區的指令沒填');
+        const problem = chainProblem(chain);
+        if (problem) return fail(problem);
       }
       // 跨區時這一區沒勾怪也照樣開始（這一區略過，走下一段）
       if (!scan && !chain && !target?.mobs?.length) return fail('請先按「選怪」勾選要巡的怪');
@@ -1820,12 +1909,11 @@ function create(deps) {
         }
         if (!prescan && !targets.size && !chain) return fail('這個區域沒有蒐集到勾選的怪的房間（或那些房間不在地圖上）');
       }
-      state = {
-        round: 1, after: deps.now() + offset, allTargets: new Set(targets), baseSkipped, waiting: null, calibrating: false,
-        mobs: scan ? [] : target.mobs ?? [], area: target.area, offset, scan: scan || prescan, prescan, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph, targets, skipped: [...baseSkipped], fixed: [],
-        settings, baseSettings: settings, chain: chain ? { ...chain, index: chain.areas.findIndex(item => item.area === target.area), to: null, pendingScan: null, partial: target.area !== chain.areas[0].area } : null, resume: null, order: null, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: learn || prescan, learned, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
-        ...roundFields(offset), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
-      };
+      state = freshState({
+        after: deps.now() + offset, allTargets: new Set(targets), baseSkipped,
+        mobs: scan ? [] : target.mobs ?? [], area: target.area, offset, scan: scan || prescan, prescan, graph, targets, skipped: [...baseSkipped],
+        settings, chain: chain ? { ...chain, index: chain.areas.findIndex(item => item.area === target.area), to: null, pendingScan: null, partial: target.area !== chain.areas[0].area } : null, learn: learn || prescan, learned,
+      });
       humanizeRound(here);
       note = '';
       record(target.area, '目標房間', `${[...targets].join(' ') || '（沒有）'}`);
@@ -1862,6 +1950,7 @@ function create(deps) {
     const chainAt = state.chain ? `（第 ${state.chain.index + 1}／${state.chain.areas.length} 區）` : '';
     const who = (state.prescan ? '打怪前先掃描' : state.scan ? '掃描' : state.mobs.length === 1 ? state.mobs[0].replace(/\s*\([^()]*\)\s*$/, '') : `${state.mobs.length} 種怪`) + chainAt;
     const room = key => (typeof key === 'string' ? key.split('/').pop() : key);
+    if (state.trialRun) return { text: `試跑（第 ${state.chain.index + 1}／${state.chain.areas.length} 段）：走向 ${state.chain.areas[state.chain.to].area}…`, alert: noteAlert };
     if (state.phase === 'area') return { text: `${who}：換區，走向 ${state.chain.areas[state.chain.to].area}…`, alert: noteAlert };
     if (state.rest) {
       if (state.phase === 'return') return { text: `${who}：休息結束，${state.returnStage === 'walk' ? '走回巡怪區…' : `等氣回到 ${returnQiLine()}%（現在 ${Number.isFinite(deps.kee()) ? `${Math.round(deps.kee())}%` : '—'}）`}`, alert: noteAlert };
@@ -1892,7 +1981,7 @@ function create(deps) {
   // 別的功能（手動紀錄）寫一行到同一份巡怪紀錄，和巡怪自己的紀錄共用上限
   const recordLine = (event, text) => record('-', event, text);
 
-  return { start, stop, on, summary, snapshot, exportLog, noteSent, recordLine };
+  return { start, trialRun, stop, on, summary, snapshot, exportLog, noteSent, recordLine };
 }
 
 globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, CHAIN_KEY, CHAIN_TRIAL_KEY, FIELDS, GROUPS, fieldShown, missingFields, normalizeSettings, normalizeVisited, normalizeChain, rearrangeChain, gapMs, splitIds, summaryLines, RESPAWN_MS, create };

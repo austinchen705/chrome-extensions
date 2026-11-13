@@ -462,3 +462,54 @@ ui('chain editor: a broken stored route shows as no route, without errors', asyn
     doc.defaultView.close();
   }
 });
+
+// ---- 跨區路線的試跑（hunt-chain 06）：設定頁的按鈕與箭頭上的結果 ----
+ui('chain trial: each arrow shows its stored trial result in the right colour, and a changed command reads as not tried', async () => {
+  const trial = [{ command: 'go-u', from: 't', to: 'u', ok: true, ms: 4200, at: 1 }, { command: 'go-t', from: 'u', to: 't', ok: false, why: '沒有走到 t', where: 'u/p', at: 2 }];
+  const { dom, doc } = await boot(chainStore({ mapHuntChain: { areas: [{ area: 't' }, { area: 'u' }], moves: ['go-u'], back: 'go-t' }, mapHuntChainTrial: trial }));
+  try {
+    assert.ok(await waitFor(() => chainBox(doc).querySelectorAll('.htrial-result').length === 2));
+    const [move, back] = chainBox(doc).querySelectorAll('.htrial-result');
+    assert.equal(move.textContent, '試跑成功，4.2 秒');
+    assert.ok(!move.classList.contains('msg-error') && !move.classList.contains('msg-warn'), 'a success is not coloured');
+    assert.match(back.textContent, /試跑失敗：沒有走到 t（當時在 u\/p）/);
+    assert.ok(back.classList.contains('msg-error'));
+    change(dom, chainBox(doc).querySelector('.hmove'), 'go-u2');
+    assert.equal(move.textContent, '沒試跑', 'the result of an old command no longer counts');
+    assert.ok(move.classList.contains('msg-warn'));
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('chain trial: the button asks the game page to run it, says why when refused, and is disabled while the hunt runs', async () => {
+  let huntOn = false;
+  let refuse = false;
+  const asked = [];
+  const game = message => {
+    if (message.type === 'HUNT_CHAIN_TRIAL') { asked.push(message); return refuse ? { ok: false, error: '試跑要從第一區（t）開始，目前在 u/p，請先走到第一區' } : { ok: true }; }
+    if (message.type === 'STATUS') return { hunt: { on: huntOn } };
+    return {};
+  };
+  const { dom, doc } = await boot(chainStore({ mapHuntChain: { areas: [{ area: 't' }, { area: 'u' }], moves: ['go-u'], back: 'go-t' } }), { game });
+  try {
+    const button = doc.getElementById('huntChainTrial');
+    const message = doc.getElementById('huntChainTrialMsg');
+    assert.ok(await waitFor(() => !button.disabled));
+    button.click();
+    assert.ok(await waitFor(() => /試跑開始/.test(message.textContent)), message.textContent);
+    assert.equal(asked.length, 1);
+    assert.ok(button.disabled, 'stays disabled once the trial started');
+    assert.ok(await waitFor(() => !button.disabled, 3000), 'and comes back when the status says nothing runs');
+    refuse = true;
+    button.click();
+    assert.ok(await waitFor(() => /從第一區（t）開始/.test(message.textContent)), message.textContent);
+    assert.ok(message.classList.contains('msg-error'));
+    huntOn = true;
+    assert.ok(await waitFor(() => button.disabled, 3000), 'disabled while the hunt or a trial runs');
+    huntOn = false;
+    assert.ok(await waitFor(() => !button.disabled, 3000));
+  } finally {
+    dom.window.close();
+  }
+});

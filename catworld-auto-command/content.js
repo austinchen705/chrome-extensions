@@ -1470,6 +1470,7 @@ hunt = CatworldMapHunt.create({
   areaHtml: area => document.getElementById(`m-${area}`)?.innerHTML ?? '',
   readStore: mapStore,
   chain: async () => (await chrome.storage.local.get(CatworldMapHunt.CHAIN_KEY))[CatworldMapHunt.CHAIN_KEY],
+  saveTrial: results => chrome.storage.local.set({ [CatworldMapHunt.CHAIN_TRIAL_KEY]: results }),
   learnVisit: async (key, seen, picked) => {
     const storageKey = CatworldMapCollect.STORAGE_KEY;
     const at = key.indexOf('/');
@@ -2169,6 +2170,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'HUNT_LOG') {
     sendResponse({ ok: true, text: hunt?.exportLog?.() ?? '' });
     return;
+  }
+  // 設定頁「跨區路線」的試跑：只走不打，逐段確認換區指令走得到（結果存進 mapHuntChainTrial）；巡怪或試跑進行中、驗證碼或真人驗證開著時不接受。
+  // 開始了就回（不等走完），設定頁從儲存讀逐段結果
+  if (message.type === 'HUNT_CHAIN_TRIAL') {
+    if (!hunt) { sendResponse({ ok: false, error: '巡怪還沒準備好，請重新整理遊戲頁' }); return; }
+    if (hunt.on()) { sendResponse({ ok: false, error: '巡怪或試跑進行中，停下來才能試跑' }); return; }
+    if (captcha || presenceOpen()) { sendResponse({ ok: false, error: '驗證碼或真人驗證還開著，處理完才能試跑' }); return; }
+    hunt.trialRun().then(sendResponse);
+    return true;
   }
   // 設定頁「開打／打死用的指令」旁的驗證：送 alias 讀別名列表，回這個指令展開後是什麼與判斷（CatworldHuntParse.judgeAlias）。
   // 巡怪或掃描在跑時不送（別名列表會分頁，卡在分頁時巡怪的指令會被遊戲當成翻頁吃掉）；用巨集送，閒置時也送得出去，停止一切與驗證碼會取消它

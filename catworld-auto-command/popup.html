@@ -355,6 +355,9 @@
           <summary>跨區路線</summary>
           <p class="hint tight">「跨區巡怪」開著時照這條路線巡：由上往下一區一區巡，最後一區巡完回到第一區等重生。卡片裡勾的怪和面板「選怪」是同一份；箭頭上填從上一區走到下一區的指令（可以用 ; 與 @巨集 N），琥珀色的是還沒填的。</p>
           <div id="huntChain"></div>
+          <button id="huntChainTrial" class="htrial" type="button">試跑</button>
+          <div id="huntChainTrialMsg" class="hint tight"></div>
+          <p class="hint tight">試跑：角色要在第一區，照路線逐段送換區指令、確認走到下一區，最後回到第一區；只走不打（不看房間、不打怪），補氣照常，氣低於危險線回家停止。遇到第一個失敗就停，每一段的結果顯示在箭頭上（改了指令的段算沒試跑）。沒試跑或失敗的段照樣可以開始巡怪。</p>
         </details>
         <div id="huntNpcs" class="hint tight"></div>
         <button id="huntNpcClear" type="button">清除已學到的 NPC</button>

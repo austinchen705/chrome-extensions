@@ -7,13 +7,15 @@ if (globalThis.CatworldMapHuntChainUI) return;
 
 const WARN_PICKS = '勾了怪但這一區沒有那些怪的房間紀錄，到了會略過（開補掃就會先掃）';
 
-// deps：load() 回 { store（mapMonsters 原樣）, picks, chain }；saveChain(chain)；
+// 箭頭上另外顯示試跑結果（mapHuntChainTrial，第 i 段是 moves[i]，最後一段是回到第一區）：成功不上色、失敗紅、沒試跑琥珀；
+// 指令或前後兩區和試跑當時不同的段當作沒試跑。
+// deps：load() 回 { store（mapMonsters 原樣）, picks, chain, trial }；saveChain(chain)；
 // savePicks(區域, 名稱陣列)：讀最新的勾選再只換這一區（不蓋掉遊戲頁剛存的別區）
 function attach(box, deps) {
   const Hunt = globalThis.CatworldMapHunt;
   const Pick = globalThis.CatworldMapHuntUI;
   const Collect = globalThis.CatworldMapCollect;
-  let data = { store: {}, picks: {}, chain: Hunt.normalizeChain(null) };
+  let data = { store: {}, picks: {}, chain: Hunt.normalizeChain(null), trial: [] };
   let stale = false; // 打字時跳過的重畫，離開輸入框後補畫
 
   const el = (tag, className, text) => {
@@ -107,9 +109,23 @@ function attach(box, deps) {
     return node;
   }
 
-  function arrow(className, text, value, onChange) {
+  // 一段的試跑結果文字與等級（error 紅、warn 琥珀、成功沒有等級）
+  const trialText = (result, command, from, to) => {
+    if (!result || typeof result !== 'object' || result.command !== command || result.from !== from || result.to !== to) return { text: '沒試跑', level: 'warn' };
+    if (result.ok) return { text: `試跑成功，${Number.isFinite(result.ms) ? (result.ms / 1000).toFixed(1) : '?'} 秒`, level: '' };
+    return { text: `試跑失敗：${result.why || '原因不明'}${result.where ? `（當時在 ${result.where}）` : ''}`, level: 'error' };
+  };
+  function arrow(className, text, value, onChange, leg, from, to) {
     const node = el('div', `harrow ${className}-row`);
-    node.append(el('span', 'harrow-mark', text), textInput(className, value, onChange, { required: true }));
+    const result = el('div', 'hint tight htrial-result');
+    const showResult = command => {
+      const { text: words, level } = trialText(data.trial[leg], command, from, to);
+      result.textContent = words;
+      result.classList.toggle('msg-error', level === 'error');
+      result.classList.toggle('msg-warn', level === 'warn');
+    };
+    showResult(value);
+    node.append(el('span', 'harrow-mark', text), textInput(className, value, command => { showResult(command); onChange(command); }, { required: true }), result);
     return node;
   }
 
@@ -122,9 +138,9 @@ function attach(box, deps) {
     chain.areas.forEach((item, index) => {
       box.append(card(names, store, item, index, chain.areas.length));
       const next = chain.areas[index + 1];
-      if (next) box.append(arrow('hmove', `↓ 換區到 ${label(names, next.area)}`, chain.moves[index], setMove(item.area, next.area)));
+      if (next) box.append(arrow('hmove', `↓ 換區到 ${label(names, next.area)}`, chain.moves[index], setMove(item.area, next.area), index, item.area, next.area));
     });
-    if (chain.areas.length > 1) box.append(arrow('hback', `↺ 回到第一區 ${label(names, chain.areas[0].area)}`, chain.back, value => saveChain(now => ({ ...now, back: value }))));
+    if (chain.areas.length > 1) box.append(arrow('hback', `↺ 回到第一區 ${label(names, chain.areas[0].area)}`, chain.back, value => saveChain(now => ({ ...now, back: value })), chain.areas.length - 1, chain.areas[chain.areas.length - 1].area, chain.areas[0].area));
     const add = el('div', 'hchain-add');
     const select = el('select');
     select.append(new Option('選一區加到路線最後…', ''));
@@ -141,7 +157,7 @@ function attach(box, deps) {
   async function refresh() {
     let loaded;
     try { loaded = await deps.load(); } catch (error) { console.warn('[catworld] 跨區路線讀不到儲存', error); return; }
-    data = { store: loaded.store || {}, picks: loaded.picks && typeof loaded.picks === 'object' ? loaded.picks : {}, chain: Hunt.normalizeChain(loaded.chain) };
+    data = { store: loaded.store || {}, picks: loaded.picks && typeof loaded.picks === 'object' ? loaded.picks : {}, chain: Hunt.normalizeChain(loaded.chain), trial: Array.isArray(loaded.trial) ? loaded.trial : [] };
     if (box.contains(document.activeElement) && document.activeElement.matches('input[type="text"]')) { stale = true; return; }
     render();
   }
