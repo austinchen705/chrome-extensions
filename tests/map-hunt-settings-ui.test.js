@@ -360,6 +360,8 @@ ui('chain editor: adding, moving and removing areas saves the route, and each mo
     assert.ok(await waitFor(() => store.mapHuntChain?.areas?.length === 2));
     assert.deepEqual(store.mapHuntChain, { areas: [{ area: 't', sortReturn: '' }, { area: 'u', sortReturn: '' }], moves: [''], back: '' });
     assert.equal(cards(doc)[0].querySelector('.hcard-name').textContent, '測試區（t）');
+    assert.equal(doc.querySelector('#fold-hunt-chain > summary').textContent, '跨區路線：測試區 → 第二區 → ↺ 測試區', 'the fold title spells out the route');
+    assert.ok(chainBox(doc).querySelector('.hchain-route').classList.contains('loop'), 'two areas draw the loop back to the first');
     change(dom, chainBox(doc).querySelector('.hmove'), 'go-u');
     change(dom, chainBox(doc).querySelector('.hback'), 'go-t');
     change(dom, cards(doc)[1].querySelector('.hsort'), 'back-u');

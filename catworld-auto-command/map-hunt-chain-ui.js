@@ -129,18 +129,31 @@ function attach(box, deps) {
     return node;
   }
 
+  // 摺疊的標題寫出整條路線（收起來也看得到）：「跨區路線：A → B → ↺ A」
+  const showSummary = (names, chain) => {
+    const summary = box.closest('details')?.querySelector('summary');
+    if (!summary) return;
+    const short = area => names[area] || area;
+    summary.textContent = chain.areas.length
+      ? `跨區路線：${chain.areas.map(item => short(item.area)).join(' → ')}${chain.areas.length > 1 ? ` → ↺ ${short(chain.areas[0].area)}` : '（一區，還不會跨區）'}`
+      : '跨區路線（還沒有區）';
+  };
   function render() {
     stale = false;
     const store = Collect.withBuiltin(data.store);
     const names = areaNames(store);
     const { chain } = data;
     box.textContent = '';
+    showSummary(names, chain);
+    // 路線：卡片與換區箭頭由上往下排，兩區以上時左邊一條虛線從底下的「回到第一區」繞回第一張卡片
+    const route = el('div', `hchain-route${chain.areas.length > 1 ? ' loop' : ''}`);
     chain.areas.forEach((item, index) => {
-      box.append(card(names, store, item, index, chain.areas.length));
+      route.append(card(names, store, item, index, chain.areas.length));
       const next = chain.areas[index + 1];
-      if (next) box.append(arrow('hmove', `↓ 換區到 ${label(names, next.area)}`, chain.moves[index], setMove(item.area, next.area), index, item.area, next.area));
+      if (next) route.append(arrow('hmove', `換區到 ${label(names, next.area)}`, chain.moves[index], setMove(item.area, next.area), index, item.area, next.area));
     });
-    if (chain.areas.length > 1) box.append(arrow('hback', `↺ 回到第一區 ${label(names, chain.areas[0].area)}`, chain.back, value => saveChain(now => ({ ...now, back: value })), chain.areas.length - 1, chain.areas[chain.areas.length - 1].area, chain.areas[0].area));
+    if (chain.areas.length > 1) route.append(arrow('hback', `↺ 回到第一區 ${label(names, chain.areas[0].area)}`, chain.back, value => saveChain(now => ({ ...now, back: value })), chain.areas.length - 1, chain.areas[chain.areas.length - 1].area, chain.areas[0].area));
+    if (chain.areas.length) box.append(route);
     const add = el('div', 'hchain-add');
     const select = el('select');
     select.append(new Option('選一區加到路線最後…', ''));
