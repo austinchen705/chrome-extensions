@@ -6,7 +6,7 @@ const { ui, boot: bootPage, sleep, waitFor, fixture } = require('./helpers/game-
 
 const SCALE = 20;
 // 開始前必填的欄位（吃藥指令、沒藥關鍵字、回家指令）：各測試預設都填好，要測缺欄位的自己清掉
-const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, commandGapMinMs: 0, commandGapMaxMs: 0, reactMinMs: 0, reactMaxMs: 0, sortLookMinSec: 0, sortLookMaxSec: 0, prescan: 'off' };
+const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, timeSource: 'command', timeKeepMin: 0, commandGapMinMs: 0, commandGapMaxMs: 0, reactMinMs: 0, reactMaxMs: 0, sortLookMinSec: 0, sortLookMaxSec: 0, prescan: 'off' };
 const boot = async options => {
   const page = await bootPage(options);
   page.store.mapHuntSettings = { ...REQUIRED };
@@ -1839,6 +1839,82 @@ ui('rounds: it reads the server time at the start, sends the standby command aft
     assert.ok(await waitFor(() => /等下一個重生 10:15/.test(huntText(page)), 4000), huntText(page));
     assert.deepEqual(game.log.slice(0, 6), ['time', 'e', 'e', 'l', 'home', 'time']);
     assert.ok(await waitFor(() => looks.length >= 2, 9000), 'the second round starts');
+    assert.ok(looks[1] >= at('10:15:00'), `not before the respawn (${new Date(looks[1]).toISOString()})`);
+    assert.ok(looks[1] < at('10:15:50'), `and not long after it (${new Date(looks[1]).toISOString()})`);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+// 左下角的 #uptime（遊戲的計時器）：H7 一般模式顯示開機時間的「分:秒」（除以一小時的餘數），H1 倒數模式顯示距下一個 15 分鐘整點的倒數
+// （使用者貼的真實樣本：class H1「13:06」、class H7「32:41」）。文字隨假的伺服器時鐘走，假設伺服器在整點開機
+const screenClock = (page, clock, mode) => {
+  const element = page.w.document.getElementById('uptime');
+  element.className = mode === 'down' ? 'H1' : 'H7';
+  const two = number => String(number).padStart(2, '0');
+  Object.defineProperty(element, 'textContent', {
+    configurable: true,
+    get: () => {
+      const uptime = Math.floor(clock.server() / 1000);
+      const seconds = mode === 'down' ? 900 - (uptime % 900) : uptime % 3600;
+      return `${two(Math.floor(seconds / 60))}:${two(seconds % 60)}`;
+    },
+  });
+};
+
+for (const mode of ['up', 'down']) {
+  ui(`rounds: reading the clock at the bottom left (${mode === 'up' ? 'normal mode' : 'countdown mode'}) it never sends time and the next round still starts at the respawn`, async () => {
+    const page = await roundPage({ standbyCommand: 'home', timeSource: 'screen' });
+    try {
+      const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+      screenClock(page, clock, mode);
+      const looks = [];
+      const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script: timeScript(page, clock, lookTimer(clock, looks)) });
+      await pick(page, MOB);
+      click(page, '.hstart');
+      assert.ok(await waitFor(() => /等下一個重生 10:15/.test(huntText(page)), 4000), huntText(page));
+      assert.ok(await waitFor(() => looks.length >= 2, 9000), 'the second round starts');
+      assert.equal(game.log.includes('time'), false, `no time command (${game.log.join()})`);
+      assert.ok(looks[1] >= at('10:15:00'), `not before the respawn (${new Date(looks[1]).toISOString()})`);
+      assert.ok(looks[1] < at('10:15:50'), `and not long after it (${new Date(looks[1]).toISOString()})`);
+      await page.ask({ type: 'STOP' });
+    } finally {
+      page.close();
+    }
+  });
+}
+
+ui('rounds: when the clock at the bottom left cannot be read (empty before the game syncs) it falls back to the time command', async () => {
+  const page = await roundPage({ standbyCommand: 'home', timeSource: 'screen' });
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const element = page.w.document.getElementById('uptime');
+    element.className = 'H7';
+    element.textContent = '';
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script: timeScript(page, clock) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /等下一個重生 10:15/.test(huntText(page)), 4000), huntText(page));
+    assert.equal(game.log[0], 'time', game.log.join());
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rounds: with the time offset kept, time is sent once at the start and the next round still starts at the respawn without asking again', async () => {
+  const page = await roundPage({ standbyCommand: 'home', timeKeepMin: 60 });
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const looks = [];
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script: timeScript(page, clock, lookTimer(clock, looks)) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /等下一個重生 10:15/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log.slice(0, 5), ['time', 'e', 'e', 'l', 'home'], 'no second time after the standby command');
+    assert.ok(await waitFor(() => looks.length >= 2, 9000), 'the second round starts');
+    assert.equal(game.log.filter(command => command === 'time').length, 1, `time was asked once (${game.log.join()})`);
     assert.ok(looks[1] >= at('10:15:00'), `not before the respawn (${new Date(looks[1]).toISOString()})`);
     assert.ok(looks[1] < at('10:15:50'), `and not long after it (${new Date(looks[1]).toISOString()})`);
     await page.ask({ type: 'STOP' });

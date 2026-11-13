@@ -114,6 +114,8 @@ const FIELDS = [
   { key: 'loopRounds', group: 'rounds', label: '巡完一輪後等下一個重生', hint: '關＝巡完就停', type: 'select', options: ON_OFF, default: 'on' },
   { key: 'standbyCommand', group: 'rounds', show: s => s.loopRounds === 'on', label: '巡完一輪後的待命指令', hint: '可空', type: 'text', default: '' },
   { key: 'chain', group: 'rounds', label: '跨區巡怪', hint: '照「跨區路線」的順序巡好幾區，最後一區巡完回到第一區等重生；要有兩區以上、每段換區指令都有填；從角色所在的那一區開始；關＝只巡地圖顯示的這一區', type: 'select', options: ON_OFF, default: 'off' },
+  { key: 'timeSource', group: 'rounds', show: s => s.loopRounds === 'on' || s.stopBeforeSpawnSec > 0, label: '重生時間從哪裡讀', hint: '讀畫面左下角的時間：不送任何指令（遊戲自己跟伺服器對時，一般模式與倒數模式都行）；讀不到才退回送 time。送 time 指令：每次校準都會送一次', type: 'select', options: [['screen', '畫面左下角的時間（不送指令）'], ['command', '送 time 指令']], default: 'screen' },
+  { key: 'timeKeepMin', group: 'rounds', show: s => (s.loopRounds === 'on' || s.stopBeforeSpawnSec > 0) && s.timeSource === 'command', label: '伺服器時間沿用幾分鐘', hint: '量到伺服器時間後，這麼久之內不再送 time（實際在這個數字的 2/3～4/3 之間隨機）；0＝每次都送 time（較準，但每輪都會送）；電腦時鐘被調過就改成 0', type: 'number', default: 60, min: 0, max: 240 },
   { key: 'stopBeforeSpawnSec', group: 'rounds', label: '重生前幾秒停打', hint: '0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；沒開「等下一個重生」就直接停', type: 'number', default: 0, min: 0, max: 600 },
   { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣。開＝每一輪重排目標順序（近的優先）、等長的路線隨機挑一條、重生前停打秒數與吃藥線、休息線隨機偏移一點、偶爾在到房間後與打完一隻後多停幾秒、每跑幾輪（下面設定，預設 6～12）回家休息跳過幾輪（預設 1～3）（要填下面的回程指令）；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
   { key: 'restEveryMin', group: 'human', show: s => s.humanize === 'on', row: 'restEvery', label: '每跑幾輪休息一次 最少', hint: '掛機休息的間隔，每次在最少與最多之間隨機抽（整數輪）', type: 'number', default: 6, min: 1, max: 100 },
@@ -1240,10 +1242,27 @@ function create(deps) {
     const date = new Date(ms + 8 * 3600 * 1000);
     return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
   };
-  // 用 time 讀伺服器時間，回偏差（伺服器時間 − 電腦時鐘）；讀不到回 null
-  async function readOffset() {
+  // 用 time 讀伺服器時間，回偏差（伺服器時間 − 電腦時鐘）；讀不到回 null。
+  // timeKeepMin > 0 時量到的偏差沿用一段時間（隨機 2/3～4/3 倍），期間不再送 time；電腦時鐘被往回撥（現在比量的時候早）就當作過期
+  let clock = null; // { offset, at, until }
+  async function readOffset(settings) {
+    // 先讀畫面左下角的時間（deps.uptimePhase：距上一個重生的毫秒，不送指令）。伺服器時間只有「在每個 15 分鐘裡的位置」可靠，
+    // 所以回的是讓 (電腦時間 + 偏差) 對 15 分鐘取餘數等於它的最小偏差（落在 ±7.5 分鐘內），其餘程式照舊用 電腦時間 + 偏差
+    if (settings?.timeSource !== 'command') {
+      const phase = deps.uptimePhase?.();
+      if (Number.isFinite(phase)) {
+        const shift = (((phase - (deps.now() % RESPAWN_MS)) % RESPAWN_MS) + RESPAWN_MS) % RESPAWN_MS;
+        return shift > RESPAWN_MS / 2 ? shift - RESPAWN_MS : shift;
+      }
+    }
+    const keep = Number(settings?.timeKeepMin) || 0;
+    const before = deps.now();
+    if (keep > 0 && clock && before >= clock.at && before < clock.until) return clock.offset;
     const server = Parse.parseTime(await deps.ask('time', 'time'));
-    return server === null ? null : server - deps.now();
+    if (server === null) return null;
+    const offset = server - deps.now();
+    clock = keep > 0 ? { offset, at: before, until: before + keep * 60 * 1000 * (2 / 3 + (random() * 2) / 3) } : null;
+    return offset;
   }
   // 勾選的怪在這個區域記錄的房間（要在地圖上）；不在地圖上的列進略過清單
   function huntTargets(store, mobs, area, graph) {
@@ -1603,7 +1622,7 @@ function create(deps) {
     state.phase = 'wait';
     state.calibrating = true;
     deps.notify();
-    readOffset().then(offset => {
+    readOffset(state.baseSettings).then(offset => {
       if (state !== token) return;
       state.calibrating = false;
       if (offset === null) { finish('讀不到伺服器時間（time 的輸出），已停止', { alert: true }); return; }
@@ -1651,7 +1670,7 @@ function create(deps) {
     if (estimate >= waiting.startAt - RECALIBRATE_LEAD_MS && now - waiting.calibratedAt > RECALIBRATE_GAP_MS) {
       const token = state;
       waiting.asking = true;
-      readOffset().then(offset => {
+      readOffset(state.baseSettings).then(offset => {
         if (state !== token) return;
         if (offset === null) { finish('讀不到伺服器時間（time 的輸出），已停止', { alert: true }); return; }
         waiting.offset = offset;
@@ -1920,7 +1939,7 @@ function create(deps) {
       if (cancelled) return fail('已取消', false);
       let offset = 0;
       if (settings.loopRounds === 'on' || (!scan && settings.stopBeforeSpawnSec > 0)) {
-        const read = await readOffset();
+        const read = await readOffset(settings);
         if (cancelled) return fail('已取消', false);
         if (read === null) return fail('讀不到伺服器時間（time 的輸出），沒有開始');
         offset = read;

@@ -70,6 +70,18 @@ function notifyStateChanged() {
     // 擴充功能剛重新載入，這個頁面的連線已失效
   }
 }
+// 左下角的 #uptime（遊戲的計時器每秒更新並跟伺服器對時）：一般模式（class H7）顯示開機時間的「分:秒」（除以一小時的餘數），
+// 倒數模式（H1）顯示距下一個 15 分鐘整點的倒數；兩種都換算成「距上一個 15 分鐘整點過了幾毫秒」（只看得到整秒，取整秒，所以估計只會晚、不會早）。
+// 讀不到（沒有元素、還沒對時而是空的、class 不是這兩種、格式不對）回 null，呼叫端退回送 time
+function readUptimePhase() {
+  const element = document.getElementById('uptime');
+  const match = /^(\d{2}):(\d{2})$/.exec((element?.textContent || '').trim());
+  if (!match) return null;
+  const countdown = element.classList.contains('H1');
+  if (!countdown && !element.classList.contains('H7')) return null;
+  const seconds = Number(match[1]) * 60 + Number(match[2]);
+  return ((countdown ? 900 - seconds : seconds) % 900 + 900) % 900 * 1000;
+}
 function active() { return running || randomRunning || anyTriggerOn() || macroRuns.size > 0 || (hunt?.on() ?? false); }
 
 // 在線獎勵：看到「在線獎勵： N分鐘後可領取」（自己打 sc 的輸出）就排一個 N+1 分鐘後的計時，已經排著的就不再排；時間到先下 sc，隔 REWARD_AFTER_SC_MS 的隨機時間才下 reward。
@@ -1540,6 +1552,7 @@ hunt = CatworldMapHunt.create({
   // 角色忙碌：狀態欄（#status）是「忙碌」開頭（遊戲可能寫「忙碌:3」），或忙碌冷卻條（#busy）在跑
   busy: () => /^忙碌/.test(readStatus() ?? '') || cooldownRunning('busy'),
   now: () => Date.now(),
+  uptimePhase: readUptimePhase,
   macroRunning: () => [...macroRuns].some(run => run.owner === 'hunt'),
   exits: async () => (await chrome.storage.local.get(CatworldMapHunt.EXITS_KEY))[CatworldMapHunt.EXITS_KEY] ?? {},
   saveExits: learned => chrome.storage.local.set({ [CatworldMapHunt.EXITS_KEY]: learned }),

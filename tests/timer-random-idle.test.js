@@ -326,5 +326,5 @@ test('the new Start and Stop buttons (settings page and panel) are styled like t
   assert.match(html, /#start, #randomStart, #idleStart, \.tstart-btn \{ background:#222; color:white; \}/);
   assert.match(html, /#stop, #randomStop, #idleStop, \.tstop-btn \{ background:#eee; color:#222; \}/);
   const content = fs.readFileSync(path.join(root, 'content.js'), 'utf8');
-  assert.match(content, /\.mini button\.start, \.mini button\.tstart, \.mini button\.rstart, \.mini button\.istart \{ background: #2f7d4a; \}/);
+  assert.match(content, /\.mini button\.start, \.mini button\.tstart, \.mini button\.rstart, \.mini button\.istart, \.mini button\.hstart \{ background: #2f7d4a; \}/);
 });
