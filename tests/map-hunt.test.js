@@ -4385,7 +4385,7 @@ ui('react: in only-send-fight mode the fight also waits the reaction time after 
 // t/c 有勾的測試怪；u 那份勾選是另一隻怪（記在 u/q），q 的 l 雖然印出測試怪，在 u 沒勾所以不打
 const ROOM_U = id => `<a class="H7" id="m-u-${id}">□</a>`;
 const CHAIN = { areas: [{ area: 't', sortReturn: '' }, { area: 'u', sortReturn: '' }], moves: ['go-u'], back: 'go-t' };
-const chainWorld = (page, { looks = {}, script = null, move = { 'go-u': ['u', 'p'], 'go-t': ['t', 'a'] }, ...options } = {}) => {
+const chainWorld = (page, { looks = {}, script = null, move = { 'go-u': ['u', 'p'], 'go-t': ['t', 'a'] }, start = null, ...options } = {}) => {
   const doc = page.w.document;
   let game = null;
   const go = (area, room) => {
@@ -4410,6 +4410,7 @@ const chainWorld = (page, { looks = {}, script = null, move = { 'go-u': ['u', 'p
   doc.querySelectorAll('#map_wrapper a[id]').forEach(node => {
     node.getBoundingClientRect = () => (node.id === `m-${game.area}-${game.at}` ? rect(100, 100) : rect(-1000, -1000));
   });
+  if (start) go(...start); // 角色一開始在哪一區、哪一間（地圖顯示那一區）
   return game;
 };
 const chainPage = async ({ settings = {}, chain = CHAIN } = {}) => {
@@ -4525,15 +4526,12 @@ ui('chain: with the switch off, or fewer than two areas, it hunts only the visib
   }
 });
 
-ui('chain: it does not start when a move command is empty, or the character is not in the first area', async () => {
+ui('chain: it does not start when a move command is empty', async () => {
   const page = await chainPage({ chain: { ...CHAIN, back: '' } });
   try {
     const game = chainWorld(page);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /回到第一區的指令沒填/.test(huntText(page)), 3000), huntText(page));
-    page.store.mapHuntChain = { ...CHAIN, areas: [CHAIN.areas[1], CHAIN.areas[0]] };
-    click(page, '.hstart');
-    assert.ok(await waitFor(() => /從第一區（u）開始/.test(huntText(page)), 3000), huntText(page));
     assert.deepEqual(game.log, []);
   } finally {
     page.close();
@@ -4565,6 +4563,114 @@ ui('chain: a broken stored route counts as no route, so the hunt runs in the vis
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
     assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc']);
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 跨區巡怪：從哪一區開始、沒資料的區（hunt-chain 03）----
+ui('chain: starting in the second area hunts it, goes back to the first area to wait, and the next round starts from the first area', async () => {
+  const page = await chainPage();
+  try {
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const looks = [];
+    const game = chainWorld(page, { start: ['u', 'p'], script: timeScript(page, clock, lookTimer(clock, looks)) });
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /等下一個重生 10:15/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log.slice(0, 5), ['time', 'e', 'l', 'go-t', 'time'], 'only the second area, then back to the first');
+    assert.match(huntText(page), /第 1／2 區/);
+    assert.ok(await waitFor(() => looks.length >= 3, 9000), 'the second round starts');
+    const second = game.log.slice(game.log.lastIndexOf('time') + 1);
+    assert.deepEqual(second.slice(0, 5), ['e', 'e', 'l', FIGHT, 'gc'], 'the next round starts in the first area');
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain: it does not start when the character is in no area of the route, and says why', async () => {
+  const page = await chainPage({ chain: { areas: [{ area: 'u' }, { area: 'x' }], moves: ['go-x'], back: 'go-u' } });
+  try {
+    const game = chainWorld(page);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /目前所在的區域（t）不在跨區路線裡/.test(huntText(page)), 3000), huntText(page));
+    assert.ok(panelRoot(page).querySelector('.hunt-text').classList.contains('alert'));
+    await sleep(200);
+    assert.deepEqual(game.log, [], 'nothing is sent');
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain: with prescan on, an area reached for the first time has its unscanned rooms scanned before it is hunted', async () => {
+  const page = await chainPage({ settings: { prescan: 'on' } });
+  try {
+    page.store.mapVisited = Object.fromEntries(['a', 'b', 'c', 'd'].map(room => [`t/${room}`, { at: 1, state: 'seen' }]));
+    page.store.mapMonsters['u/q'].mobs = [MOB];
+    page.store.mapHuntPicks = { t: [MOB], u: [MOB] };
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const game = chainWorld(page, { looks: { q: { exits: 'west', lines: [MOB_LINE] } }, script: timeScript(page, clock) });
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => game.log.includes('go-t'), 8000), game.log.join(','));
+    const inU = game.log.slice(game.log.indexOf('go-u') + 1, game.log.indexOf('go-t'));
+    assert.equal(inU[0], 'l', `the first room of the new area is looked at as a scan (${inU.join(',')})`);
+    assert.ok(inU.indexOf(FIGHT) > inU.indexOf('e'), `the scan walks the area first, then the monster is fought (${inU.join(',')})`);
+    assert.equal(page.store.mapVisited['u/p']?.state, 'seen');
+    assert.equal(page.store.mapVisited['u/q']?.state, 'seen');
+    assert.equal(game.log.slice(0, game.log.indexOf('go-u')).filter(command => command === 'l').length, 1, 'the first area was scanned before, so it is not scanned again');
+    assert.ok(await waitFor(() => /到過 2 間/.test(huntText(page)), 6000), `the scanned rooms are not counted as visited: ${huntText(page)}`);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain: with prescan off, an area without any target room is skipped with a log line and the hunt goes on to the next move', async () => {
+  const page = await chainPage();
+  try {
+    page.store.mapHuntPicks = { t: [MOB], u: [] };
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const game = chainWorld(page, { script: timeScript(page, clock) });
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /等下一個重生/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log.slice(0, 9), ['time', 'e', 'e', 'l', FIGHT, 'gc', 'go-u', 'go-t', 'time'], 'nothing is sent in u');
+    assert.match(await huntLog(page), /u 略過區 這一區沒有勾選的怪的房間/);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain: with prescan on, a first area first reached on the way back is scanned when the next round starts, not while waiting for the respawn', async () => {
+  const page = await chainPage({ settings: { prescan: 'on' } });
+  try {
+    page.store.mapVisited = { 'u/p': { at: 1, state: 'seen' }, 'u/q': { at: 1, state: 'seen' } };
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const game = chainWorld(page, { start: ['u', 'p'], script: timeScript(page, clock) });
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /等下一個重生 10:15/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log.slice(0, 5), ['time', 'e', 'l', 'go-t', 'time'], 'no scan of the first area before waiting');
+    assert.ok(await waitFor(() => game.log.includes(FIGHT), 12000), game.log.join(','));
+    const round = game.log.slice(game.log.lastIndexOf('time') + 1);
+    assert.equal(round[0], 'l', `the next round starts by scanning the first area where it stands (${round.join(',')})`);
+    assert.ok(['a', 'b', 'c', 'd'].every(room => page.store.mapVisited[`t/${room}`]?.state === 'seen'), JSON.stringify(page.store.mapVisited));
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain: starting in the last area with nothing to hunt there still goes back to the first area and hunts from there at the respawn', async () => {
+  const page = await chainPage();
+  try {
+    page.store.mapHuntPicks = { t: [MOB], u: [] };
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    const game = chainWorld(page, { start: ['u', 'p'], script: timeScript(page, clock) });
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /等下一個重生 10:15/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log.slice(0, 3), ['time', 'go-t', 'time']);
+    assert.ok(await waitFor(() => game.log.includes(FIGHT), 9000), game.log.join(','));
+    await page.ask({ type: 'STOP' });
   } finally {
     page.close();
   }
