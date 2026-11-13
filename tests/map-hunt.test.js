@@ -4866,11 +4866,10 @@ ui('chain trial: falling under the danger line on a leg sends the character home
 });
 
 // 面板巡怪列在沒有巡的時候也寫出跨區的狀態（開著與路線、沒開、路線不到兩區），都沒設定就不寫
-ui('chain: while idle, the panel hunt line says whether the hunt will cross areas, and the route', async () => {
+ui('chain: while idle with the switch on, the panel hunt line shows the route, or that no route is set; with the switch off it says nothing', async () => {
   const cases = [
     [{ chain: 'on' }, CHAIN, /跨區：測試區 → 第二區 → ↺ 測試區/],
-    [{ chain: 'off' }, CHAIN, /跨區沒開，只巡這一區/],
-    [{ chain: 'on' }, { ...CHAIN, areas: [CHAIN.areas[0]], moves: [] }, /跨區開著，但路線不到兩區，只巡這一區/],
+    [{ chain: 'on' }, { ...CHAIN, areas: [CHAIN.areas[0]], moves: [] }, /跨區：還沒設定路線（要兩區以上），只巡這一區/],
   ];
   for (const [settings, chain, pattern] of cases) {
     const page = await chainPage({ settings, chain });
@@ -4881,12 +4880,11 @@ ui('chain: while idle, the panel hunt line says whether the hunt will cross area
       page.close();
     }
   }
-  const page = await chainPage({ settings: { chain: 'off' }, chain: undefined });
+  const page = await chainPage({ settings: { chain: 'off' } });
   try {
-    delete page.store.mapHuntChain;
     chainWorld(page);
     await sleep(800);
-    assert.doesNotMatch(huntText(page), /跨區/, 'nothing about cross-area hunting when it is not set up');
+    assert.doesNotMatch(huntText(page), /跨區/, 'nothing about cross-area hunting while the switch is off, even with a route');
   } finally {
     page.close();
   }

@@ -217,16 +217,16 @@ function rearrangeChain(chain, areas) {
   return next;
 }
 
-// 面板巡怪列沒在巡時的跨區狀態（settings 是整理過的巡怪設定，names 是 { 區域代號: 區名 }）：開著而且路線有兩區以上寫出整條路線，
-// 開著但不到兩區、或沒開但路線已排好，都寫「只巡這一區」；兩樣都沒設定回空字串（不打擾不用跨區的人）
+// 面板巡怪列沒在巡時的跨區狀態（settings 是整理過的巡怪設定，names 是 { 區域代號: 區名 }）：只有開關開著才寫——
+// 路線有兩區以上寫出整條路線，不到兩區寫「還沒設定路線」；開關關著回空字串
 function chainStatus(settings, rawChain, names = {}) {
   const chain = normalizeChain(rawChain);
   const name = area => names[area] || area;
   if (settings.chain === 'on') {
-    if (chain.areas.length < 2) return '跨區開著，但路線不到兩區，只巡這一區';
+    if (chain.areas.length < 2) return '跨區：還沒設定路線（要兩區以上），只巡這一區';
     return `跨區：${chain.areas.map(item => name(item.area)).join(' → ')} → ↺ ${name(chain.areas[0].area)}`;
   }
-  return chain.areas.length >= 2 ? '跨區沒開，只巡這一區' : '';
+  return '';
 }
 
 function normalizeVisited(raw) {
