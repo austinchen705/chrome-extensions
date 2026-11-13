@@ -4234,6 +4234,95 @@ ui('fight: another monster dying in the room does not end the fight with mine; o
   }
 });
 
+// ---- 順位會變：看完房間到開打之間有東西離開房間，順位要重數；打到別隻要認得出來；特攻被拒就不再送 ----
+const DOG_LINE = '  ※野狗(dog) [fight][kill]';
+ui('fight: something leaving right after the room was read makes it look again before the fight, so the position is not stale', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    let looked = 0;
+    const game = world(page, { at: 'a', looks: { c: { lines: [DOG_LINE, MOB_LINE] } }, script: (command, { say: tell, looks }) => {
+      if (command !== 'l' || (looked += 1) > 1) return false;
+      tell(['測試房間 - ', '    這裡明顯的出口是 east。', DOG_LINE, MOB_LINE].join('\n'));
+      tell('> 野狗往北離開。'); // 和使用者貼的真實輸出一樣，緊接在描述後面
+      looks.c.lines = [MOB_LINE];
+      return true;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'l', 'fight 1', 'gc'], 'looked again and fought my monster at its new position');
+  } finally {
+    page.close();
+  }
+});
+
+ui('fight: something leaving while waiting to react makes it look again before the fight', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, reactMinMs: 4000, reactMaxMs: 4000 };
+    let looked = 0;
+    const game = world(page, { at: 'a', looks: { c: { lines: [DOG_LINE, MOB_LINE] } }, script: (command, { looks }) => {
+      if (command === 'l' && (looked += 1) === 1) setTimeout(() => { looks.c.lines = [MOB_LINE]; say(page, '> 野狗往北離開。'); }, 40);
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'l', 'fight 1', 'gc']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('fight: when the fight lands on another monster, it waits for that one to fall, then looks again and fights mine', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'ps', specialIntervalSec: 1 };
+    let fights = 0;
+    const game = world(page, { at: 'a', looks: { c: { lines: [DOG_LINE, MOB_LINE] } }, script: (command, { say: tell, looks }) => {
+      if (!command.startsWith('fight ')) return command === 'ps';
+      if ((fights += 1) === 1) {
+        tell('你對著野狗說道：領教高招！'); // 順位偏了，打到野狗
+        setTimeout(() => { looks.c.lines = ['  ※野狗(dog) <昏迷不醒> [fight][kill]', MOB_LINE]; say(page, '野狗腳下一個不穩，跌在地上一動也不動了。'); }, 30);
+      } else {
+        tell('你對著測試怪說道：領教高招！');
+        setTimeout(() => say(page, '測試怪死了。'), 30);
+      }
+      return true;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    const after = game.log.slice(game.log.indexOf('fight 2'));
+    assert.deepEqual(after.filter(command => command !== 'ps'), ['fight 2', 'l', 'fight 2', 'gc'], game.log.join(' '));
+    assert.match(await huntLog(page), /打到別隻 野狗/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('fight: a special refused because nobody is fighting is not sent again in that fight', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'ps', specialIntervalSec: 1, fightTimeoutSec: 600 };
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE] } }, script: (command, { say: tell }) => {
+      if (command === 'fight 1') { setTimeout(() => say(page, '測試怪死了。'), 800); return true; }
+      if (command === 'ps') { tell('「牛蛇奧義擊」只能對戰鬥中的對手使用。'); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.equal(game.log.filter(command => command === 'ps').length, 1, game.log.join(' '));
+  } finally {
+    page.close();
+  }
+});
+
 ui('assist: another monster dying in the room is not taken as mine dying', async () => {
   const page = await assistPage({ fightTimeoutSec: 60 });
   try {

@@ -35,7 +35,9 @@ const MOVE_TEXT_PHASES = ['move', 'pass', 'look']; // 這幾個階段把遊戲�
 const TICKS_PER_SEC = 1000 / TICK_MS;
 const CORPSE_WAIT_TICKS = 5 * TICKS_PER_SEC; // 打完最後一隻、不重數就離開時，最多等撿屍指令送完這麼久（巡怪結束會丟掉還沒送出的指令）
 const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
-const NO_TARGET = /你要對誰施展這個招式/;
+const NO_TARGET = /你要對誰施展這個招式|只能對戰鬥中的對手使用/; // 特攻沒有對象：這一場不再送
+const ENGAGE = /你對著(\S+?)(?:說道|喝道)/; // 開打時遊戲印的句子，名字是實際打到的那一隻
+const LEAVE = /往\S{1,6}離開/; // 有東西離開房間，順位會變
 const KNOCKED_OUT = '昏迷不醒';
 const RESPAWN_MS = 15 * 60 * 1000; // 怪在伺服器時間的每小時 00、15、30、45 分重生
 const RECALIBRATE_LEAD_MS = 30 * 1000; // 距開始時間不到這麼久（或估計已經到了），而上次校準已經超過 RECALIBRATE_GAP_MS，就重新校準
@@ -380,7 +382,7 @@ function create(deps) {
         const info = Parse.parseLook(state.moveText);
         const waited = state.ticks - begin;
         if (info.exits.length) {
-          if (state.ticks - state.moveTextTick >= ARRIVAL_QUIET_TICKS) return { info, source: '抵達描述' };
+          if (state.ticks - state.moveTextTick >= ARRIVAL_QUIET_TICKS) { state.readTick = state.ticks; return { info, source: '抵達描述' }; }
           if (waited > ARRIVAL_WAIT_TICKS) break;
         } else if (waited > PASS_WAIT_TICKS) break;
         await sleepTick();
@@ -388,7 +390,9 @@ function create(deps) {
       }
     }
     const info = Parse.parseLook(await deps.ask('l', 'look'));
-    return state === token ? { info, source: 'l' } : null;
+    if (state !== token) return null;
+    state.readTick = state.ticks;
+    return { info, source: 'l' };
   }
 
   // 到了目標房間：看房間（見 lookRoom）。沒有勾選的怪就直接換下一間（不必問人）；有別人就略過這間；沒見過的 ID 用 finger 分辨
@@ -558,6 +562,15 @@ function create(deps) {
   async function fightRoom(token, here, first) {
     let info = first;
     let stuck = 0;
+    let recounts = 0;
+    // 重新 l 一次：讀不到房間就略過這間，回 null
+    const lookAgain = async () => {
+      const again = Parse.parseLook(await deps.ask('l', 'look'));
+      if (state !== token) return null;
+      state.readTick = state.ticks;
+      if (!again.exits.length) { skipTarget(here, '讀不到房間'); return null; }
+      return again;
+    };
     for (;;) {
       // 昏迷的怪打不了，不當目標也不算還沒打完
       const mine = info.monsters.filter(mob => token.mobs.includes(mob.full) && mob.state !== KNOCKED_OUT);
@@ -569,10 +582,25 @@ function create(deps) {
       if (!(await restGate(token))) return;
       if (!(await reactWait(token))) return;
       if (!(await notBusy(token))) return;
+      // 看完房間之後有東西離開（同一份輸出裡、或等反應時間的期間）：順位已經不準，先重看一次（最多連續 MAX_STUCK 次）
+      if ((info.moved || state.leftTick >= state.readTick) && recounts < MAX_STUCK) {
+        recounts += 1;
+        record(here, '重數', '有東西離開房間，順位可能變了');
+        info = await lookAgain();
+        if (!info) return;
+        continue;
+      }
+      recounts = 0;
       record(here, '開打', target.full);
       let outcome = await fightOne(token, target);
       if (state !== token || outcome === 'stopped') return;
       record(here, '打完', outcome);
+      // 打到的不是這一隻（順位偏了）：那一隻倒下後重看房間再打，不補刀、不撿屍、不算打不動
+      if (outcome === 'wrong') {
+        info = await lookAgain();
+        if (!info) return;
+        continue;
+      }
       // 打到昏迷（不是死）：補一個 kill 確實打死，出現死亡的字才算數；然後才撿屍
       if (outcome === 'knockedOut' && state.settings.finishKnockedOut === 'on') {
         outcome = await fightOne(token, target, { finishing: true });
@@ -594,9 +622,8 @@ function create(deps) {
         doneWith(here, here);
         return;
       }
-      info = Parse.parseLook(await deps.ask('l', 'look'));
-      if (state !== token) return;
-      if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
+      info = await lookAgain();
+      if (!info) return;
       const left = info.monsters.filter(mob => token.mobs.includes(mob.full) && mob.state !== KNOCKED_OUT).length;
       stuck = left < mine.length ? 0 : stuck + 1;
       if (stuck >= MAX_STUCK) { state.skipped.push({ key: here, why: '打不動' }); record(here, '略過', '打不動'); doneWith(here); return; }
@@ -626,7 +653,7 @@ function create(deps) {
       const knockout = splitIds(state.settings.knockoutKeywords);
       const endWords = splitIds(state.settings.endKeywords).filter(word => !finishing || !knockout.includes(word));
       // 特攻從開打算起隔一個間隔才送第一次，免得緊跟在 fight 後面被拒戰時得到「你要對誰施展這個招式」
-      state.fight = { mob, resolve, finishing, knockout, knockedOut: false, killSent: finishing, buffer: '', noTarget: false, waited: 0, lastSpecial: state.ticks, checking: false, silentChecks: 0, endWords };
+      state.fight = { mob, name: shortName(mob), engaged: false, wrong: false, resolve, finishing, knockout, knockedOut: false, killSent: finishing, buffer: '', noTarget: false, waited: 0, lastSpecial: state.ticks, checking: false, silentChecks: 0, endWords };
       deps.notify();
       if (!deps.send(`${finishing ? killCmd() : fightCmd()} ${targetOf(mob)}`)) finish('指令送不出去，已停止', { alert: true });
     });
@@ -653,12 +680,13 @@ function create(deps) {
   const endFight = fight => {
     if (state?.fight !== fight) return;
     state.fight = null;
-    fight.resolve(fight.knockedOut ? 'knockedOut' : 'ended');
+    fight.resolve(fight.wrong ? 'wrong' : fight.knockedOut ? 'knockedOut' : 'ended');
   };
 
   // 遊戲新增的輸出（content.js 以 deps.watch 餵進來）：只在打的時候看。拒戰句→改送 kill；結束句（怪死、昏迷）→這一隻打完；
   // 「你要對誰施展這個招式」→這場不再送特攻。忙碌拒絕句不用處理：被拒的特攻不重排，等下一次間隔
   function onText(text) {
+    if (state && LEAVE.test(text)) state.leftTick = state.ticks;
     if (state && MOVE_TEXT_PHASES.includes(state.phase)) { // 走這一步到看完房間為止：抵達時印的描述可能比房間判斷晚一點到
       state.moveText = (state.moveText + text).slice(-3000);
       state.moveTextTick = state.ticks;
@@ -696,7 +724,17 @@ function create(deps) {
       deps.send(`${killCmd()} ${targetOf(fight.mob)}`);
       return;
     }
-    const hit = endWordFor(fight.buffer, fight.endWords, fight.mob);
+    // 開打的句子寫的是別隻（順位偏了）：改看那一隻的結束字，那一隻倒下就結束這一場（回 wrong），不然會一直以為還在打
+    const engaged = !fight.engaged && ENGAGE.exec(fight.buffer);
+    if (engaged) {
+      fight.engaged = true;
+      if (fight.name && engaged[1] !== fight.name) {
+        fight.wrong = true;
+        fight.name = engaged[1];
+        record(deps.room() ?? '-', '打到別隻', engaged[1]);
+      }
+    }
+    const hit = endWordFor(fight.buffer, fight.endWords, { name: fight.name });
     if (hit) {
       fight.knockedOut = !fight.finishing && fight.knockout.includes(hit);
       fight.buffer = '';

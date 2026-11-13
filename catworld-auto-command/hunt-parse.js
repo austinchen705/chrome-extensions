@@ -59,6 +59,9 @@ function parsePerson(rawLine) {
   return titled && /[「」\s]/.test(titled[1]) ? { id: titled[2].trim(), state: '' } : null;
 }
 
+// 有東西離開房間的句子（怪或人都算：fight 的順位數的是房間裡所有東西）。走進來的句子沒有樣本，不處理
+const LEAVE_LINE = /往\S{1,6}離開/;
+
 // 輸出裡可能有兩份房間描述（抵達時印的、再加 l 印的）：只算最後一份（從最後一個出口行開始，怪物與人物行都在它後面）
 function parseLook(text) {
   const whole = String(text ?? '');
@@ -83,7 +86,8 @@ function parseLook(text) {
     const person = parsePerson(line);
     if (person) people.push({ ...person, ref: refOf(person.id) });
   });
-  return { exits: parseExits(out), monsters, people };
+  // moved：最後一份描述之後又有東西離開房間（「野狗往北離開。」），順位已經不準（使用者貼的真實輸出）
+  return { exits: parseExits(out), monsters, people, moved: LEAVE_LINE.test(out) };
 }
 
 // i：「你身上帶著下列這些東西( 載重 23% ):」→ 23；讀不到回 null
