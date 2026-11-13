@@ -3478,6 +3478,18 @@ ui('rest: the number of rounds between rests is a setting', async () => {
   }
 });
 
+ui('rest: the number of rounds a rest skips is a setting', async () => {
+  // 跳過 4～5 輪、r 0.2 → 4 ＋ ⌊0.2×2⌋ = 4 輪
+  const { page } = await restRun({ settings: { restEveryMin: 2, restEveryMax: 2, restSkipMin: 4, restSkipMax: 5 } });
+  try {
+    assert.ok(await waitFor(async () => restLines(await huntLog(page)).length >= 1, 15000), (await huntLog(page)).slice(-600));
+    assert.match(restLines(await huntLog(page))[0], /休息 跳過 4 輪/);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
 ui('rest: a home command equal to the standby command is not sent twice', async () => {
   const { page, game, looks, times } = await restRun({ settings: { homeCommand: 'home' } });
   try {
