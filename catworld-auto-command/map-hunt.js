@@ -217,6 +217,18 @@ function rearrangeChain(chain, areas) {
   return next;
 }
 
+// 面板巡怪列沒在巡時的跨區狀態（settings 是整理過的巡怪設定，names 是 { 區域代號: 區名 }）：開著而且路線有兩區以上寫出整條路線，
+// 開著但不到兩區、或沒開但路線已排好，都寫「只巡這一區」；兩樣都沒設定回空字串（不打擾不用跨區的人）
+function chainStatus(settings, rawChain, names = {}) {
+  const chain = normalizeChain(rawChain);
+  const name = area => names[area] || area;
+  if (settings.chain === 'on') {
+    if (chain.areas.length < 2) return '跨區開著，但路線不到兩區，只巡這一區';
+    return `跨區：${chain.areas.map(item => name(item.area)).join(' → ')} → ↺ ${name(chain.areas[0].area)}`;
+  }
+  return chain.areas.length >= 2 ? '跨區沒開，只巡這一區' : '';
+}
+
 function normalizeVisited(raw) {
   const out = {};
   Object.entries(raw && typeof raw === 'object' ? raw : {}).forEach(([key, row]) => {
@@ -1984,5 +1996,5 @@ function create(deps) {
   return { start, trialRun, stop, on, summary, snapshot, exportLog, noteSent, recordLine };
 }
 
-globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, CHAIN_KEY, CHAIN_TRIAL_KEY, FIELDS, GROUPS, fieldShown, missingFields, normalizeSettings, normalizeVisited, normalizeChain, rearrangeChain, gapMs, splitIds, summaryLines, RESPAWN_MS, create };
+globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, CHAIN_KEY, CHAIN_TRIAL_KEY, FIELDS, GROUPS, fieldShown, missingFields, normalizeSettings, normalizeVisited, normalizeChain, rearrangeChain, chainStatus, gapMs, splitIds, summaryLines, RESPAWN_MS, create };
 })();

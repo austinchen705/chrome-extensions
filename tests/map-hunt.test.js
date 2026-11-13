@@ -4864,3 +4864,30 @@ ui('chain trial: falling under the danger line on a leg sends the character home
     page.close();
   }
 });
+
+// 面板巡怪列在沒有巡的時候也寫出跨區的狀態（開著與路線、沒開、路線不到兩區），都沒設定就不寫
+ui('chain: while idle, the panel hunt line says whether the hunt will cross areas, and the route', async () => {
+  const cases = [
+    [{ chain: 'on' }, CHAIN, /跨區：測試區 → 第二區 → ↺ 測試區/],
+    [{ chain: 'off' }, CHAIN, /跨區沒開，只巡這一區/],
+    [{ chain: 'on' }, { ...CHAIN, areas: [CHAIN.areas[0]], moves: [] }, /跨區開著，但路線不到兩區，只巡這一區/],
+  ];
+  for (const [settings, chain, pattern] of cases) {
+    const page = await chainPage({ settings, chain });
+    try {
+      chainWorld(page);
+      assert.ok(await waitFor(() => pattern.test(huntText(page)), 4000), `${JSON.stringify(settings)}: ${huntText(page)}`);
+    } finally {
+      page.close();
+    }
+  }
+  const page = await chainPage({ settings: { chain: 'off' }, chain: undefined });
+  try {
+    delete page.store.mapHuntChain;
+    chainWorld(page);
+    await sleep(800);
+    assert.doesNotMatch(huntText(page), /跨區/, 'nothing about cross-area hunting when it is not set up');
+  } finally {
+    page.close();
+  }
+});

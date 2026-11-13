@@ -1365,6 +1365,22 @@ function cancelMacros(owner) {
 
 // 蒐集到的怪物位置：內建加個人（只在讀取時合併）
 const mapStore = async () => CatworldMapCollect.withBuiltin((await chrome.storage.local.get('mapMonsters')).mapMonsters);
+// 面板巡怪列沒在巡時的跨區狀態文字（CatworldMapHunt.chainStatus）：面板每秒重畫時最多每 HUNT_CHAIN_NOTE_MS 重讀一次設定、路線與區名
+const HUNT_CHAIN_NOTE_MS = 2000;
+let huntChainNote = '';
+let huntChainNoteAt = 0;
+function refreshHuntChainNote() {
+  if (Date.now() - huntChainNoteAt < HUNT_CHAIN_NOTE_MS) return;
+  huntChainNoteAt = Date.now();
+  const H = CatworldMapHunt;
+  // 孤兒程式（擴充功能重新載入後）讀儲存會直接丟例外：包起來，面板重畫不能因此中斷
+  Promise.resolve().then(() => Promise.all([chrome.storage.local.get([H.SETTINGS_KEY, H.CHAIN_KEY]), mapStore()])).then(([data, store]) => {
+    const names = {};
+    CatworldMapCollect.rows(store).forEach(row => { names[row.area] ||= row.areaName || ''; });
+    const text = H.chainStatus(H.normalizeSettings(data[H.SETTINGS_KEY]), data[H.CHAIN_KEY], names);
+    if (text !== huntChainNote) { huntChainNote = text; renderPanel(); }
+  }).catch(() => {});
+}
 // 送一個指令給遊戲並收它的回應文字（巡怪的 l 與 finger 用）：收集 #content 新增的文字，出現 ASK_PATTERN 的內容之後再安靜
 // ASK_QUIET_MS 就交出去；一直等不到就在 ASK_MAX_MS 後交出目前收到的（可能是空的）。指令走共用送出佇列（來源 hunt）
 const ASK = {
@@ -2138,8 +2154,11 @@ function renderPanel() {
     panel.replace();
   }
   const huntInfo = hunt.summary();
-  if (panel.huntText.textContent !== huntInfo.text) {
-    panel.huntText.textContent = huntInfo.text;
+  // 沒在巡時附上跨區的狀態（巡怪中「第 N／M 區」由引擎自己寫）
+  if (!hunt.on()) refreshHuntChainNote();
+  const huntLineText = !hunt.on() && huntChainNote ? `${huntInfo.text}｜${huntChainNote}` : huntInfo.text;
+  if (panel.huntText.textContent !== huntLineText) {
+    panel.huntText.textContent = huntLineText;
     panel.replace();
   }
   panel.huntText.classList.toggle('alert', huntInfo.alert);
