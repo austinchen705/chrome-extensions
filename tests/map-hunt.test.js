@@ -6,7 +6,7 @@ const { ui, boot: bootPage, sleep, waitFor, fixture } = require('./helpers/game-
 
 const SCALE = 20;
 // 開始前必填的欄位（吃藥指令、沒藥關鍵字、回家指令）：各測試預設都填好，要測缺欄位的自己清掉
-const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, timeSource: 'command', timeKeepMin: 0, commandGapMinMs: 0, commandGapMaxMs: 0, reactMinMs: 0, reactMaxMs: 0, sortLookMinSec: 0, sortLookMaxSec: 0, prescan: 'off' };
+const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, typoPercent: 0, wrongWayPercent: 0, timeSource: 'command', timeKeepMin: 0, commandGapMinMs: 0, commandGapMaxMs: 0, reactMinMs: 0, reactMaxMs: 0, sortLookMinSec: 0, sortLookMaxSec: 0, prescan: 'off' };
 const boot = async options => {
   const page = await bootPage(options);
   page.store.mapHuntSettings = { ...REQUIRED };
@@ -3471,6 +3471,37 @@ ui('humanize: the eat line never drops to the danger line, and a stop time under
   const [stop, eatLine] = await jitterOf('on', 0.99, close, EAT_LOG);
   assert.equal(stop, 5);
   assert.ok(eatLine > 22 && eatLine <= 25, String(eatLine));
+});
+
+// 擬人化的失誤：打錯字（走路、l、finger 先送一個打錯的、隔一下才送正確的）與故意走錯路（走進旁邊不在路線上的房間再走回來）
+ui('humanize slips: a typo is sent before each walking step and the look, then the right command; fights and healing are never mistyped', async () => {
+  const run = options => huntOnce({ map: lineWorld(['a', 'b', 'c']), at: 'a', targets: ['c'], r: 0.1, worldOptions: { looks: { c: { lines: [] } } }, ...options });
+  const typed = await run({ settings: { typoPercent: 20, wrongWayPercent: 0 } });
+  assert.deepEqual(typed.commands, ['ee', 'e', 'ee', 'e', 'll', 'l']);
+  assert.match(typed.text, /t\/a 擬人化 打錯字 ee → e/);
+  assert.deepEqual((await run({ settings: { typoPercent: 20, wrongWayPercent: 20 }, humanize: 'off' })).commands, ['e', 'e', 'l'], 'with the switch off nothing is mistyped or walked wrong');
+  assert.deepEqual((await run({ settings: { typoPercent: 0, wrongWayPercent: 0 } })).commands, ['e', 'e', 'l'], 'zero percent means none');
+});
+
+ui('humanize slips: finger is mistyped on the verb only, the id stays whole, and the fight and corpse commands are never mistyped', async () => {
+  const { commands } = await huntOnce({
+    map: lineWorld(['a', 'b', 'c']), at: 'a', targets: ['c'], r: 0.1, settings: { typoPercent: 20, wrongWayPercent: 0 },
+    worldOptions: { looks: { c: { lines: [MOB_LINE, PERSON('smith')] } }, fingers: { smith: NOT_FOUND } },
+  });
+  assert.deepEqual(commands.slice(0, 7), ['ee', 'e', 'ee', 'e', 'll', 'l', 'fingerr smith']);
+  assert.equal(commands[7], 'finger smith', 'the id is whole when it is finally sent');
+  const rest = commands.slice(8);
+  assert.ok(rest.includes(FIGHT), 'the fight starts');
+  assert.ok(rest.every(command => command === FIGHT || command === 'gc' || command === 'l' || command === 'll' || command === 'e' || command === 'ee'), `nothing else is mistyped (${rest.join()})`);
+  assert.ok(!commands.some(command => command.startsWith('fightt') || command.startsWith('gcc')), 'fight and corpse commands are left alone');
+});
+
+ui('humanize slips: a deliberate wrong way steps into a side room that is not on the route and comes straight back, at most twice a round and never on the last step', async () => {
+  const { commands, text } = await huntOnce({ map: lineWorld(['a', 'b', 'c', 'd']), at: 'a', targets: ['d'], r: 0.1, settings: { typoPercent: 0, wrongWayPercent: 20 }, worldOptions: { looks: { d: { lines: [] } } } });
+  assert.deepEqual(commands, ['e', 'w', 'e', 'w', 'e', 'e', 'e', 'l'], `a at the start has no side exit, b is detoured twice, then it walks on; c is the last step (${commands.join()})`);
+  assert.equal([...text.matchAll(/故意走錯 w（進 t\/a），再走回來/g)].length, 2);
+  assert.doesNotMatch(text, /不是預期/, 'the deliberate wrong way is not logged as a real wrong room');
+  assert.doesNotMatch(text, /略過/, 'and it never counts towards skipping the target');
 });
 
 // 擬人化的長停頓：用 huntOnce 的 timed 選項量遊戲真正收到每個指令的時間

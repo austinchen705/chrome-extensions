@@ -27,6 +27,9 @@ const LOG_MAX = 600; // 巡怪紀錄最多留幾行
 const JITTER_STOP_RATIO = 0.3; // 擬人化：重生前停打秒數每輪偏移 ±30%
 const JITTER_STOP_MIN_SEC = 10; // 小於這個秒數不偏移（取整數會超過 ±30%，例如 2 秒變 1 或 3）
 const JITTER_LINE_POINTS = 3; // 擬人化：吃藥線、休息線每輪偏移 ±3 個百分點
+const TYPO_DELAY_MS = [1000, 3000]; // 擬人化：打錯字之後等多久才重打正確的（像人發現打錯）
+const WRONG_WAY_MAX = 2; // 擬人化：每一輪最多故意走錯路幾次
+const WRONG_WAY_MIN_QI = 60; // 擬人化：氣低於這個百分比不故意走錯路
 const PAUSE_CHANCE = 0.05; // 擬人化：可以停的點約有這個機率多停一段
 const PAUSE_MIN_MS = 3000;
 // 上限一定要小於 content.js 的 NO_REPLY_MS（8 秒）：撿屍指令送出後遊戲若什麼都不印，8 秒看門狗會把停頓當成「疑似需要驗證」而停掉一切
@@ -118,6 +121,8 @@ const FIELDS = [
   { key: 'timeKeepMin', group: 'rounds', show: s => (s.loopRounds === 'on' || s.stopBeforeSpawnSec > 0) && s.timeSource === 'command', label: '伺服器時間沿用幾分鐘', hint: '量到伺服器時間後，這麼久之內不再送 time（實際在這個數字的 2/3～4/3 之間隨機）；0＝每次都送 time（較準，但每輪都會送）；電腦時鐘被調過就改成 0', type: 'number', default: 60, min: 0, max: 240 },
   { key: 'stopBeforeSpawnSec', group: 'rounds', label: '重生前幾秒停打', hint: '0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；沒開「等下一個重生」就直接停', type: 'number', default: 0, min: 0, max: 600 },
   { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣。開＝每一輪重排目標順序（近的優先）、等長的路線隨機挑一條、重生前停打秒數與吃藥線、休息線隨機偏移一點、偶爾在到房間後與打完一隻後多停幾秒、每跑幾輪（下面設定，預設 6～12）回家休息跳過幾輪（預設 1～3）（要填下面的回程指令）；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
+  { key: 'typoPercent', group: 'human', show: s => s.humanize === 'on', row: 'slips', label: '打錯字機率 %', hint: '走路的方向、l、finger 每次送出時，這個機率先送一個打錯的指令（遊戲回「什麼﹖」），隔 1～3 秒再送正確的；戰鬥與補氣的指令不會打錯；0＝不打錯', type: 'number', default: 2, min: 0, max: 20 },
+  { key: 'wrongWayPercent', group: 'human', show: s => s.humanize === 'on', row: 'slips', label: '走錯路機率 %', hint: '每走一步，這個機率故意走進旁邊不在路線上的房間再走回來（每輪最多 2 次，氣太低、最後一步、掃描時不會）；0＝不走錯', type: 'number', default: 1, min: 0, max: 20 },
   { key: 'restEveryMin', group: 'human', show: s => s.humanize === 'on', row: 'restEvery', label: '每跑幾輪休息一次 最少', hint: '掛機休息的間隔，每次在最少與最多之間隨機抽（整數輪）', type: 'number', default: 6, min: 1, max: 100 },
   { key: 'restEveryMax', group: 'human', show: s => s.humanize === 'on', row: 'restEvery', label: '最多', hint: '要有填回程指令才會休息', type: 'number', default: 12, min: 1, max: 100 },
   { key: 'restSkipMin', group: 'human', show: s => s.humanize === 'on', row: 'restSkip', label: '一次休息跳過幾輪 最少', hint: '一輪＝一個 15 分鐘的重生，每次在最少與最多之間隨機抽（整數輪）', type: 'number', default: 1, min: 1, max: 20 },
@@ -440,7 +445,7 @@ function create(deps) {
         if (state !== token) return null;
       }
     }
-    const info = Parse.parseLook(await deps.ask('l', 'look'));
+    const info = Parse.parseLook(await askHuman(token, 'l', 'look'));
     if (state !== token) return null;
     state.readTick = state.ticks;
     return { info, source: 'l' };
@@ -481,7 +486,7 @@ function create(deps) {
     const unknown = [...new Set(info.people.map(person => person.id))].filter(id => !npcs.has(id.toLowerCase()));
     for (const id of unknown) {
       // ID 會被放進 finger 指令：不是普通英數的（可能夾帶指令）不送，直接當玩家
-      const kind = SAFE_ID.test(id) ? Parse.parseFinger(await deps.ask(`finger ${id}`, 'finger')) : 'player';
+      const kind = SAFE_ID.test(id) ? Parse.parseFinger(await askHuman(token, `finger ${id}`, 'finger')) : 'player';
       if (state !== token) return;
       if (kind === 'npc') {
         await deps.learnNpc(id);
@@ -1295,13 +1300,13 @@ function create(deps) {
   }
   // stats 是每輪摘要用的統計（startAt 是這一輪開始的伺服器時間）：sends 的時間是指令真正送出的那一刻（content.js 的送出佇列送完才呼叫 noteSent），
   // 不是引擎決定要送的時間，所以排隊等指令間隔、巨集拆出來的每一步都量得到
-  const roundFields = offset => ({ skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [], stats: { startAt: deps.now() + offset, sends: [], path: [], lookedCount: 0, mobRooms: 0 } });
+  const roundFields = offset => ({ slips: { typos: 0, wrongWays: 0 }, detour: null, skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [], stats: { startAt: deps.now() + offset, sends: [], path: [], lookedCount: 0, mobRooms: 0 } });
   const noteSent = command => { state?.stats?.sends.push({ at: deps.now(), command }); };
   // 每輪摘要：寫進巡怪紀錄（組字在模組層的 summaryLines，手動紀錄也用它）
   function logRound() {
     const { startAt, sends, path, lookedCount, mobRooms } = state.stats;
     const routeKey = path.join('>');
-    const lines = summaryLines({ startAt, sends, path, tail: `看了 ${lookedCount} 間，有怪 ${mobRooms} 間`, keepArea: !!state.chain });
+    const lines = summaryLines({ startAt, sends, path, tail: `看了 ${lookedCount} 間，有怪 ${mobRooms} 間${state.baseSettings.humanize === 'on' ? `；打錯字 ${state.slips.typos} 次、走錯路 ${state.slips.wrongWays} 次` : ''}`, keepArea: !!state.chain });
     if (state.restReturn) {
       lines.push(`休息回來：跳過 ${state.restReturn.skip} 輪，回程花了 ${secText(state.restReturn.walkMs)} 秒`);
       state.restReturn = null;
@@ -1391,6 +1396,37 @@ function create(deps) {
     const ms = PAUSE_MIN_MS + (roll / PAUSE_CHANCE) * (PAUSE_MAX_MS - PAUSE_MIN_MS);
     record(here, '停頓', `${(ms / 1000).toFixed(1)} 秒（${when}）`);
     await new Promise(resolve => setTimeout(resolve, ms));
+  }
+  // ---- 擬人化的失誤：打錯字、故意走錯路（humanize 開著、不是掃描才作用；機率 0＝不作用）----
+  // 打錯字：把指令最後一個字母重複一次（ee、ll、fingerr：不是任何方向或常用指令，遊戲回「什麼﹖」）；只用在走路、l、finger，戰鬥與補氣的指令不打錯
+  const typoOf = command => command + command.slice(-1);
+  const typoDelay = () => TYPO_DELAY_MS[0] + random() * (TYPO_DELAY_MS[1] - TYPO_DELAY_MS[0]);
+  const typoRoll = () => humanizeOn() && random() * 100 < (state.baseSettings.typoPercent || 0);
+  // l、finger 用：先送打錯的、等一下才真的送（呼叫端在 await 之後要確認這一次巡怪還在；送不出去回空字串）
+  async function askHuman(token, command, kind) {
+    if (typoRoll()) {
+      const [verb, ...rest] = command.split(' ');
+      const typo = [typoOf(verb), ...rest].join(' ');
+      if (!sendOrStop(typo)) return '';
+      state.slips.typos += 1;
+      record(deps.room() ?? '-', '擬人化', `打錯字 ${typo} → ${command}`);
+      await new Promise(resolve => setTimeout(resolve, typoDelay()));
+      if (state !== token) return '';
+    }
+    return deps.ask(command, kind);
+  }
+  // 故意走錯路：挑一個旁邊不在路線上的出口（在地圖上、不是目標、那間有路回來），走進去再走回來。回 { cmd, to, back } 或 null
+  function wrongWayPick(here, graph, route, goalCmd) {
+    if (!humanizeOn() || !(state.baseSettings.wrongWayPercent > 0) || state.slips.wrongWays >= WRONG_WAY_MAX) return null;
+    if (route.way.length < 2 || state.resting) return null;
+    const percent = deps.kee();
+    if (!Number.isFinite(percent) || percent < WRONG_WAY_MIN_QI) return null;
+    if (random() * 100 >= state.baseSettings.wrongWayPercent) return null;
+    const options = Object.entries(graph.rooms[here].exits)
+      .filter(([cmd, to]) => cmd !== goalCmd && to !== here && !state.targets.has(to) && graph.rooms[to])
+      .map(([cmd, to]) => ({ cmd, to, back: Object.entries(graph.rooms[to].exits).find(([, target]) => target === here)?.[0] }))
+      .filter(option => option.back);
+    return options.length ? options[Math.floor(random() * options.length)] : null;
   }
   // 最短路線不只一條時，第一步在「走完全程一樣長」的出口裡隨機挑一個；關著、掃描時走原本那條
   function firstStep(route, here) {
@@ -1684,7 +1720,30 @@ function create(deps) {
 
   // 規劃下一步：到了目標就看房間；否則挑路線最短的目標，送出路線的第一個指令
   // 學習開著時分兩張圖：嚴格圖（已知出口的房間只走出口裡有的）優先；只有寬鬆圖（純地圖圖示）走得到時，圖示的猜測可能走不通
+  // 送一步移動指令並進入 move 階段（plan 與故意走錯路共用）
+  function walk(here, cmd, goal, expected, text) {
+    if (!sendOrStop(cmd, () => { if (state) { state.moveText = ''; state.walkedTo = null; } })) return; // 指令真的送出時才開始收這一步的輸出（抵達時印的房間描述）
+    record(here, '走', text);
+    state.goal = goal;
+    state.expected = expected;
+    state.cmd = cmd;
+    state.phase = 'move';
+    state.from = here;
+    state.waited = 0;
+    deps.notify();
+  }
   function plan(here) {
+    // 故意走錯路的半途：走到那間就馬上走回來；走回來了（或人在別處）就照一般流程
+    if (state.detour) {
+      const detour = state.detour;
+      if (detour.stage === 'out' && here === detour.via) {
+        state.detour = { ...detour, stage: 'back' };
+        walk(here, detour.back, state.goal, detour.home, `故意走錯後走回 ${detour.home}`);
+        return;
+      }
+      state.detour = null;
+      if (detour.stage !== 'back' || here !== detour.home) record(here, '擬人化', '故意走錯路的途中位置不對，放棄走回，照一般流程');
+    }
     if (state.loadDue) { state.loadDue = false; checkLoad(here); return; }
     if (state.targets.has(here)) { arrive(here); return; }
     const clean = graph => (state.badEdges.size ? dropEdges(graph, state.badEdges) : graph);
@@ -1715,18 +1774,32 @@ function create(deps) {
     const cmd = firstStep(chosen, here);
     state.goal = chosen.key;
     state.expected = chosen.graph.rooms[here].exits[cmd];
+    const slip = state.learn ? null : wrongWayPick(here, strictGraph, chosen, cmd);
     if (state.learn) {
       const learned = state.learned[here];
       if (!state.looked.has(here) && !learned?.exits && !learned?.to[cmd]) { learnHere(here); return; }
       if (strictGraph.rooms[here].exits[cmd] === undefined) { startTrial(here, cmd); return; }
     }
-    if (!sendOrStop(cmd, () => { if (state) { state.moveText = ''; state.walkedTo = null; } })) return; // 指令真的送出時才開始收這一步的輸出（抵達時印的房間描述）
-    record(here, '走', `${cmd} → 目標 ${chosen.key}（還要 ${chosen.way.length} 步，剩 ${state.targets.size} 間）`);
-    state.cmd = cmd;
-    state.phase = 'move';
-    state.from = here;
-    state.waited = 0;
-    deps.notify();
+    if (slip) {
+      state.slips.wrongWays += 1;
+      state.detour = { stage: 'out', via: slip.to, back: slip.back, home: here };
+      record(here, '擬人化', `故意走錯 ${slip.cmd}（進 ${slip.to}），再走回來`);
+      walk(here, slip.cmd, chosen.key, slip.to, `${slip.cmd} → 故意走錯 ${slip.to}`);
+      return;
+    }
+    const go = () => walk(here, cmd, chosen.key, state.expected, `${cmd} → 目標 ${chosen.key}（還要 ${chosen.way.length} 步，剩 ${state.targets.size} 間）`);
+    if (typoRoll()) {
+      const typo = typoOf(cmd);
+      if (!sendOrStop(typo)) return;
+      state.slips.typos += 1;
+      record(here, '擬人化', `打錯字 ${typo} → ${cmd}`);
+      const token = state;
+      state.phase = 'slip'; // 等一下才重打正確的，這段時間 tick 什麼都不做（移動逾時從真正送出才算）
+      deps.notify();
+      setTimeout(() => { if (state === token) go(); }, typoDelay());
+      return;
+    }
+    go();
   }
 
   // 路過的房間：走路時房間裡新刷的怪（重生、或這一輪已經處理過的房間又有怪）不在目標裡，原本不會停下來。
@@ -1767,7 +1840,7 @@ function create(deps) {
     if (deps.busy?.() && state.phase !== 'wait' && state.phase !== 'standby' && state.phase !== 'sort') return;
     if (state.assist) { assistTick(); return; }
     if (state.phase === 'wait' || state.phase === 'standby') { waitTick(); return; }
-    if (state.phase === 'sort' || state.phase === 'return' || state.phase === 'area') return;
+    if (state.phase === 'sort' || state.phase === 'return' || state.phase === 'area' || state.phase === 'slip') return;
     if (state.trial) { trialTick(); return; }
     if (state.phase === 'pass') { passTick(); return; }
     if (state.phase === 'look') return;
@@ -1796,7 +1869,7 @@ function create(deps) {
       } else return;
     }
     // 剛走到一間不是目標的房間（路過、或這一輪已經處理過的）：看一下抵達時遊戲印的描述裡有沒有勾選的怪，有就插隊打
-    if (arrived && wantsPassCheck(here)) { state.phase = 'pass'; state.passRoom = here; state.arriveWait = 0; return; }
+    if (arrived && !state.detour && wantsPassCheck(here)) { state.phase = 'pass'; state.passRoom = here; state.arriveWait = 0; return; }
     if (!here) {
       // 地圖捲動中的一兩個 tick 讀不到不算：連續讀不到超過逾時才停
       state.blind += 1;
