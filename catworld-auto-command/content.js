@@ -79,6 +79,9 @@ const REWARD_PATTERN = /在線獎勵[：:]\s*(\d+)\s*分鐘後可領取/;
 const REWARD_RETRY_MS = 10000;
 const REWARD_TRIES = 3;
 const REWARD_AFTER_SC_MS = [5000, 10000]; // 時間到先下 sc，隔這個範圍的隨機時間才下 reward
+// 巡怪在跑時自動領獎（sc、reward）暫停：到點發現巡怪還開著，每 REWARD_HUNT_RECHECK_MS 再看一次（不算重試次數），巡怪停了才送
+const REWARD_HUNT_RECHECK_MS = 5000;
+const huntRunning = () => hunt?.on() ?? false;
 let autoReward = true;
 let rewardTimer = null;
 // 面板「獎勵」那一行的資料：at＝預定送出的時間，retry＝正在第幾次重試（兩者都沒有就不顯示）
@@ -104,6 +107,12 @@ function rewardDue(attempt) {
   rewardTimer = null;
   rewardView = null;
   if (retired) return;
+  if (huntRunning()) {
+    rewardTimer = setTimeout(() => rewardDue(attempt), REWARD_HUNT_RECHECK_MS);
+    rewardView = { huntWait: true };
+    renderPanel();
+    return;
+  }
   const result = sendCommand('sc');
   if (result.ok) {
     lastScAt = Date.now();
@@ -122,6 +131,12 @@ function sendReward(attempt) {
   rewardTimer = null;
   rewardView = null;
   if (retired) return;
+  if (huntRunning()) {
+    rewardTimer = setTimeout(() => sendReward(attempt), REWARD_HUNT_RECHECK_MS);
+    rewardView = { huntWait: true };
+    renderPanel();
+    return;
+  }
   const result = sendCommand('reward');
   if (result.ok) scheduleSc(SC_AFTER_REWARD_MS);
   if (!result.ok) {
@@ -146,6 +161,7 @@ function scheduleSc(delay, tries = 0) {
   scTimer = setTimeout(() => {
     scTimer = null;
     if (retired || !autoReward) return;
+    if (huntRunning()) { scheduleSc(REWARD_HUNT_RECHECK_MS, tries); return; }
     if (captcha || checkCaptcha()) {
       if (tries < SC_MAX_TRIES) scheduleSc(SC_RECHECK_MS, tries + 1);
       return;
@@ -156,12 +172,13 @@ function scheduleSc(delay, tries = 0) {
 }
 // 開始定時／隨機時：沒有倒數、最近也沒下過 sc 才下一次，走送出佇列（遵守指令間隔）
 function requestScAtStart(owner) {
-  if (!autoReward || rewardTimer || scTimer || Date.now() - lastScAt < SC_MIN_GAP_MS) return;
+  if (!autoReward || rewardTimer || scTimer || huntRunning() || Date.now() - lastScAt < SC_MIN_GAP_MS) return;
   lastScAt = Date.now();
   queueCommand('sc', owner);
 }
 function rewardSummary() {
   if (!rewardView) return '';
+  if (rewardView.huntWait) return '巡怪中，自動領獎先暫停，巡怪停了再領';
   if (rewardView.retry) return `領獎指令送不出去，重試中（第 ${rewardView.retry} 次）`;
   const seconds = Math.max(0, Math.ceil((rewardView.at - Date.now()) / 1000));
   return `在線獎勵 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} 後自動領取`;

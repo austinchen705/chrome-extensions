@@ -283,6 +283,7 @@
 
 - **自動下 `sc`（不是人觸發）**：`requestScAtStart`（定時或隨機的 `start`／`startRandom` 呼叫，沒有倒數排程、沒有待下的 sc、`SC_MIN_GAP_MS` 內沒下過才走 `queueCommand` 下一次）與 `scheduleSc`（`sendReward` 送出 `reward` 成功後排 `SC_AFTER_REWARD_MS`，驗證碼處理中每 `SC_RECHECK_MS` 再看、最多 `SC_MAX_TRIES` 次，用 `sendCommand`，不走佇列以便閒置時也送得出去）；都只在 `autoReward` 開著時，`cancelReward` 一併取消 `scTimer`。sc 的回覆照舊由 `watchReward` 排下一次 `reward`。領完獎的實際輸出文字還沒有樣本，所以用「送出 reward 之後等一段時間」而不是偵測領獎成功的字。
 
+- **巡怪在跑時（`hunt.on()`，含掃描、試跑、待命等重生）自動領獎暫停**：`rewardDue`、`sendReward`、`scheduleSc` 的計時器到點時看 `huntRunning()`，為真就每 `REWARD_HUNT_RECHECK_MS`（5 秒）重排自己（不算重試次數、`rewardTimer` 一直有值所以不會重複排，面板「獎勵」行寫「巡怪中…」，`rewardView.huntWait`），巡怪停了才送；`requestScAtStart` 巡怪開著也不下。手動 `reward` 與驗證碼不受影響。測試 `tests/map-hunt.test.js` 的 `reward:`。
 - `content.js` 的 `watchReward` 由 `captchaObserver` 在每一批新增文字（驗證碼分支之前）呼叫：看到「在線獎勵： N分鐘後可領取」（自己打 `sc` 的輸出）就用 `setTimeout` 排 N+1 分鐘後的 `rewardDue`：**先 `sendCommand('sc')`，再隔 `REWARD_AFTER_SC_MS`（5～10 秒隨機）才 `sendReward`**（送 `reward`，成功後再接 `scheduleSc` 取下一次倒數）；`rewardTimer` 有值就忽略新的（倒數等待、sc 之後等 reward、重試期間都算，所以那個 sc 的回應就算還寫著「N分鐘後」也不會排第二個）。**不走送出佇列**：佇列只在 `active()` 時送，閒置時會卡住；`sendCommand` 自己會擋驗證碼辨識中與因驗證停止，送不出去（sc 或 reward 都一樣）隔 `REWARD_RETRY_MS` 再試、最多 `REWARD_TRIES` 次。開關是 `chrome.storage.local.autoReward`（缺值＝開，設定頁「在線獎勵自動領取」，`storage.onChanged` 即時生效、關掉會取消等待中的）；`retire()` 會取消。面板「獎勵」那一行（`rewardView`、`rewardSummary`，每秒隨 `renderPanel` 更新，沒有排計時就隱藏）顯示倒數與重試狀態。領獎出現的驗證碼由既有的自動辨識處理。計時只存在頁面裡，重新整理就沒了。測試在 `tests/online-reward.test.js`。
 
 ## 商人裝備資料庫

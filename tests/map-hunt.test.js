@@ -968,6 +968,30 @@ for (const how of ['status', 'bar']) {
   });
 }
 
+ui('reward: while the hunt is running the automatic sc and reward wait, and go out once the hunt has stopped', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const doc = page.w.document;
+    if (!doc.getElementById('status')) doc.body.insertAdjacentHTML('beforeend', '<span id="status"></span>');
+    doc.getElementById('status').textContent = '忙碌:3'; // 巡怪一直開著（忙碌時什麼都不送）
+    world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    page.output('<span>在線獎勵： 0分鐘後可領取</span>'); // 1 分鐘後到期，縮小 20 倍約 3 秒
+    await sleep(4500);
+    assert.deepEqual(page.sent.filter(command => command === 'sc' || command === 'reward'), [], 'the countdown is over but the hunt is on: nothing goes out');
+    const line = page.hosts()[0].shadowRoot.querySelector('.reward-line');
+    assert.match(line.textContent, /巡怪/, 'the panel says why it waits');
+    click(page, '.hstop');
+    assert.ok(await waitFor(async () => !(await hunting(page))), 'stopped');
+    assert.ok(await waitFor(() => page.sent.includes('reward'), 4000), `sc then reward after the hunt stopped (${page.sent.join('|')})`);
+    assert.equal(page.sent.filter(command => command === 'sc')[0], 'sc');
+  } finally {
+    page.close();
+  }
+});
+
 ui('vitals: an injury below its line sends its own command, while a full current value and an empty injury command send nothing', async () => {
   const page = await boot({ scale: SCALE });
   try {
