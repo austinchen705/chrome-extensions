@@ -314,3 +314,151 @@ ui('the two command fields have a verify button: it asks the game page with the 
     dom.window.close();
   }
 });
+
+// ---- 跨區路線（hunt-chain 05）：設定頁巡怪底下的「跨區路線」編輯器 ----
+const MOB_T = '測試怪(test mob)';
+const MOB_U = '另一隻怪(other mob)';
+const chainStore = extra => ({
+  mapMonsters: {
+    't/c': { area: 't', room: 'c', areaName: '測試區', mobs: [MOB_T], seen: 1 },
+    'u/q': { area: 'u', room: 'q', areaName: '第二區', mobs: [MOB_U, MOB_T], seen: 1 },
+  },
+  ...extra,
+});
+const chainBox = doc => doc.getElementById('huntChain');
+const cards = doc => [...chainBox(doc).querySelectorAll('.hcard')];
+const addArea = async (dom, doc, area) => {
+  const select = chainBox(doc).querySelector('.hchain-add select');
+  assert.ok(await waitFor(() => [...select.options].some(option => option.value === area)), `the add list has ${area}`);
+  select.value = area;
+  chainBox(doc).querySelector('.hchain-add button').click();
+};
+const press = (doc, index, selector) => cards(doc)[index].querySelector(selector).click();
+
+ui('chain editor: the route is a remembered fold under the hunt section; the add list only has areas with records, by name', async () => {
+  const { doc } = await boot(chainStore());
+  try {
+    const fold = doc.getElementById('fold-hunt-chain');
+    assert.equal(fold.tagName, 'DETAILS');
+    assert.ok(doc.getElementById('sec-hunt').contains(fold));
+    const select = chainBox(doc).querySelector('.hchain-add select');
+    assert.ok(await waitFor(() => select.options.length > 1));
+    const texts = [...select.options].map(option => option.textContent);
+    assert.ok(texts.includes('測試區（t）') && texts.includes('第二區（u）'), texts.slice(0, 5).join('、'));
+    assert.ok(![...select.options].some(option => option.value === 'zz'), 'no area without a record');
+    assert.equal(cards(doc).length, 0);
+  } finally {
+    doc.defaultView.close();
+  }
+});
+
+ui('chain editor: adding, moving and removing areas saves the route, and each move command stays with its pair of areas', async () => {
+  const { dom, doc, store } = await boot(chainStore());
+  try {
+    await addArea(dom, doc, 't');
+    await addArea(dom, doc, 'u');
+    assert.ok(await waitFor(() => store.mapHuntChain?.areas?.length === 2));
+    assert.deepEqual(store.mapHuntChain, { areas: [{ area: 't', sortReturn: '' }, { area: 'u', sortReturn: '' }], moves: [''], back: '' });
+    assert.equal(cards(doc)[0].querySelector('.hcard-name').textContent, '測試區（t）');
+    change(dom, chainBox(doc).querySelector('.hmove'), 'go-u');
+    change(dom, chainBox(doc).querySelector('.hback'), 'go-t');
+    change(dom, cards(doc)[1].querySelector('.hsort'), 'back-u');
+    assert.ok(await waitFor(() => store.mapHuntChain.back === 'go-t' && store.mapHuntChain.areas[1].sortReturn === 'back-u'));
+    assert.deepEqual(store.mapHuntChain.moves, ['go-u']);
+    // u 往上移：u→t 這一段就是原本回到第一區的 go-t，回到第一區（t→u）就是原本的 go-u；整理回程指令跟著區走
+    press(doc, 1, '.hup');
+    assert.ok(await waitFor(() => store.mapHuntChain.areas[0].area === 'u'));
+    assert.deepEqual(store.mapHuntChain, { areas: [{ area: 'u', sortReturn: 'back-u' }, { area: 't', sortReturn: '' }], moves: ['go-t'], back: 'go-u' });
+    assert.equal(chainBox(doc).querySelector('.hmove').value, 'go-t', 'the page shows the moved command');
+    press(doc, 0, '.hdown');
+    assert.ok(await waitFor(() => store.mapHuntChain.areas[0].area === 't'));
+    assert.deepEqual(store.mapHuntChain.moves, ['go-u']);
+    press(doc, 1, '.hdel');
+    assert.ok(await waitFor(() => store.mapHuntChain.areas.length === 1));
+    assert.deepEqual(store.mapHuntChain, { areas: [{ area: 't', sortReturn: '' }], moves: [], back: '' });
+    assert.equal(cards(doc).length, 1);
+    const select = chainBox(doc).querySelector('.hchain-add select');
+    assert.ok(![...select.options].some(option => option.value === 't'), 'an area already in the route is not offered again');
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('chain editor: a card lists every monster collected in its area, and ticking one writes the same picks the panel uses', async () => {
+  const { dom, doc, store } = await boot(chainStore({ mapHuntPicks: { u: [MOB_T] }, mapHuntChain: { areas: [{ area: 't' }, { area: 'u' }], moves: ['go-u'], back: 'go-t' } }));
+  try {
+    assert.ok(await waitFor(() => cards(doc).length === 2));
+    const boxes = [...cards(doc)[1].querySelectorAll('input[data-mob]')];
+    assert.deepEqual(boxes.map(box => box.dataset.mob), [MOB_U, MOB_T].sort((a, b) => a.localeCompare(b)));
+    assert.deepEqual(boxes.map(box => box.checked), boxes.map(box => box.dataset.mob === MOB_T), 'the stored picks are shown');
+    const other = boxes.find(box => box.dataset.mob === MOB_U);
+    other.checked = true;
+    other.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert.ok(await waitFor(() => store.mapHuntPicks.u?.length === 2));
+    assert.deepEqual([...store.mapHuntPicks.u].sort(), [MOB_U, MOB_T].sort());
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('chain editor: empty move commands and a card whose picks have no room in that area are marked amber', async () => {
+  const { doc } = await boot(chainStore({ mapHuntPicks: { t: ['不在這裡的怪(gone)'] }, mapHuntChain: { areas: [{ area: 't' }, { area: 'u' }], moves: [''], back: 'go-t' } }));
+  try {
+    assert.ok(await waitFor(() => cards(doc).length === 2));
+    assert.ok(chainBox(doc).querySelector('.hmove').classList.contains('hmissing'), 'the empty move is amber');
+    assert.ok(!chainBox(doc).querySelector('.hback').classList.contains('hmissing'), 'a filled one is not');
+    const warn = cards(doc)[0].querySelector('.hcard-warn');
+    assert.ok(warn && !warn.hidden && warn.classList.contains('msg-warn'), 'the card with a pick that has no room is warned');
+    assert.match(warn.textContent, /到了會略過（開補掃就會先掃）/);
+    assert.ok(cards(doc)[1].querySelector('.hcard-warn').hidden, 'a card with nothing ticked is not warned');
+  } finally {
+    doc.defaultView.close();
+  }
+});
+
+ui('chain editor: a pick no longer collected in its area still has a box, so the warning can be cleared; ticking keeps the other areas\' picks', async () => {
+  const { dom, doc, store } = await boot(chainStore({ mapHuntPicks: { t: ['不在這裡的怪(gone)'] }, mapHuntChain: { areas: [{ area: 't' }, { area: 'u' }], moves: ['go-u'], back: 'go-t' } }));
+  try {
+    assert.ok(await waitFor(() => cards(doc).length === 2));
+    const stale = cards(doc)[0].querySelector('input[data-mob="不在這裡的怪(gone)"]');
+    assert.ok(stale?.checked, 'the stale pick is listed and ticked');
+    store.mapHuntPicks = { ...store.mapHuntPicks, v: ['別區的怪(x)'] }; // 遊戲頁剛存了別區的勾選
+    stale.checked = false;
+    stale.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert.ok(await waitFor(() => store.mapHuntPicks.t?.length === 0));
+    assert.ok(cards(doc)[0].querySelector('.hcard-warn').hidden, 'the warning is gone');
+    assert.deepEqual(store.mapHuntPicks.v, ['別區的怪(x)'], 'the other area is kept');
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('chain editor: typing a move command and then clicking a button both take effect', async () => {
+  const { dom, doc, store } = await boot(chainStore({ mapHuntChain: { areas: [{ area: 't' }, { area: 'u' }], moves: [''], back: 'go-t' } }));
+  try {
+    assert.ok(await waitFor(() => cards(doc).length === 2));
+    const move = chainBox(doc).querySelector('.hmove');
+    const down = cards(doc)[0].querySelector('.hdown');
+    change(dom, move, 'go-u');
+    assert.ok(down.isConnected, 'saving a typed command does not redraw the buttons');
+    down.click();
+    assert.ok(await waitFor(() => store.mapHuntChain.areas[0].area === 'u'));
+    assert.deepEqual(store.mapHuntChain.moves, ['go-t'], 'the typed command was kept with its pair: t→u is now the way back');
+    assert.equal(store.mapHuntChain.back, 'go-u');
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('chain editor: a broken stored route shows as no route, without errors', async () => {
+  const errors = [];
+  const { doc } = await boot(chainStore({ mapHuntChain: 'broken' }));
+  try {
+    doc.defaultView.addEventListener('error', event => errors.push(event.message));
+    assert.ok(await waitFor(() => chainBox(doc).querySelector('.hchain-add select')?.options.length > 1));
+    assert.equal(cards(doc).length, 0);
+    assert.deepEqual(errors, []);
+  } finally {
+    doc.defaultView.close();
+  }
+});

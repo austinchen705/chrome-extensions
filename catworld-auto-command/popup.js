@@ -1337,6 +1337,24 @@ CatworldMapHunt.FIELDS.forEach(item => {
   huntRows[item.row].append(cell);
 });
 showHuntSettings();
+// 跨區路線編輯器（map-hunt-chain-ui.js）：路線、勾選、蒐集資料任何一個變了（包括遊戲頁改的）就重讀重畫
+const huntChainKeys = [CatworldMapHunt.CHAIN_KEY, CatworldMapHuntUI.PICKS_KEY, CatworldMapCollect.STORAGE_KEY];
+const huntChain = CatworldMapHuntChainUI.attach($('huntChain'), {
+  load: async () => {
+    const data = await chrome.storage.local.get(huntChainKeys);
+    return { chain: data[CatworldMapHunt.CHAIN_KEY], picks: data[CatworldMapHuntUI.PICKS_KEY], store: data[CatworldMapCollect.STORAGE_KEY] };
+  },
+  saveChain: chain => chrome.storage.local.set({ [CatworldMapHunt.CHAIN_KEY]: chain }),
+  // 讀最新的勾選再只換這一區，不蓋掉遊戲頁剛存的別區（和面板「選怪」一樣）
+  savePicks: async (area, names) => {
+    const fresh = (await chrome.storage.local.get(CatworldMapHuntUI.PICKS_KEY))[CatworldMapHuntUI.PICKS_KEY] || {};
+    await chrome.storage.local.set({ [CatworldMapHuntUI.PICKS_KEY]: { ...fresh, [area]: names } });
+  },
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && huntChainKeys.some(key => changes[key])) huntChain.refresh();
+});
+huntChain.refresh();
 // 自動學到的 NPC（finger 找不到的 ID）：只顯示與清除，寫入在遊戲頁的 content.js
 async function showHuntNpcs() {
   const list = (await chrome.storage.local.get(CatworldMapHunt.NPCS_KEY))[CatworldMapHunt.NPCS_KEY];

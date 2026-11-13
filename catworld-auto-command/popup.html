@@ -110,6 +110,14 @@
     #huntFields .hfield[hidden], #huntFields .hrow[hidden], #huntFields details[hidden] { display:none; }
     #huntFields .hfield.hmissing input { border-color:#e0a100; background:#fdecc8; }
     #huntFields .hfield.hmissing label { color:#8a5a00; }
+    #huntChain .hcard { border:1px solid #ccc; border-radius:6px; padding:6px 8px; margin:4px 0; }
+    #huntChain .hcard-head { display:flex; align-items:center; gap:4px; }
+    #huntChain .hcard-head b { flex:1; }
+    #huntChain .hcard-mobs { display:flex; flex-wrap:wrap; gap:2px 10px; margin:4px 0; }
+    #huntChain .hcard-sort, #huntChain .harrow { display:block; }
+    #huntChain .harrow { margin:2px 0 2px 12px; }
+    #huntChain input.hmissing { border-color:#e0a100; background:#fdecc8; }
+    #huntChain .hcard-warn[hidden] { display:none; }
     #huntFields summary.hlacking { color:#8a5a00; }
   </style>
 </head>
@@ -343,6 +351,11 @@
         <summary>地圖巡怪</summary>
         <p class="hint tight">面板「巡怪」列先按「選怪」勾選要巡的怪（可以多隻），按「開始」時，會把勾選的怪和地圖目前顯示的區域固定下來，一間一間走到蒐集到這些怪的房間。以下欄位改了就存，下次按「開始」生效。</p>
         <div id="huntFields"></div>
+        <details class="fold" id="fold-hunt-chain">
+          <summary>跨區路線</summary>
+          <p class="hint tight">「跨區巡怪」開著時照這條路線巡：由上往下一區一區巡，最後一區巡完回到第一區等重生。卡片裡勾的怪和面板「選怪」是同一份；箭頭上填從上一區走到下一區的指令（可以用 ; 與 @巨集 N），琥珀色的是還沒填的。</p>
+          <div id="huntChain"></div>
+        </details>
         <div id="huntNpcs" class="hint tight"></div>
         <button id="huntNpcClear" type="button">清除已學到的 NPC</button>
         <button id="huntLogCopy" type="button">複製巡怪紀錄</button>
@@ -533,6 +546,8 @@
   <script src="map-data.js"></script>
   <script src="map-collect.js"></script>
   <script src="map-hunt.js"></script>
+  <script src="map-hunt-ui.js"></script>
+  <script src="map-hunt-chain-ui.js"></script>
   <script src="stop-keywords.js"></script>
   <script src="chat-reply.js"></script>
   <script src="chat-script.js"></script>

@@ -203,6 +203,20 @@ function normalizeChain(raw) {
   return { areas, moves: areas.slice(1).map((_, i) => text(moves[i])), back: areas.length ? text(raw.back) : '' };
 }
 
+// 路線的區換了順序、新增或拿掉之後（areas 是新的區清單）：換區指令跟著「從哪一區到哪一區」走——
+// 原本有的那一對（含回到第一區那一段）沿用原本的指令，新出現的一對是空的
+function rearrangeChain(chain, areas) {
+  const old = normalizeChain(chain);
+  const next = normalizeChain({ areas, moves: [], back: '' });
+  const pairs = new Map();
+  const pair = (from, to) => `${from.area}>${to.area}`;
+  old.areas.slice(1).forEach((item, i) => pairs.set(pair(old.areas[i], item), old.moves[i]));
+  if (old.areas.length > 1) pairs.set(pair(old.areas[old.areas.length - 1], old.areas[0]), old.back);
+  next.moves = next.areas.slice(1).map((item, i) => pairs.get(pair(next.areas[i], item)) ?? '');
+  next.back = next.areas.length > 1 ? pairs.get(pair(next.areas[next.areas.length - 1], next.areas[0])) ?? '' : '';
+  return next;
+}
+
 function normalizeVisited(raw) {
   const out = {};
   Object.entries(raw && typeof raw === 'object' ? raw : {}).forEach(([key, row]) => {
@@ -1881,5 +1895,5 @@ function create(deps) {
   return { start, stop, on, summary, snapshot, exportLog, noteSent, recordLine };
 }
 
-globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, CHAIN_KEY, CHAIN_TRIAL_KEY, FIELDS, GROUPS, fieldShown, missingFields, normalizeSettings, normalizeVisited, normalizeChain, gapMs, splitIds, summaryLines, RESPAWN_MS, create };
+globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, CHAIN_KEY, CHAIN_TRIAL_KEY, FIELDS, GROUPS, fieldShown, missingFields, normalizeSettings, normalizeVisited, normalizeChain, rearrangeChain, gapMs, splitIds, summaryLines, RESPAWN_MS, create };
 })();
