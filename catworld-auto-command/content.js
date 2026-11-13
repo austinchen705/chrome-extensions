@@ -262,6 +262,9 @@ const SCRIPT_WAIT_MS = 3 * 60 * 1000; // 等對方下一輪等這麼久就放棄
 const CORRECTION_WINDOW_MS = 15 * 1000; // 劇本剛收到對方一則的這段時間內，對方的「*字」更正算這一場的
 let scriptHeardAt = 0;
 const characterName = () => (/ - /.test(document.title) ? document.title.split(' - ')[0].trim() : '');
+// 警報帶的帳號（角色名）：警報閃標題時標題會輪流換成提示字，讀不到角色名，所以記住上一次讀到的
+let knownCharacter = '';
+const alertAccount = () => (knownCharacter = characterName() || knownCharacter);
 // 靜默結束這一場：清掉等待中的計時器、排在佇列裡還沒送出的台詞，不補送任何收尾
 function cancelScript() {
   clearTimeout(scriptWaitTimer);
@@ -522,13 +525,14 @@ function confirmAlert() {
   renderPanel();
 }
 function stopAndAlert(reason) {
+  const character = alertAccount(); // 要在閃標題之前讀
   stopRepeatBeep();
   beep();
   startRepeatBeep(persistentAlert);
   flashTitle('⚠ 需要驗證', persistentAlert);
   ringing = persistentAlert;
   try {
-    chrome.runtime.sendMessage({ type: 'ALERT', reason, confirmable: persistentAlert });
+    chrome.runtime.sendMessage({ type: 'ALERT', reason, confirmable: persistentAlert, character });
   } catch {
     // 擴充功能剛重新載入，通知送不出去：停止絕對不能因此被跳過
   }
@@ -536,10 +540,11 @@ function stopAndAlert(reason) {
 }
 // 只有某條觸發規則被停用：響一次、閃標題、跳通知，其他功能照常；原因文字不含「驗證」，不會被當成驗證碼停止
 function alertOnly(reason, title = '⚠ 觸發已停用') {
+  const character = alertAccount(); // 要在閃標題之前讀
   beep();
   flashTitle(title);
   try {
-    chrome.runtime.sendMessage({ type: 'ALERT', reason });
+    chrome.runtime.sendMessage({ type: 'ALERT', reason, character });
   } catch {
     // 擴充功能剛重新載入，通知送不出去
   }

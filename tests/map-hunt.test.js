@@ -4889,3 +4889,21 @@ ui('chain: while idle with the switch on, the panel hunt line shows the route, o
     page.close();
   }
 });
+
+// 警報帶上帳號（角色名，取自分頁標題「角色名 - …」）：前一個警報還在閃標題（標題輪流換成提示字）時，下一個警報仍帶同一個名字
+ui('alert: an alert carries the character name from the tab title, and a second one during the title flash still does', async () => {
+  const page = await chainPage();
+  try {
+    page.w.document.title = '小明 - 貓的世界';
+    chainWorld(page, { move: { 'go-t': ['t', 'a'] } });
+    await page.ask({ type: 'HUNT_CHAIN_TRIAL' });
+    assert.ok(await waitFor(() => alerts(page).length === 1, 8000), huntText(page));
+    assert.equal(alerts(page)[0].character, '小明');
+    page.w.document.title = '⚠ 巡怪已停止'; // 閃標題的那一半
+    await page.ask({ type: 'HUNT_CHAIN_TRIAL' });
+    assert.ok(await waitFor(() => alerts(page).length === 2, 8000), huntText(page));
+    assert.equal(alerts(page)[1].character, '小明');
+  } finally {
+    page.close();
+  }
+});

@@ -51,6 +51,7 @@ async function sendLine(text) {
 const LINE_THROTTLE_KEY = 'lineThrottle';
 let lineQueue = Promise.resolve();
 
+const ALERT_NAME_MAX = 20; // 警報裡的角色名最多幾個字
 function notifyLine(reason) {
   const run = async () => {
     const saved = (await chrome.storage.local.get(LINE_KEY))[LINE_KEY];
@@ -154,11 +155,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type !== 'ALERT') return;
   // 手機通知（LINE）：所有警報都走這個出口。notifyLine 是非同步、不會同步丟錯，先啟動它，
   // 系統通知若同步丟錯（圖示、權限問題）手機通知也不會跟著丟；LINE 失敗也不能影響系統通知
-  notifyLine(message.reason).catch(() => {});
+  // 哪個帳號的警報：遊戲頁送來的角色名（分頁標題「角色名 - …」），手機通知寫在原因前面（去重也就分帳號），系統通知寫在標題；讀不到就不寫
+  const who = typeof message.character === 'string' ? message.character.trim().slice(0, ALERT_NAME_MAX) : '';
+  notifyLine(who ? `${who}：${message.reason}` : message.reason).catch(() => {});
   chrome.notifications.create(`catworld-${sender.tab.id}-${sender.tab.windowId}`, {
     type: 'basic',
     iconUrl: 'icon.png',
-    title: 'CatWorld 已停止',
+    title: who ? `CatWorld 已停止（${who}）` : 'CatWorld 已停止',
     message: message.reason,
     priority: 2,
     requireInteraction: true,

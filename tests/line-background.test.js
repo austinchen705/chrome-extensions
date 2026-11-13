@@ -74,10 +74,10 @@ function loadBackground({ local = {}, session = {}, fetchImpl = okFetch, notifyT
 
   const setNow = time => { context.__now = time; };
   // 模擬遊戲分頁的 content script 送來一則警報；回傳處理過程中有沒有丟例外
-  const alert = (reason, tab = { id: 1, windowId: 1 }) => {
+  const alert = (reason, tab = { id: 1, windowId: 1 }, character) => {
     let thrown = null;
     for (const listener of listeners) {
-      try { listener({ type: 'ALERT', reason }, { tab, id: EXT, url: GAME }, () => {}); } catch (error) { thrown = error; }
+      try { listener({ type: 'ALERT', reason, ...(character === undefined ? {} : { character }) }, { tab, id: EXT, url: GAME }, () => {}); } catch (error) { thrown = error; }
     }
     return thrown;
   };
@@ -113,6 +113,22 @@ test('switch on: one alert makes one push with the formatted text and records an
   assert.ok(await waitFor(() => bg.store.session.lineLastResult?.source === 'alert'));
   assert.equal(bg.store.session.lineLastResult.ok, true);
   assert.equal(bg.store.session.lineLastResult.status, 200);
+});
+
+test('an alert names the account it came from: in the notification title and before the reason on LINE, and the dedupe is per account', async () => {
+  const bg = loadBackground({ local: ON });
+  bg.setNow(T0);
+  bg.alert('偵測到驗證碼', { id: 1, windowId: 1 }, '小明');
+  assert.ok(await waitFor(() => bg.pushes.length === 1));
+  assert.equal(bg.notifications[0][1].title, 'CatWorld 已停止（小明）');
+  assert.equal(bg.notifications[0][1].message, '偵測到驗證碼');
+  assert.match(bg.texts()[0], /^【CatWorld】小明：偵測到驗證碼（\d\d:\d\d:\d\d）$/);
+  bg.alert('偵測到驗證碼', { id: 2, windowId: 1 }, '小華');
+  assert.ok(await waitFor(() => bg.pushes.length === 2), 'the same reason from another account is not deduped away');
+  assert.match(bg.texts()[1], /小華：偵測到驗證碼/);
+  bg.alert('偵測到驗證碼', { id: 3, windowId: 1 }, '');
+  await sleep(40);
+  assert.equal(bg.notifications[2][1].title, 'CatWorld 已停止', 'no name, no change');
 });
 
 test('the same reason within the dedupe window is pushed once, but every alert still gets its system notification', async () => {
