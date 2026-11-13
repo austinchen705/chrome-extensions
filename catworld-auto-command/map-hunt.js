@@ -42,8 +42,6 @@ const RECALIBRATE_LEAD_MS = 30 * 1000; // 距開始時間不到這麼久（或�
 const RECALIBRATE_GAP_MS = 20 * 1000;
 const FRESH_MS = 60 * 1000; // 開始下一輪前，最近一次校準不能比這更舊
 const QI_WAIT_TICKS = 60 * TICKS_PER_SEC; // 試出口前等氣回復最多等這麼久，等不到就略過這個目標
-const REST_EVERY_MIN = 6; // 擬人化的掛機休息：每跑 6～12 輪休息一次
-const REST_EVERY_MAX = 12;
 const REST_SKIP_MAX = 3; // 一次休息跳過 1～3 輪
 const RETURN_QI_WAIT_TICKS = 120 * TICKS_PER_SEC; // 休息結束要走回去時，氣沒回到「回到 %」最多等這麼久，再沒回到就停止並警報
 const RETURN_WALK_TICKS = 60 * TICKS_PER_SEC; // 送出回程指令、巨集跑完之後，地圖房間還不在巡怪區最多等這麼久，再沒回到就停止並警報（不重送）
@@ -109,7 +107,9 @@ const FIELDS = [
   { key: 'loopRounds', group: 'rounds', label: '巡完一輪後等下一個重生', hint: '關＝巡完就停', type: 'select', options: ON_OFF, default: 'on' },
   { key: 'standbyCommand', group: 'rounds', show: s => s.loopRounds === 'on', label: '巡完一輪後的待命指令', hint: '可空', type: 'text', default: '' },
   { key: 'stopBeforeSpawnSec', group: 'rounds', label: '重生前幾秒停打', hint: '0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；沒開「等下一個重生」就直接停', type: 'number', default: 0, min: 0, max: 600 },
-  { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣。開＝每一輪重排目標順序（近的優先）、等長的路線隨機挑一條、重生前停打秒數與吃藥線、休息線隨機偏移一點、偶爾在到房間後與打完一隻後多停幾秒、每跑 6～12 輪回家休息跳過 1～3 輪（要填下面的回程指令）；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
+  { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣。開＝每一輪重排目標順序（近的優先）、等長的路線隨機挑一條、重生前停打秒數與吃藥線、休息線隨機偏移一點、偶爾在到房間後與打完一隻後多停幾秒、每跑幾輪（下面設定，預設 6～12）回家休息跳過 1～3 輪（要填下面的回程指令）；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
+  { key: 'restEveryMin', group: 'human', show: s => s.humanize === 'on', row: 'restEvery', label: '每跑幾輪休息一次 最少', hint: '掛機休息的間隔，每次在最少與最多之間隨機抽（整數輪）', type: 'number', default: 6, min: 1, max: 100 },
+  { key: 'restEveryMax', group: 'human', show: s => s.humanize === 'on', row: 'restEvery', label: '最多', hint: '要有填回程指令才會休息', type: 'number', default: 12, min: 1, max: 100 },
   { key: 'restReturnCommand', group: 'human', show: s => s.humanize === 'on', advise: s => s.loopRounds === 'on' && !s.restReturnCommand, label: '休息後回到巡怪區的指令／巨集', hint: '掛機休息結束時從家走回巡怪區用，重生整點才送，可用 ; 與 @巨集 N；沒填就不會掛機休息（要開著「巡完一輪後等下一個重生」）', type: 'text', default: '' },
   { key: 'npcWhitelist', group: 'advanced', label: 'NPC 白名單', hint: '英文 ID，用、分隔', type: 'text', default: '' },
 ];
@@ -163,6 +163,8 @@ function normalizeSettings(rawSettings) {
   if (out.commandGapMaxMs < out.commandGapMinMs) out.commandGapMaxMs = out.commandGapMinMs;
   if (out.reactMaxMs < out.reactMinMs) out.reactMaxMs = out.reactMinMs;
   if (out.sortLookMaxSec < out.sortLookMinSec) out.sortLookMaxSec = out.sortLookMinSec;
+  out.restEveryMin = Math.round(out.restEveryMin);
+  out.restEveryMax = Math.max(Math.round(out.restEveryMax), out.restEveryMin);
   // 開打用的指令後面會接上怪的 ID 再送出：空的、含分號或 @等待（會被當成巨集）、換行、太長的都退回 fight
   if (!out.fightCommand || out.fightCommand.length > FIGHT_COMMAND_MAX || /[;；\r\n]|@等待/.test(out.fightCommand)) out.fightCommand = 'fight';
   return out;
@@ -1262,8 +1264,9 @@ function create(deps) {
   }
 
   // ---- 擬人化：掛機休息（跳過整輪）。擬人化開著、輪與輪之間開著、有填「休息後回到巡怪區的指令」才作用 ----
-  const drawRestAfter = () => REST_EVERY_MIN + Math.floor(random() * (REST_EVERY_MAX - REST_EVERY_MIN + 1));
-  // 每個跑完的一輪算一次（會動 sinceRest、第一次還會抽輪數），數到抽好的輪數就休息（第一次抽在第一輪跑完時，所以一定要先跑滿 REST_EVERY_MIN 輪）。
+  // 輪數讀 baseSettings（每輪抖動的 state.settings 不動它，但休息是跨輪的事）
+  const drawRestAfter = () => { const { restEveryMin, restEveryMax } = state.baseSettings; return restEveryMin + Math.floor(random() * (restEveryMax - restEveryMin + 1)); };
+  // 每個跑完的一輪算一次（會動 sinceRest、第一次還會抽輪數），數到抽好的輪數就休息（第一次抽在第一輪跑完時，所以一定要先跑滿 restEveryMin 輪）。
   // 回程指令一律讀 baseSettings：它不是每輪抖動的設定，休息與否也和這一輪的 state.settings 無關
   const countRoundForRest = () => {
     if (!humanizeOn() || !state.baseSettings.restReturnCommand) return false;

@@ -3465,6 +3465,19 @@ ui('rest: after the drawn number of rounds it skips whole rounds, goes home, com
   }
 });
 
+ui('rest: the number of rounds between rests is a setting', async () => {
+  // 2～3 輪、r 0.2 → 2 ＋ ⌊0.2×2⌋ = 2 輪後休息
+  const { page } = await restRun({ settings: { restEveryMin: 2, restEveryMax: 3 } });
+  try {
+    assert.ok(await waitFor(async () => restLines(await huntLog(page)).length >= 1, 15000), (await huntLog(page)).slice(-600));
+    const text = await huntLog(page);
+    assert.equal(roundsIn(text.slice(0, text.indexOf(' 休息 '))), 2, 'two rounds were completed before the first rest');
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
 ui('rest: a home command equal to the standby command is not sent twice', async () => {
   const { page, game, looks, times } = await restRun({ settings: { homeCommand: 'home' } });
   try {
