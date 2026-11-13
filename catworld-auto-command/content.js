@@ -1459,8 +1459,8 @@ function markHuntVisited(key, state) {
 CatworldMapCollect.setSuspended(() => hunt?.on() ?? false);
 // 地圖巡怪：目標是面板「選怪」勾選的怪（map-hunt-ui.js，依區域記在 mapHuntPicks）與地圖目前顯示的區域；指令走共用送出佇列（來源 hunt）
 hunt = CatworldMapHunt.create({
-  target: async () => {
-    const area = CatworldMapHuntUI.visibleArea(document);
+  // 要巡的區域與那一區勾的怪：沒指定區域＝地圖目前顯示的那一區（跨區巡怪換區後指定下一區）
+  target: async (area = CatworldMapHuntUI.visibleArea(document)) => {
     const { mapHuntPicks } = await chrome.storage.local.get(CatworldMapHuntUI.PICKS_KEY);
     // 儲存裡留著、但這個區域已經沒有蒐集到的怪（資料清掉了）不算
     const here = CatworldMapHuntUI.mobsOfArea(await mapStore(), area);
@@ -1469,6 +1469,7 @@ hunt = CatworldMapHunt.create({
   room: () => CatworldMapCollect.currentRoom(document)?.key ?? null,
   areaHtml: area => document.getElementById(`m-${area}`)?.innerHTML ?? '',
   readStore: mapStore,
+  chain: async () => (await chrome.storage.local.get(CatworldMapHunt.CHAIN_KEY))[CatworldMapHunt.CHAIN_KEY],
   learnVisit: async (key, seen, picked) => {
     const storageKey = CatworldMapCollect.STORAGE_KEY;
     const at = key.indexOf('/');
