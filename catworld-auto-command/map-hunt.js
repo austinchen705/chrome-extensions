@@ -267,8 +267,9 @@ const compactCommands = sends => {
   const text = runs.map(run => (run.count > 1 ? `${run.name}×${run.count}` : run.name)).join(' ');
   return text.length > SUMMARY_TEXT_MAX ? `${text.slice(0, SUMMARY_TEXT_MAX)}…` : text;
 };
-function summaryLines({ startAt, sends, path, tail }) {
-  const rooms = path.map(key => key.split('/').pop());
+// keepArea：跨區巡怪的路線跨好幾區，房間前面留著區域代號才分得出是哪一區
+function summaryLines({ startAt, sends, path, tail, keepArea = false }) {
+  const rooms = keepArea ? path : path.map(key => key.split('/').pop());
   const route = rooms.length > SUMMARY_ROOMS_MAX ? `${rooms.slice(0, SUMMARY_ROOMS_MAX).join('→')}…` : rooms.join('→');
   const gaps = sends.slice(1).map((send, i) => send.at - sends[i].at);
   return [
@@ -1075,7 +1076,9 @@ function create(deps) {
   // ---- 自動整理（永動機）----
   // 前往（路線與鑑定都寫在裡面，抓輸出裡的裝備區塊）、回程兩個指令只要填了任何一個就走這條：前往 → i → 把好東西 secure 標記或 give 給小號 → sell all → 回程 →
   // 確認還在這一區 → 回去繼續巡怪（下一次 plan 會再看一次負重）。任何一步沒成功就停止並警報，不賣東西
-  const sortConfigured = settings => Boolean(settings.tripCommand || settings.returnCommand);
+  // 跨區時這一區有填自己的整理回程指令就用它，沒填用原本的
+  const sortReturn = settings => state.chain?.areas[state.chain.index].sortReturn || settings.returnCommand;
+  const sortConfigured = settings => Boolean(settings.tripCommand || sortReturn(settings));
   const SORT_PHASE_TEXT = { trip: '前往整理處與鑑定', inventory: '看背包', keep: '標記或轉給小號', sell: '賣東西', look: '賣完看一下裝備', back: '回到巡怪地圖' };
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
   const SORT_REPLY = { secure: /標記完成/, give: /你給/ };
@@ -1155,7 +1158,7 @@ function create(deps) {
         if (state !== token) return;
       }
       stage('back');
-      ok = await runStep(settings.returnCommand, token);
+      ok = await runStep(sortReturn(settings), token);
       if (ok === null) return;
       if (!ok) { fail('回程的指令沒有送完，已停止'); return; }
       // 回到這一區才繼續（地圖捲動可能慢，多等一會）
@@ -1226,7 +1229,7 @@ function create(deps) {
   function logRound() {
     const { startAt, sends, path, lookedCount, mobRooms } = state.stats;
     const routeKey = path.join('>');
-    const lines = summaryLines({ startAt, sends, path, tail: `看了 ${lookedCount} 間，有怪 ${mobRooms} 間` });
+    const lines = summaryLines({ startAt, sends, path, tail: `看了 ${lookedCount} 間，有怪 ${mobRooms} 間`, keepArea: !!state.chain });
     if (state.restReturn) {
       lines.push(`休息回來：跳過 ${state.restReturn.skip} 輪，回程花了 ${secText(state.restReturn.walkMs)} 秒`);
       state.restReturn = null;
@@ -1437,6 +1440,7 @@ function create(deps) {
     });
     state.chain.index = index;
     state.order = humanizeOn() ? planOrder(deps.room()) : null;
+    if (humanizeOn()) record(area, '擬人化', `本區：目標順序 ${state.order ? state.order.map(key => key.split('/').pop()).join('→') : '最近的先'}`);
     record(area, '目標房間', `${[...targets].join(' ') || '（沒有）'}；怪 ${mobs.join('、') || '（沒勾）'}`);
     baseSkipped.forEach(item => record(item.key, '略過', item.why));
     const unscanned = known ? Object.keys(graph.rooms).filter(key => !normalizeVisited(known)[key]) : [];
@@ -1475,10 +1479,11 @@ function create(deps) {
     return entered;
   }
   // 跨區時一區巡完：還有下一區就換過去接著巡；最後一區巡完就回到第一區，再照單區的方式待命、等重生（after 是之後要做的事）
-  function nextArea(after) {
+  // home＝不管在第幾區，直接送回到第一區的指令（重生前停打）
+  function nextArea(after, { home = false } = {}) {
     const token = state;
     const { index, areas, moves, back } = state.chain;
-    const last = index >= areas.length - 1;
+    const last = home || index >= areas.length - 1;
     changeArea(token, last ? 0 : index + 1, last ? back : moves[index], { defer: last })
       .then(ok => { if (ok && state === token) after(); })
       .catch(() => { if (state === token) finish('換區時出錯，已停止', { alert: true }); });
@@ -1530,9 +1535,14 @@ function create(deps) {
     if (state.settings.loopRounds !== 'on') { finish(`重生前 ${sec} 秒停打（${hhmm(spawn)} 重生），已停止`); return true; }
     console.log(`[catworld] 巡怪：重生前 ${sec} 秒停打，等 ${hhmm(spawn)} 的重生`);
     state.after = spawn - 1; // calibrate 用 nextSpawn(after) 決定等哪一個重生
-    if (state.settings.standbyCommand && !sendOrStop(state.settings.standbyCommand)) return true;
-    state.phase = 'standby';
-    deps.notify();
+    const standby = () => {
+      if (state.settings.standbyCommand && !sendOrStop(state.settings.standbyCommand)) return;
+      state.phase = 'standby';
+      deps.notify();
+    };
+    // 跨區時停打後回到第一區等重生，下一輪從第一區開始
+    if (state.chain && state.chain.index !== 0) nextArea(standby, { home: true });
+    else standby();
     return true;
   }
   function calibrate() {

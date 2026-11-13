@@ -4675,3 +4675,95 @@ ui('chain: starting in the last area with nothing to hunt there still goes back 
     page.close();
   }
 });
+
+// ---- 跨區巡怪和其他功能（hunt-chain 04）----
+ui('chain: a stop before the respawn in a later area walks back to the first area and waits there; the next round starts in the first area', async () => {
+  const page = await chainPage({ settings: { stopBeforeSpawnSec: 120 } });
+  try {
+    page.store.mapMonsters['u/q'].mobs = [MOB];
+    page.store.mapHuntPicks = { t: [MOB], u: [MOB] };
+    const clock = fakeClock(page, '2026-11-04T10:14:00+08:00', { scale: 60 });
+    const game = chainWorld(page, { start: ['u', 'p'], script: timeScript(page, clock) });
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => game.log.includes(FIGHT), 12000), game.log.join(','));
+    const back = game.log.indexOf('go-t');
+    assert.ok(back > 0 && back < game.log.indexOf(FIGHT), `no fight in u that close to the respawn, it went back first (${game.log.join(',')})`);
+    assert.equal(game.area, 't', 'the fight after the respawn is in the first area');
+    assert.deepEqual(game.log.slice(game.log.lastIndexOf('time') + 1, game.log.lastIndexOf('time') + 4), ['e', 'e', 'l']);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+const chainSortPage = async sortReturn => {
+  const page = await chainPage({ settings: { loopRounds: 'off', loadMaxPercent: 90, tripCommand: 'trip', returnCommand: 'back', sortKeep: 'none' }, chain: { ...CHAIN, areas: [CHAIN.areas[0], { area: 'u', sortReturn }] } });
+  page.store.mapMonsters['u/q'].mobs = [MOB];
+  page.store.mapHuntPicks = { t: [MOB], u: [MOB] };
+  return page;
+};
+const chainSortScript = (page, bag) => command => {
+  if (command === 'i') { say(page, `你身上帶著下列這些東西( 載重 ${bag.load}% ):
+`); return true; }
+  if (command === 'sell all') { bag.load = 20; say(page, '你把牛皮拳套賣掉，獲得了一兩銀子。'); return true; }
+  return false;
+};
+const SORT_MOVES = { 'go-u': ['u', 'p'], 'go-t': ['t', 'a'], trip: ['t', 'd'], back: ['u', 'p'], 'back-u': ['u', 'p'] };
+
+ui('chain: sorting in the second area comes back with that area\'s own return command and goes on hunting there', async () => {
+  const page = await chainSortPage('back-u');
+  try {
+    const bag = { load: 95 };
+    const game = chainWorld(page, { start: ['u', 'p'], move: SORT_MOVES, script: chainSortScript(page, bag) });
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'l', FIGHT, 'gc', 'i', 'trip', 'sell all', 'back-u', 'i']);
+    assert.equal(alerts(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain: an area without its own sort return command uses the usual one', async () => {
+  const page = await chainSortPage('');
+  try {
+    const bag = { load: 95 };
+    const game = chainWorld(page, { start: ['u', 'p'], move: SORT_MOVES, script: chainSortScript(page, bag) });
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(game.log.slice(5, 8), ['trip', 'sell all', 'back']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain: a sort that comes back in another area than the one being hunted stops with an alert', async () => {
+  const page = await chainSortPage('back-u');
+  try {
+    const bag = { load: 95 };
+    chainWorld(page, { start: ['u', 'p'], move: { ...SORT_MOVES, 'back-u': ['t', 'a'] }, script: chainSortScript(page, bag) });
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(message => /不在 u 這一區/.test(message.reason)), 12000), JSON.stringify(alerts(page)));
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain: a humanized rest counts the whole route as one round, and the round summary names the area of each room', async () => {
+  const page = await chainPage({ settings: { humanize: 'on', restEveryMin: 1, restEveryMax: 1, homeCommand: 'recall', restReturnCommand: 'come-back' } });
+  try {
+    pinRandom(page, 0.99);
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    chainWorld(page, { script: timeScript(page, clock) });
+    click(page, '.hstart');
+    assert.ok(await waitFor(async () => / 休息 跳過/.test(await huntLog(page)), 8000), (await huntLog(page)).slice(-800));
+    const text = await huntLog(page);
+    const rest = text.indexOf(' 休息 跳過');
+    assert.ok(text.indexOf('換區 u → t') < rest, 'the rest is counted after the whole route');
+    assert.equal(roundsIn(text.slice(0, rest)), 1, 'one round for the two areas');
+    assert.match(text, /路線 t\/b→t\/c→u\/q/, 'the summary keeps the area of each room');
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
