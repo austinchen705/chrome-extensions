@@ -3985,6 +3985,75 @@ ui('passing: a passed room with a player in it is skipped once and not looked at
   }
 });
 
+// ---- 被怪主動攻擊：停下來反擊 ----
+const ZOMBIE = '  ※腐屍(zombie) [fight][kill]';
+const ZOMBIE_FIGHTING = '  ※腐屍(zombie) <戰鬥中> [fight][kill]';
+const ATTACK_LINE = '看起來腐屍想殺死你！'; // 使用者貼的真實輸出
+// b 有會主動攻擊的腐屍（沒勾選），目標是 d：走進 b 時抵達描述後面接著「看起來腐屍想殺死你！」
+const ambushWorld = page => {
+  const game = world(page, { at: 'a', arrivals: { b: { lines: [ZOMBIE, ATTACK_LINE] } }, looks: { b: { lines: [ZOMBIE_FIGHTING] }, d: { lines: [MOB_LINE] } }, script: (command, { say, looks }) => {
+    if (command === 'kill 1' && game.at === 'b') { looks.b.lines = []; say('腐屍死了。'); return true; }
+    if (command.startsWith('fight ')) looks[game.at].lines = [];
+    return false;
+  } });
+  return game;
+};
+
+ui('counter: a monster that attacks on the way is fought back with the kill command, then the walk goes on', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('d');
+    const game = ambushWorld(page);
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.deepEqual(game.log.slice(0, 4), ['e', 'l', 'kill 1', 'gc'], 'stopped in b, looked, killed the monster marked <戰鬥中> by its position, looted');
+    assert.equal(game.at, 'd', 'then walked on to the target');
+    assert.equal(countOf(game, FIGHT), 1, 'and fought the chosen monster there');
+    const { text } = await page.ask({ type: 'HUNT_LOG' });
+    assert.match(text, /t\/b 被攻擊 腐屍/);
+    assert.match(text, /t\/b 反擊 腐屍\(zombie\)/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('counter: with the setting off, an attack on the way is not answered', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapHuntSettings.counterAttack = 'off';
+    page.store.mapMonsters = mobsAt('d');
+    const game = ambushWorld(page);
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.equal(countOf(game, 'kill 1'), 0);
+    assert.deepEqual(game.log.slice(0, 3), ['e', 'e', 'e'], 'walked straight through b');
+  } finally {
+    page.close();
+  }
+});
+
+ui('counter: the monster being fought saying it wants to kill you is not an ambush, and costs no extra l', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE] } }, script: (command, { say, looks }) => {
+      if (!command.startsWith('fight ')) return false;
+      looks.c.lines = [];
+      say('看起來測試怪想殺死你！');
+      say('測試怪死了。');
+      return true;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc']);
+  } finally {
+    page.close();
+  }
+});
+
 ui('passing: nothing changes when the arrival shows another monster, or no monster at all', async () => {
   const page = await boot({ scale: SCALE });
   try {
