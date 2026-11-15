@@ -9,6 +9,7 @@ const { ui, boot, waitFor, sleep } = require('./helpers/game-page');
 const root = path.join(__dirname, '..', 'catworld-auto-command');
 const SKILLS_DATA = new Function(`${fs.readFileSync(path.join(root, 'skills-data.js'), 'utf8')}; return SKILLS_DATA;`)();
 require('../catworld-auto-command/skill-moves.js');
+require('../catworld-auto-command/move-fx.js');
 const S = globalThis.CatworldSkillMoves;
 
 const CAREERS = `【 道  士 】[罪]timer的犯人「傳說的魔獸」愛吃肉的緋爾(fenrir)
@@ -143,6 +144,45 @@ ui('a skill that is not in the data says so, and a failed lookup shows the reaso
   } finally {
     page.close();
   }
+});
+
+ui('clicking a move plays its animation under that row with the move text typed out, one player per list', async () => {
+  const page = await skillsPage();
+  try {
+    page.output(`<span>${CAREERS}</span>`);
+    assert.ok(await waitFor(() => box(page), 3000));
+    const row = name => box(page).querySelector(`[data-catworld-move="${name}"]`);
+    assert.ok(row('雁行斜擊'), 'learned moves are clickable');
+    let gameSaw = 0;
+    page.w.document.body.addEventListener('click', () => { gameSaw += 1; });
+    row('雁行斜擊').dispatchEvent(new page.w.MouseEvent('click', { bubbles: true }));
+    assert.equal(gameSaw, 0, 'the click does not reach the game');
+    const players = () => box(page).querySelectorAll('[data-catworld-movefx]');
+    assert.equal(players().length, 1);
+    assert.ok(row('雁行斜擊').nextElementSibling.contains(players()[0]), 'the player sits right under the row');
+    assert.match(players()[0].textContent, /動畫：突刺/);
+    assert.ok(await waitFor(() => /此招叫作『雁行斜擊』.*（刺傷，傷害 70）/.test(players()[0].textContent), 5000), 'the move text is typed out with the name filled in');
+    row('三花聚頂').dispatchEvent(new page.w.MouseEvent('click', { bubbles: true }));
+    assert.equal(players().length, 1, 'another move replaces the player');
+    assert.ok(row('三花聚頂').nextElementSibling.contains(players()[0]));
+  } finally {
+    page.close();
+  }
+});
+
+test('every move in the data gets an animation, and the keywords pick the expected one', () => {
+  const F = globalThis.CatworldMoveFx;
+  const fxOf = (skill, move) => F.pick(SKILLS_DATA.skills.find(s => s.name === skill).moves.find(m => m.name === move).action).fx;
+  assert.equal(fxOf('全真劍法', '雁行斜擊'), 'thrust');
+  assert.equal(fxOf('降龍十八掌', '迴龍反嚙'), 'dragon');
+  assert.equal(fxOf('獨孤九劍', '光翼天雨'), 'net');
+  assert.equal(fxOf('一陽指', '一言九鼎'), 'points');
+  assert.equal(fxOf('打狗棒法', '纏字訣'), 'staff');
+  assert.equal(fxOf('六脈神劍', '屋漏惡逢連夜雨'), 'rain');
+  const names = new Set(F.RULES.map(rule => rule.fx));
+  for (const skill of SKILLS_DATA.skills) for (const move of skill.moves) assert.ok(names.has(F.pick(move.action).fx));
+  assert.equal(F.pick('').fx, 'thrust', 'no keyword falls back to the last one');
+  assert.equal(F.actionText('一招『招式名』', '雁行斜擊'), '一招『雁行斜擊』');
 });
 
 test('the background answers SKILL_MOVES from the real data, and the files are wired in the manifest and the settings page', () => {

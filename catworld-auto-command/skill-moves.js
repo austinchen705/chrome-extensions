@@ -25,7 +25,7 @@ function lookup(data, names) {
     skills[name] = {
       forceName: skill.forceName,
       levels: skill.levels.map(level => ({ self: level.self, force: level.force })),
-      moves: skill.moves.map(move => ({ level: move.level, name: move.name, damage: move.damage, damageType: move.damageType, extra: move.extra })),
+      moves: skill.moves.map(move => ({ level: move.level, name: move.name, damage: move.damage, damageType: move.damageType, extra: move.extra, action: move.action })),
     };
   });
   return skills;
@@ -62,6 +62,7 @@ function describe(skill, count) {
       type: cleanType(move.damageType),
       force: move.extra?.force ?? null,
       effect: move.extra?.effect ?? null,
+      action: move.action ?? '',
       color: hasDamage ? tierOf(move.damage).color : FORCE_COLOR,
       second: hasDamage ? tierOf(move.damage).second : FORCE_SECOND,
       ...(MOVE_NAME_COLORS[move.name] ? { chars: MOVE_NAME_COLORS[move.name] } : {}),
@@ -110,9 +111,30 @@ function line(box, text, color, indent = false) {
   box.append(row);
 }
 
+// 點一招就在那一行下面播招式動畫（move-fx.js），同一塊列表一次只開一個；再點同一招重播
+let player = null;
+function showMove(row, move) {
+  if (!globalThis.CatworldMoveFx) return;
+  if (player?.row === row && player.node.isConnected) { player.replay(); return; }
+  player?.stop();
+  player?.node.remove();
+  const holder = document.createElement('div');
+  row.after(holder);
+  const mounted = CatworldMoveFx.mount(holder, move);
+  player = { ...mounted, row, node: holder };
+}
+
 // 一招一行：編號與後面的數字用第一個顏色，招式名兩個字一段、兩個顏色輪流
 function moveRow(box, move) {
   const row = document.createElement('div');
+  if (move.action && globalThis.CatworldMoveFx) {
+    row.style.cursor = 'pointer';
+    row.title = '點一下看招式動畫';
+    row.setAttribute('data-catworld-move', move.name);
+    // 點擊不傳給遊戲（遊戲會把焦點搶回輸入框）
+    row.addEventListener('mousedown', event => event.stopPropagation());
+    row.addEventListener('click', event => { event.stopPropagation(); showMove(row, move); });
+  }
   row.style.paddingLeft = '1.5em';
   row.style.color = move.color;
   row.append(`${move.no}. `);
@@ -131,7 +153,7 @@ function render(learned, reply) {
   const box = document.createElement('div');
   box.setAttribute(OWN, '');
   Object.assign(box.style, { padding: '6px 0', margin: '6px 0', whiteSpace: 'pre-wrap' });
-  line(box, `招式列表（顏色＝傷害：${TIERS.map(tier => tier.label).join('、')}；藍＝加內力；招式名兩個字換一個色）`, '#9aa5b1');
+  line(box, `招式列表（顏色＝傷害：${TIERS.map(tier => tier.label).join('、')}；藍＝加內力；招式名兩個字換一個色；點招式看動畫）`, '#9aa5b1');
   if (!reply?.ok) {
     line(box, `查不到招式資料：${reply?.error ?? '沒有回應'}（extension 剛重新載入的話，請重新整理遊戲頁）`, '#ff8a7a');
   } else {
