@@ -4018,6 +4018,34 @@ ui('counter: a monster that attacks on the way is fought back with the kill comm
   }
 });
 
+ui('counter: when several monsters attack in a target room, gc waits until l shows none in <戰鬥中>, and the one knocked out meanwhile is finished', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const FIGHTING = '  ※測試怪(test mob) <戰鬥中> [fight][kill]';
+    const OUT = '  ※測試怪(test mob) <昏迷不醒> [fight][kill]';
+    const ATTACK = '看起來測試怪想殺死你！';
+    let fights = 0;
+    // 使用者貼的工具室：三隻同名的怪一進門就打你；打死第一隻時另一隻被自動戰鬥打昏、第三隻還在打你
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [MOB_LINE, MOB_LINE, MOB_LINE, ATTACK, ATTACK, ATTACK] } }, looks: { c: { lines: [] } }, script: (command, { say, looks }) => {
+      if (command === FIGHT) {
+        fights += 1;
+        looks.c.lines = fights === 1 ? [FIGHTING, OUT] : [OUT];
+        say('測試怪死了。');
+        return true;
+      }
+      if (command === 'kill 1') { looks.c.lines = []; say('測試怪死了。'); return true; }
+      return command === 'gc';
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.deepEqual(game.log.slice(2), [FIGHT, 'l', FIGHT, 'l', 'gc', 'gc', 'kill 1', 'gc'], 'no gc while one is still fighting; both corpses taken once l shows nobody fighting; the knocked-out one finished with kill');
+  } finally {
+    page.close();
+  }
+});
+
 ui('counter: with the setting off, an attack on the way is not answered', async () => {
   const page = await boot({ scale: SCALE });
   try {
