@@ -24,6 +24,7 @@ function lookup(data, names) {
     if (!skill) return;
     skills[name] = {
       forceName: skill.forceName,
+      weapon: skill.type,
       levels: skill.levels.map(level => ({ self: level.self, force: level.force })),
       moves: skill.moves.map(move => ({ level: move.level, name: move.name, damage: move.damage, damageType: move.damageType, extra: move.extra, action: move.action })),
     };
@@ -63,6 +64,7 @@ function describe(skill, count) {
       force: move.extra?.force ?? null,
       effect: move.extra?.effect ?? null,
       action: move.action ?? '',
+      weapon: skill.weapon ?? '',
       color: hasDamage ? tierOf(move.damage).color : FORCE_COLOR,
       second: hasDamage ? tierOf(move.damage).second : FORCE_SECOND,
       ...(MOVE_NAME_COLORS[move.name] ? { chars: MOVE_NAME_COLORS[move.name] } : {}),

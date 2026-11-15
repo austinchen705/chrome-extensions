@@ -160,7 +160,7 @@ ui('clicking a move plays its animation under that row with the move text typed 
     const players = () => box(page).querySelectorAll('[data-catworld-movefx]');
     assert.equal(players().length, 1);
     assert.ok(row('雁行斜擊').nextElementSibling.contains(players()[0]), 'the player sits right under the row');
-    assert.match(players()[0].textContent, /動畫：突刺/);
+    assert.match(players()[0].textContent, /出招：突刺/);
     assert.ok(await waitFor(() => /此招叫作『雁行斜擊』.*（刺傷，傷害 70）/.test(players()[0].textContent), 5000), 'the move text is typed out with the name filled in');
     row('三花聚頂').dispatchEvent(new page.w.MouseEvent('click', { bubbles: true }));
     assert.equal(players().length, 1, 'another move replaces the player');
@@ -170,19 +170,34 @@ ui('clicking a move plays its animation under that row with the move text typed 
   }
 });
 
-test('every move in the data gets an animation, and the keywords pick the expected one', () => {
+test('every move in the data gets an animation built from its text, and 雪山劍法 moves come out different', () => {
   const F = globalThis.CatworldMoveFx;
-  const fxOf = (skill, move) => F.pick(SKILLS_DATA.skills.find(s => s.name === skill).moves.find(m => m.name === move).action).fx;
-  assert.equal(fxOf('全真劍法', '雁行斜擊'), 'thrust');
-  assert.equal(fxOf('降龍十八掌', '迴龍反嚙'), 'dragon');
-  assert.equal(fxOf('獨孤九劍', '光翼天雨'), 'net');
-  assert.equal(fxOf('一陽指', '一言九鼎'), 'points');
-  assert.equal(fxOf('打狗棒法', '纏字訣'), 'staff');
-  assert.equal(fxOf('六脈神劍', '屋漏惡逢連夜雨'), 'rain');
-  const names = new Set(F.RULES.map(rule => rule.fx));
-  for (const skill of SKILLS_DATA.skills) for (const move of skill.moves) assert.ok(names.has(F.pick(move.action).fx));
-  assert.equal(F.pick('').fx, 'thrust', 'no keyword falls back to the last one');
+  const skill = name => SKILLS_DATA.skills.find(s => s.name === name);
+  const planOf = (skillName, move) => { const s = skill(skillName); const m = s.moves.find(x => x.name === move); return F.plan({ ...m, weapon: s.type }); };
+  const shape = P => `${P.strike.id}/${P.count}/${P.layers.map(l => l.id).join(',')}`;
+  assert.equal(shape(planOf('全真劍法', '雁行斜擊')).split('/')[0], 'thrust');
+  assert.equal(shape(planOf('雪山劍法', '冰雪枯枝')), 'thrust/3/snow,ghost');
+  assert.equal(shape(planOf('雪山劍法', '雲竹皓月')), 'sweep/1/cloud,light,moon,wind');
+  assert.equal(shape(planOf('雪山劍法', '翼凍寒風')), 'sweep/1/wings,snow,wind');
+  assert.equal(shape(planOf('雪山劍法', '鋒霜寒雨')).split('/')[0], 'qi');
+  assert.equal(shape(planOf('雪山劍法', '瀚海闌千百丈冰')).split('/')[0], 'guard');
+  assert.equal(shape(planOf('雪山劍法', '愁雲慘澹萬里凝')).split('/')[0], 'surge');
+  const snow = skill('雪山劍法').moves.map(m => planOf('雪山劍法', m.name));
+  assert.equal(new Set(snow.map(shape)).size, snow.length, 'no two 雪山劍法 moves share the same strike and layers');
+  assert.equal(JSON.stringify(planOf('雪山劍法', '冰雪枯枝')), JSON.stringify(planOf('雪山劍法', '冰雪枯枝')), 'the same move always plans the same');
+  const strikes = new Set(F.STRIKES.map(s => s.id));
+  for (const s of SKILLS_DATA.skills) for (const m of s.moves) {
+    const P = F.plan({ ...m, weapon: s.type });
+    assert.ok(strikes.has(P.strike.id), `${s.name} ${m.name}`);
+    assert.ok(P.layers.length <= 4);
+  }
+  assert.equal(F.pick('', '鞭').fx, 'whip', 'no action word falls back to the weapon type');
+  assert.equal(F.pick('', '暗器').fx, 'throw');
+  assert.equal(F.pick('').fx, 'thrust');
   assert.equal(F.actionText('一招『招式名』', '雁行斜擊'), '一招『雁行斜擊』');
+  assert.equal(F.actionText('你御起『武器』擋在身前\n', '瀚海'), '你御起兵器擋在身前');
+  assert.equal(S.lookup(SKILLS_DATA, ['雪山劍法'])['雪山劍法'].weapon, '劍');
+  assert.equal(S.describe(S.lookup(SKILLS_DATA, ['雪山劍法'])['雪山劍法'], 1).moves[0].weapon, '劍');
 });
 
 test('the background answers SKILL_MOVES from the real data, and the files are wired in the manifest and the settings page', () => {
