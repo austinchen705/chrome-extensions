@@ -50,6 +50,32 @@
 
 劇本對話的棒壘球主題，10 份常青劇本（賽程討論、揮棒訓練、炫耀賽果、投球控球、外野接球、棒球壘球差別、買手套、看球賽、打擊順序、炫耀晉級），每份 8 輪、A 先說，不含時事，「週」留空＝永遠可用。欄位和 `docs/templates/shared-chat.csv` 一樣，貼進共用試算表的方式同下面常青那份（匯入位置選「插入新工作表」，再把內容接到「劇本」分頁，或把新分頁整理成同一個分頁）。`tests/chat-script-content.test.js` 檢查：通過驗證規則、8 輪、沒有週、不碰禁區字眼、開場句和其他所有劇本都分得開。
 
+## chat-scripts-food.csv
+
+劇本對話的美食主題，10 份常青劇本（逛夜市、滷肉飯、火鍋、早餐店、鹹酥雞、牛肉麵、自己煮咖哩、豆花、吃到飽、排隊名店），每份 8 輪、A 先說，不含時事，「週」留空＝永遠可用。欄位和 `docs/templates/shared-chat.csv` 一樣，貼進共用試算表的方式同下面常青那份（匯入位置選「插入新工作表」，再把內容接到「劇本」分頁，或把新分頁整理成同一個分頁）。交付前用 `node tools/check-chat-scripts.js docs/data/chat-scripts-food.csv --turns 8` 檢查過：通過驗證規則、8 輪、不碰禁區字眼、開場句和其他所有劇本都分得開。
+
+## 推上試算表（一個指令）
+
+劇本 CSV 可以不經手動匯入，直接推進共用試算表的「劇本」分頁：
+
+```
+node tools/push-chat-scripts.js docs/data/<檔名>.csv --dry-run   # 只看會新增、取代哪些，不寫入
+node tools/push-chat-scripts.js docs/data/<檔名>.csv             # 寫入（可加 --turns 7-8）
+```
+
+- 先跑 `tools/check-chat-scripts.js`，沒通過就不送。
+- 同一個劇本ID 已經在分頁裡的整份換掉（舊的列拿掉、新的接在最後），沒有的接在最後，其他列不動；分頁前 6 欄以純文字寫回（「週」才不會被轉成日期）。分頁第一列不是標準標題、或第 7 欄之後有資料時不動它。
+- 網址與密碼放在環境變數 `CATWORLD_CHAT_PUSH_URL`、`CATWORLD_CHAT_PUSH_TOKEN`，或 `.scratch/chat-push.json`（`{ "url": "…", "token": "…" }`，`.scratch/` 不進 git）。**不要寫進 repo 或貼到別處**：拿到網址又知道密碼的人就寫得進這個分頁。
+
+第一次要先部署接收端（`tools/apps-script/push-chat-scripts.gs`）：
+
+1. 到 script.google.com 新增專案（**獨立的專案，不要從試算表的「擴充功能 → Apps Script」開**：那裡已經有驗證碼樣本收集的 `doPost`，一個專案只能有一個），把 `push-chat-scripts.gs` 整份貼進去取代原本的內容。
+2. 專案設定 → 指令碼屬性，加兩個：`SHEET_ID`＝試算表網址 `/d/` 和 `/edit` 之間那一段；`TOKEN`＝自己取的一長串亂碼。
+3. 部署 → 新增部署作業 → 類型「網頁應用程式」，執行身分「我」，誰可以存取「所有人」，部署；第一次會要求授權存取試算表。
+4. 複製 `/exec` 結尾的網址，和 TOKEN 一起寫進 `.scratch/chat-push.json`，先跑一次 `--dry-run` 確認。
+
+改了 `.gs` 之後要「管理部署作業 → 編輯 → 版本選新版本」，網址才不會變。
+
 ## chat-scripts-evergreen.csv
 
 劇本對話的常青劇本，4 份（手搖飲選擇困難、追劇停不下來、手機相簿太多、新買的小盆栽），不含時事，「週」欄留空＝永遠可用，所以不用每週換；每份 14 個來回（28 輪，一份最多 30 句）。欄位和 `docs/templates/shared-chat.csv` 一樣。設定頁「劇本試算表連結」的預設連結（`shared-data.js` 的 `DEFAULT_SOURCES.chat`）指向的就是把這份放進去的試算表分頁，這個檔是它的備份。

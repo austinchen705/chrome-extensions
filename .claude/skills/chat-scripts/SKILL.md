@@ -55,5 +55,6 @@ node tools/check-chat-scripts.js docs/data/<檔名>.csv --turns 8
 
 - 在 `docs/data/README.md` 加一節 `## <檔名>`，照現有各節的寫法：幾份、每份幾輪、時事的來源與日期、哪天之後要拿掉、常青的題材清單、貼進試算表的方式（同常青那節：匯入位置選「插入新工作表」）。
 - 不改擴充功能的檔案，所以不升版本、不寫 CHANGELOG。
+- 推上試算表：先問使用者要不要推；要的話先跑 `node tools/push-chat-scripts.js docs/data/<檔名>.csv --dry-run`，把會新增、取代的劇本給使用者看，確認後再拿掉 `--dry-run` 跑一次。沒有網址或密碼時照 `docs/data/README.md`「推上試算表」請使用者設定，不要向使用者要密碼貼進對話。
 - commit 前先問使用者；push 一定要先問。
 - 回報給使用者（繁體中文）：檔案路徑、份數、每份的題材一行、時事的過期日、檢查器的結果。
