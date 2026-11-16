@@ -907,7 +907,7 @@ function createTriggerPane(group) {
   root.hidden = true;
   root.innerHTML = document.getElementById('triggerPaneTemplate').innerHTML.replaceAll('__G__', group.id);
   document.getElementById('triggerPanes').append(root);
-  if (group.id === 'practice') root.querySelector('.buttons').before(emoteFold());
+  if (group.id === 'practice') root.querySelector(`#tstart-${group.id}`).parentElement.before(emoteFold());
   const tab = element('button', { type: 'button', textContent: `${group.name}觸發` });
   tab.setAttribute('role', 'tab');
   tab.setAttribute('aria-selected', 'false');

@@ -1402,13 +1402,15 @@ function cancelMacros(owner) {
 // 上一組（emoteLast，STATUS 回給設定頁）與前兩組做過的（emoteRecent，下一組不用）只存在頁面記憶體裡
 let emoteLast = null;
 let emoteRecent = [];
+// 回 { commands } 或 { error }
 function doEmote() {
   const group = CatworldEmote.pick({ recent: emoteRecent.flat() });
-  if (!group.commands.length || !startMacro(CatworldEmote.macroText(group.commands), 'emote')) return null;
+  if (!group.commands.length) return { error: '沒有可以做的表情（表情資料是空的）' };
+  if (!startMacro(CatworldEmote.macroText(group.commands), 'emote')) return { error: '沒有送出（巨集格式不對）' };
   emoteLast = { at: Date.now(), commands: group.commands };
   emoteRecent = [group.commands, ...emoteRecent].slice(0, 2);
   console.info(`[catworld] 隨機表情：${group.commands.join('、')}`);
-  return group.commands;
+  return { commands: group.commands };
 }
 // 驗證碼或真人驗證正在處理：不做表情（回原因，沒有就是 null）
 const emoteBlocked = () => (captcha || presenceOpen() || /驗證/.test(stopReason || '') ? '驗證碼或真人驗證處理中，不做表情' : null);
@@ -2318,8 +2320,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(''))) { sendResponse({ ok: false, error: '不接受這個來源的訊息' }); return; }
     const blocked = emoteBlocked();
     if (blocked) { sendResponse({ ok: false, error: blocked }); return; }
-    const commands = doEmote();
-    sendResponse(commands ? { ok: true, commands } : { ok: false, error: '沒有送出（巨集格式不對）' });
+    const done = doEmote();
+    sendResponse(done.error ? { ok: false, error: done.error } : { ok: true, commands: done.commands });
     return;
   }
   // 觸發相關的訊息都要帶 group（combat／practice）

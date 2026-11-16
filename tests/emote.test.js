@@ -104,6 +104,47 @@ ui('a group halfway through is cancelled when a captcha shows up', async () => {
   }
 });
 
+ui('試做一組 refuses while a captcha is being handled', async () => {
+  const p = await page();
+  try {
+    p.output('<span>請輸入上方的數字\n</span>');
+    await sleep(30);
+    const sentBefore = p.sent.length;
+    const reply = await p.ask({ type: 'EMOTE_TRY' });
+    assert.equal(reply.ok, false);
+    assert.match(reply.error, /驗證/);
+    await sleep(200);
+    assert.equal(p.sent.length, sentBefore);
+  } finally {
+    p.close();
+  }
+});
+
+ui('試做一組 from anything other than an extension page is refused', async () => {
+  const p = await page();
+  try {
+    const reply = await new Promise(resolve => p.messageListeners.forEach(listener => listener({ type: 'EMOTE_TRY' }, { id: 'someone-else', url: 'https://example.com/' }, resolve)));
+    assert.equal(reply.ok, false);
+    await sleep(200);
+    assert.equal(p.sent.length, 0);
+  } finally {
+    p.close();
+  }
+});
+
+ui('a group halfway through stops when the extension is reloaded under the page (the old script retires)', async () => {
+  const p = await page();
+  try {
+    const group = (await p.ask({ type: 'EMOTE_TRY' })).commands;
+    await waitFor(() => p.sent.includes(group[0]), 3000);
+    p.w.chrome.runtime.id = undefined; // 擴充功能重新載入後，舊的 content script 連不上
+    await sleep(1500);
+    assert.ok(!p.sent.includes(group[group.length - 1]), `the rest of ${group} was not sent: ${p.sent}`);
+  } finally {
+    p.close();
+  }
+});
+
 test('the module is loaded on the game page before content.js', () => {
   const manifest = require('../catworld-auto-command/manifest.json');
   const files = manifest.content_scripts[0].js;
