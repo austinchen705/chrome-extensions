@@ -1587,12 +1587,17 @@ hunt = CatworldMapHunt.create({
   visited: async () => (await chrome.storage.local.get(CatworldMapHunt.VISITED_KEY))[CatworldMapHunt.VISITED_KEY] ?? {},
   markVisited: markHuntVisited,
   ask: askGame,
-  // 整理用：從鑑定輸出裡挑出要留的裝備名稱（比現在穿的好或屬性達門檻、沒基準的，武器只留主要武器職業的）
+  // 整理用：從鑑定輸出裡挑出要留的裝備（比現在穿的好或屬性達門檻、沒基準的，武器只留主要武器職業的）。
+  // 回 { total: 鑑定出幾件, mainWeapon, kept: [{ name, category, why }] }，巡怪紀錄寫留了什麼、為什麼
   keepers: async text => {
     const E = CatworldZapEquipment;
     const data = await chrome.storage.local.get(['wornEquipment', 'mainWeapon', 'equipmentKeep', 'equipmentScore']);
     const worn = data.wornEquipment?.[characterName()];
-    return E.pickKeepers(E.parseEquipmentBlocks(text), { baselineOf: category => worn?.[category], mainWeapon: data.mainWeapon, exp: readGameNumber('exp'), keep: E.normalizeKeepRule(data.equipmentKeep), score: E.normalizeScoreRule(data.equipmentScore) }).map(block => block.name);
+    const options = { mainWeapon: data.mainWeapon, exp: readGameNumber('exp'), keep: E.normalizeKeepRule(data.equipmentKeep), score: E.normalizeScoreRule(data.equipmentScore) };
+    const blocks = E.parseEquipmentBlocks(text);
+    const kept = E.pickKeepers(blocks, { ...options, baselineOf: category => worn?.[category] })
+      .map(block => ({ name: block.name, category: block.category, why: E.compareEquipment(block, worn?.[block.category], options).text }));
+    return { total: blocks.length, mainWeapon: data.mainWeapon || '', kept };
   },
   npcs: huntNpcs,
   learnNpc: learnHuntNpc,

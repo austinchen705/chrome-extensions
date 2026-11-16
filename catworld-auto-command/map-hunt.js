@@ -1275,8 +1275,11 @@ function create(deps) {
         const items = Parse.parseInventory(await deps.ask('i', 'inventory'));
         if (state !== token) return;
         if (!items.length) { fail('讀不到背包（i 的輸出沒有物品），已停止，沒有賣東西'); return; }
-        const keepers = new Set((await deps.keepers(captured)).map(name => name.replace(/\s+/g, '')));
+        const picked = await deps.keepers(captured);
         if (state !== token) return;
+        const keptText = picked.kept.length ? picked.kept.map(item => `${item.name}（${item.category}，${item.why}）`).join('、') : '無';
+        record('-', '整理', `鑑定 ${picked.total} 件，主要武器 ${picked.mainWeapon || '未設定'}；留下：${keptText}`);
+        const keepers = new Set(picked.kept.map(item => item.name.replace(/\s+/g, '')));
         // 要留的：名稱對得上鑑定出的好裝備，而且還沒標記、不是穿著中的
         keep = items.filter(item => !item.marked && !item.worn && keepers.has(item.name.replace(/\s+/g, '')));
         stage('keep');
@@ -1284,8 +1287,11 @@ function create(deps) {
       for (const item of keep) {
         if (!SAFE_ID.test(item.id)) { fail(`物品 ID「${item.id}」不能放進指令，已停止，沒有賣東西`); return; }
         const kind = settings.altId ? 'give' : 'secure';
-        const reply = await deps.ask(settings.altId ? `give ${item.ref} to ${settings.altId}` : `secure ${item.ref}`, kind);
+        const command = settings.altId ? `give ${item.ref} to ${settings.altId}` : `secure ${item.ref}`;
+        const reply = await deps.ask(command, kind);
         if (state !== token) return;
+        // 送了哪個 ref、遊戲回什麼：物品常有好幾個 ID、i 只顯示第一個，同一個 ID 可能對到別件
+        record('-', '整理', `${command}（${item.name}）→ ${reply.trim().split('\n')[0].slice(0, 40) || '沒有回應'}`);
         if (!SORT_REPLY[kind].test(reply)) { fail(`${kind === 'give' ? '轉給小號' : '標記'} ${item.name} 沒成功（遊戲回：${reply.trim().slice(0, 40) || '沒有回應'}），已停止，沒有賣東西`); return; }
       }
       stage('sell');

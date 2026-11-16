@@ -2888,6 +2888,25 @@ ui('sort: a weapon is kept only when it is the main weapon type', async () => {
   }
 });
 
+// 整理留了什麼、為什麼留、送了什麼 secure、遊戲怎麼回，都寫進巡怪紀錄：留錯東西時複製紀錄就看得出是篩選、還是 secure 打到別件
+ui('sort: the hunt log says which identified items were kept and why, the main weapon type, and each secure with the game reply', async () => {
+  const page = await sortPage();
+  try {
+    page.store.mainWeapon = '暗器';
+    const state = sortState({ block: `${blockOf(ARMOR)}此物名曰 ：牛皮拳套，拳套類武器\n    傷害力：30/30\n    佩帶條件：經驗 100\n` });
+    world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    const log = await huntLog(page);
+    assert.match(log, /整理 鑑定 2 件，主要武器 暗器；留下：黑羽長風鎧（盔甲類防具，沒有基準可比）/);
+    assert.match(log, /整理 secure black armor（黑羽長風鎧）→ 標記完成。/);
+    assert.ok(!/留下：[^\n]*牛皮拳套/.test(log), 'the glove is not kept');
+  } finally {
+    page.close();
+  }
+});
+
 ui('sort: when the over-the-limit choice is stop, it stops with an alert and goes nowhere', async () => {
   const page = await sortPage({ overloadAction: 'stop' });
   try {
