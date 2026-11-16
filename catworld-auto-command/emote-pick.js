@@ -60,5 +60,5 @@
     return { enabled: value.enabled === true, chance };
   }
 
-  globalThis.CatworldEmote = { pick, gapSec, macroText, normalizeSettings, SETTINGS_KEY, ROLL_MS, WARMUP_MS, MIN_GAP_MS, RARE_CHANCE, WINDOW, DEFAULT_CHANCE };
+  globalThis.CatworldEmote = { pick, gapSec, macroText, normalizeSettings, SETTINGS_KEY, GAP_MIN_SEC, GAP_MAX_SEC, ROLL_MS, WARMUP_MS, MIN_GAP_MS, RARE_CHANCE, WINDOW, DEFAULT_CHANCE };
 })();

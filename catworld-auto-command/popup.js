@@ -877,6 +877,7 @@ const field = (name, el) => { el.dataset.f = name; return el; };
 // 練功分頁的「隨機表情」摺疊（只有練功組有）：開關與機率存進 emoteSettings（改了就存，存之前用 normalizeSettings 整理並寫回欄位）；
 // 「試做一組」送 EMOTE_TRY 給遊戲分頁，馬上做一組；「上次」由 refreshLive 照 STATUS 的 emote 寫
 function emoteFold() {
+  const E = CatworldEmote;
   const on = element('input', { id: 'emoteOn', type: 'checkbox' });
   const chance = element('input', { id: 'emoteChance', type: 'number', min: 0, max: 100, step: 'any', value: '' });
   const show = value => { on.checked = value.enabled; chance.value = String(value.chance); };
@@ -904,9 +905,9 @@ function emoteFold() {
   });
   return element('details', { className: 'fold', id: 'fold-emote' },
     element('summary', { textContent: '隨機表情' }),
-    element('p', { className: 'hint tight', textContent: '練功觸發開著時，偶爾做一組相關的表情（打哈欠、伸懶腰、偷笑…）：開始後先等 5 分鐘，之後每分鐘照機率擲一次，兩組至少隔 10 分鐘。巡怪、Idle、驗證碼、角色狀態不在允許的狀態時不做。按「試做一組」馬上在遊戲裡做一組看看（不用開練功觸發）。' }),
+    element('p', { className: 'hint tight', textContent: `練功觸發開著時，偶爾做一組相關的表情（打哈欠、伸懶腰、偷笑…），組內每個隔 ${E.GAP_MIN_SEC}～${E.GAP_MAX_SEC} 秒：開始後先等 ${E.WARMUP_MS / 60000} 分鐘，之後每 ${E.ROLL_MS / 60000} 分鐘照機率擲一次，兩組至少隔 ${E.MIN_GAP_MS / 60000} 分鐘。巡怪、Idle、驗證碼、角色狀態不在允許的狀態時不做。按「試做一組」馬上在遊戲裡做一組看看（不用開練功觸發）。` }),
     element('label', { className: 'check' }, on, ' 練功時自動做'),
-    element('label', { htmlFor: 'emoteChance', textContent: '每分鐘的機率（%，0～100，預設 5）' }),
+    element('label', { htmlFor: 'emoteChance', textContent: `每次擲中的機率（%，0～100，預設 ${E.DEFAULT_CHANCE}）` }),
     chance,
     element('div', { className: 'buttons' }, button),
     message,
@@ -1509,6 +1510,7 @@ const DEPENDENCIES = [
   { host: 'sec-script', info: () => isOn('scriptOn') && autoEvery() > 0, text: `自動開場只在「練功」觸發組開始之後才會擲骰；每天場數與兩場之間至少 ${CatworldChatScript.AUTO_MIN_GAP_MS / 60000} 分鐘的間隔照樣限制。` },
   { host: 'sec-script', info: () => isOn('scriptOn'), text: '劇本認領的來訊不會進密語區，也不會觸發聊天回覆；兩台電腦要填同一份試算表連結和互相的英文 ID。' },
   { host: 'sec-stopwords', warn: () => isOn('stopKeywordsOn') && blank('stopKeywordsList'), text: '關鍵字清單是空的，不會命中任何詞。' },
+  { host: 'fold-emote', warn: () => isOn('emoteOn') && Number($('emoteChance').value) === 0, text: '機率是 0：開著也不會自動做表情。' },
 ];
 const lastHint = new Map();
 const hintNodes = DEPENDENCIES.map(dep => {

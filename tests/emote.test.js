@@ -297,3 +297,15 @@ ui('stopping the practice group cancels a group halfway through', async () => {
     p.close();
   }
 });
+
+ui('only the timer running (no practice group) means no emotes', async () => {
+  const p = await practice();
+  try {
+    await p.ask({ type: 'START', settings: { fixedItems: [{ command: 'fx', minSeconds: 1, maxSeconds: 1 }], commandDelayMs: 0 } });
+    await sleep(600);
+    assert.deepEqual(emotesSent(p), []);
+    assert.ok(p.sent.includes('fx'), 'the timer itself runs');
+  } finally {
+    p.close();
+  }
+});

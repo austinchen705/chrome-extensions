@@ -161,3 +161,30 @@ ui('stored settings are shown, and a bad chance falls back to 5 in the field and
     page.dom.window.close();
   }
 });
+
+ui('switched on with a chance of 0, the fold warns that nothing will happen', async () => {
+  const page = await boot({ emoteSettings: { enabled: true, chance: 0 } }, game());
+  try {
+    const hint = () => page.doc.querySelector('[data-dep="fold-emote"]');
+    assert.ok(await waitFor(() => hint() && !hint().hidden), 'the warning shows');
+    assert.ok(hint().classList.contains('msg-warn'));
+    assert.match(hint().textContent, /機率是 0/);
+    page.change('emoteChance', '5');
+    assert.ok(await waitFor(() => hint().hidden), 'gone once the chance is above 0');
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('the hint text is built from the module constants', async () => {
+  const page = await boot({}, game());
+  try {
+    const text = page.doc.getElementById('fold-emote').textContent;
+    assert.match(text, /組內每個隔 2～10 秒/);
+    assert.match(text, /先等 5 分鐘/);
+    assert.match(text, /至少隔 10 分鐘/);
+    assert.match(text, /預設 5/);
+  } finally {
+    page.dom.window.close();
+  }
+});
