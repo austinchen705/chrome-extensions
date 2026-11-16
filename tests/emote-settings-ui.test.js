@@ -134,3 +134,30 @@ ui('上次 shows the time and the emotes from STATUS, or that none was done yet'
     none.dom.window.close();
   }
 });
+
+ui('with nothing stored the switch is off and the chance is 5; a change is saved as one emoteSettings object', async () => {
+  const page = await boot({}, game());
+  try {
+    assert.ok(await waitFor(() => page.doc.getElementById('emoteChance').value === '5'));
+    assert.equal(page.doc.getElementById('emoteOn').checked, false);
+    page.change('emoteOn', true);
+    page.change('emoteChance', '12');
+    assert.ok(await waitFor(() => page.store.emoteSettings?.chance === 12), JSON.stringify(page.store.emoteSettings));
+    assert.deepEqual(page.store.emoteSettings, { enabled: true, chance: 12 });
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+ui('stored settings are shown, and a bad chance falls back to 5 in the field and in storage', async () => {
+  const page = await boot({ emoteSettings: { enabled: true, chance: 30 } }, game());
+  try {
+    assert.ok(await waitFor(() => page.doc.getElementById('emoteChance').value === '30'));
+    assert.equal(page.doc.getElementById('emoteOn').checked, true);
+    page.change('emoteChance', '250');
+    assert.ok(await waitFor(() => page.store.emoteSettings?.chance === 5));
+    assert.equal(page.doc.getElementById('emoteChance').value, '5', 'the field shows what was kept');
+  } finally {
+    page.dom.window.close();
+  }
+});

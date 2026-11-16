@@ -874,8 +874,22 @@ function element(tag, props = {}, ...children) {
 
 const field = (name, el) => { el.dataset.f = name; return el; };
 
-// 練功分頁的「隨機表情」摺疊（只有練功組有）：「試做一組」送 EMOTE_TRY 給遊戲分頁，馬上做一組；「上次」由 refreshLive 照 STATUS 的 emote 寫
+// 練功分頁的「隨機表情」摺疊（只有練功組有）：開關與機率存進 emoteSettings（改了就存，存之前用 normalizeSettings 整理並寫回欄位）；
+// 「試做一組」送 EMOTE_TRY 給遊戲分頁，馬上做一組；「上次」由 refreshLive 照 STATUS 的 emote 寫
 function emoteFold() {
+  const on = element('input', { id: 'emoteOn', type: 'checkbox' });
+  const chance = element('input', { id: 'emoteChance', type: 'number', min: 0, max: 100, step: 'any', value: '' });
+  const show = value => { on.checked = value.enabled; chance.value = String(value.chance); };
+  chrome.storage.local.get(CatworldEmote.SETTINGS_KEY).then(data => show(CatworldEmote.normalizeSettings(data[CatworldEmote.SETTINGS_KEY]))).catch(() => show(CatworldEmote.normalizeSettings()));
+  // 擋住冒泡：練功分頁的根節點聽 change 會把整組觸發設定重存一次
+  const save = event => {
+    event.stopPropagation();
+    const value = CatworldEmote.normalizeSettings({ enabled: on.checked, chance: chance.value });
+    show(value);
+    chrome.storage.local.set({ [CatworldEmote.SETTINGS_KEY]: value });
+  };
+  on.addEventListener('change', save);
+  chance.addEventListener('change', save);
   const message = element('div', { id: 'emoteMsg', className: 'status' });
   const button = element('button', { id: 'emoteTry', type: 'button', textContent: '試做一組' });
   button.addEventListener('click', async () => {
@@ -890,7 +904,10 @@ function emoteFold() {
   });
   return element('details', { className: 'fold', id: 'fold-emote' },
     element('summary', { textContent: '隨機表情' }),
-    element('p', { className: 'hint tight', textContent: '練功時偶爾做一組相關的表情（打哈欠、伸懶腰、偷笑…），組內每個隔 2～10 秒。按「試做一組」馬上在遊戲裡做一組看看（不用開練功觸發）。' }),
+    element('p', { className: 'hint tight', textContent: '練功觸發開著時，偶爾做一組相關的表情（打哈欠、伸懶腰、偷笑…）：開始後先等 5 分鐘，之後每分鐘照機率擲一次，兩組至少隔 10 分鐘。巡怪、Idle、驗證碼、角色狀態不在允許的狀態時不做。按「試做一組」馬上在遊戲裡做一組看看（不用開練功觸發）。' }),
+    element('label', { className: 'check' }, on, ' 練功時自動做'),
+    element('label', { htmlFor: 'emoteChance', textContent: '每分鐘的機率（%，0～100，預設 5）' }),
+    chance,
     element('div', { className: 'buttons' }, button),
     message,
     element('div', { id: 'emoteLast', className: 'hint tight', textContent: '上次：—' }));

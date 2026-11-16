@@ -15,6 +15,7 @@
   const GAP_MIN_SEC = 2;
   const GAP_MAX_SEC = 10;
   const DEFAULT_CHANCE = 5; // 每分鐘幾 %
+  const SETTINGS_KEY = 'emoteSettings'; // chrome.storage.local 裡的 { enabled, chance }
   const WEIGHTS = [['累', 4], ['動作', 3], ['思考', 3], ['無奈', 2], ['開心', 2], ['大笑', 1], ['耍寶', 1]];
   const NEAR = { 累: ['動作'], 動作: ['累'], 開心: ['大笑'], 大笑: ['開心'], 思考: [], 無奈: [], 耍寶: [] };
   const LIGHT_SIGHS = ['sigh', 'shrug', 'shake', 'headshake'];
@@ -59,5 +60,5 @@
     return { enabled: value.enabled === true, chance };
   }
 
-  globalThis.CatworldEmote = { pick, gapSec, macroText, normalizeSettings, ROLL_MS, WARMUP_MS, MIN_GAP_MS, RARE_CHANCE, WINDOW, DEFAULT_CHANCE };
+  globalThis.CatworldEmote = { pick, gapSec, macroText, normalizeSettings, SETTINGS_KEY, ROLL_MS, WARMUP_MS, MIN_GAP_MS, RARE_CHANCE, WINDOW, DEFAULT_CHANCE };
 })();

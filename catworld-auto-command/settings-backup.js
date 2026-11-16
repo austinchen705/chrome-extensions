@@ -9,7 +9,7 @@ const MAX_TEXT = 10 * 1024 * 1024; // 匯入文字最多這麼多字元（儲存
 
 const BLOCKS = [
   { id: 'timer', label: '定時與隨機', keys: ['settings', 'idleSettings'] },
-  { id: 'trigger', label: '觸發', keys: ['triggerGroupSettings', 'triggerSettings'] },
+  { id: 'trigger', label: '觸發', keys: ['triggerGroupSettings', 'triggerSettings', 'emoteSettings'] },
   { id: 'safety', label: '安全與警報', keys: ['stopKeywords', 'persistentAlert', 'autoReward'] },
   { id: 'helpers', label: '輔助功能', keys: ['zapFeatures', 'zapThresholds', 'mainWeapon', 'forceExtras', 'equipmentKeep', 'equipmentScore', 'whisperColor', 'shopMinPrice', 'shopBuyNames', 'shopSkipNames'] },
   { id: 'chat', label: '聊天', keys: ['chatReply', 'chatScript'] },

@@ -1297,6 +1297,7 @@ async function startTriggers(group, config) {
   });
   group.on = true;
   syncScriptAuto();
+  syncEmote();
   await saveGroupConfig(group.id, config);
   if (!idlePaused) group.engine.tick();
   group.timer = setInterval(() => { if (!idlePaused) group.engine.tick(); }, 1000);
@@ -1313,6 +1314,8 @@ async function saveGroupConfig(id, config) {
 function stopTriggers(group, note = '已停止') {
   group.on = false;
   syncScriptAuto();
+  syncEmote();
+  if (group.id === 'practice') cancelMacros('emote');
   clearInterval(group.timer);
   group.timer = null;
   dropQueue(`trigger:${group.id}`);
@@ -1414,6 +1417,35 @@ function doEmote() {
 }
 // 驗證碼或真人驗證正在處理：不做表情（回原因，沒有就是 null）
 const emoteBlocked = () => (captcha || presenceOpen() || /驗證/.test(stopReason || '') ? '驗證碼或真人驗證處理中，不做表情' : null);
+// 練功時自動做（emoteSettings 開著、「練功」觸發組開著才作用）：開始後先暖機 WARMUP_MS，之後每 ROLL_MS 擲一次，chance％ 中；
+// 距上一組（自動或試做）不到 MIN_GAP_MS、巡怪在跑、Idle、驗證碼或真人驗證、角色狀態不在練功組允許的狀態裡，這次就放棄，下一次照常再擲。
+// 條件消失（停止練功、關掉開關）時 syncEmote 清掉計時器，再開始會重新暖機
+const EMOTE_KEY = CatworldEmote.SETTINGS_KEY;
+let emoteSettings = CatworldEmote.normalizeSettings();
+let emoteWarm = null;
+let emoteRoll = null;
+const emoteWanted = () => emoteSettings.enabled && triggerGroups.practice?.on === true;
+function stopEmoteAuto() {
+  clearTimeout(emoteWarm);
+  clearInterval(emoteRoll);
+  emoteWarm = null;
+  emoteRoll = null;
+}
+function rollEmote() {
+  if (!emoteWanted()) { stopEmoteAuto(); return; }
+  if (Math.random() * 100 >= emoteSettings.chance) return;
+  if (emoteLast && Date.now() - emoteLast.at < CatworldEmote.MIN_GAP_MS) return;
+  if (idlePaused || hunt?.on() || emoteBlocked() || triggerGroups.practice.engine?.statusBlock()) return;
+  doEmote();
+}
+function syncEmote() {
+  if (!emoteWanted()) { stopEmoteAuto(); return; }
+  if (emoteWarm || emoteRoll) return;
+  emoteWarm = setTimeout(() => {
+    emoteWarm = null;
+    emoteRoll = setInterval(rollEmote, CatworldEmote.ROLL_MS);
+  }, CatworldEmote.WARMUP_MS);
+}
 
 // 蒐集到的怪物位置：內建加個人（只在讀取時合併）
 const mapStore = async () => CatworldMapCollect.withBuiltin((await chrome.storage.local.get('mapMonsters')).mapMonsters);
@@ -2395,14 +2427,19 @@ chrome.storage.onChanged?.addListener((changes, area) => {
     syncScriptAuto();
   }
   if (area === 'local' && changes[CatworldChatScript.STATE_KEY]) scriptState = CatworldChatScript.normalizeState(changes[CatworldChatScript.STATE_KEY].newValue); // 別的遊戲分頁開了一場
+  if (area === 'local' && changes[EMOTE_KEY]) {
+    emoteSettings = CatworldEmote.normalizeSettings(changes[EMOTE_KEY].newValue);
+    syncEmote();
+  }
   if (area === 'local' && changes.autoReward) {
     autoReward = changes.autoReward.newValue !== false;
     if (!autoReward) cancelReward();
   }
 });
 
-chrome.storage.local.get(['running', 'randomRunning', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, CatworldChatScript.SETTINGS_KEY, CatworldChatScript.STATE_KEY]).then(data => {
+chrome.storage.local.get(['running', 'randomRunning', 'settings', 'triggerGroupSettings', 'triggerSettings', 'persistentAlert', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, CatworldChatScript.SETTINGS_KEY, CatworldChatScript.STATE_KEY, EMOTE_KEY]).then(data => {
   persistentAlert = data.persistentAlert === true;
+  emoteSettings = CatworldEmote.normalizeSettings(data[EMOTE_KEY]);
   chatReply = CatworldChatReply.normalizeSettings(data[CatworldChatReply.SETTINGS_KEY]);
   chatScript = CatworldChatScript.normalizeSettings(data[CatworldChatScript.SETTINGS_KEY]);
   scriptState = CatworldChatScript.normalizeState(data[CatworldChatScript.STATE_KEY]);

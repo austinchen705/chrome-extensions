@@ -374,7 +374,7 @@ function createEngine(rawConfig, io) {
     };
   }
 
-  return { tick, onText, rearm, snapshot };
+  return { tick, onText, rearm, snapshot, statusBlock };
 }
 
 globalThis.CatworldTriggerEngine = { STATS, MIN_COOLDOWN_SEC, DEFAULTS, GROUPS, loadGroupSettings, normalizeConfig, hasActiveRules, rearmLevel, rearmText, createEngine, cleanNumber, withNumber, NORMAL_STATUS, STATUS_PRESETS, cleanStatuses };
