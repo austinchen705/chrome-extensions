@@ -47,6 +47,8 @@
         "stop-keywords.js",
         "chat-reply.js",
         "chat-script.js",
+        "emote-data.js",
+        "emote-pick.js",
         "zap-mobs.js",
         "map-data.js",
         "map-collect.js",

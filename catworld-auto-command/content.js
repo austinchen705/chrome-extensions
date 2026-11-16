@@ -624,6 +624,7 @@ function checkCaptcha() {
 // 畫面上的提示數量在這裡就當成新基準，答案送出後遊戲回應時 checkCaptcha 才不會把同一個提示再當成新的驗證碼
 function beginCaptcha(html, { newImage = false } = {}) {
   cancelScript();
+  cancelMacros('emote');
   captchaCount = countCaptcha();
   if (captcha?.answer) {
     captcha.html = '';
@@ -1396,6 +1397,21 @@ function cancelMacros(owner) {
   if (owner === undefined) dropQueue('macro');
   pumpQueue();
 }
+
+// 隨機表情（emote-pick.js）：一組 1～3 個相關的表情接成一個巨集送出（owner emote，停止一切、驗證碼、retire 都會取消）。
+// 上一組（emoteLast，STATUS 回給設定頁）與前兩組做過的（emoteRecent，下一組不用）只存在頁面記憶體裡
+let emoteLast = null;
+let emoteRecent = [];
+function doEmote() {
+  const group = CatworldEmote.pick({ recent: emoteRecent.flat() });
+  if (!group.commands.length || !startMacro(CatworldEmote.macroText(group.commands), 'emote')) return null;
+  emoteLast = { at: Date.now(), commands: group.commands };
+  emoteRecent = [group.commands, ...emoteRecent].slice(0, 2);
+  console.info(`[catworld] 隨機表情：${group.commands.join('、')}`);
+  return group.commands;
+}
+// 驗證碼或真人驗證正在處理：不做表情（回原因，沒有就是 null）
+const emoteBlocked = () => (captcha || presenceOpen() || /驗證/.test(stopReason || '') ? '驗證碼或真人驗證處理中，不做表情' : null);
 
 // 蒐集到的怪物位置：內建加個人（只在讀取時合併）
 const mapStore = async () => CatworldMapCollect.withBuiltin((await chrome.storage.local.get('mapMonsters')).mapMonsters);
@@ -2298,6 +2314,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     startScript().then(sendResponse);
     return true;
   }
+  if (message.type === 'EMOTE_TRY') {
+    if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(''))) { sendResponse({ ok: false, error: '不接受這個來源的訊息' }); return; }
+    const blocked = emoteBlocked();
+    if (blocked) { sendResponse({ ok: false, error: blocked }); return; }
+    const commands = doEmote();
+    sendResponse(commands ? { ok: true, commands } : { ok: false, error: '沒有送出（巨集格式不對）' });
+    return;
+  }
   // 觸發相關的訊息都要帶 group（combat／practice）
   const group = triggerGroups[message.group];
   if (message.type === 'START_TRIGGER') {
@@ -2333,6 +2357,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       hunt: hunt.snapshot(),
       chatScript: scriptSessionStatus(),
       chatScriptAuto: scriptAutoStatus(),
+      emote: emoteLast,
       stats: readAllStats(),
       triggerGroups: Object.fromEntries(groupList.map(item => [item.id, { on: item.on, note: item.note, warning: macroWarnings(item).join('；'), rules: item.on ? item.engine.snapshot().rules : [] }])),
     });

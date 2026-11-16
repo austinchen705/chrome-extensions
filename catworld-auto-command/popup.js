@@ -106,7 +106,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'chat-script.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'whisper-block.js', 'move-fx.js', 'skill-moves.js', 'force-cap.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'chat-script.js', 'emote-data.js', 'emote-pick.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'whisper-block.js', 'move-fx.js', 'skill-moves.js', 'force-cap.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -874,6 +874,30 @@ function element(tag, props = {}, ...children) {
 
 const field = (name, el) => { el.dataset.f = name; return el; };
 
+// 練功分頁的「隨機表情」摺疊（只有練功組有）：「試做一組」送 EMOTE_TRY 給遊戲分頁，馬上做一組；「上次」由 refreshLive 照 STATUS 的 emote 寫
+function emoteFold() {
+  const message = element('div', { id: 'emoteMsg', className: 'status' });
+  const button = element('button', { id: 'emoteTry', type: 'button', textContent: '試做一組' });
+  button.addEventListener('click', async () => {
+    try {
+      const reply = await send({ type: 'EMOTE_TRY' });
+      message.textContent = reply?.ok ? `做了 ${reply.commands.join('、')}` : (reply?.error || '遊戲頁沒有回應');
+      markLevel(message, reply?.ok ? 'info' : 'error');
+    } catch (e) {
+      message.textContent = e.message;
+      markLevel(message, 'error');
+    }
+  });
+  return element('details', { className: 'fold', id: 'fold-emote' },
+    element('summary', { textContent: '隨機表情' }),
+    element('p', { className: 'hint tight', textContent: '練功時偶爾做一組相關的表情（打哈欠、伸懶腰、偷笑…），組內每個隔 2～10 秒。按「試做一組」馬上在遊戲裡做一組看看（不用開練功觸發）。' }),
+    element('div', { className: 'buttons' }, button),
+    message,
+    element('div', { id: 'emoteLast', className: 'hint tight', textContent: '上次：—' }));
+}
+// 隨機表情的「上次」：沒連上遊戲頁時寫 —
+const emoteLastText = status => (!status ? '上次：—' : status.emote ? `上次：${new Date(status.emote.at).toTimeString().slice(0, 5)} 做了 ${status.emote.commands.join('、')}` : '上次：還沒做過');
+
 // 每組一個分頁：標記來自 popup.html 的 <template id="triggerPaneTemplate">，裡面所有 id 都帶 -__G__，
 // 複製時換成組別，所以兩組不會撞 id。每組有自己的規則清單、開始／停止、命中延遲與安全機制，存在 triggerGroupSettings[組別]
 function createTriggerPane(group) {
@@ -883,6 +907,7 @@ function createTriggerPane(group) {
   root.hidden = true;
   root.innerHTML = document.getElementById('triggerPaneTemplate').innerHTML.replaceAll('__G__', group.id);
   document.getElementById('triggerPanes').append(root);
+  if (group.id === 'practice') root.querySelector('.buttons').before(emoteFold());
   const tab = element('button', { type: 'button', textContent: `${group.name}觸發` });
   tab.setAttribute('role', 'tab');
   tab.setAttribute('aria-selected', 'false');
@@ -1205,6 +1230,7 @@ async function refreshLive() {
   if (status) lastIdle = Boolean(status.idle);
   scriptSession = status ? status.chatScript ?? null : undefined;
   scriptAuto = status?.chatScriptAuto ?? null;
+  if ($('emoteLast')) $('emoteLast').textContent = emoteLastText(status);
   renderScriptStatus();
   updateHints();
   renderCountdown(status);
