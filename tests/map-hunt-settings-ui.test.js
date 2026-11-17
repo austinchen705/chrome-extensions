@@ -515,3 +515,20 @@ ui('chain trial: the button asks the game page to run it, says why when refused,
     dom.window.close();
   }
 });
+
+ui('load interval: the every-N-rooms range and the safety line sit with the load limit, default 3-6 and 80, are tidied when saved, and hide without a load check', async () => {
+  const { dom, doc, store } = await boot({ mapHuntSettings: { homeCommand: 'ride' } });
+  try {
+    assert.equal(field(doc, 'loadCheckEveryMin').value, '3');
+    assert.equal(field(doc, 'loadCheckEveryMax').value, '6');
+    assert.equal(field(doc, 'loadAlwaysPercent').value, '80');
+    change(dom, field(doc, 'loadCheckEveryMin'), '5');
+    change(dom, field(doc, 'loadCheckEveryMax'), '2');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.loadCheckEveryMin === 5));
+    assert.equal(store.mapHuntSettings.loadCheckEveryMax, 5, 'a max under the min is raised to the min');
+    change(dom, field(doc, 'loadMaxPercent'), '0');
+    ['loadCheckEveryMin', 'loadCheckEveryMax', 'loadAlwaysPercent'].forEach(key => assert.equal(cellOf(doc, key).hidden, true, key));
+  } finally {
+    dom.window.close();
+  }
+});

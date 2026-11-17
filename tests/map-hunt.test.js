@@ -6,7 +6,7 @@ const { ui, boot: bootPage, sleep, waitFor, fixture } = require('./helpers/game-
 
 const SCALE = 20;
 // 開始前必填的欄位（吃藥指令、沒藥關鍵字、回家指令）：各測試預設都填好，要測缺欄位的自己清掉
-const REQUIRED = { eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, typoPercent: 0, wrongWayPercent: 0, timeSource: 'command', timeKeepMin: 0, commandGapMinMs: 0, commandGapMaxMs: 0, reactMinMs: 0, reactMaxMs: 0, sortLookMinSec: 0, sortLookMaxSec: 0, prescan: 'off' };
+const REQUIRED = { loadCheckEveryMin: 1, loadCheckEveryMax: 1, eatCommand: 'eat pill', noMedicineKeyword: '沒有藥', homeCommand: 'recall', loopRounds: 'off', loadMaxPercent: 0, typoPercent: 0, wrongWayPercent: 0, timeSource: 'command', timeKeepMin: 0, commandGapMinMs: 0, commandGapMaxMs: 0, reactMinMs: 0, reactMaxMs: 0, sortLookMinSec: 0, sortLookMaxSec: 0, prescan: 'off' };
 const boot = async options => {
   const page = await bootPage(options);
   page.store.mapHuntSettings = { ...REQUIRED };
@@ -2281,6 +2281,47 @@ ui('load: 0 means it never looks at i, and an i that cannot be read does not sto
   } finally {
     unreadable.close();
   }
+});
+
+// 隔幾間才看負重：打完的房間（倒下至少一隻）數到 N 才送 i；還不知道負重時打完第一間就看；上次負重到保險線以上每間都看
+const loadRow = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+const fightsAndLooks = game => game.log.filter(command => command === FIGHT || command === 'i').map(command => (command === 'i' ? 'i' : 'F')).join('');
+const loadIntervalRun = async ({ load, settings, mobRooms = ['b', 'c', 'd', 'e', 'f', 'g'], recorded = mobRooms, random = null }) => {
+  const page = await loadPage(settings);
+  try {
+    if (random !== null) pinRandom(page, random);
+    page.store.mapMonsters = mobsAt(...recorded);
+    const line = lineWorld(loadRow);
+    const looks = Object.fromEntries(recorded.map(room => [room, { lines: mobRooms.includes(room) ? mobsLines(1) : [] }]));
+    const game = world(page, { at: 'a', row: line.row, moves: line.moves, looks, script: loadScript(page, { load }) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 12000), huntText(page));
+    return fightsAndLooks(game);
+  } finally {
+    page.close();
+  }
+};
+
+ui('load interval: it looks after the first room (load not known yet), then only every N rooms', async () => {
+  assert.equal(await loadIntervalRun({ load: 40, settings: { loadCheckEveryMin: 3, loadCheckEveryMax: 3 } }), 'FiFFFiFF');
+});
+
+ui('load interval: N is drawn in the range each time (random at the top picks the most)', async () => {
+  assert.equal(await loadIntervalRun({ load: 40, settings: { loadCheckEveryMin: 2, loadCheckEveryMax: 4 }, random: 0.99 }), 'FiFFFFiF');
+});
+
+ui('load interval: 1-1 looks after every room, as before', async () => {
+  assert.equal(await loadIntervalRun({ load: 40, settings: { loadCheckEveryMin: 1, loadCheckEveryMax: 1 } }), 'FiFiFiFiFiFi');
+});
+
+ui('load interval: when the last load is at or over the safety line it looks after every room; 0 turns the safety line off', async () => {
+  assert.equal(await loadIntervalRun({ load: 85, settings: { loadCheckEveryMin: 3, loadCheckEveryMax: 3, loadAlwaysPercent: 80 } }), 'FiFiFiFiFiFi');
+  assert.equal(await loadIntervalRun({ load: 85, settings: { loadCheckEveryMin: 3, loadCheckEveryMax: 3, loadAlwaysPercent: 0 } }), 'FiFFFiFF');
+});
+
+ui('load interval: a room where nothing was fought does not count', async () => {
+  assert.equal(await loadIntervalRun({ load: 40, settings: { loadCheckEveryMin: 2, loadCheckEveryMax: 2 }, mobRooms: ['b', 'd', 'e'], recorded: ['b', 'c', 'd', 'e'] }), 'FiFFi');
 });
 
 ui('learn places: a chosen monster that is not in the room on three visits is dropped from it, and a monster seen there that was never recorded is added', async () => {

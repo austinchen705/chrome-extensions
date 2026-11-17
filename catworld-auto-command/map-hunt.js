@@ -110,6 +110,9 @@ const FIELDS = [
   { key: 'dangerBelow', group: 'heal', label: '危險線：氣低於 % 回家停止', hint: '自己回模式的戰鬥中、只下 fight 模式、掃描時都看；要小於「氣低於 % 休息」，否則自動改小', type: 'number', default: 20, min: 1, max: 99 },
   { key: 'homeCommand', group: 'heal', label: '回家指令', type: 'text', default: '', required: () => true },
   { key: 'loadMaxPercent', group: 'sort', label: '負重超過 % 就去整理', hint: 'i 的「載重」；0＝不檢查', type: 'number', default: 90, min: 0, max: 100 },
+  { key: 'loadCheckEveryMin', group: 'sort', show: s => s.loadMaxPercent > 0, row: 'loadEvery', label: '每打完幾間看一次負重：最少', hint: '只算有打倒怪的房間；每次在最少與最多之間隨機；1～1＝每間都看', type: 'number', default: 3, min: 1, max: 20 },
+  { key: 'loadCheckEveryMax', group: 'sort', show: s => s.loadMaxPercent > 0, row: 'loadEvery', label: '最多', type: 'number', default: 6, min: 1, max: 20 },
+  { key: 'loadAlwaysPercent', group: 'sort', show: s => s.loadMaxPercent > 0, label: '負重到 % 以上就每間都看', hint: '上一次看到的負重到這條線就改回每間都看，免得超重撿不了屍體；0＝不用', type: 'number', default: 80, min: 0, max: 100 },
   { key: 'overloadAction', group: 'sort', show: sorting, label: '負重超標時', hint: '整理＝照下面的設定去整理再回來；停止巡怪＝直接停止並警報，不整理（例如在謎宮裡走不了固定路線，停下來自己騎車去整理）', type: 'select', options: [['sort', '整理'], ['stop', '停止巡怪']], default: 'sort' },
   { key: 'tripCommand', group: 'sort', show: sorting, label: '前往整理處的指令／巨集', hint: '路線、鑑定全寫在這裡，最後停在能 sell all 的地方；不要自己寫 sell all。前往與回程至少填一個才走自動整理；可用 ; 與 @等待', type: 'text', default: '' },
   { key: 'sortKeep', group: 'sort', show: sorting, label: '鑑定完留不留好裝備', hint: '留＝好的 secure 或 give 給小號再賣其餘；全賣＝不看背包直接 sell all，只有你自己 secure 過的不會賣', type: 'select', options: [['keep', '留好裝備'], ['none', '全賣，不留']], default: 'keep' },
@@ -184,6 +187,8 @@ function normalizeSettings(rawSettings) {
   if (out.commandGapMaxMs < out.commandGapMinMs) out.commandGapMaxMs = out.commandGapMinMs;
   if (out.reactMaxMs < out.reactMinMs) out.reactMaxMs = out.reactMinMs;
   if (out.sortLookMaxSec < out.sortLookMinSec) out.sortLookMaxSec = out.sortLookMinSec;
+  out.loadCheckEveryMin = Math.round(out.loadCheckEveryMin);
+  out.loadCheckEveryMax = Math.max(Math.round(out.loadCheckEveryMax), out.loadCheckEveryMin);
   out.restEveryMin = Math.round(out.restEveryMin);
   out.restEveryMax = Math.max(Math.round(out.restEveryMax), out.restEveryMin);
   out.restSkipMin = Math.round(out.restSkipMin);
@@ -724,7 +729,7 @@ function create(deps) {
       }
       if (!(await notBusy(token))) return;
       loot += 1;
-      if (state.settings.loadMaxPercent > 0) state.loadDue = true;
+      if (state.settings.loadMaxPercent > 0) state.loadFought = true;
       // 聽到的「想殺死你」比倒下的多（或有別的名字打你）＝可能還有別隻在打你：先 l 看，沒有 <戰鬥中> 的才撿屍；否則照舊馬上撿屍
       const attackedStill = state.hostile > downs || !!state.attacked;
       if (!attackedStill) sendLoot();
@@ -1199,8 +1204,22 @@ function create(deps) {
 
   // ---- 負重 ----
   // 打完怪撿了東西，下一次規劃前先用 i 看負重（loadMaxPercent，0＝不檢查）；超過就自動整理（sortOut）；前往與回程指令都沒填就停止並提醒去填
+  // 打完一間（倒下至少一隻）算一間：還不知道負重、上次負重到保險線以上、或數到這次抽到的間數才看
+  function countLoadRoom() {
+    state.loadFought = false;
+    state.loadRooms += 1;
+    const { loadAlwaysPercent } = state.settings;
+    const near = loadAlwaysPercent > 0 && state.load !== null && state.load >= loadAlwaysPercent;
+    if (state.load === null || near || state.loadRooms >= state.loadEvery) state.loadDue = true;
+  }
+  const drawLoadEvery = () => {
+    const { loadCheckEveryMin: min, loadCheckEveryMax: max } = state.settings;
+    return min + Math.min(Math.floor(random() * (max - min + 1)), max - min);
+  };
   function checkLoad(here) {
     const token = state;
+    state.loadRooms = 0;
+    state.loadEvery = drawLoadEvery();
     state.phase = 'look';
     state.checkingLoad = true;
     deps.notify();
@@ -1838,6 +1857,7 @@ function create(deps) {
       state.detour = null;
       if (detour.stage !== 'back' || here !== detour.home) record(here, '擬人化', '故意走錯路的途中位置不對，放棄走回，照一般流程');
     }
+    if (state.loadFought) countLoadRoom();
     if (state.loadDue) { state.loadDue = false; checkLoad(here); return; }
     if (state.targets.has(here)) { arrive(here); return; }
     const clean = graph => (state.badEdges.size ? dropEdges(graph, state.badEdges) : graph);
@@ -1995,7 +2015,7 @@ function create(deps) {
     return {
       round: 1, after: deps.now() + offset, allTargets: new Set(), baseSkipped: [], waiting: null, calibrating: false,
       mobs: [], area: '', offset, scan: false, prescan: false, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph: { rooms: {} }, targets: new Set(), skipped: [], fixed: [],
-      baseSettings: fields.settings, chain: null, trialRun: false, resume: null, order: null, loadDue: false, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: false, learned: {}, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
+      baseSettings: fields.settings, chain: null, trialRun: false, resume: null, order: null, loadDue: false, loadFought: false, loadRooms: 0, loadEvery: 1, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: false, learned: {}, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
       ...roundFields(offset), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       ...fields,
     };
