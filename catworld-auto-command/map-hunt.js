@@ -589,6 +589,7 @@ function create(deps) {
   }
   function assistTick() {
     const a = state.assist;
+    if (state.retreat) { state.assist = null; state.phase = 'plan'; return; } // 沒藥要撤退：不再等這間
     if (a.asking) return;
     const room = deps.room();
     if (room && room !== a.here) { state.assist = null; state.phase = 'plan'; return; } // 人已經不在這間（手動走掉了）：重新規劃
@@ -688,6 +689,7 @@ function create(deps) {
       // ID 會被放進 fight 指令，和 finger 一樣只收普通英數
       const target = mine.find(mob => SAFE_ID.test(mob.id));
       if (!target) { sendLoot(); leave('怪的 ID 不能用'); return; }
+      if (state.retreat) { sendLoot(); state.phase = 'plan'; deps.notify(); return; } // 沒藥要撤退：不打下一隻，這間留著不算處理過
       if (spawnPause()) return;
       if (!(await restGate(token))) return;
       if (!(await reactWait(token))) return;
@@ -858,7 +860,7 @@ function create(deps) {
     const eating = state?.eating;
     if (eating?.sent && state.ticks <= eating.until && state.settings.noMedicineKeyword) {
       eating.buffer = (eating.buffer + text).slice(-500);
-      if (eating.buffer.includes(state.settings.noMedicineKeyword)) { goHomeAndStop('沒藥了'); return; }
+      if (eating.buffer.includes(state.settings.noMedicineKeyword)) { noMedicine('沒藥了'); return; }
     }
     const assist = state?.assist;
     if (assist && !assist.asking) {
@@ -1803,10 +1805,16 @@ function create(deps) {
   function waitTick() {
     if (state.phase === 'standby') {
       if (deps.macroRunning()) return;
-      if (state.rest && !state.rest.homed) { // 待命指令（巨集）跑完了才回家，回家也是巨集的話下一個 tick 再等它跑完
-        state.rest.homed = true;
-        const home = state.settings.homeCommand;
-        sendOrStop(home);
+      // 待命指令（巨集）跑完了才回家，回家也是巨集的話下一個 tick 再等它跑完；這一區有記可 ride 格子就先走過去，到了才送回家
+      if (state.rest && !state.rest.homed) {
+        if (state.retreatPending) return;
+        const token = state;
+        retreat('rest', token, () => {
+          state.phase = 'standby';
+          state.rest.homed = true;
+          sendOrStop(state.settings.homeCommand);
+          deps.notify();
+        }).catch(() => { if (state === token) finish('讀可 ride 格子時出錯，已停止', { alert: true }); });
         return;
       }
       calibrate();
@@ -1834,12 +1842,18 @@ function create(deps) {
   // ---- 撤退：先走到這一區最近的可 ride 格子再做事 ----
   // 打怪的地圖有些格子不能 ride，整理的前往指令、回家指令在那裡送不出去。這一區有記可 ride 的格子（面板「可 ride」，deps.rideRooms）
   // 而人不在格子上時，照地圖路線走到最近的一格（不看路過、不反擊、不擬人化；補氣照常），到了才做 then；走不到就停止並警報、不做 then。
-  // 沒記格子或已經站在格子上直接做 then
-  const RETREAT_TEXT = { sort: '整理' };
-  async function retreat(why, token, then) {
+  // 沒記格子或已經站在格子上直接做 then。
+  // 讀格子要等，這段期間 state.retreatPending 擋住重複開始（休息的 standby 每個 tick 都會再進來）；沒藥可以在讀的期間或走的途中改掉 why 與 then。
+  // takeOver：整理、休息時人站著不動，馬上從 plan 開始走；沒藥時可能正在走一步、看房間或打架，不搶階段，等它回到 plan 再走（打架中由 fightRoom、assistTick 看到 state.retreat 收手）
+  const RETREAT_TEXT = { sort: '整理', rest: '休息', medicine: '沒藥回家' };
+  async function retreat(why, token, then, { takeOver = true } = {}) {
+    const pending = { why, then };
+    state.retreatPending = pending;
     let rooms = [];
     try { rooms = Collect.normalizeRideRooms(await deps.rideRooms())[state?.area] || []; } catch { rooms = []; }
     if (state !== token) return;
+    state.retreatPending = null;
+    ({ why, then } = pending);
     const here = deps.room();
     if (!rooms.length || rooms.includes(here)) { then(here); return; }
     state.retreat = { why, rooms: new Set(rooms), then };
@@ -1847,8 +1861,20 @@ function create(deps) {
     state.tries = 0;
     state.wrong = 0;
     record(here ?? '-', '撤退', `為了${RETREAT_TEXT[why]}，走向可 ride 格子（${rooms.join('、')}）`);
-    state.phase = 'plan';
+    if (takeOver) state.phase = 'plan';
     deps.notify();
+  }
+  // 吃藥、精神、內傷的指令送出後看到沒藥關鍵字：先走到可 ride 格子再回家停止。已經在撤退（整理、休息）就改成回家；
+  // 不在巡怪區地圖上的階段（整理途中、換區、休息回程、在家等重生）與試跑照舊原地回家
+  const NO_MEDICINE_IN_PLACE = ['sort', 'area', 'return', 'wait', 'standby'];
+  function noMedicine(reason) {
+    state.eating = null;
+    const home = () => goHomeAndStop(reason);
+    const current = state.retreat || state.retreatPending;
+    if (current) { current.why = 'medicine'; current.then = home; return; }
+    if (state.trialRun || NO_MEDICINE_IN_PLACE.includes(state.phase)) { home(); return; }
+    const token = state;
+    retreat('medicine', token, home, { takeOver: false }).catch(() => { if (state === token) finish('讀可 ride 格子時出錯，已停止', { alert: true }); });
   }
   function retreatStep(here) {
     const { why, rooms, then } = state.retreat;
@@ -2075,7 +2101,7 @@ function create(deps) {
     return {
       round: 1, after: deps.now() + offset, allTargets: new Set(), baseSkipped: [], waiting: null, calibrating: false,
       mobs: [], area: '', offset, scan: false, prescan: false, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph: { rooms: {} }, targets: new Set(), skipped: [], fixed: [],
-      baseSettings: fields.settings, chain: null, trialRun: false, resume: null, order: null, retreat: null, loadDue: false, loadFought: false, loadRooms: 0, loadEvery: 1, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: false, learned: {}, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
+      baseSettings: fields.settings, chain: null, trialRun: false, resume: null, order: null, retreat: null, retreatPending: null, loadDue: false, loadFought: false, loadRooms: 0, loadEvery: 1, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: false, learned: {}, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
       ...roundFields(offset), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       ...fields,
     };
@@ -2263,13 +2289,13 @@ function create(deps) {
     const room = key => (typeof key === 'string' ? key.split('/').pop() : key);
     if (state.trialRun) return { text: `試跑（第 ${state.chain.index + 1}／${state.chain.areas.length} 段）：走向 ${state.chain.areas[state.chain.to].area}…`, alert: noteAlert };
     if (state.phase === 'area') return { text: `${who}：換區，走向 ${state.chain.areas[state.chain.to].area}…`, alert: noteAlert };
+    if (state.retreat) return { text: `${who}：為了${RETREAT_TEXT[state.retreat.why]}，走向可 ride 格子${state.goal ? ` ${room(state.goal)}` : ''}…`, alert: noteAlert };
     if (state.rest) {
       if (state.phase === 'return') return { text: `${who}：休息結束，${state.returnStage === 'walk' ? '走回巡怪區…' : `等氣回到 ${returnQiLine()}%（現在 ${Number.isFinite(deps.kee()) ? `${Math.round(deps.kee())}%` : '—'}）`}`, alert: noteAlert };
       return { text: `${who}：休息中，${state.waiting ? `約 ${hhmm(state.waiting.spawn)} 回來` : '等待指令送完…'}（跳過 ${state.rest.skip} 輪）${skippedShort(state.skipped)}`, alert: noteAlert };
     }
     if (state.resting) return { text: `${who}：休息中 ${Math.round(state.restPercent)}%→${state.settings.restResume}%${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.waiting) return { text: `${who}：等下一個重生 ${hhmm(state.waiting.spawn)}（第 ${state.waiting.rounds} 輪到過 ${state.waiting.visited} 間）${skippedShort(state.skipped)}`, alert: noteAlert };
-    if (state.retreat) return { text: `${who}：為了${RETREAT_TEXT[state.retreat.why]}，走向可 ride 格子${state.goal ? ` ${room(state.goal)}` : ''}…`, alert: noteAlert };
     if (state.phase === 'sort') return { text: `${who}：負重 ${state.load}%，整理中（${SORT_PHASE_TEXT[state.sortStage] ?? '…'}，第 ${state.sortCount + 1} 次）${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.checkingLoad) return { text: `${who}：看負重…${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.phase === 'standby') return { text: `${who}：等待指令送完，再校準伺服器時間…${skippedShort(state.skipped)}`, alert: noteAlert };

@@ -3338,6 +3338,63 @@ ui('ride: in fight-only mode the sort also walks to the ride room first', async 
   }
 });
 
+// 沒藥：走到 c 時氣掉到 30，吃藥，遊戲回沒藥；recallAt 記下送回家指令時人在哪一間
+const noMedicineRun = async ({ rides, moves = MOVES, until = page => alerts(page).length > 0, fightFirst = false }) => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('d');
+    page.store.mapHuntRideRooms = rides;
+    const run = { recallAt: null };
+    let fights = 0;
+    const game = world(page, { at: 'a', moves, looks: { d: { lines: mobsLines(2) } }, script: (command, { game: state }) => {
+      if (!fightFirst && command === 'e' && state.at === 'c') setKee(page, 30);
+      if (command === 'eat pill') { say(page, '你身上沒有藥了。'); return true; }
+      if (command === 'recall') run.recallAt = state.at;
+      // fightFirst：第一隻打到一半氣掉下來、沒藥，之後那一隻才死
+      if (fightFirst && command === FIGHT && (fights += 1) === 1) { setKee(page, 30); setTimeout(() => say(page, '測試怪死了。'), 300); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => until(page), 10000), `${huntText(page)} | ${game.log.join(',')}`);
+    await sleep(200);
+    return { ...run, log: game.log, alerts: alerts(page), text: await huntLog(page), on: await hunting(page) };
+  } finally {
+    page.close();
+  }
+};
+
+ui('ride: with no medicine it walks back to the ride room, then goes home and stops with one alert', async () => {
+  const run = await noMedicineRun({ rides: { t: ['t/a'] } });
+  assert.equal(run.recallAt, 'a', run.log.join(','));
+  assert.ok(run.log.includes('w'), run.log.join(','));
+  assert.match(run.text, /撤退.*為了沒藥回家.*t\/a/);
+  assert.equal(run.alerts.length, 1);
+  assert.match(run.alerts[0].reason, /沒藥/);
+  assert.equal(run.on, false);
+});
+
+ui('ride: with no medicine and no ride room in this area it goes home right there as before', async () => {
+  const run = await noMedicineRun({ rides: { u: ['u/x'] } });
+  assert.ok(run.recallAt === 'c' || run.recallAt === 'd', `home right where it was (${run.recallAt})`);
+  assert.equal(run.log.includes('w'), false);
+  assert.equal(run.alerts.length, 1);
+});
+
+ui('ride: with no medicine and a ride room it cannot reach, it stops with an alert and sends no home command', async () => {
+  const run = await noMedicineRun({ rides: { t: ['t/a'] }, moves: { a: { e: 'b' }, b: { w: 'a', e: 'c' }, c: { e: 'd' }, d: { w: 'c' } } });
+  assert.match(run.alerts[0].reason, /可 ride/);
+  assert.match(run.text, /撤退\s+失敗/);
+  assert.equal(run.log.includes('recall'), false);
+  assert.equal(run.on, false);
+});
+
+ui('ride: no medicine during a fight lets that monster die, fights no other one, and walks to the ride room', async () => {
+  const run = await noMedicineRun({ rides: { t: ['t/a'] }, fightFirst: true });
+  assert.equal(countOf({ log: run.log }, FIGHT), 1, run.log.join(','));
+  assert.equal(run.recallAt, 'a', run.log.join(','));
+});
+
 ui('assist: low qi eats when an eat command is set (and not when it is blank), and under the danger line it goes home and stops', async () => {
   const low = await assistPage({ eatCommand: 'eat pill', noMedicineKeyword: '沒有藥' });
   try {
@@ -3736,8 +3793,9 @@ ui('humanize pauses: a draw above the chance, or the switch off, adds no wait an
 // r 是固定亂數：r.value 可以改。0.2 → 7 輪後休息（6 ＋ ⌊0.2×7⌋）、跳過 1 輪（1 ＋ ⌊0.2×3⌋），而且不會抽中停頓
 const MINUTE = 60 * 1000;
 const MARK_MS = 15 * MINUTE;
-const restRun = async ({ settings = {}, r = 0.2, onCommand = null, swallow = null, keepAway = false }) => {
+const restRun = async ({ settings = {}, r = 0.2, onCommand = null, swallow = null, keepAway = false, rides = null }) => {
   const page = await roundPage({ humanize: 'on', standbyCommand: 'home', homeCommand: 'recall', restReturnCommand: 'back', ...settings });
+  if (rides) page.store.mapHuntRideRooms = rides;
   const clock = fakeClock(page, '2026-11-04T10:00:00+08:00', { scale: 600 });
   const looks = [];
   const times = { recall: [], back: [] };
@@ -3751,7 +3809,7 @@ const restRun = async ({ settings = {}, r = 0.2, onCommand = null, swallow = nul
     script: (command, ...rest) => {
       const state = rest[0].game;
       if (command === 'home') { state.at = 'a'; pendingJump = true; recalled = false; }
-      if (command === 'recall') { state.at = 'zz'; recalled = true; times.recall.push(clock.server()); }
+      if (command === 'recall') { times.recallAt = state.at; state.at = 'zz'; recalled = true; times.recall.push(clock.server()); }
       if (command === 'back') { times.back.push(clock.server()); if (!keepAway) state.at = 'a'; }
       if (command === 'time' && pendingJump) { pendingJump = false; if (!recalled) clock.jump += 16 * MINUTE; }
       onCommand?.(command, { page, clock, times });
@@ -3788,6 +3846,33 @@ ui('rest: after the drawn number of rounds it skips whole rounds, goes home, com
     assert.match(second, /休息 跳過 2 輪/, 'the second rest skips the newly drawn number');
     assert.equal(roundsIn(second.slice(0, second.indexOf(' 休息 跳過 2 輪'))), 8, 'and comes after the newly drawn number of rounds');
     await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rest: with a ride room recorded, the standby command goes where it stands, then it walks to the ride room and only there sends the home command', async () => {
+  const { page, game } = await restRun({ settings: { restEveryMin: 2, restEveryMax: 2 }, rides: { t: ['t/c'] } });
+  try {
+    assert.ok(await waitFor(() => game.log.includes('recall'), 15000), game.log.join(','));
+    const recall = game.log.indexOf('recall');
+    const home = game.log.lastIndexOf('home', recall);
+    assert.deepEqual(game.log.slice(home, recall + 1), ['home', 'e', 'e', 'recall'], game.log.join(','));
+    assert.equal(countOf(game, 'recall'), 1);
+    assert.match(await huntLog(page), /撤退.*為了休息.*t\/c/);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('rest: a ride room it cannot reach stops the hunt with an alert and the home command is never sent', async () => {
+  const { page, game } = await restRun({ settings: { restEveryMin: 2, restEveryMax: 2 }, rides: { t: ['t/z'] } });
+  try {
+    assert.ok(await waitFor(() => alerts(page).length > 0, 15000), game.log.join(','));
+    assert.match(alerts(page)[0].reason, /休息.*可 ride/);
+    assert.equal(game.log.includes('recall'), false);
+    assert.equal(await hunting(page), false);
   } finally {
     page.close();
   }
