@@ -3231,6 +3231,112 @@ ui(`assist: an i the user triggers that is over the limit sends the hunt to the 
 });
 }
 
+// ---- 可 ride 的格子：負重超標要整理時，先走到這一區最近的可 ride 格子再送前往指令 ----
+const SORT_GOLDEN = ['e', 'e', 'l', FIGHT, 'gc', 'i', 'go', 'identify', 'i', 'secure black armor', 'sell all', 'back', 'i'];
+const rideSort = async ({ rides, moves, settings = {}, until = page => /巡完了/.test(huntText(page)), during = null }) => {
+  const page = await sortPage(settings);
+  try {
+    page.store.mapHuntRideRooms = rides;
+    const state = sortState();
+    const game = world(page, { at: 'a', moves, looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    if (during) await during(page, game);
+    assert.ok(await waitFor(() => until(page), 10000), huntText(page));
+    return { log: game.log, alerts: alerts(page), text: await huntLog(page) };
+  } finally {
+    page.close();
+  }
+};
+
+ui('ride: the panel button records the room the character stands in, shows it is recorded, and a second press removes it', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const none = panelRoot(page).querySelector('.hride');
+    click(page, '.hride');
+    assert.ok(await waitFor(() => /讀不到目前的房間/.test(huntText(page)), 2000), 'no map: says why');
+    const game = world(page, { at: 'b' });
+    click(page, '.hride');
+    assert.ok(await waitFor(() => page.store.mapHuntRideRooms?.t?.includes('t/b'), 2000));
+    assert.ok(await waitFor(() => none.textContent === '可 ride ✓', 3000), none.textContent);
+    assert.match(huntText(page), /已記 t\/b/);
+    game.at = 'c';
+    assert.ok(await waitFor(() => none.textContent === '可 ride', 3000), 'another room is not recorded');
+    click(page, '.hride');
+    assert.ok(await waitFor(() => page.store.mapHuntRideRooms?.t?.join() === 't/b,t/c', 2000), JSON.stringify(page.store.mapHuntRideRooms));
+    click(page, '.hride');
+    assert.ok(await waitFor(() => page.store.mapHuntRideRooms?.t?.join() === 't/b', 2000), JSON.stringify(page.store.mapHuntRideRooms));
+    assert.match(huntText(page), /已取消 t\/c/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('ride: over the limit it walks to the nearest ride room of this area before the trip command', async () => {
+  const run = await rideSort({ rides: { t: ['t/a', 't/d'] } });
+  assert.deepEqual(run.log, ['e', 'e', 'l', FIGHT, 'gc', 'i', 'e', 'go', 'identify', 'i', 'secure black armor', 'sell all', 'back', 'i']);
+  assert.match(run.text, /撤退.*t\/d.*整理/);
+  assert.equal(run.alerts.length, 0);
+});
+
+ui('ride: standing on a ride room, or no ride room in this area, sends the trip command right there as before', async () => {
+  assert.deepEqual((await rideSort({ rides: { t: ['t/c'] } })).log, SORT_GOLDEN);
+  assert.deepEqual((await rideSort({ rides: { u: ['u/x'] } })).log, SORT_GOLDEN, 'ride rooms of another area do not count');
+});
+
+ui('ride: a ride room it cannot reach stops with an alert and sends no trip command', async () => {
+  const offMap = await rideSort({ rides: { t: ['t/z'] }, until: page => alerts(page).length > 0 });
+  assert.match(offMap.alerts[0].reason, /可 ride/);
+  assert.equal(offMap.log.includes('go'), false);
+  const blocked = await rideSort({ rides: { t: ['t/a'] }, moves: { a: { e: 'b' }, b: { w: 'a', e: 'c' }, c: { e: 'd' }, d: { w: 'c' } }, until: page => alerts(page).length > 0 });
+  assert.match(blocked.alerts[0].reason, /可 ride/);
+  assert.ok(blocked.log.includes('w'), 'it tried to walk');
+  assert.equal(blocked.log.includes('go'), false);
+});
+
+ui('ride: stopping while it walks to the ride room sends nothing more', async () => {
+  const run = await rideSort({
+    rides: { t: ['t/a'] },
+    moves: { a: { e: 'b' }, b: { w: 'a', e: 'c' }, c: { e: 'd' }, d: { w: 'c' } },
+    until: () => true,
+    during: async (page, game) => {
+      assert.ok(await waitFor(() => game.log.includes('w'), 8000), game.log.join(','));
+      click(page, '.hstop');
+      await sleep(1500);
+      assert.equal(game.log.includes('go'), false);
+    },
+  });
+  assert.equal(run.alerts.length, 0);
+});
+
+ui('ride: in fight-only mode the sort also walks to the ride room first', async () => {
+  const page = await sortPage({ fightMode: 'assist', eatCommand: '', noMedicineKeyword: '', fightTimeoutSec: 5 });
+  try {
+    page.store.mapHuntRideRooms = { t: ['t/d'] };
+    const state = sortState({ load: 40 });
+    const looks = { c: { lines: mobsLines(1) } };
+    const base = sortScript(page, state);
+    let fights = 0;
+    const game = world(page, { at: 'a', looks, script: (command, env) => {
+      if (command.startsWith('fight ')) {
+        fights += 1;
+        if (fights === 1) setTimeout(() => { state.load = 95; say(page, '你身上帶著下列這些東西( 載重 95% ):\n    布條(cloth piece)'); }, 50);
+        else { looks.c.lines.length = 0; setTimeout(() => lookOut(page), 50); }
+        return true;
+      }
+      return base(command, env);
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => game.log.includes('go'), 15000), game.log.join(','));
+    const go = game.log.indexOf('go');
+    assert.deepEqual(game.log.slice(go - 2, go), ['i', 'e'], game.log.join(','));
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
 ui('assist: low qi eats when an eat command is set (and not when it is blank), and under the danger line it goes home and stops', async () => {
   const low = await assistPage({ eatCommand: 'eat pill', noMedicineKeyword: '沒有藥' });
   try {

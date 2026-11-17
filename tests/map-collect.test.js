@@ -234,3 +234,45 @@ ui('visit: a built-in monster that is never seen is hidden with gone (the built-
     page.close();
   }
 });
+
+// 可 ride 的格子（巡怪撤退用）：toggleRideRoom 加入或拿掉一格、normalizeRideRooms 讀回時過濾壞資料；地圖上用綠框標出，和選怪的紅底並存
+ui('ride rooms: toggling adds and removes a room per area, bad data is dropped on read', async () => {
+  const page = await boot();
+  try {
+    const C = page.w.CatworldMapCollect;
+    let result = C.toggleRideRoom(undefined, 'wudon/2h');
+    assert.deepEqual(JSON.parse(JSON.stringify(result)), { store: { wudon: ['wudon/2h'] }, added: true });
+    result = C.toggleRideRoom(result.store, 'godforest/w6');
+    result = C.toggleRideRoom(result.store, 'wudon/2i');
+    assert.deepEqual(JSON.parse(JSON.stringify(result.store)), { wudon: ['wudon/2h', 'wudon/2i'], godforest: ['godforest/w6'] });
+    result = C.toggleRideRoom(result.store, 'wudon/2h');
+    assert.equal(result.added, false);
+    result = C.toggleRideRoom(result.store, 'godforest/w6');
+    assert.deepEqual(JSON.parse(JSON.stringify(result.store)), { wudon: ['wudon/2i'] }, 'an area left empty is removed');
+    assert.deepEqual(JSON.parse(JSON.stringify(C.normalizeRideRooms({ wudon: ['wudon/2h', 'wudon/2h', 'other/x', 3, 'wudon/'], bad: 'x', empty: [] }))), { wudon: ['wudon/2h'] });
+    assert.deepEqual(JSON.parse(JSON.stringify(C.normalizeRideRooms('junk'))), {});
+  } finally {
+    page.close();
+  }
+});
+
+ui('ride rooms: recorded rooms of the visible area get a green frame on the map, alongside the red monster mark', async () => {
+  const page = await boot({ scale: 10 });
+  try {
+    setup(page);
+    await page.w.chrome.storage.local.set({ mapMonsters: MOBS, mapHuntRideRooms: { wudon: ['wudon/2i'], godforest: ['godforest/w6'] } });
+    const rides = () => [...page.w.document.querySelectorAll('[data-catworld-ride]')].map(node => node.id);
+    assert.ok(await waitFor(() => rides().length === 1, 2000));
+    assert.deepEqual(rides(), ['m-wudon-2i'], 'only the visible area');
+    assert.match(page.w.document.getElementById('m-wudon-2i').style.boxShadow, /inset/);
+    assert.ok(await waitFor(() => page.w.document.querySelector('#catworld-mark-select option:nth-child(3)'), 2000));
+    pick(page, '高手(gaoshou)');
+    assert.ok(await waitFor(() => marked(page).join() === 'm-wudon-2i', 2000));
+    assert.deepEqual(rides(), ['m-wudon-2i'], 'both marks on the same room');
+    await page.w.chrome.storage.local.set({ mapHuntRideRooms: {} });
+    assert.ok(await waitFor(() => rides().length === 0, 2000));
+    assert.equal(page.w.document.getElementById('m-wudon-2i').style.boxShadow, '');
+  } finally {
+    page.close();
+  }
+});

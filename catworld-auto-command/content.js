@@ -1452,6 +1452,28 @@ const mapStore = async () => CatworldMapCollect.withBuiltin((await chrome.storag
 // 面板巡怪列沒在巡時的跨區狀態文字（CatworldMapHunt.chainStatus）：面板每秒重畫時最多每 HUNT_CHAIN_NOTE_MS 重讀一次設定、路線與區名
 const HUNT_CHAIN_NOTE_MS = 2000;
 let huntChainNote = '';
+// 可 ride 的格子（CatworldMapCollect.RIDE_KEY）：面板按鈕用，顯示目前這一格記過沒有；按了之後的訊息在巡怪列顯示 RIDE_NOTE_MS
+const RIDE_NOTE_MS = 4000;
+let rideStore = {};
+let rideNote = null;
+let rideWrite = Promise.resolve();
+function toggleRideHere() {
+  const key = CatworldMapCollect.currentRoom(document)?.key;
+  const say = text => { rideNote = { text, until: Date.now() + RIDE_NOTE_MS }; renderPanel(); };
+  if (!key) { say('讀不到目前的房間，要開著地圖視窗'); return; }
+  const K = CatworldMapCollect.RIDE_KEY;
+  // 讀改寫排成一條：連按兩次不會互相蓋掉
+  rideWrite = rideWrite.then(async () => {
+    const result = CatworldMapCollect.toggleRideRoom((await chrome.storage.local.get(K))[K], key);
+    await chrome.storage.local.set({ [K]: result.store });
+    rideStore = result.store;
+    say(result.added ? `已記 ${key} 為可 ride 格子` : `已取消 ${key} 的可 ride`);
+  }).catch(() => say('存不進去，沒有記錄'));
+}
+const rideHere = () => {
+  const key = CatworldMapCollect.currentRoom(document)?.key;
+  return !!key && (rideStore[key.slice(0, key.indexOf('/'))] || []).includes(key);
+};
 let huntChainNoteAt = 0;
 function refreshHuntChainNote() {
   if (Date.now() - huntChainNoteAt < HUNT_CHAIN_NOTE_MS) return;
@@ -1567,6 +1589,7 @@ hunt = CatworldMapHunt.create({
     return { area, mobs: CatworldMapHuntUI.pickedFor(mapHuntPicks, area).filter(mob => here.includes(mob)) };
   },
   room: () => CatworldMapCollect.currentRoom(document)?.key ?? null,
+  rideRooms: async () => (await chrome.storage.local.get(CatworldMapCollect.RIDE_KEY))[CatworldMapCollect.RIDE_KEY],
   areaHtml: area => document.getElementById(`m-${area}`)?.innerHTML ?? '',
   readStore: mapStore,
   chain: async () => (await chrome.storage.local.get(CatworldMapHunt.CHAIN_KEY))[CatworldMapHunt.CHAIN_KEY],
@@ -1802,9 +1825,9 @@ function initPanel() {
       /* 巡怪：標籤與狀態文字在第一列（和其他列一樣），五顆按鈕（選怪、開始、掃描、停止、記錄）排成下面一整列：
          前四顆一樣寬、記錄照字的長度（「● 記錄中」比較長），面板只有 310px，不會再換行 */
       .line.hunt-line { row-gap: 6px; }
-      .hunt-line .mini { order: 3; flex: 1 1 100%; display: grid; grid-template-columns: repeat(4, 1fr) auto; gap: 6px; }
+      .hunt-line .mini { order: 3; flex: 1 1 100%; display: grid; grid-template-columns: repeat(4, 1fr) auto auto; gap: 6px; }
       .hunt-line .mini button { padding: 3px 0; white-space: nowrap; }
-      .hunt-line .mini button.hmanual { padding: 3px 10px; }
+      .hunt-line .mini button.hmanual, .hunt-line .mini button.hride { padding: 3px 4px; }
       .mini button.hmanual.on { background: #8a2b2b; }
       .macro-line .s:empty { display: none; }
       .mini { display: flex; gap: 6px; flex: none; }
@@ -1835,7 +1858,7 @@ function initPanel() {
         <div class="line macro-line"><span class="t">巨集</span><span class="s macro-text"></span>
           <span class="mini"><button class="mstop">停止</button></span></div>
         <div class="line hunt-line"><span class="t">巡怪</span><span class="s hunt-text"></span>
-          <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hscan" title="街景模式：不用選怪，走這一區還沒走過的每一間，看一眼並記下有哪些怪（不打）">掃描</button><button class="hstop">停止</button><button class="hmanual" title="記錄手動：記下你自己送出的指令（輸入框打的、遊戲巨集鍵送出的），每個重生整點與關掉時寫一段「手動摘要」到巡怪紀錄，和巡怪的輪摘要對照">● 記錄</button></span></div>
+          <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hscan" title="街景模式：不用選怪，走這一區還沒走過的每一間，看一眼並記下有哪些怪（不打）">掃描</button><button class="hstop">停止</button><button class="hride" title="可 ride：把角色現在站的這一格記成可以 ride 的格子（再按一次取消）。巡怪要整理時先走到這一區最近的可 ride 格子才送前往指令">可 ride</button><button class="hmanual" title="記錄手動：記下你自己送出的指令（輸入框打的、遊戲巨集鍵送出的），每個重生整點與關掉時寫一段「手動摘要」到巡怪紀錄，和巡怪的輪摘要對照">● 記錄</button></span></div>
         <div class="line reward-line" hidden><span class="t">獎勵</span><span class="s reward-text"></span></div>
         <div class="line script-line" hidden><span class="t">劇本</span><span class="s script-text"></span></div>
       </div>
@@ -1852,7 +1875,7 @@ function initPanel() {
     randomText: $('.random-text'), rstart: $('.rstart'), rstop: $('.rstop'),
     idleText: $('.idle-text'), istart: $('.istart'), istop: $('.istop'),
     macroText: $('.macro-text'), mstop: $('.mstop'),
-    huntText: $('.hunt-text'), hstart: $('.hstart'), hscan: $('.hscan'), hstop: $('.hstop'), hmanual: $('.hmanual'),
+    huntText: $('.hunt-text'), hstart: $('.hstart'), hscan: $('.hscan'), hstop: $('.hstop'), hride: $('.hride'), hmanual: $('.hmanual'),
     rewardLine: $('.reward-line'), rewardText: $('.reward-text'),
     scriptLine: $('.script-line'), scriptText: $('.script-text'),
     confirm: $('.confirm'),
@@ -2008,6 +2031,11 @@ function initPanel() {
     await hunt.start({ scan: true });
   });
   panel.hstop.addEventListener('click', () => hunt.stop());
+  panel.hride.addEventListener('click', toggleRideHere);
+  chrome.storage.local.get(CatworldMapCollect.RIDE_KEY).then(data => { rideStore = CatworldMapCollect.normalizeRideRooms(data[CatworldMapCollect.RIDE_KEY]); }).catch(() => {});
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes[CatworldMapCollect.RIDE_KEY]) rideStore = CatworldMapCollect.normalizeRideRooms(changes[CatworldMapCollect.RIDE_KEY].newValue);
+  });
   panel.hmanual.addEventListener('click', () => {
     if (manualRecord) stopManual();
     else startManual();
@@ -2250,7 +2278,9 @@ function renderPanel() {
   const huntInfo = hunt.summary();
   // 沒在巡時附上跨區的狀態（巡怪中「第 N／M 區」由引擎自己寫）
   if (!hunt.on()) refreshHuntChainNote();
-  const huntLineText = !hunt.on() && huntChainNote ? `${huntInfo.text}｜${huntChainNote}` : huntInfo.text;
+  const baseHuntText = !hunt.on() && huntChainNote ? `${huntInfo.text}｜${huntChainNote}` : huntInfo.text;
+  if (rideNote && Date.now() > rideNote.until) rideNote = null;
+  const huntLineText = rideNote ? `${rideNote.text}｜${baseHuntText}` : baseHuntText;
   if (panel.huntText.textContent !== huntLineText) {
     panel.huntText.textContent = huntLineText;
     panel.replace();
@@ -2260,6 +2290,7 @@ function renderPanel() {
   panel.hstart.disabled = hunt.on();
   panel.hscan.disabled = hunt.on();
   panel.hstop.disabled = !hunt.on();
+  panel.hride.textContent = rideHere() ? '可 ride ✓' : '可 ride';
   panel.hmanual.textContent = manualRecord ? '● 記錄中' : '● 記錄';
   panel.hmanual.classList.toggle('on', !!manualRecord);
   panel.mstop.disabled = !macroRuns.size;

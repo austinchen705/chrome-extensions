@@ -153,12 +153,52 @@ function markRooms(doc, places) {
   return count;
 }
 
+// 可 ride 的格子（巡怪要整理或回家前先走過去，指令在不能 ride 的格子送不出去）：{ 區域: ["區域/房間"…] }，面板「可 ride」按鈕記錄。
+// 讀回時只留文字、屬於那一區、不重複的鍵，空的區域拿掉
+const RIDE_KEY = 'mapHuntRideRooms';
+function normalizeRideRooms(raw) {
+  const out = {};
+  Object.entries(raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}).forEach(([area, list]) => {
+    if (!Array.isArray(list)) return;
+    const keys = [...new Set(list.filter(key => typeof key === 'string' && key.startsWith(`${area}/`) && key.length > area.length + 1))];
+    if (keys.length) out[area] = keys;
+  });
+  return out;
+}
+// 這一格記過就拿掉、沒記過就加入；回 { store: 新的整份, added }
+function toggleRideRoom(raw, key) {
+  const store = normalizeRideRooms(raw);
+  const area = key.slice(0, key.indexOf('/'));
+  const list = store[area] || [];
+  const added = !list.includes(key);
+  const next = added ? [...list, key] : list.filter(item => item !== key);
+  const out = { ...store };
+  if (next.length) out[area] = next;
+  else delete out[area];
+  return { store: out, added };
+}
+// 地圖上用綠色內框標出（選怪用的是紅底，兩種標記可以在同一格）
+const RIDE_ATTR = 'data-catworld-ride';
+function markRideRooms(doc, keys) {
+  doc.querySelectorAll(`[${RIDE_ATTR}]`).forEach(node => {
+    node.style.removeProperty('box-shadow');
+    node.removeAttribute(RIDE_ATTR);
+  });
+  keys.forEach(key => {
+    const at = key.indexOf('/');
+    const node = doc.getElementById(`m-${key.slice(0, at)}-${key.slice(at + 1)}`);
+    if (!node) return;
+    node.style.setProperty('box-shadow', 'inset 0 0 0 2px #2ea043', 'important');
+    node.setAttribute(RIDE_ATTR, '');
+  });
+}
+
 // 巡怪、掃描進行中要暫停（content.js 注入）：這個觀察器等 SETTLE_MS 才看地圖捲到哪一間，巡怪走得快時會記錯房間；
 // 巡怪自己走進房間看過 l 之後的記錄（visit）才準。暫停時看到的怪不記（也不留到之後）
 let suspended = () => false;
 const setSuspended = fn => { suspended = typeof fn === 'function' ? fn : () => false; };
 
-globalThis.CatworldMapCollect = { setSuspended, currentRoom, merge, visit, MISS_LIMIT, withBuiltin, builtinStore, rows, isMob, locate, whereIs, markRooms, clearMarks, STORAGE_KEY };
+globalThis.CatworldMapCollect = { setSuspended, currentRoom, merge, visit, MISS_LIMIT, withBuiltin, builtinStore, rows, isMob, locate, whereIs, markRooms, clearMarks, STORAGE_KEY, RIDE_KEY, normalizeRideRooms, toggleRideRoom };
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs) return;
 
@@ -228,14 +268,18 @@ async function refreshMarkUi() {
   const header = document.getElementById('map_header');
   if (!header) return;
   let store;
+  let rides;
   try {
-    store = withBuiltin((await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY]);
+    const data = await chrome.storage.local.get([STORAGE_KEY, RIDE_KEY]);
+    store = withBuiltin(data[STORAGE_KEY]);
+    rides = normalizeRideRooms(data[RIDE_KEY]);
   } catch {
     clearInterval(markTimer);
     return;
   }
   const visible = document.querySelector('#map_wrapper > div[id^="m-"]:not(.invisible)');
   const area = visible ? visible.id.slice(2) : '';
+  markRideRooms(document, rides[area] || []);
   const mobs = [...new Set(rows(store).filter(row => row.area === area).flatMap(row => row.mobs))].sort((a, b) => a.localeCompare(b));
   const select = ensureSelect(header);
   select.style.display = mobs.length ? '' : 'none';

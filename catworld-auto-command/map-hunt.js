@@ -395,6 +395,7 @@ function create(deps) {
   };
 
   const skipTarget = (key, why) => {
+    if (state.retreat) { failRetreat(deps.room(), why); return; }
     state.progressAt = state.ticks;
     record(key, '略過', why);
     // 診斷：目標、原因、現在在哪、上一步指令、這間讀到的出口（卡住時請把 console 這幾行貼出來）
@@ -1233,7 +1234,7 @@ function create(deps) {
       if (settings.overloadAction === 'stop') { finish(`負重 ${percent}% 已經超過 ${settings.loadMaxPercent}%，已停止（設定是超過就停止巡怪）`, { alert: true }); return; }
       if (sortConfigured(settings)) {
         if (state.sorted) { finish(`整理完負重還是 ${percent}%（要小於 ${settings.loadMaxPercent}%），已停止`, { alert: true }); return; }
-        sortOut(here, token);
+        retreat('sort', token, at => sortOut(at, token));
         return;
       }
       finish(`負重 ${percent}% 已經超過 ${settings.loadMaxPercent}%，請先到設定頁「地圖巡怪」填好「整理：前往整理處」與「整理：回程」的指令`, { alert: true });
@@ -1833,6 +1834,51 @@ function create(deps) {
   // 規劃下一步：到了目標就看房間；否則挑路線最短的目標，送出路線的第一個指令
   // 學習開著時分兩張圖：嚴格圖（已知出口的房間只走出口裡有的）優先；只有寬鬆圖（純地圖圖示）走得到時，圖示的猜測可能走不通
   // 送一步移動指令並進入 move 階段（plan 與故意走錯路共用）
+  // ---- 撤退：先走到這一區最近的可 ride 格子再做事 ----
+  // 打怪的地圖有些格子不能 ride，整理的前往指令、回家指令在那裡送不出去。這一區有記可 ride 的格子（面板「可 ride」，deps.rideRooms）
+  // 而人不在格子上時，照地圖路線走到最近的一格（不看路過、不反擊、不擬人化；補氣照常），到了才做 then；走不到就停止並警報、不做 then。
+  // 沒記格子或已經站在格子上直接做 then
+  const RETREAT_TEXT = { sort: '整理' };
+  async function retreat(why, token, then) {
+    let rooms = [];
+    try { rooms = Collect.normalizeRideRooms(await deps.rideRooms())[state?.area] || []; } catch { rooms = []; }
+    if (state !== token) return;
+    const here = deps.room();
+    if (!rooms.length || rooms.includes(here)) { then(here); return; }
+    state.retreat = { why, rooms: new Set(rooms), then };
+    state.tries = 0;
+    state.wrong = 0;
+    record(here ?? '-', '撤退', `為了${RETREAT_TEXT[why]}，走向可 ride 格子（${rooms.join('、')}）`);
+    state.phase = 'plan';
+    deps.notify();
+  }
+  function retreatStep(here) {
+    const { why, rooms, then } = state.retreat;
+    if (rooms.has(here)) {
+      state.retreat = null;
+      record(here, '撤退', `到了可 ride 格子 ${here}，接著${RETREAT_TEXT[why]}`);
+      then(here);
+      return;
+    }
+    // 先找實測的路線（嚴格圖），都沒有才用圖示猜的；同一張圖裡挑最近的格子
+    const graphs = state.learn ? [buildGraph(true), buildGraph(false)] : [state.graph];
+    let best = null;
+    for (const graph of graphs) {
+      rooms.forEach(key => {
+        const way = Route.route(graph, here, key);
+        if (way?.length && (!best || way.length < best.way.length)) best = { key, way, graph };
+      });
+      if (best) break;
+    }
+    if (!best) { failRetreat(here, '沒有路線'); return; }
+    const cmd = best.way[0];
+    walk(here, cmd, best.key, best.graph.rooms[here].exits[cmd], `${cmd} → 可 ride 格子 ${best.key}（${RETREAT_TEXT[why]}，還要 ${best.way.length} 步）`);
+  }
+  function failRetreat(where, why) {
+    const text = RETREAT_TEXT[state.retreat.why];
+    state.retreat = null;
+    finish(`要${text}，但走不到可 ride 的格子（${why}，目前在 ${where ?? '讀不到房間'}），已停止`, { alert: true });
+  }
   function walk(here, cmd, goal, expected, text) {
     if (!sendOrStop(cmd, () => { if (state) { state.moveText = ''; state.walkedTo = null; state.hostile = 0; } })) return; // hostile：換房間，重新數這間有幾隻打你 // 指令真的送出時才開始收這一步的輸出（抵達時印的房間描述）
     record(here, '走', text);
@@ -1845,6 +1891,7 @@ function create(deps) {
     deps.notify();
   }
   function plan(here) {
+    if (state.retreat) { retreatStep(here); return; }
     // 故意走錯路的半途：走到那間就馬上走回來；走回來了（或人在別處）就照一般流程
     if (state.detour) {
       const detour = state.detour;
@@ -1918,7 +1965,7 @@ function create(deps) {
   // 路過的房間：走路時房間裡新刷的怪（重生、或這一輪已經處理過的房間又有怪）不在目標裡，原本不會停下來。
   // 到了不是目標的房間，看抵達時遊戲印的描述（走這一步時收的輸出，不多送 l）：有勾選的怪（不是昏迷的）就把這間加進目標（也加進每一輪的目標）、照一般流程看房間與打；
   // 這一輪已經略過的房間（有別人、打不動）不再加，免得每次路過都問一次；掃描不做
-  const wantsPassCheck = here => !state.scan && !state.targets.has(here) && !!state.graph.rooms[here] && !state.skipped.some(item => item.key === here);
+  const wantsPassCheck = here => !state.retreat && !state.scan && !state.targets.has(here) && !!state.graph.rooms[here] && !state.skipped.some(item => item.key === here);
   function passTick() {
     const here = deps.room();
     if (here !== state.passRoom) { state.phase = 'plan'; return; } // 手動走掉了：照一般流程重新規劃
@@ -1953,7 +2000,7 @@ function create(deps) {
     if (deps.busy?.() && state.phase !== 'wait' && state.phase !== 'standby' && state.phase !== 'sort') return;
     if (state.assist) { assistTick(); return; }
     // 被怪主動攻擊：在規劃、路過、或這一步沒走成（還在原來那間）時停下來反擊；這一步走到了別間就先照常記下抵達，下一個 tick 再反擊
-    if (state.attacked && (state.phase === 'plan' || state.phase === 'pass' || (state.phase === 'move' && deps.room() === state.from))) {
+    if (state.attacked && !state.retreat && (state.phase === 'plan' || state.phase === 'pass' || (state.phase === 'move' && deps.room() === state.from))) {
       const here = deps.room();
       if (here) {
         const token = state;
@@ -2014,7 +2061,7 @@ function create(deps) {
     return {
       round: 1, after: deps.now() + offset, allTargets: new Set(), baseSkipped: [], waiting: null, calibrating: false,
       mobs: [], area: '', offset, scan: false, prescan: false, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph: { rooms: {} }, targets: new Set(), skipped: [], fixed: [],
-      baseSettings: fields.settings, chain: null, trialRun: false, resume: null, order: null, loadDue: false, loadFought: false, loadRooms: 0, loadEvery: 1, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: false, learned: {}, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
+      baseSettings: fields.settings, chain: null, trialRun: false, resume: null, order: null, retreat: null, loadDue: false, loadFought: false, loadRooms: 0, loadEvery: 1, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: false, learned: {}, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
       ...roundFields(offset), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       ...fields,
     };
@@ -2208,6 +2255,7 @@ function create(deps) {
     }
     if (state.resting) return { text: `${who}：休息中 ${Math.round(state.restPercent)}%→${state.settings.restResume}%${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.waiting) return { text: `${who}：等下一個重生 ${hhmm(state.waiting.spawn)}（第 ${state.waiting.rounds} 輪到過 ${state.waiting.visited} 間）${skippedShort(state.skipped)}`, alert: noteAlert };
+    if (state.retreat) return { text: `${who}：為了${RETREAT_TEXT[state.retreat.why]}，走向可 ride 格子 ${room(state.goal)}…`, alert: noteAlert };
     if (state.phase === 'sort') return { text: `${who}：負重 ${state.load}%，整理中（${SORT_PHASE_TEXT[state.sortStage] ?? '…'}，第 ${state.sortCount + 1} 次）${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.checkingLoad) return { text: `${who}：看負重…${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.phase === 'standby') return { text: `${who}：等待指令送完，再校準伺服器時間…${skippedShort(state.skipped)}`, alert: noteAlert };
