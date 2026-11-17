@@ -2831,6 +2831,21 @@ ui('sort: over the limit it goes, identifies, marks the good armor, sells, comes
   }
 });
 
+// 隔幾間才看負重時，整理回來仍然馬上看一次（不經間數）
+ui('sort: with a load check every 3 rooms it still looks at i right after coming back from sorting', async () => {
+  const page = await sortPage({ loadCheckEveryMin: 3, loadCheckEveryMax: 3 });
+  try {
+    const state = sortState();
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(game.log.slice(-2), ['back', 'i']);
+  } finally {
+    page.close();
+  }
+});
+
 // 賣完停留（sortLookMinSec～sortLookMaxSec）：sell all 之後先停一會、中間送一次 i，再送回程；測試共用設定是 0～0
 ui('sort: after selling it stays a while and checks the inventory once before going back', async () => {
   const page = await sortPage({ sortLookMinSec: 40, sortLookMaxSec: 40 });

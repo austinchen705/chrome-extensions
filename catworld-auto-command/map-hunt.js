@@ -331,6 +331,8 @@ function create(deps) {
   let timer = null;
   // 擬人化的所有隨機都從這一個來源取（deps.random，預設在呼叫時才取 Math.random），測試注入固定值
   const random = deps.random ?? (() => Math.random());
+  // min～max（含兩端）的整數；random() 回 1 也不會超過 max
+  const randomInt = (min, max) => min + Math.min(Math.floor(random() * (max - min + 1)), max - min);
   let unwatch = null; // 取消「看遊戲輸出」的訂閱
   let note = '';
   let noteAlert = false;
@@ -1209,13 +1211,10 @@ function create(deps) {
     state.loadFought = false;
     state.loadRooms += 1;
     const { loadAlwaysPercent } = state.settings;
-    const near = loadAlwaysPercent > 0 && state.load !== null && state.load >= loadAlwaysPercent;
-    if (state.load === null || near || state.loadRooms >= state.loadEvery) state.loadDue = true;
+    const atSafetyLine = loadAlwaysPercent > 0 && state.load !== null && state.load >= loadAlwaysPercent;
+    if (state.load === null || atSafetyLine || state.loadRooms >= state.loadEvery) state.loadDue = true;
   }
-  const drawLoadEvery = () => {
-    const { loadCheckEveryMin: min, loadCheckEveryMax: max } = state.settings;
-    return min + Math.min(Math.floor(random() * (max - min + 1)), max - min);
-  };
+  const drawLoadEvery = () => randomInt(state.settings.loadCheckEveryMin, state.settings.loadCheckEveryMax);
   function checkLoad(here) {
     const token = state;
     state.loadRooms = 0;
@@ -1554,7 +1553,7 @@ function create(deps) {
 
   // ---- 擬人化：掛機休息（跳過整輪）。擬人化開著、輪與輪之間開著、有填「休息後回到巡怪區的指令」才作用 ----
   // 輪數讀 baseSettings（每輪抖動的 state.settings 不動它，但休息是跨輪的事）
-  const drawRestAfter = () => { const { restEveryMin, restEveryMax } = state.baseSettings; return restEveryMin + Math.floor(random() * (restEveryMax - restEveryMin + 1)); };
+  const drawRestAfter = () => { const { restEveryMin, restEveryMax } = state.baseSettings; return randomInt(restEveryMin, restEveryMax); };
   // 每個跑完的一輪算一次（會動 sinceRest、第一次還會抽輪數），數到抽好的輪數就休息（第一次抽在第一輪跑完時，所以一定要先跑滿 restEveryMin 輪）。
   // 回程指令一律讀 baseSettings：它不是每輪抖動的設定，休息與否也和這一輪的 state.settings 無關
   const countRoundForRest = () => {
@@ -1567,7 +1566,7 @@ function create(deps) {
   // 回家指令和待命指令一樣就不再送一次，待命指令這一輪結束時已經送過了
   function beginRest() {
     const { restSkipMin, restSkipMax } = state.baseSettings;
-    const skip = restSkipMin + Math.floor(random() * (restSkipMax - restSkipMin + 1));
+    const skip = randomInt(restSkipMin, restSkipMax);
     const { homeCommand, standbyCommand } = state.settings;
     state.rest = { skip, homed: !homeCommand || homeCommand === standbyCommand };
     record('-', '休息', `跳過 ${skip} 輪`);
