@@ -532,3 +532,13 @@ ui('load interval: the every-N-rooms range and the safety line sit with the load
     dom.window.close();
   }
 });
+
+ui('ride rooms: the home command and the trip command say that a recorded ride room is walked to first', async () => {
+  const { dom, doc } = await boot({ mapHuntSettings: { homeCommand: 'ride', loadMaxPercent: 90 } });
+  try {
+    assert.match(cellOf(doc, 'homeCommand').textContent, /可 ride.*危險線/);
+    assert.match(cellOf(doc, 'tripCommand').textContent, /可 ride/);
+  } finally {
+    dom.window.close();
+  }
+});

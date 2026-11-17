@@ -108,13 +108,13 @@ const FIELDS = [
   { key: 'restCommand', group: 'heal', show: s => !eatMode(s), label: '休息時送的指令', hint: '可空；每次休息只送一次，角色忙碌時等忙碌結束才送', type: 'text', default: '' },
   { key: 'noMedicineKeyword', group: 'heal', show: s => eatMode(s) || TOP_UPS.some(item => s[`${item.key}Command`]), label: '沒藥時遊戲回的字', hint: '吃藥、精神、內傷的指令送出後看到這個字就回家停止', type: 'text', default: '', required: s => eatMode(s) && full(s) },
   { key: 'dangerBelow', group: 'heal', label: '危險線：氣低於 % 回家停止', hint: '自己回模式的戰鬥中、只下 fight 模式、掃描時都看；要小於「氣低於 % 休息」，否則自動改小', type: 'number', default: 20, min: 1, max: 99 },
-  { key: 'homeCommand', group: 'heal', label: '回家指令', type: 'text', default: '', required: () => true },
+  { key: 'homeCommand', group: 'heal', label: '回家指令', hint: '這一區有記可 ride 的格子（面板「可 ride」）時，休息、沒藥、危險線都會先走到最近的一格才送；格子要記在常打的地方附近', type: 'text', default: '', required: () => true },
   { key: 'loadMaxPercent', group: 'sort', label: '負重超過 % 就去整理', hint: 'i 的「載重」；0＝不檢查', type: 'number', default: 90, min: 0, max: 100 },
   { key: 'loadCheckEveryMin', group: 'sort', show: s => s.loadMaxPercent > 0, row: 'loadEvery', label: '每打完幾間看一次負重：最少', hint: '只算有打倒怪的房間；每次在最少與最多之間隨機；1～1＝每間都看', type: 'number', default: 3, min: 1, max: 20 },
   { key: 'loadCheckEveryMax', group: 'sort', show: s => s.loadMaxPercent > 0, row: 'loadEvery', label: '最多', type: 'number', default: 6, min: 1, max: 20 },
   { key: 'loadAlwaysPercent', group: 'sort', show: s => s.loadMaxPercent > 0, label: '負重到 % 以上就每間都看', hint: '上一次看到的負重到這條線就改回每間都看，免得超重撿不了屍體；0＝不用', type: 'number', default: 80, min: 0, max: 100 },
   { key: 'overloadAction', group: 'sort', show: sorting, label: '負重超標時', hint: '整理＝照下面的設定去整理再回來；停止巡怪＝直接停止並警報，不整理（例如在謎宮裡走不了固定路線，停下來自己騎車去整理）', type: 'select', options: [['sort', '整理'], ['stop', '停止巡怪']], default: 'sort' },
-  { key: 'tripCommand', group: 'sort', show: sorting, label: '前往整理處的指令／巨集', hint: '路線、鑑定全寫在這裡，最後停在能 sell all 的地方；不要自己寫 sell all。前往與回程至少填一個才走自動整理；可用 ; 與 @等待', type: 'text', default: '' },
+  { key: 'tripCommand', group: 'sort', show: sorting, label: '前往整理處的指令／巨集', hint: '路線、鑑定全寫在這裡，最後停在能 sell all 的地方；不要自己寫 sell all。前往與回程至少填一個才走自動整理；可用 ; 與 @等待。這一區有記可 ride 的格子時，會先走到最近的一格才送', type: 'text', default: '' },
   { key: 'sortKeep', group: 'sort', show: sorting, label: '鑑定完留不留好裝備', hint: '留＝好的 secure 或 give 給小號再賣其餘；全賣＝不看背包直接 sell all，只有你自己 secure 過的不會賣', type: 'select', options: [['keep', '留好裝備'], ['none', '全賣，不留']], default: 'keep' },
   { key: 'altId', group: 'sort', show: s => sorting(s) && s.sortKeep !== 'none', label: '小號的英文 ID', hint: '好東西 give 給它；不填就只用 secure 標記留在身上', type: 'text', default: '' },
   { key: 'sortLookMinSec', group: 'sort', show: sorting, row: 'sortLook', label: '賣完後停留（秒）最短', hint: 'sell all 之後不馬上回去，先停一會、中間送一次 i 看看身上的裝備，像人在整理；0～0＝賣完馬上回去', type: 'number', default: 20, min: 0, max: 300 },
@@ -860,7 +860,7 @@ function create(deps) {
     const eating = state?.eating;
     if (eating?.sent && state.ticks <= eating.until && state.settings.noMedicineKeyword) {
       eating.buffer = (eating.buffer + text).slice(-500);
-      if (eating.buffer.includes(state.settings.noMedicineKeyword)) { noMedicine('沒藥了'); return; }
+      if (eating.buffer.includes(state.settings.noMedicineKeyword)) { retreatHome('medicine', '沒藥了'); return; }
     }
     const assist = state?.assist;
     if (assist && !assist.asking) {
@@ -994,10 +994,10 @@ function create(deps) {
     // 試跑走在換區的路上：氣掉到危險線就回家停止（不管補氣方式）
     if (state.trialRun && percent < state.settings.dangerBelow) { goHomeAndStop(`試跑中氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`); return; }
     // 掃描時整區走動，被主動攻擊的怪打到的機會比巡怪多：氣掉到危險線就回家停止（不管補氣方式，沒有在打架也一樣）
-    if (state.scan && percent < state.settings.dangerBelow) { goHomeAndStop(`掃描中氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`); return; }
+    if (state.scan && percent < state.settings.dangerBelow) { retreatHome('danger', `掃描中氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`); return; }
     // 只下 fight：休息是玩家的觸發規則的事；危險線照樣回家停止，吃藥模式有填吃藥指令時照樣吃（戰鬥中也每秒看，因為這個模式沒有 fightTick）
     if (state.settings.fightMode === 'assist') {
-      if (percent < state.settings.dangerBelow) { goHomeAndStop(`氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`); return; }
+      if (percent < state.settings.dangerBelow) { retreatHome('danger', `氣只剩 ${Math.round(percent)}%（低於 ${state.settings.dangerBelow}%）`); return; }
       if (state.settings.healMode === 'eat' && state.settings.eatCommand && percent < state.settings.eatBelow && state.ticks - state.lastEat >= EAT_GAP_TICKS) eat();
       // 自己回：assistJudge 判斷氣太低而等回氣時，這裡每秒看一次，回到繼續線就重新看房間（l）再決定下 fight
       const waiting = state.assist;
@@ -1008,7 +1008,7 @@ function create(deps) {
       return;
     }
     // 自己回模式在換區（含試跑）的路上不休息：休息指令會打斷換區的巨集，走不到下一區
-    if (state.settings.healMode === 'rest') { if (state.phase !== 'area') restStep(percent); return; }
+    if (state.settings.healMode === 'rest') { if (state.phase !== 'area' && !fleeing()) restStep(percent); return; }
     if (percent < state.settings.eatBelow && state.ticks - state.lastEat >= EAT_GAP_TICKS) eat();
   }
   // 打下一隻之前：自己回模式氣太低就在這裡等到回復（打完這一隻再休息）
@@ -1035,7 +1035,7 @@ function create(deps) {
     const percent = deps.kee();
     if (!Number.isFinite(percent)) { finish('讀不到氣，已停止', { alert: true }); return; }
     if (settings.healMode === 'rest') {
-      if (percent < settings.dangerBelow) goHomeAndStop(`戰鬥中氣只剩 ${Math.round(percent)}%（低於 ${settings.dangerBelow}%）`);
+      if (percent < settings.dangerBelow) retreatHome('danger', `戰鬥中氣只剩 ${Math.round(percent)}%（低於 ${settings.dangerBelow}%）`);
       return;
     }
     if (percent < settings.eatBelow && settings.eatCommand && state.ticks - state.lastEat >= EAT_GAP_TICKS) eat();
@@ -1844,7 +1844,7 @@ function create(deps) {
   // 沒記格子或已經站在格子上直接做 then。
   // 讀格子要等，這段期間 state.retreatPending 擋住重複開始（休息的 standby 每個 tick 都會再進來）；沒藥可以在讀的期間或走的途中改掉 why 與 then。
   // takeOver：整理、休息時人站著不動，馬上從 plan 開始走；沒藥時可能正在走一步、看房間或打架，不搶階段，等它回到 plan 再走（打架中由 fightRoom、assistTick 看到 state.retreat 收手）
-  const RETREAT_TEXT = { sort: '整理', rest: '休息', medicine: '沒藥回家' };
+  const RETREAT_TEXT = { sort: '整理', rest: '休息', medicine: '沒藥回家', danger: '危險線回家' };
   async function retreat(why, token, then, { takeOver = true } = {}) {
     const pending = { why, then };
     state.retreatPending = pending;
@@ -1863,18 +1863,34 @@ function create(deps) {
     if (takeOver) state.phase = 'plan';
     deps.notify();
   }
-  // 吃藥、精神、內傷的指令送出後看到沒藥關鍵字：先走到可 ride 格子再回家停止。已經在撤退（整理、休息）就改成回家；
-  // 整理途中、換區、休息回程（各有自己的流程）、試跑、掛機休息已經回家、人不在巡怪區地圖上時照舊原地回家。
-  // 一輪結束後等重生（wait、standby）人通常還在巡怪區，站著不動，馬上開始走；其他階段不搶，等回到 plan
-  const NO_MEDICINE_IN_PLACE = ['sort', 'area', 'return'];
-  function noMedicine(reason) {
-    state.eating = null;
+  // 沒藥（吃藥、精神、內傷的指令送出後看到沒藥關鍵字）與氣到危險線：先走到可 ride 格子再回家停止。
+  // 已經在撤退就改成回家（同一個原因再來不重記）；整理途中、換區、休息回程（各有自己的流程）、試跑、掛機休息已經回家、人不在巡怪區地圖上時照舊原地回家。
+  // 打架中：結束這場的狀態（不再送打怪指令）馬上走；一輪結束後等重生（wait、standby）人還在巡怪區，也馬上走；其他階段不搶，等回到 plan。
+  // 危險線撤退途中不休息（休息會停在原地，氣只會更低）
+  const HOME_IN_PLACE = ['sort', 'area', 'return'];
+  function retreatHome(why, reason) {
+    if (why === 'medicine') state.eating = null;
     const home = () => goHomeAndStop(reason);
     const current = state.retreat || state.retreatPending;
-    if (current) { current.why = 'medicine'; current.then = home; return; }
-    if (state.trialRun || NO_MEDICINE_IN_PLACE.includes(state.phase) || state.rest?.homed || !state.graph.rooms[deps.room()]) { home(); return; }
-    retreat('medicine', state, home, { takeOver: state.phase === 'wait' || state.phase === 'standby' });
+    if (current) {
+      if (current.why === why || current.why === 'danger') return; // 危險線最優先，之後的沒藥不改它
+      current.why = why;
+      current.then = home;
+      if (why === 'danger') state.resting = false;
+      return;
+    }
+    if (state.trialRun || HOME_IN_PLACE.includes(state.phase) || state.rest?.homed || !state.graph.rooms[deps.room()]) { home(); return; }
+    if (why === 'danger') state.resting = false;
+    const fight = state.fight;
+    if (fight) {
+      record(deps.room() ?? '-', '打完', `不打了：${RETREAT_TEXT[why]}`);
+      state.fight = null;
+      fight.resolve('stopped');
+      state.phase = 'plan';
+    }
+    retreat(why, state, home, { takeOver: !!fight || state.phase === 'wait' || state.phase === 'standby' });
   }
+  const fleeing = () => (state.retreat || state.retreatPending)?.why === 'danger';
   function retreatStep(here) {
     const { why, rooms, then } = state.retreat;
     if (rooms.has(here)) {
@@ -1928,6 +1944,7 @@ function create(deps) {
   }
   function plan(here) {
     if (state.retreat) { retreatStep(here); return; }
+    if (state.retreatPending) return; // 正在讀可 ride 格子：先別往目標走
     // 故意走錯路的半途：走到那間就馬上走回來；走回來了（或人在別處）就照一般流程
     if (state.detour) {
       const detour = state.detour;
@@ -2085,8 +2102,8 @@ function create(deps) {
       return;
     }
     state.blind = 0;
-    // 每走下一步之前都再看一次氣（每秒一次的檢查可能晚一步）；休息中不走路
-    if (state.settings.healMode === 'rest') {
+    // 每走下一步之前都再看一次氣（每秒一次的檢查可能晚一步）；休息中不走路（危險線撤退不休息）
+    if (state.settings.healMode === 'rest' && !fleeing()) {
       const percent = deps.kee();
       if (Number.isFinite(percent)) restStep(percent);
     }

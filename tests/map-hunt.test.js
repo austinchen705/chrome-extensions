@@ -3350,7 +3350,7 @@ const noMedicineRun = async ({ rides, moves = MOVES, until = page => alerts(page
       if (!fightFirst && dropOn(command, state)) setKee(page, 30);
       if (command === 'eat pill') { say(page, '你身上沒有藥了。'); return true; }
       if (command === 'recall') run.recallAt = state.at;
-      // fightFirst：第一隻打到一半氣掉下來、沒藥，之後那一隻才死
+      // fightFirst：第一隻打到一半氣掉下來、沒藥（那一隻晚一點才死，撤退不等它）
       if (fightFirst && command === FIGHT && (fights += 1) === 1) { setKee(page, 30); setTimeout(() => say(page, '測試怪死了。'), 300); return true; }
       return false;
     } });
@@ -3422,10 +3422,83 @@ ui('ride: no medicine while waiting for the respawn in the hunting area walks to
   }
 });
 
-ui('ride: no medicine during a fight lets that monster die, fights no other one, and walks to the ride room', async () => {
+ui('ride: no medicine during a fight stops fighting and walks to the ride room', async () => {
   const run = await noMedicineRun({ rides: { t: ['t/a'] }, fightFirst: true });
   assert.equal(countOf({ log: run.log }, FIGHT), 1, run.log.join(','));
   assert.equal(run.recallAt, 'a', run.log.join(','));
+});
+
+// 危險線：自己回模式，在 c 打第一隻時氣掉到 10（怪不死）；recallAt 記下送回家指令時人在哪一間
+const dangerRun = async ({ rides, moves = MOVES, settings = {}, assist = false }) => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntRideRooms = rides;
+    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', dangerBelow: 20, restCommand: 'dazuo', homeCommand: 'recall', ...(assist ? { fightMode: 'assist', eatCommand: '', noMedicineKeyword: '', fightTimeoutSec: 5 } : {}), ...settings };
+    setKee(page, 60);
+    const run = { recallAt: null };
+    const game = world(page, { at: 'a', moves, looks: { c: { lines: mobsLines(2) } }, script: (command, { game: state }) => {
+      if (command === 'recall') run.recallAt = state.at;
+      if (command !== FIGHT) return false;
+      setKee(page, 10);
+      return true;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).length > 0, 10000), `${huntText(page)} | ${game.log.join(',')}`);
+    await sleep(300);
+    return { ...run, log: game.log, alerts: alerts(page), text: await huntLog(page), on: await hunting(page) };
+  } finally {
+    page.close();
+  }
+};
+
+ui('ride: under the danger line in a fight it stops fighting, walks to the ride room without resting, then goes home and stops', async () => {
+  const run = await dangerRun({ rides: { t: ['t/a'] } });
+  assert.equal(run.recallAt, 'a', run.log.join(','));
+  assert.deepEqual(run.log.slice(run.log.indexOf(FIGHT)), [FIGHT, 'w', 'w', 'recall'], 'no more fight commands, no rest command on the way');
+  assert.equal((run.text.match(/為了危險線回家/g) ?? []).length, 1, 'the qi staying under the line does not start a second retreat');
+  assert.equal(run.alerts.length, 1);
+  assert.match(run.alerts[0].reason, /戰鬥中氣只剩/);
+  assert.equal(run.on, false);
+});
+
+ui('ride: under the danger line with a ride room it cannot reach (the game may refuse to move in a fight) it stops with an alert and sends no home command', async () => {
+  const run = await dangerRun({ rides: { t: ['t/a'] }, moves: { a: { e: 'b' }, b: { w: 'a', e: 'c' }, c: {}, d: { w: 'c' } } });
+  assert.match(run.alerts[0].reason, /可 ride/);
+  assert.equal(run.log.includes('recall'), false);
+  assert.equal(run.on, false);
+});
+
+ui('ride: under the danger line with no ride room in this area it goes home right there as before', async () => {
+  const run = await dangerRun({ rides: {} });
+  assert.equal(run.recallAt, 'c');
+  assert.equal(run.log.includes('w'), false);
+});
+
+ui('ride: under the danger line in fight-only mode it walks to the ride room first', async () => {
+  const run = await dangerRun({ rides: { t: ['t/a'] }, assist: true });
+  assert.equal(run.recallAt, 'a', run.log.join(','));
+  assert.match(run.alerts[0].reason, /氣只剩/);
+});
+
+ui('ride: under the danger line while scanning it walks to the ride room first', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapHuntSettings = { ...REQUIRED, dangerBelow: 20, homeCommand: 'recall' };
+    page.store.mapHuntRideRooms = { t: ['t/b'] };
+    setKee(page, 10);
+    let recallAt = null;
+    const game = world(page, { at: 'a', script: (command, { game: state }) => { if (command === 'recall') recallAt = state.at; return false; } });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => game.log.includes('recall'), 4000), huntText(page));
+    assert.equal(recallAt, 'b', game.log.join(','));
+    assert.equal(await hunting(page), false);
+    assert.equal(alerts(page).length, 1);
+  } finally {
+    page.close();
+  }
 });
 
 ui('assist: low qi eats when an eat command is set (and not when it is blank), and under the danger line it goes home and stops', async () => {
