@@ -589,7 +589,7 @@ function create(deps) {
   }
   function assistTick() {
     const a = state.assist;
-    if (state.retreat) { state.assist = null; state.phase = 'plan'; return; } // 沒藥要撤退：不再等這間
+    if (state.retreat || state.retreatPending) { state.assist = null; state.phase = 'plan'; return; } // 沒藥要撤退（含正在讀格子）：不再等這間
     if (a.asking) return;
     const room = deps.room();
     if (room && room !== a.here) { state.assist = null; state.phase = 'plan'; return; } // 人已經不在這間（手動走掉了）：重新規劃
@@ -689,7 +689,7 @@ function create(deps) {
       // ID 會被放進 fight 指令，和 finger 一樣只收普通英數
       const target = mine.find(mob => SAFE_ID.test(mob.id));
       if (!target) { sendLoot(); leave('怪的 ID 不能用'); return; }
-      if (state.retreat) { sendLoot(); state.phase = 'plan'; deps.notify(); return; } // 沒藥要撤退：不打下一隻，這間留著不算處理過
+      if (state.retreat || state.retreatPending) { sendLoot(); state.phase = 'plan'; deps.notify(); return; } // 沒藥要撤退（含正在讀格子）：不打下一隻，這間留著不算處理過
       if (spawnPause()) return;
       if (!(await restGate(token))) return;
       if (!(await reactWait(token))) return;
@@ -1808,13 +1808,12 @@ function create(deps) {
       // 待命指令（巨集）跑完了才回家，回家也是巨集的話下一個 tick 再等它跑完；這一區有記可 ride 格子就先走過去，到了才送回家
       if (state.rest && !state.rest.homed) {
         if (state.retreatPending) return;
-        const token = state;
-        retreat('rest', token, () => {
+        retreat('rest', state, () => {
           state.phase = 'standby';
           state.rest.homed = true;
           sendOrStop(state.settings.homeCommand);
           deps.notify();
-        }).catch(() => { if (state === token) finish('讀可 ride 格子時出錯，已停止', { alert: true }); });
+        });
         return;
       }
       calibrate();
@@ -1865,16 +1864,16 @@ function create(deps) {
     deps.notify();
   }
   // 吃藥、精神、內傷的指令送出後看到沒藥關鍵字：先走到可 ride 格子再回家停止。已經在撤退（整理、休息）就改成回家；
-  // 不在巡怪區地圖上的階段（整理途中、換區、休息回程、在家等重生）與試跑照舊原地回家
-  const NO_MEDICINE_IN_PLACE = ['sort', 'area', 'return', 'wait', 'standby'];
+  // 整理途中、換區、休息回程（各有自己的流程）、試跑、掛機休息已經回家、人不在巡怪區地圖上時照舊原地回家。
+  // 一輪結束後等重生（wait、standby）人通常還在巡怪區，站著不動，馬上開始走；其他階段不搶，等回到 plan
+  const NO_MEDICINE_IN_PLACE = ['sort', 'area', 'return'];
   function noMedicine(reason) {
     state.eating = null;
     const home = () => goHomeAndStop(reason);
     const current = state.retreat || state.retreatPending;
     if (current) { current.why = 'medicine'; current.then = home; return; }
-    if (state.trialRun || NO_MEDICINE_IN_PLACE.includes(state.phase)) { home(); return; }
-    const token = state;
-    retreat('medicine', token, home, { takeOver: false }).catch(() => { if (state === token) finish('讀可 ride 格子時出錯，已停止', { alert: true }); });
+    if (state.trialRun || NO_MEDICINE_IN_PLACE.includes(state.phase) || state.rest?.homed || !state.graph.rooms[deps.room()]) { home(); return; }
+    retreat('medicine', state, home, { takeOver: state.phase === 'wait' || state.phase === 'standby' });
   }
   function retreatStep(here) {
     const { why, rooms, then } = state.retreat;
@@ -2289,7 +2288,7 @@ function create(deps) {
     const room = key => (typeof key === 'string' ? key.split('/').pop() : key);
     if (state.trialRun) return { text: `試跑（第 ${state.chain.index + 1}／${state.chain.areas.length} 段）：走向 ${state.chain.areas[state.chain.to].area}…`, alert: noteAlert };
     if (state.phase === 'area') return { text: `${who}：換區，走向 ${state.chain.areas[state.chain.to].area}…`, alert: noteAlert };
-    if (state.retreat) return { text: `${who}：為了${RETREAT_TEXT[state.retreat.why]}，走向可 ride 格子${state.goal ? ` ${room(state.goal)}` : ''}…`, alert: noteAlert };
+    if (state.retreat && !state.resting) return { text: `${who}：為了${RETREAT_TEXT[state.retreat.why]}，走向可 ride 格子${state.goal ? ` ${room(state.goal)}` : ''}…`, alert: noteAlert };
     if (state.rest) {
       if (state.phase === 'return') return { text: `${who}：休息結束，${state.returnStage === 'walk' ? '走回巡怪區…' : `等氣回到 ${returnQiLine()}%（現在 ${Number.isFinite(deps.kee()) ? `${Math.round(deps.kee())}%` : '—'}）`}`, alert: noteAlert };
       return { text: `${who}：休息中，${state.waiting ? `約 ${hhmm(state.waiting.spawn)} 回來` : '等待指令送完…'}（跳過 ${state.rest.skip} 輪）${skippedShort(state.skipped)}`, alert: noteAlert };

@@ -3339,7 +3339,7 @@ ui('ride: in fight-only mode the sort also walks to the ride room first', async 
 });
 
 // 沒藥：走到 c 時氣掉到 30，吃藥，遊戲回沒藥；recallAt 記下送回家指令時人在哪一間
-const noMedicineRun = async ({ rides, moves = MOVES, until = page => alerts(page).length > 0, fightFirst = false }) => {
+const noMedicineRun = async ({ rides, moves = MOVES, until = page => alerts(page).length > 0, fightFirst = false, dropOn = (command, state) => command === 'e' && state.at === 'c' }) => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('d');
@@ -3347,7 +3347,7 @@ const noMedicineRun = async ({ rides, moves = MOVES, until = page => alerts(page
     const run = { recallAt: null };
     let fights = 0;
     const game = world(page, { at: 'a', moves, looks: { d: { lines: mobsLines(2) } }, script: (command, { game: state }) => {
-      if (!fightFirst && command === 'e' && state.at === 'c') setKee(page, 30);
+      if (!fightFirst && dropOn(command, state)) setKee(page, 30);
       if (command === 'eat pill') { say(page, '你身上沒有藥了。'); return true; }
       if (command === 'recall') run.recallAt = state.at;
       // fightFirst：第一隻打到一半氣掉下來、沒藥，之後那一隻才死
@@ -3387,6 +3387,39 @@ ui('ride: with no medicine and a ride room it cannot reach, it stops with an ale
   assert.match(run.text, /撤退\s+失敗/);
   assert.equal(run.log.includes('recall'), false);
   assert.equal(run.on, false);
+});
+
+ui('ride: a step sent just before no medicine that does not go through is walked around toward the ride room, not taken as a failed retreat', async () => {
+  // c 往東走不過去：沒藥時重送的那一步（e）已經送出、會逾時；撤退開始時重送次數歸零，所以逾時後重新規劃、從 c 走回 a，不當成撤退失敗
+  let steps = 0; // 第四個 e 是重送的那一步，送出它的同時氣掉下來
+  const run = await noMedicineRun({ rides: { t: ['t/a'] }, moves: { a: { e: 'b' }, b: { w: 'a', e: 'c' }, c: { w: 'b' }, d: { w: 'c' } }, dropOn: command => command === 'e' && (steps += 1) === 4 });
+  assert.equal(run.recallAt, 'a', run.log.join(','));
+  assert.equal(run.alerts.length, 1);
+  assert.match(run.alerts[0].reason, /沒藥/);
+});
+
+ui('ride: no medicine while waiting for the respawn in the hunting area walks to the ride room before going home', async () => {
+  const page = await roundPage({});
+  try {
+    page.store.mapHuntRideRooms = { t: ['t/a'] };
+    const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+    let recallAt = null;
+    const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script: timeScript(page, clock, (command, { game: state }) => {
+      if (command === 'eat pill') { say(page, '你身上沒有藥了。'); return true; }
+      if (command === 'recall') recallAt = state.at;
+      return false;
+    }) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /等下一個重生/.test(huntText(page)), 4000), huntText(page));
+    setKee(page, 30);
+    assert.ok(await waitFor(() => game.log.includes('recall'), 5000), game.log.join(','));
+    assert.equal(recallAt, 'a', game.log.join(','));
+    assert.deepEqual(game.log.slice(game.log.indexOf('eat pill')).filter(command => command !== 'eat pill'), ['w', 'w', 'recall']);
+    assert.equal(await hunting(page), false);
+  } finally {
+    page.close();
+  }
 });
 
 ui('ride: no medicine during a fight lets that monster die, fights no other one, and walks to the ride room', async () => {
