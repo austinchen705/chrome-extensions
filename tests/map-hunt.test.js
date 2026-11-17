@@ -3429,7 +3429,7 @@ ui('ride: no medicine during a fight stops fighting and walks to the ride room',
 });
 
 // 危險線：自己回模式，在 c 打第一隻時氣掉到 10（怪不死）；recallAt 記下送回家指令時人在哪一間
-const dangerRun = async ({ rides, moves = MOVES, settings = {}, assist = false }) => {
+const dangerRun = async ({ rides, moves = MOVES, settings = {}, assist = false, onFight = null, onLook = null }) => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
@@ -3439,8 +3439,10 @@ const dangerRun = async ({ rides, moves = MOVES, settings = {}, assist = false }
     const run = { recallAt: null };
     const game = world(page, { at: 'a', moves, looks: { c: { lines: mobsLines(2) } }, script: (command, { game: state }) => {
       if (command === 'recall') run.recallAt = state.at;
+      if (command === 'l' && state.at === 'c') onLook?.(page);
       if (command !== FIGHT) return false;
       setKee(page, 10);
+      onFight?.(page);
       return true;
     } });
     await pick(page, MOB);
@@ -3474,6 +3476,26 @@ ui('ride: under the danger line with no ride room in this area it goes home righ
   const run = await dangerRun({ rides: {} });
   assert.equal(run.recallAt, 'c');
   assert.equal(run.log.includes('w'), false);
+});
+
+ui('ride: a kill command still waiting in the queue when the danger line hits in a fight is dropped, not sent on the way', async () => {
+  // 拒戰句讓巡怪改送 kill；指令間隔拉長，kill 還在排隊時氣已經掉到危險線
+  const run = await dangerRun({ rides: { t: ['t/a'] }, settings: { commandGapMinMs: 3000, commandGapMaxMs: 3000 }, onFight: page => say(page, '測試怪並不想跟你較量。') });
+  assert.deepEqual(run.log.slice(run.log.indexOf(FIGHT)), [FIGHT, 'w', 'w', 'recall'], run.log.join(','));
+});
+
+ui('ride: in fight-only mode a fight held back by the reaction time is not sent once a retreat has started', async () => {
+  // 看完房間、fight 在等反應時間時氣掉到危險線，角色又忙碌（只下 fight 的等待不會被清掉）；反應時間到了也不能送 fight
+  const run = await dangerRun({ rides: { t: ['t/a'] }, assist: true, settings: { reactMinMs: 3000, reactMaxMs: 3000 }, onLook: page => setTimeout(() => {
+    setKee(page, 10);
+    const doc = page.w.document;
+    if (!doc.getElementById('status')) doc.body.insertAdjacentHTML('beforeend', '<span id="status"></span>');
+    const status = doc.getElementById('status');
+    status.textContent = '忙碌';
+    setTimeout(() => { status.textContent = '正常'; }, 400);
+  }, 30) });
+  assert.equal(run.log.includes(FIGHT), false, run.log.join(','));
+  assert.equal(run.recallAt, 'a', run.log.join(','));
 });
 
 ui('ride: under the danger line in fight-only mode it walks to the ride room first', async () => {
@@ -5472,6 +5494,24 @@ ui('chain trial: stop ends it, the leg under way gets no result, and the hunt ca
     assert.equal(await hunting(page), false);
     await sleep(300);
     assert.deepEqual(game.log, ['go-u']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain: under the danger line while changing area it goes home right where it is, even with ride rooms recorded', async () => {
+  // 第一區沒勾怪：一開始就換區；換區指令沒把人帶走（走在路上），這時氣掉到危險線
+  const page = await chainPage({ settings: { loopRounds: 'off', fightMode: 'assist', eatCommand: '', noMedicineKeyword: '', dangerBelow: 20, homeCommand: 'recall' } });
+  try {
+    page.store.mapHuntPicks = { u: [MOB_B] };
+    page.store.mapHuntRideRooms = { t: ['t/b'] };
+    const game = chainWorld(page, { move: {} });
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => game.log.includes('go-u'), 3000), `${huntText(page)} | ${game.log.join(',')}`);
+    setKee(page, 10);
+    assert.ok(await waitFor(() => game.log.includes('recall'), 3000), huntText(page));
+    assert.equal(game.log.includes('e'), false, game.log.join(','));
+    assert.equal(alerts(page).length, 1);
   } finally {
     page.close();
   }

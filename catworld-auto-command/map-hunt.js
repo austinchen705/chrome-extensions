@@ -566,7 +566,7 @@ function create(deps) {
     const token = state;
     const send = () => {
       a.reacting = false;
-      if (state !== token || state.assist !== a) return;
+      if (state !== token || state.assist !== a || state.retreat || state.retreatPending) return;
       a.sent = true;
       a.target = target;
       a.dead = false;
@@ -589,7 +589,7 @@ function create(deps) {
   }
   function assistTick() {
     const a = state.assist;
-    if (state.retreat || state.retreatPending) { state.assist = null; state.phase = 'plan'; return; } // 沒藥要撤退（含正在讀格子）：不再等這間
+    if (state.retreat || state.retreatPending) { state.assist = null; state.phase = 'plan'; return; } // 要撤退（含正在讀格子）：不再等這間
     if (a.asking) return;
     const room = deps.room();
     if (room && room !== a.here) { state.assist = null; state.phase = 'plan'; return; } // 人已經不在這間（手動走掉了）：重新規劃
@@ -689,7 +689,7 @@ function create(deps) {
       // ID 會被放進 fight 指令，和 finger 一樣只收普通英數
       const target = mine.find(mob => SAFE_ID.test(mob.id));
       if (!target) { sendLoot(); leave('怪的 ID 不能用'); return; }
-      if (state.retreat || state.retreatPending) { sendLoot(); state.phase = 'plan'; deps.notify(); return; } // 沒藥要撤退（含正在讀格子）：不打下一隻，這間留著不算處理過
+      if (state.retreat || state.retreatPending) { sendLoot(); state.phase = 'plan'; deps.notify(); return; } // 要撤退（含正在讀格子）：不打下一隻，這間留著不算處理過
       if (spawnPause()) return;
       if (!(await restGate(token))) return;
       if (!(await reactWait(token))) return;
@@ -1008,7 +1008,7 @@ function create(deps) {
       return;
     }
     // 自己回模式在換區（含試跑）的路上不休息：休息指令會打斷換區的巨集，走不到下一區
-    if (state.settings.healMode === 'rest') { if (state.phase !== 'area' && !fleeing()) restStep(percent); return; }
+    if (state.settings.healMode === 'rest') { if (state.phase !== 'area' && !fleeingDanger()) restStep(percent); return; }
     if (percent < state.settings.eatBelow && state.ticks - state.lastEat >= EAT_GAP_TICKS) eat();
   }
   // 打下一隻之前：自己回模式氣太低就在這裡等到回復（打完這一隻再休息）
@@ -1842,8 +1842,8 @@ function create(deps) {
   // 打怪的地圖有些格子不能 ride，整理的前往指令、回家指令在那裡送不出去。這一區有記可 ride 的格子（面板「可 ride」，deps.rideRooms）
   // 而人不在格子上時，照地圖路線走到最近的一格（不看路過、不反擊、不擬人化；補氣照常），到了才做 then；走不到就停止並警報、不做 then。
   // 沒記格子或已經站在格子上直接做 then。
-  // 讀格子要等，這段期間 state.retreatPending 擋住重複開始（休息的 standby 每個 tick 都會再進來）；沒藥可以在讀的期間或走的途中改掉 why 與 then。
-  // takeOver：整理、休息時人站著不動，馬上從 plan 開始走；沒藥時可能正在走一步、看房間或打架，不搶階段，等它回到 plan 再走（打架中由 fightRoom、assistTick 看到 state.retreat 收手）
+  // 讀格子要等，這段期間 state.retreatPending 擋住重複開始（休息的 standby 每個 tick 都會再進來）；沒藥、危險線可以在讀的期間或走的途中改掉 why 與 then（retreatHome）。
+  // takeOver：人站著不動（整理、休息、等重生）或剛結束打架時馬上從 plan 開始走；正在走一步、看房間時不搶階段，等它回到 plan 再走
   const RETREAT_TEXT = { sort: '整理', rest: '休息', medicine: '沒藥回家', danger: '危險線回家' };
   async function retreat(why, token, then, { takeOver = true } = {}) {
     const pending = { why, then };
@@ -1865,23 +1865,19 @@ function create(deps) {
   }
   // 沒藥（吃藥、精神、內傷的指令送出後看到沒藥關鍵字）與氣到危險線：先走到可 ride 格子再回家停止。
   // 已經在撤退就改成回家（同一個原因再來不重記）；整理途中、換區、休息回程（各有自己的流程）、試跑、掛機休息已經回家、人不在巡怪區地圖上時照舊原地回家。
-  // 打架中：結束這場的狀態（不再送打怪指令）馬上走；一輪結束後等重生（wait、standby）人還在巡怪區，也馬上走；其他階段不搶，等回到 plan。
+  // 打架中（含只下 fight）：丟掉巡怪還沒送出的指令，結束這場的狀態（不再送打怪指令）馬上走；一輪結束後等重生（wait、standby）人還在巡怪區，也馬上走；其他階段不搶，等回到 plan。
   // 危險線撤退途中不休息（休息會停在原地，氣只會更低）
   const HOME_IN_PLACE = ['sort', 'area', 'return'];
   function retreatHome(why, reason) {
     if (why === 'medicine') state.eating = null;
     const home = () => goHomeAndStop(reason);
     const current = state.retreat || state.retreatPending;
-    if (current) {
-      if (current.why === why || current.why === 'danger') return; // 危險線最優先，之後的沒藥不改它
-      current.why = why;
-      current.then = home;
-      if (why === 'danger') state.resting = false;
-      return;
-    }
-    if (state.trialRun || HOME_IN_PLACE.includes(state.phase) || state.rest?.homed || !state.graph.rooms[deps.room()]) { home(); return; }
+    if (current?.why === why || current?.why === 'danger') return; // 危險線最優先，之後的沒藥不改它
+    if (!current && (state.trialRun || HOME_IN_PLACE.includes(state.phase) || state.rest?.homed || !state.graph.rooms[deps.room()])) { home(); return; }
     if (why === 'danger') state.resting = false;
+    if (current) { current.why = why; current.then = home; return; }
     const fight = state.fight;
+    if (fight || state.assist) deps.dropQueue(); // 改送的 kill、重送的 fight、特攻、只下 fight 的 fight 都可能還在排隊
     if (fight) {
       record(deps.room() ?? '-', '打完', `不打了：${RETREAT_TEXT[why]}`);
       state.fight = null;
@@ -1890,7 +1886,7 @@ function create(deps) {
     }
     retreat(why, state, home, { takeOver: !!fight || state.phase === 'wait' || state.phase === 'standby' });
   }
-  const fleeing = () => (state.retreat || state.retreatPending)?.why === 'danger';
+  const fleeingDanger = () => (state.retreat || state.retreatPending)?.why === 'danger';
   function retreatStep(here) {
     const { why, rooms, then } = state.retreat;
     if (rooms.has(here)) {
@@ -2053,7 +2049,7 @@ function create(deps) {
     if (deps.busy?.() && state.phase !== 'wait' && state.phase !== 'standby' && state.phase !== 'sort') return;
     if (state.assist) { assistTick(); return; }
     // 被怪主動攻擊：在規劃、路過、或這一步沒走成（還在原來那間）時停下來反擊；這一步走到了別間就先照常記下抵達，下一個 tick 再反擊
-    if (state.attacked && !state.retreat && (state.phase === 'plan' || state.phase === 'pass' || (state.phase === 'move' && deps.room() === state.from))) {
+    if (state.attacked && !state.retreat && !state.retreatPending && (state.phase === 'plan' || state.phase === 'pass' || (state.phase === 'move' && deps.room() === state.from))) {
       const here = deps.room();
       if (here) {
         const token = state;
@@ -2103,7 +2099,7 @@ function create(deps) {
     }
     state.blind = 0;
     // 每走下一步之前都再看一次氣（每秒一次的檢查可能晚一步）；休息中不走路（危險線撤退不休息）
-    if (state.settings.healMode === 'rest' && !fleeing()) {
+    if (state.settings.healMode === 'rest' && !fleeingDanger()) {
       const percent = deps.kee();
       if (Number.isFinite(percent)) restStep(percent);
     }
