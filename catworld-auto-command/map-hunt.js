@@ -1831,9 +1831,6 @@ function create(deps) {
     if (estimate >= waiting.startAt && now - waiting.calibratedAt <= FRESH_MS) startRound(waiting.spawn, waiting.offset);
   }
 
-  // 規劃下一步：到了目標就看房間；否則挑路線最短的目標，送出路線的第一個指令
-  // 學習開著時分兩張圖：嚴格圖（已知出口的房間只走出口裡有的）優先；只有寬鬆圖（純地圖圖示）走得到時，圖示的猜測可能走不通
-  // 送一步移動指令並進入 move 階段（plan 與故意走錯路共用）
   // ---- 撤退：先走到這一區最近的可 ride 格子再做事 ----
   // 打怪的地圖有些格子不能 ride，整理的前往指令、回家指令在那裡送不出去。這一區有記可 ride 的格子（面板「可 ride」，deps.rideRooms）
   // 而人不在格子上時，照地圖路線走到最近的一格（不看路過、不反擊、不擬人化；補氣照常），到了才做 then；走不到就停止並警報、不做 then。
@@ -1846,6 +1843,7 @@ function create(deps) {
     const here = deps.room();
     if (!rooms.length || rooms.includes(here)) { then(here); return; }
     state.retreat = { why, rooms: new Set(rooms), then };
+    state.goal = null;
     state.tries = 0;
     state.wrong = 0;
     record(here ?? '-', '撤退', `為了${RETREAT_TEXT[why]}，走向可 ride 格子（${rooms.join('、')}）`);
@@ -1856,12 +1854,15 @@ function create(deps) {
     const { why, rooms, then } = state.retreat;
     if (rooms.has(here)) {
       state.retreat = null;
+      state.attacked = null;
+      state.hostile = 0;
       record(here, '撤退', `到了可 ride 格子 ${here}，接著${RETREAT_TEXT[why]}`);
       then(here);
       return;
     }
     // 先找實測的路線（嚴格圖），都沒有才用圖示猜的；同一張圖裡挑最近的格子
-    const graphs = state.learn ? [buildGraph(true), buildGraph(false)] : [state.graph];
+    const strict = state.learn ? buildGraph(true) : state.graph;
+    const graphs = state.learn ? [strict, buildGraph(false)] : [strict];
     let best = null;
     for (const graph of graphs) {
       rooms.forEach(key => {
@@ -1872,13 +1873,23 @@ function create(deps) {
     }
     if (!best) { failRetreat(here, '沒有路線'); return; }
     const cmd = best.way[0];
+    state.goal = best.key;
+    if (state.learn) {
+      const learned = state.learned[here];
+      if (!state.looked.has(here) && !learned?.exits && !learned?.to[cmd]) { learnHere(here); return; }
+      if (strict.rooms[here]?.exits[cmd] === undefined) { startTrial(here, cmd); return; }
+    }
     walk(here, cmd, best.key, best.graph.rooms[here].exits[cmd], `${cmd} → 可 ride 格子 ${best.key}（${RETREAT_TEXT[why]}，還要 ${best.way.length} 步）`);
   }
   function failRetreat(where, why) {
     const text = RETREAT_TEXT[state.retreat.why];
     state.retreat = null;
+    record(where ?? '-', '撤退', `失敗：${why}`);
     finish(`要${text}，但走不到可 ride 的格子（${why}，目前在 ${where ?? '讀不到房間'}），已停止`, { alert: true });
   }
+  // 規劃下一步：到了目標就看房間；否則挑路線最短的目標，送出路線的第一個指令
+  // 學習開著時分兩張圖：嚴格圖（已知出口的房間只走出口裡有的）優先；只有寬鬆圖（純地圖圖示）走得到時，圖示的猜測可能走不通
+  // 送一步移動指令並進入 move 階段（plan 與故意走錯路共用）
   function walk(here, cmd, goal, expected, text) {
     if (!sendOrStop(cmd, () => { if (state) { state.moveText = ''; state.walkedTo = null; state.hostile = 0; } })) return; // hostile：換房間，重新數這間有幾隻打你 // 指令真的送出時才開始收這一步的輸出（抵達時印的房間描述）
     record(here, '走', text);
@@ -2042,7 +2053,10 @@ function create(deps) {
     if (!here) {
       // 地圖捲動中的一兩個 tick 讀不到不算：連續讀不到超過逾時才停
       state.blind += 1;
-      if (state.blind > MOVE_TIMEOUT_TICKS) finish('讀不到目前所在的房間，已停止', { alert: true });
+      if (state.blind > MOVE_TIMEOUT_TICKS) {
+        if (state.retreat) failRetreat(null, '讀不到房間');
+        else finish('讀不到目前所在的房間，已停止', { alert: true });
+      }
       return;
     }
     state.blind = 0;
@@ -2255,7 +2269,7 @@ function create(deps) {
     }
     if (state.resting) return { text: `${who}：休息中 ${Math.round(state.restPercent)}%→${state.settings.restResume}%${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.waiting) return { text: `${who}：等下一個重生 ${hhmm(state.waiting.spawn)}（第 ${state.waiting.rounds} 輪到過 ${state.waiting.visited} 間）${skippedShort(state.skipped)}`, alert: noteAlert };
-    if (state.retreat) return { text: `${who}：為了${RETREAT_TEXT[state.retreat.why]}，走向可 ride 格子 ${room(state.goal)}…`, alert: noteAlert };
+    if (state.retreat) return { text: `${who}：為了${RETREAT_TEXT[state.retreat.why]}，走向可 ride 格子${state.goal ? ` ${room(state.goal)}` : ''}…`, alert: noteAlert };
     if (state.phase === 'sort') return { text: `${who}：負重 ${state.load}%，整理中（${SORT_PHASE_TEXT[state.sortStage] ?? '…'}，第 ${state.sortCount + 1} 次）${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.checkingLoad) return { text: `${who}：看負重…${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.phase === 'standby') return { text: `${who}：等待指令送完，再校準伺服器時間…${skippedShort(state.skipped)}`, alert: noteAlert };

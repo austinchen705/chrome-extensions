@@ -3287,6 +3287,7 @@ ui('ride: standing on a ride room, or no ride room in this area, sends the trip 
 ui('ride: a ride room it cannot reach stops with an alert and sends no trip command', async () => {
   const offMap = await rideSort({ rides: { t: ['t/z'] }, until: page => alerts(page).length > 0 });
   assert.match(offMap.alerts[0].reason, /可 ride/);
+  assert.match(offMap.text, /撤退\s+失敗：沒有路線/);
   assert.equal(offMap.log.includes('go'), false);
   const blocked = await rideSort({ rides: { t: ['t/a'] }, moves: { a: { e: 'b' }, b: { w: 'a', e: 'c' }, c: { e: 'd' }, d: { w: 'c' } }, until: page => alerts(page).length > 0 });
   assert.match(blocked.alerts[0].reason, /可 ride/);
@@ -5142,6 +5143,21 @@ ui('chain: sorting in the second area comes back with that area\'s own return co
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
     assert.deepEqual(game.log, ['e', 'l', FIGHT, 'gc', 'i', 'trip', 'sell all', 'back-u', 'i']);
+    assert.equal(alerts(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('chain: sorting in the second area walks to the ride room of that area first', async () => {
+  const page = await chainSortPage('back-u');
+  try {
+    page.store.mapHuntRideRooms = { t: ['t/c'], u: ['u/p'] };
+    const bag = { load: 95 };
+    const game = chainWorld(page, { start: ['u', 'p'], move: SORT_MOVES, script: chainSortScript(page, bag) });
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'l', FIGHT, 'gc', 'i', 'w', 'trip', 'sell all', 'back-u', 'i']);
     assert.equal(alerts(page).length, 0);
   } finally {
     page.close();
