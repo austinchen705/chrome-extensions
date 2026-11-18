@@ -148,6 +148,7 @@
 5. `/code-review`：以固定點（分支或 commit）到 HEAD 做兩軸審查（Standards、Spec），兩份報告分開看，由使用者決定哪些要修。
 
 - **測試範圍**（使用者指定）：bug fix 或小功能，改完跑完整的 `npm test`；大功能切成好幾張票時，每張票只跑和這張票的功能有關的測試檔（新寫的與受影響的），全部的票都做完再跑一次完整的 `npm test`。
+- **各步驟用哪個模型**（使用者指定）：規劃（`/grill-me`、`/to-spec`、`/to-tickets`）用 Fable；開發（`/implement`）用 Sonnet，由主對話用 Agent 工具開 `model: sonnet` 的 agent 照票實作；測試與驗收（跑測試、看截圖、`/code-review`、確認 agent 的改動）用 Opus。主對話自己在哪個模型上要看 `/model`，派 agent 時照這個分工指定模型。
 - 這套取代 superpowers 的 brainstorming／writing-plans／executing-plans，兩套不混用，規格只留一份。
 - 專案其他規則仍然優先：改了 extension 的任何檔案都要升 `manifest.json` 版本並在 `CHANGELOG.md` 加一筆；commit 之後要不要 push 一律先問使用者。
 - 這些 skill 只能由使用者用 `/名稱` 觸發；使用者要先跑過一次 `/setup-matt-pocock-skills`，沒有 `docs/agents/` 時 `/to-spec`、`/to-tickets`、`/code-review` 會要求先設定。
