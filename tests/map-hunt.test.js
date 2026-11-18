@@ -1368,6 +1368,10 @@ ui('heal: in rest mode a qi below the rest line waits in place (sending the rest
     setKee(page, 90);
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
     assert.ok(game.log.includes('e'));
+    const log = await huntLog(page);
+    assert.match(log, /t\/a 休息 氣 30% 低於休息線 50%，停下來等回到 80%/, 'the hunt log says when and why it rested');
+    assert.match(log, /t\/a 休息 送 dazuo/);
+    assert.match(log, /t\/a 休息結束 氣回到 90%（要 80%）/);
   } finally {
     page.close();
   }
@@ -2306,6 +2310,7 @@ ui('load: after a fight it looks at i, and under the limit nothing else happens'
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
     assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'i']);
+    assert.match(await huntLog(page), /t\/c 負重 40%（上限 90%），繼續；打完 1 間再看/, 'every load reading is in the hunt log');
   } finally {
     page.close();
   }
@@ -2320,6 +2325,7 @@ ui('load: over the limit with no sort command written stops with an alert that s
     click(page, '.hstart');
     assert.ok(await waitFor(() => alerts(page).some(message => /填好「整理：前往整理處」/.test(message.reason)), 6000));
     assert.equal(await hunting(page), false);
+    assert.match(await huntLog(page), /t\/c 負重 95%（上限 90%），沒填整理的指令，停止/);
   } finally {
     page.close();
   }

@@ -1024,14 +1024,17 @@ function create(deps) {
     if (!state.resting && percent < settings.restBelow) {
       state.resting = true;
       state.restSent = false;
+      record(deps.room() ?? '-', '休息', `氣 ${Math.round(percent)}% 低於休息線 ${settings.restBelow}%，停下來等回到 ${settings.restResume}%${settings.restCommand ? '' : '（沒填休息時送的指令，原地等）'}`);
     } else if (state.resting && percent >= settings.restResume) {
       state.resting = false;
+      record(deps.room() ?? '-', '休息結束', `氣回到 ${Math.round(percent)}%（要 ${settings.restResume}%）`);
       state.wake?.();
     }
     // 看房間（l、finger 在等回應）時不送，免得休息指令的輸出混進回應；角色忙碌時也先不送（會被遊戲拒絕），等忙碌結束；
     // 走路時與 restGate 等待時才送
     if (state.resting && settings.restCommand && !state.restSent && (state.phase !== 'look' || state.gate) && !deps.busy?.()) {
       state.restSent = true;
+      record(deps.room() ?? '-', '休息', `送 ${settings.restCommand}`);
       deps.send(settings.restCommand);
     }
   }
@@ -1278,10 +1281,19 @@ function create(deps) {
       if (state !== token) return;
       state.checkingLoad = false;
       const percent = Parse.parseLoad(text);
-      if (percent === null) { console.warn('[catworld] 巡怪：讀不到負重（i 的輸出沒有「載重 N%」），這次不檢查'); state.phase = 'plan'; deps.notify(); return; }
+      if (percent === null) { console.warn('[catworld] 巡怪：讀不到負重（i 的輸出沒有「載重 N%」），這次不檢查'); record(here, '負重', '讀不到（i 的輸出沒有「載重 N%」），這次不檢查'); state.phase = 'plan'; deps.notify(); return; }
       state.load = percent;
       const settings = state.settings;
-      if (percent < settings.loadMaxPercent) { state.sorted = false; state.phase = 'plan'; deps.notify(); return; }
+      const loadText = `${percent}%（上限 ${settings.loadMaxPercent}%）`;
+      if (percent < settings.loadMaxPercent) {
+        const always = settings.loadAlwaysPercent > 0 && percent >= settings.loadAlwaysPercent;
+        record(here, '負重', `${loadText}，繼續；${always ? `到 ${settings.loadAlwaysPercent}% 以上，每打完一間都看` : `打完 ${state.loadEvery} 間再看`}`);
+        state.sorted = false;
+        state.phase = 'plan';
+        deps.notify();
+        return;
+      }
+      record(here, '負重', `${loadText}，${settings.overloadAction === 'stop' ? '停止巡怪' : sortConfigured(settings) ? (state.sorted ? '整理過了還是超過，停止' : '去整理') : '沒填整理的指令，停止'}`);
       if (settings.overloadAction === 'stop') { finish(`負重 ${percent}% 已經超過 ${settings.loadMaxPercent}%，已停止（設定是超過就停止巡怪）`, { alert: true }); return; }
       if (sortConfigured(settings)) {
         if (state.sorted) { finish(`整理完負重還是 ${percent}%（要小於 ${settings.loadMaxPercent}%），已停止`, { alert: true }); return; }
