@@ -85,27 +85,28 @@
       body.page { width:auto; max-width:1500px; box-sizing:border-box; margin:0 auto; }
       body.page > :not([data-pane]):not(#triggerPanes), body.page > [data-pane]:not([data-pane="settings"]) { max-width:460px; }
       body.page #triggerPanes > [data-pane] > :not([id^="fold-rules-"]) { max-width:460px; }
-      /* 規則卡片：清單容器本身分欄（子節點仍是卡片，存檔靠它），由上往下再換欄，卡片不拆開；每張卡片的標頭前面用 CSS 計數編號，看得出先後 */
-      body.page #triggerPanes [id^="rules-"] { column-count:2; column-gap:12px; counter-reset:rule; }
-      body.page #triggerPanes [id^="rules-"] > .rule { break-inside:avoid; margin-top:0; margin-bottom:8px; counter-increment:rule; }
+      /* 規則卡片：清單容器本身是 grid（子節點仍是卡片，存檔靠它），由左往右再換列，每張卡片固定在自己的欄，展開只讓那一列變高；每張卡片的標頭前面用 CSS 計數編號，看得出先後。不用 column-count：展開一張會讓欄重新平衡、卡片跳到別欄 */
+      body.page #triggerPanes [id^="rules-"] { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); column-gap:12px; align-items:start; counter-reset:rule; }
+      body.page #triggerPanes [id^="rules-"] > .rule { margin-top:0; margin-bottom:8px; counter-increment:rule; }
       body.page #triggerPanes [id^="rules-"] > .rule > .rule-head::before { content:counter(rule) "."; font-size:12px; color:#777; min-width:1.6em; }
-      /* 設定分頁：每個大組展開後，組內區塊分欄（區塊不拆開）；「地圖巡怪」區塊跨滿整列，群組並排照舊 */
-      body.page [data-pane="settings"] > details.group[open] { column-count:2; column-gap:12px; }
-      body.page [data-pane="settings"] > details.group > summary { column-span:all; }
-      body.page [data-pane="settings"] > details.group > details.alertbox { break-inside:avoid; margin-top:0; margin-bottom:10px; }
-      body.page [data-pane="settings"] > details.group > details#sec-hunt { column-span:all; }
+      /* 設定分頁：每個大組展開後，組內區塊排成 grid（每個區塊固定在自己的欄，展開只讓那一列變高）；組標題與「地圖巡怪」區塊跨滿整列。details 的內容在 ::details-content 裡，要 display:contents 區塊才會成為 grid 項目 */
+      body.page [data-pane="settings"] > details.group[open] { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); column-gap:12px; align-items:start; }
+      body.page [data-pane="settings"] > details.group[open]::details-content { display:contents; }
+      body.page [data-pane="settings"] > details.group > summary { grid-column:1 / -1; }
+      body.page [data-pane="settings"] > details.group > details.alertbox { margin-top:0; margin-bottom:10px; }
+      body.page [data-pane="settings"] > details.group > details#sec-hunt { grid-column:1 / -1; }
       body.page #sec-hunt > :not(#huntFields) { max-width:460px; }
-      body.page #huntFields { column-count:2; column-gap:12px; }
-      body.page #huntFields > details { break-inside:avoid; margin-top:0; margin-bottom:10px; }
+      body.page #huntFields { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); column-gap:12px; align-items:start; }
+      body.page #huntFields > details { margin-top:0; margin-bottom:10px; }
       /* 群組內：短欄位並排（每格至少 190px，格數隨群組寬度變），長欄位與成對欄位（.hrow，自己內部兩欄）佔整列 */
       body.page #huntFields .hbody { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); column-gap:12px; align-items:start; }
       body.page #huntFields .hbody > .hfield.hlong, body.page #huntFields .hbody > .hrow { grid-column:1 / -1; }
       body.page #huntFields .hbody > .hrow { gap:12px; }
     }
     @media (min-width: 1400px) {
-      body.page #triggerPanes [id^="rules-"] { column-count:3; }
-      body.page [data-pane="settings"] > details.group[open] { column-count:3; }
-      body.page #huntFields { column-count:3; }
+      body.page #triggerPanes [id^="rules-"] { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+      body.page [data-pane="settings"] > details.group[open] { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+      body.page #huntFields { grid-template-columns:repeat(3, minmax(0, 1fr)); }
     }
     .safety { border:1px solid #ecd9a0; border-radius:9px; padding:8px 10px 10px; margin-top:10px; background:#fff6dd; }
     .safety h4 { margin:0 0 2px; font-size:13px; }
