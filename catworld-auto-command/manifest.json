@@ -55,6 +55,7 @@
         "map-route.js",
         "hunt-parse.js",
         "map-hunt.js",
+        "hunt-profile.js",
         "map-hunt-ui.js",
         "zap-items.js",
         "zap-riddles.js",

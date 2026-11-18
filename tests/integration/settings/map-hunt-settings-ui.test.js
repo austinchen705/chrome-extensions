@@ -637,3 +637,35 @@ ui('long fields carry the full-row marker for the wide settings page, short ones
     dom.window.close();
   }
 });
+
+ui('profile: the manual-record fold shows what has been accumulated, and clear empties it only after the confirm', async () => {
+  const { dom, doc, store } = await boot({ mapHuntProfile: { segments: 3, commands: 120, rooms: 14, downs: 9, walkGaps: [900, 1100] } });
+  try {
+    const fold = doc.getElementById('fold-hunt-profile');
+    assert.equal(fold.tagName, 'DETAILS');
+    assert.ok(doc.getElementById('sec-hunt').contains(fold));
+    assert.ok(doc.getElementById('huntFields').compareDocumentPosition(fold) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING, 'after the fields');
+    const info = doc.getElementById('huntProfileInfo');
+    assert.ok(await waitFor(() => /累積 120 個指令/.test(info.textContent)), info.textContent);
+    assert.match(info.textContent, /來自 3 段紀錄（進房 14 間、倒下 9 隻）/);
+    dom.window.confirm = () => false;
+    doc.getElementById('huntProfileClear').click();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.ok(store.mapHuntProfile, 'declining the confirm keeps it');
+    dom.window.confirm = () => true;
+    doc.getElementById('huntProfileClear').click();
+    assert.ok(await waitFor(() => !store.mapHuntProfile), 'cleared');
+    assert.ok(await waitFor(() => /還沒有累積的資料/.test(info.textContent)), info.textContent);
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('profile: a broken stored profile shows as nothing accumulated, without errors', async () => {
+  const { dom, doc } = await boot({ mapHuntProfile: 'garbage' });
+  try {
+    assert.ok(await waitFor(() => /還沒有累積的資料/.test(doc.getElementById('huntProfileInfo').textContent)));
+  } finally {
+    dom.window.close();
+  }
+});

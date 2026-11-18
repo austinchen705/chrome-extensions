@@ -747,6 +747,7 @@ const captchaObserver = new MutationObserver(allRecords => {
   if (meaningful && watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
   const addedText = addedTexts.join('');
   watchReward(addedText);
+  noteManualOutput(addedText);
   // 停止關鍵字閒置時也作用（只看新出現的、不是自己打的回聲）
   const keywordHit = stopKeywords.enabled ? stopKeywordWatcher.feed(addedText, stopKeywords.words) : null;
   if (keywordHit && Date.now() - lastStopKeywordAt > STOP_KEYWORD_COOLDOWN_MS) {
@@ -1696,7 +1697,7 @@ let panel = null;
 // 開始時用巨集送一次 time 校準伺服器時間（閒置時佇列不送，和驗證按鈕一樣用巨集）；之後按 15 分鐘重生整點（巡怪的 RESPAWN_MS）分段：
 // 每記一個指令、每秒看房間時、關掉時，伺服器時間跨過這一段的整點就把這一段寫成一段「手動摘要」（巡怪輪摘要同一套組字 summaryLines），
 // 段落編號只算寫出來的；一個指令都沒有的段落不寫。讀不到 time 時偏差當 0，摘要第一行註明「伺服器時間沒校準」。只在這個頁面的記憶體裡，不存儲存
-let manualRecord = null; // { sends: [{ at, command }], path: [房間鍵], room, timer, offset, calibrated, segmentEnd, written }
+let manualRecord = null; // { sends: [{ at, command }], events: [{ at, kind: 'send' | 'room' | 'down' | 'knockout', … }], path: [房間鍵], room, timer, offset, calibrated, segmentEnd, written }
 let sendingOwn = false;
 const MANUAL_ROOM_MS = 1000;
 const currentRoomKey = () => CatworldMapCollect.currentRoom(document)?.key ?? null;
@@ -1707,6 +1708,30 @@ function noteManualRoom() {
   if (!record || !room || room === record.room) return;
   record.room = room;
   record.path.push(room);
+  record.events.push({ at: Date.now(), kind: 'room', room });
+}
+// 手動紀錄中看遊戲輸出：「X死了。」一行是怪倒下、有巡怪設定的昏迷字（knockoutKeywords）是打昏；回聲（> 開頭）不算。事件只給 hunt-profile.js 算累積資料用
+function noteManualOutput(text) {
+  const record = manualRecord;
+  if (!record) return;
+  const words = String(huntSettings.knockoutKeywords || '').split(/[、,，;；\s]+/).filter(Boolean);
+  String(text || '').split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('>')).forEach(line => {
+    const kind = /死了。$/.test(line) ? 'down' : words.some(word => line.includes(word)) ? 'knockout' : null;
+    if (!kind) return;
+    rollManual(record);
+    record.events.push({ at: Date.now(), kind });
+  });
+}
+// 累積進 mapHuntProfile：讀改寫排成一條佇列，存不進去不影響記錄
+let profileWrite = Promise.resolve();
+function accumulateProfile(events) {
+  let extracted;
+  try { extracted = CatworldHuntProfile.extract(events, huntSettings); } catch (error) { return; }
+  profileWrite = profileWrite.then(async () => {
+    const key = CatworldHuntProfile.PROFILE_KEY;
+    const stored = (await chrome.storage.local.get(key))[key];
+    await chrome.storage.local.set({ [key]: CatworldHuntProfile.merge(stored, extracted) });
+  }).catch(() => {});
 }
 // 這一段寫成摘要（有指令才寫），然後清空，下一段從頭記
 function writeManualSegment(record) {
@@ -1716,8 +1741,10 @@ function writeManualSegment(record) {
     const lines = CatworldMapHunt.summaryLines({ startAt: record.sends[0].at + record.offset, sends: record.sends, path: record.path, tail: `l 了 ${looks} 次` });
     if (!record.calibrated) lines[0] = `（伺服器時間沒校準）${lines[0]}`;
     lines.forEach(text => hunt.recordLine('手動摘要', `第 ${record.written} 段：${text}`));
+    accumulateProfile(record.events);
   }
   record.sends = [];
+  record.events = [];
   record.path = [];
 }
 // 伺服器時間跨過這一段的整點：寫出這一段、換下一段（中間隔了好幾個整點都沒有指令就一次跳過，不寫空的）
@@ -1729,7 +1756,7 @@ function rollManual(record = manualRecord) {
   record.segmentEnd = nextRespawnMark(server);
 }
 function startManual() {
-  const record = { sends: [], path: [], room: currentRoomKey(), timer: null, offset: 0, calibrated: false, segmentEnd: null, written: 0 };
+  const record = { sends: [], events: [], path: [], room: currentRoomKey(), timer: null, offset: 0, calibrated: false, segmentEnd: null, written: 0 };
   record.timer = setInterval(() => { rollManual(record); noteManualRoom(); }, MANUAL_ROOM_MS);
   manualRecord = record;
   const startedAt = Date.now();
@@ -1758,7 +1785,9 @@ function noteManualSend(raw) {
   if (!manualRecord || !command) return;
   rollManual();
   noteManualRoom();
-  manualRecord.sends.push({ at: Date.now(), command });
+  const send = { at: Date.now(), command };
+  manualRecord.sends.push(send);
+  manualRecord.events.push({ ...send, kind: 'send' });
 }
 // 遊戲巨集按鍵（沒有 @等待，遊戲自己一次全部送出）：那一格用 ; 分開的每一段都記成一個指令，時間都是按下的這一刻；
 // 不靠回聲（巨集送出的指令在輸出裡是單獨一行，和一般輸出分不開；使用者貼的真實樣本）

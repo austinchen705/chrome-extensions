@@ -39,7 +39,7 @@
 | 地圖巡怪（核心：路線、看房間、打怪、補氣、輪與重生、設定欄位、面板） | `docs/claude/map-hunt.md` | `map-hunt.js`、`hunt-parse.js`、`map-route.js`、`map-hunt-ui.js`、`content.js` 的巡怪接線 |
 | 地圖巡怪：街景模式（掃描） | `docs/claude/map-hunt-scan.md` | 掃描、打怪前補掃 |
 | 地圖巡怪：負重、自動整理、可 ride 的格子 | `docs/claude/map-hunt-sort.md` | `checkLoad`、`sortOut`、`retreat` |
-| 地圖巡怪：巡怪紀錄、手動紀錄、擬人化 | `docs/claude/map-hunt-log-humanize.md` | `record`、`summaryLines`、`humanize`、手動紀錄 |
+| 地圖巡怪：巡怪紀錄、手動紀錄、擬人化 | `docs/claude/map-hunt-log-humanize.md` | `record`、`summaryLines`、`humanize`、手動紀錄、`hunt-profile.js`、`mapHuntProfile` |
 | 地圖巡怪：跨區巡怪 | `docs/claude/map-hunt-chain.md` | `chain`、`map-hunt-chain-ui.js` |
 | 聊天回覆 | `docs/claude/chat-reply.md` | `chat-reply.js` |
 | 劇本對話 | `docs/claude/chat-script.md` | `chat-script*.js`、`tools/*chat-scripts*` |

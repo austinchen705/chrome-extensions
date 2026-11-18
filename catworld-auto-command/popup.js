@@ -106,7 +106,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'chat-script.js', 'emote-data.js', 'emote-pick.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'whisper-block.js', 'move-fx.js', 'skill-moves.js', 'force-cap.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'chat-script.js', 'emote-data.js', 'emote-pick.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'hunt-profile.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'whisper-block.js', 'move-fx.js', 'skill-moves.js', 'force-cap.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -1432,6 +1432,22 @@ CatworldMapHunt.FIELDS.forEach(item => {
   huntRows[item.row].append(cell);
 });
 showHuntSettings();
+// 從手動紀錄調整：手動紀錄（面板「● 記錄」）每段結束時累積進 mapHuntProfile（hunt-profile.js），這裡顯示累積了多少、可清除
+async function showHuntProfile() {
+  const key = CatworldHuntProfile.PROFILE_KEY;
+  const profile = CatworldHuntProfile.normalizeProfile((await chrome.storage.local.get(key))[key]);
+  $('huntProfileInfo').textContent = profile.segments
+    ? `累積 ${profile.commands} 個指令，來自 ${profile.segments} 段紀錄（進房 ${profile.rooms} 間、倒下 ${profile.downs} 隻）`
+    : '還沒有累積的資料，用面板「● 記錄」手打幾輪';
+  $('huntProfileClear').disabled = !profile.segments;
+}
+$('huntProfileClear').addEventListener('click', async () => {
+  if (!confirm('清除從手動紀錄累積的資料？清掉就回不來了。')) return;
+  await chrome.storage.local.remove(CatworldHuntProfile.PROFILE_KEY);
+  showHuntProfile();
+});
+showHuntProfile();
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[CatworldHuntProfile.PROFILE_KEY]) showHuntProfile(); });
 // 跨區路線編輯器（map-hunt-chain-ui.js）：路線、勾選、蒐集資料任何一個變了（包括遊戲頁改的）就重讀重畫
 const huntChainKeys = [CatworldMapHunt.CHAIN_KEY, CatworldMapHuntUI.PICKS_KEY, CatworldMapCollect.STORAGE_KEY, CatworldMapHunt.CHAIN_TRIAL_KEY];
 const huntChain = CatworldMapHuntChainUI.attach($('huntChain'), {

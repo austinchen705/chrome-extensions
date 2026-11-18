@@ -13,7 +13,7 @@ const BLOCKS = [
   { id: 'safety', label: '安全與警報', keys: ['stopKeywords', 'persistentAlert', 'autoReward'] },
   { id: 'helpers', label: '輔助功能', keys: ['zapFeatures', 'zapThresholds', 'mainWeapon', 'forceExtras', 'equipmentKeep', 'equipmentScore', 'whisperColor', 'shopMinPrice', 'shopBuyNames', 'shopSkipNames'] },
   { id: 'chat', label: '聊天', keys: ['chatReply', 'chatScript'] },
-  { id: 'hunt', label: '巡怪', keys: ['mapHuntSettings', 'mapHuntPicks', 'mapHuntChain', 'mapHuntRideRooms'] },
+  { id: 'hunt', label: '巡怪', keys: ['mapHuntSettings', 'mapHuntPicks', 'mapHuntChain', 'mapHuntRideRooms', 'mapHuntProfile'] },
   { id: 'sources', label: '共用與網址', keys: ['sharedSources', 'extraGameUrls'] },
   {
     id: 'data',

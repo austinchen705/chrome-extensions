@@ -397,6 +397,12 @@
         <summary>地圖巡怪</summary>
         <p class="hint tight">面板「巡怪」列先按「選怪」勾選要巡的怪（可以多隻），按「開始」時，會把勾選的怪和地圖目前顯示的區域固定下來，一間一間走到蒐集到這些怪的房間。以下欄位改了就存，下次按「開始」生效。</p>
         <div id="huntFields"></div>
+        <details class="fold" id="fold-hunt-profile">
+          <summary>從手動紀錄調整</summary>
+          <p class="hint tight">面板「巡怪」列的「● 記錄」開著時，你手打的指令、進的房間、倒下的怪都會記下來；每一段（15 分鐘重生為界，或關掉記錄時）結束就累加到這裡，不分地圖、跨多次記錄。之後會依這份資料建議指令間隔、反應時間、打錯字機率等設定。</p>
+          <div id="huntProfileInfo" class="hint tight"></div>
+          <button id="huntProfileClear" type="button">清除累積的資料</button>
+        </details>
         <details class="fold" id="fold-hunt-chain">
           <summary>跨區路線</summary>
           <p class="hint tight">「跨區巡怪」開著時照這條路線巡：由上往下一區一區巡，最後一區巡完回到第一區等重生。卡片裡勾的怪和面板「選怪」是同一份；箭頭上填從上一區走到下一區的指令（可以用 ; 與 @巨集 N），琥珀色的是還沒填的。</p>
@@ -595,6 +601,7 @@
   <script src="map-data.js"></script>
   <script src="map-collect.js"></script>
   <script src="map-hunt.js"></script>
+  <script src="hunt-profile.js"></script>
   <script src="map-hunt-ui.js"></script>
   <script src="map-hunt-chain-ui.js"></script>
   <script src="stop-keywords.js"></script>

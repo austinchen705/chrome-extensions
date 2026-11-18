@@ -1,4 +1,4 @@
-// 地圖巡怪：map-hunt-human（28 組；共用底座在 tests/helpers/map-hunt-world.js，整個 content script 在 jsdom 裡跑）。
+// 地圖巡怪：map-hunt-human（29 組；共用底座在 tests/helpers/map-hunt-world.js，整個 content script 在 jsdom 裡跑）。
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ui, sleep, waitFor } = require('../../helpers/game-page');
@@ -398,6 +398,41 @@ ui('manual: with the toggle on, what I type is recorded with the route, and turn
     assert.match(lines[0], /手動摘要 第 1 段：（伺服器時間沒校準）開始時間在整點後 \d+ 秒；路線 b→c（共 2 步）；l 了 1 次/);
     assert.match(lines[1], /手動摘要 第 1 段：指令 4 個：e×2 l tell somebody 嗨$/, 'chat is kept, the blank line is not a command');
     assert.match(lines[2], /手動摘要 第 1 段：間隔 最短 [\d.]+／平均 [\d.]+／最長 [\d.]+ 秒/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('manual: rooms, a printed death line and knockout words become events, and a written segment accumulates into mapHuntProfile', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    world(page, { at: 'a' });
+    await sleep(100);
+    click(page, '.hmanual');
+    typeIn(page, 'e');
+    await sleep(120);
+    typeIn(page, 'k 1');
+    page.output('<span>蒙古兵跌在地上一動也不動了。\n</span>');
+    await sleep(30);
+    typeIn(page, 'k 1');
+    page.output('<span>蒙古兵死了。\n</span>');
+    await sleep(30);
+    typeIn(page, 'gc');
+    typeIn(page, 'l');
+    await sleep(120);
+    typeIn(page, 'e');
+    await sleep(120);
+    click(page, '.hmanual');
+    assert.equal(manualLines(await huntLog(page)).length, 3, 'the manual summary is still written as before');
+    assert.ok(await waitFor(() => page.store.mapHuntProfile, 1000), 'the segment was accumulated');
+    const profile = JSON.parse(JSON.stringify(page.store.mapHuntProfile));
+    assert.equal(profile.segments, 1);
+    assert.equal(profile.commands, 6);
+    assert.equal(profile.rooms, 2, 'a to b to c');
+    assert.equal(profile.downs, 1);
+    assert.deepEqual(profile.firstAttack, { k: 1 });
+    assert.deepEqual(profile.knockoutAttack, { k: 1 });
+    assert.deepEqual(profile.afterDown, { 'gc;l': 1 });
   } finally {
     page.close();
   }
