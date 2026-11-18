@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 檢查一份劇本對話的 CSV（docs/data/chat-scripts-*.csv 的格式，和 docs/templates/shared-chat.csv 一樣）能不能貼進共用試算表。
 // 用法：node tools/check-chat-scripts.js <csv> [--turns 7-8]
-// 規則和 tests/chat-script-content.test.js 對各批劇本的檢查一致：試算表的驗證規則（buildChatScripts）、遊戲頁的 usableScripts、
+// 規則和 tests/unit/chat-script-content.test.js 對各批劇本的檢查一致：試算表的驗證規則（buildChatScripts）、遊戲頁的 usableScripts、
 // 輪數、A 先說、每則最多 40 字、不碰禁區字眼、不寫相對的週、問句結尾的輪不超過一半、時事劇本（有週）第一列備註有日期與連結、
 // 週是星期一，以及開場句和 docs/data 裡其他所有劇本與內建劇本的相似度都低於 MATCH_THRESHOLD（B 才認得出是哪一份）、劇本ID 不重複。
 // 全部通過印「OK」並以 0 結束；有問題逐條列出並以 1 結束。

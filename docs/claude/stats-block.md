@@ -6,4 +6,4 @@
 - 收合狀態記在 `chrome.storage.local.statsCollapsed`，預設展開；讀到的狀態只在玩家還沒動過時才套用（晚到的讀取不能蓋掉玩家剛點的），讀不到維持展開，存不進去不影響收合。面板可能被搬進置頂浮窗（另一個 document），事件綁在節點上、樣式在 shadow root 裡，搬過去仍然有效。**不要搬或改遊戲的狀態視窗（`#monitor`）**，這裡只是另外顯示一份。
 - **只在置頂浮窗裡顯示**：樣式 `:host(:not([data-pip])) .stats { display: none; }`，主面板看不到（遊戲的狀態視窗本來就有）；只用樣式隱藏，所以收合狀態與每秒更新照舊，按「置頂」的當下數字就是最新的。
 - **配色跟遊戲的狀態視窗（`#monitor`）一樣**：深色底、虛線淺色邊框、遊戲的文字色、經驗用 `#exp` 自己的顏色。遊戲的顏色是由 `html` 上的主題 class（`XTerm`、`VGA`、`Mac`…，定義在遊戲的 `ansi.css`）決定的，會隨使用者設定的色彩主題與「半透明」變，**不能把某個主題的色碼寫死**：`content.js` 的 `readMonitorTheme` 每秒讀 `#monitor` 與 `#exp` 的 `getComputedStyle`，經 `themeFrom`（只收 `rgb()`／`rgba()`／十六進位，其他字串、空的、全透明都退回預設，因為它會被放進 style）算出配色，再 `setTheme` 放進 CSS 變數（`--stats-bg`、`--stats-border`、`--stats-fg`、`--stats-exp`）；預設值是遊戲預設的 XTerm 主題。找不到元素要給空的讓它退回預設，不能讓更新出錯。
-- 測試：`tests/stats-view.test.js`（格式化）、`tests/stats-block.test.js`（jsdom 畫面、配色與串接檢查；jsdom 算不出 shadow DOM 的 `:host` 樣式，「主面板看不到、置頂才看得到」只能手動驗證）。
+- 測試：`tests/unit/stats-view.test.js`（格式化）、`tests/integration/game/stats-block.test.js`（jsdom 畫面、配色與串接檢查；jsdom 算不出 shadow DOM 的 `:host` 樣式，「主面板看不到、置頂才看得到」只能手動驗證）。

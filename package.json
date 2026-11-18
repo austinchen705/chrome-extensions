@@ -10,7 +10,12 @@
     "node": ">=16.7"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test \"tests/**/*.test.js\"",
+    "test:unit": "node --test \"tests/unit/**/*.test.js\"",
+    "test:game": "node --test \"tests/integration/game/**/*.test.js\"",
+    "test:settings": "node --test \"tests/integration/settings/**/*.test.js\"",
+    "test:background": "node --test \"tests/integration/background/**/*.test.js\"",
+    "test:integration": "node --test \"tests/integration/**/*.test.js\""
   },
   "devDependencies": {
     "jsdom": "^24.1.0"

@@ -1,0 +1,172 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+require('../../catworld-auto-command/zap-riddles.js');
+
+const R = globalThis.CatworldZapRiddles;
+const stats = { exp: 414748, force: 2022 };
+
+test('parseCondition covers every form in the index', () => {
+  assert.deepEqual(R.parseCondition('無'), { exp: null, force: null, unreadable: false });
+  assert.deepEqual(R.parseCondition('2 萬 EXP'), { exp: 20000, force: null, unreadable: false });
+  assert.equal(R.parseCondition('80 萬 EXP').exp, 800000);
+  assert.deepEqual(R.parseCondition('內力 2000'), { exp: null, force: 2000, unreadable: false });
+  assert.deepEqual(R.parseCondition('內力 300 [天賦]'), { exp: null, force: 300, unreadable: true });
+  assert.deepEqual(R.parseCondition('內力 ???? [天賦]'), { exp: null, force: null, unreadable: true });
+  ['龍掌相關技能70', '製藥學技能 161', '需為新手', '未知', '不一定'].forEach(text => assert.equal(R.parseCondition(text).unreadable, true, text));
+  assert.deepEqual(R.parseCondition('50 萬 EXP [註]'), { exp: 500000, force: null, unreadable: true });
+});
+
+test('classify uses exp and max force', () => {
+  assert.equal(R.classify('無', stats), 'ok');
+  assert.equal(R.classify('20 萬 EXP', stats), 'ok');
+  assert.equal(R.classify('80 萬 EXP', stats), 'unmet');
+  assert.equal(R.classify('內力 2000', stats), 'ok');
+  assert.equal(R.classify('內力 2500', stats), 'unmet');
+  assert.equal(R.classify('內力 300 [天賦]', stats), 'check');
+  assert.equal(R.classify('150 萬 EXP [註]', stats), 'unmet');
+  assert.equal(R.classify('需為新手', stats), 'check');
+});
+
+test('classify treats unreadable stats as check, not unmet', () => {
+  const unknown = { exp: NaN, force: NaN };
+  assert.equal(R.classify('80 萬 EXP', unknown), 'check');
+  assert.equal(R.classify('內力 2000', unknown), 'check');
+  assert.equal(R.classify('無', unknown), 'ok');
+});
+
+test('unmet beats check', () => {
+  assert.equal(R.classify('內力 300 [天賦]', { exp: 414748, force: 100 }), 'unmet');
+});
+
+const riddle = (name, difficulty, extra = {}) => ({ id: `x/${name}`, category: 'x', name, condition: '無', hint: '', difficulty, reward: '', page: null, shared: [], ...extra });
+
+test('groupRiddles sorts by difficulty then original order', () => {
+  const list = [riddle('A', '難'), riddle('B', '極易'), riddle('C', '極易'), riddle('D', '????'), riddle('E', '一般')];
+  assert.deepEqual(R.groupRiddles(list, stats).ok.map(item => item.name), ['B', 'C', 'E', 'A', 'D']);
+});
+
+test('groupRiddles splits riddles into the three groups', () => {
+  const list = [riddle('ok', '易'), riddle('check', '易', { condition: '未知' }), riddle('unmet', '易', { condition: '80 萬 EXP' })];
+  const groups = R.groupRiddles(list, stats);
+  assert.deepEqual([groups.ok.length, groups.check.length, groups.unmet.length], [1, 1, 1]);
+  assert.equal(groups.unmet[0].name, 'unmet');
+});
+
+test('searchRiddles matches name, hint, reward and category', () => {
+  const list = [
+    riddle('獨孤九劍', '極易', { hint: '風清揚', reward: '學會此技能', category: '技能類' }),
+    riddle('屠龍刀', '易', { hint: '冰火島', reward: '屠龍刀', category: '治裝類' }),
+  ];
+  assert.deepEqual(R.searchRiddles(list, '九劍').map(item => item.name), ['獨孤九劍']);
+  assert.deepEqual(R.searchRiddles(list, '冰火').map(item => item.name), ['屠龍刀']);
+  assert.deepEqual(R.searchRiddles(list, '學會').map(item => item.name), ['獨孤九劍']);
+  assert.deepEqual(R.searchRiddles(list, '治裝').map(item => item.name), ['屠龍刀']);
+  assert.equal(R.searchRiddles(list, '').length, 2);
+  assert.equal(R.searchRiddles(list, ' 屠 龍 ').length, 1);
+});
+
+test('splitCommands also splits on line breaks', () => {
+  assert.deepEqual(R.splitCommands('run e\nlook\r\nsay hi'), ['run e', 'look', 'say hi']);
+});
+
+test('parseImport accepts per-step stamps and rejects bad ones', () => {
+  const ok = JSON.stringify({ riddleCommands: { 'p.htm': { n: 3, cmds: { 1: 'x' }, ns: { 1: 3 } } }, riddleDone: {} });
+  assert.equal(R.parseImport(ok).ok, true);
+  const bad = JSON.stringify({ riddleCommands: { 'p.htm': { n: 3, cmds: { 1: 'x' }, ns: { 1: 'three' } } }, riddleDone: {} });
+  assert.equal(R.parseImport(bad).ok, false);
+});
+
+test('splitCommands drops empty pieces', () => {
+  assert.deepEqual(R.splitCommands('run e;;give a to b; '), ['run e', 'give a to b']);
+  assert.deepEqual(R.splitCommands('run e；look'), ['run e', 'look']);
+  assert.equal(R.joinCommands(R.splitCommands(' run e ; look ')), 'run e;look');
+});
+
+const page = { steps: [{ no: 1, text: 'a', commands: 'run e' }, { no: 2, text: 'b', commands: '' }, { no: 3, text: 'c', commands: 'look' }] };
+
+test('effectiveStep prefers the edit, then the site, then none', () => {
+  const edits = { 'p.htm': { n: 3, cmds: { 1: 'north' } } };
+  assert.deepEqual(R.effectiveStep(page, 1, edits, 'p.htm'), { commands: 'north', source: 'edited', stale: false });
+  assert.deepEqual(R.effectiveStep(page, 3, edits, 'p.htm'), { commands: 'look', source: 'site', stale: false });
+  assert.deepEqual(R.effectiveStep(page, 2, edits, 'p.htm'), { commands: '', source: 'none', stale: false });
+  assert.equal(R.effectiveStep(page, 9, edits, 'p.htm').source, 'none');
+});
+
+test('effectiveStep flags stale edits when the step count changed', () => {
+  assert.equal(R.effectiveStep(page, 2, { 'p.htm': { n: 5, cmds: { 2: 'x' } } }, 'p.htm').stale, true);
+  assert.equal(R.effectiveStep(page, 2, { 'p.htm': { n: 3, cmds: { 2: 'x' } } }, 'p.htm').stale, false);
+  assert.equal(R.effectiveStep(page, 2, {}, 'p.htm').stale, false);
+  assert.equal(R.effectiveStep(page, 1, { 'p.htm': { n: 5, cmds: { 2: 'x' } } }, 'p.htm').stale, false, 'a step without an edit is not stale');
+});
+
+test('saving one edit does not clear the stale flag of the other edits on the page', () => {
+  const eleven = { steps: Array.from({ length: 11 }, (_, i) => ({ no: i + 1, text: '', commands: '' })) };
+  const old = { 'p.htm': { n: 10, cmds: { 3: 'a', 7: 'b' } } };
+  const saved = R.setEdit(old, 'p.htm', 11, 3, 'a2');
+  assert.equal(R.effectiveStep(eleven, 3, saved, 'p.htm').stale, false, 'the step just saved is reviewed');
+  assert.equal(R.effectiveStep(eleven, 7, saved, 'p.htm').stale, true, 'the untouched edit stays flagged');
+  assert.equal(R.effectiveStep(eleven, 3, old, 'p.htm').stale, true);
+});
+
+test('setEdit adds, removes and does not mutate', () => {
+  const before = {};
+  const added = R.setEdit(before, 'p.htm', 3, 2, 'look');
+  assert.deepEqual(before, {});
+  assert.deepEqual(added, { 'p.htm': { n: 3, cmds: { 2: 'look' }, ns: { 2: 3 } } });
+  const two = R.setEdit(added, 'p.htm', 3, 1, 'run e');
+  assert.deepEqual(two['p.htm'].cmds, { 1: 'run e', 2: 'look' });
+  const removed = R.setEdit(two, 'p.htm', 3, 2, '  ');
+  assert.deepEqual(removed['p.htm'].cmds, { 1: 'run e' });
+  assert.deepEqual(two['p.htm'].cmds, { 1: 'run e', 2: 'look' });
+  assert.deepEqual(R.setEdit(removed, 'p.htm', 3, 1, ''), {});
+});
+
+test('parseImport rejects malformed input', () => {
+  const bad = [
+    'not json',
+    '{}',
+    JSON.stringify({ riddleCommands: { 'p.htm': { n: 'x', cmds: {} } }, riddleDone: {} }),
+    JSON.stringify({ riddleCommands: { 'p.htm': { n: 3, cmds: { 1: 5 } } }, riddleDone: {} }),
+    JSON.stringify({ riddleCommands: {}, riddleDone: { a: 'yes' } }),
+  ];
+  bad.forEach(text => assert.equal(R.parseImport(text).ok, false, text));
+  const good = R.parseImport(JSON.stringify({ riddleCommands: { 'p.htm': { n: 3, cmds: { 1: 'run e' } } }, riddleDone: { 'x/a': true } }));
+  assert.equal(good.ok, true);
+  assert.deepEqual(good.riddleDone, { 'x/a': true });
+  assert.equal(good.riddleCommands['p.htm'].cmds['1'], 'run e');
+});
+
+test('handleMessage answers ZAP_RIDDLES and ignores other types', () => {
+  const data = { riddles: [riddle('A', '易')], pages: { 'p.htm': { steps: [], text: 't' } } };
+  const reply = R.handleMessage(data, { type: 'ZAP_RIDDLES' });
+  assert.equal(reply.ok, true);
+  assert.equal(reply.riddles.length, 1);
+  assert.equal(reply.pages['p.htm'].text, 't');
+  assert.deepEqual(R.handleMessage({}, { type: 'ZAP_RIDDLES' }), { ok: true, riddles: [], pages: {} });
+  assert.equal(R.handleMessage(data, { type: 'ZAP_ITEM' }), null);
+});
+
+const mark = (no, heading) => ({ no, text: `s${no}`, commands: '', ...(heading ? { heading } : {}) });
+const sharedPage = { steps: [mark(1), mark(2), mark(1, '入古墓：'), mark(2), mark(1, '入明教：'), mark(2)] };
+
+test('sectionSteps shows only its own section on a shared page', () => {
+  assert.deepEqual(R.sectionSteps({ name: '入古墓', shared: ['石牢', '入明教'] }, sharedPage), [3, 4]);
+  assert.deepEqual(R.sectionSteps({ name: '入明教', shared: ['石牢', '入古墓'] }, sharedPage), [5, 6]);
+  assert.deepEqual(R.sectionSteps({ name: '石牢', shared: ['入古墓', '入明教'] }, sharedPage), [1, 2]);
+});
+
+test('sectionSteps falls back to every step when nothing identifies a section', () => {
+  const plain = { steps: [mark(1), mark(2), mark(3)] };
+  assert.deepEqual(R.sectionSteps({ name: '玉蕭劍法', shared: ['彈指神通'] }, plain), [1, 2, 3]);
+  assert.deepEqual(R.sectionSteps({ name: '獨孤九劍', shared: [] }, sharedPage), [1, 2, 3, 4, 5, 6]);
+  const noMatch = { steps: [mark(1, '男：'), mark(2), mark(1, '女：'), mark(2)] };
+  assert.deepEqual(R.sectionSteps({ name: '自宮', shared: ['葵花神功'] }, noMatch), [1, 2, 3, 4]);
+});
+
+test('startsAtInn recognises paths that start from the inn', () => {
+  assert.equal(R.startsAtInn('run e 5n 2o sw t'), true);
+  assert.equal(R.startsAtInn('run e 5n o 2s e s t 3sw 2su wu s 2w;ask taoist about 古墓'), true);
+  assert.equal(R.startsAtInn('run nw n;search key'), false);
+  assert.equal(R.startsAtInn('ask taoist about 古墓'), false);
+  assert.equal(R.startsAtInn(''), false);
+});
