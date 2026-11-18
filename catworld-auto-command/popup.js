@@ -1315,14 +1315,18 @@ CatworldMapHunt.GROUPS.forEach(group => {
   box.className = 'fold';
   box.id = `fold-hunt-${group.id}`;
   const summary = document.createElement('summary');
-  box.append(summary);
-  huntGroups[group.id] = { box, summary };
+  // 欄位放在 .hbody 裡：設定頁寬螢幕時 .hbody 是格線（popup.html 的 body.page 樣式），摺疊本身不動
+  const fields = document.createElement('div');
+  fields.className = 'hbody';
+  box.append(summary, fields);
+  huntGroups[group.id] = { box, summary, fields };
   $('huntFields').append(box);
 });
 const huntRows = {};
 CatworldMapHunt.FIELDS.forEach(item => {
   const cell = document.createElement('div');
-  cell.className = 'hfield';
+  // 長欄位（文字指令、關鍵字清單、選項字很長的下拉）寬螢幕時佔整列：型別是 text 或欄位表標了 wide
+  cell.className = CatworldMapHunt.isWideField(item) ? 'hfield hlong' : 'hfield';
   const label = document.createElement('label');
   label.htmlFor = `hunt-${item.key}`;
   label.textContent = item.label;
@@ -1370,7 +1374,7 @@ CatworldMapHunt.FIELDS.forEach(item => {
     cell.append(hint);
   }
   if (verifyMessage) cell.append(verifyMessage);
-  const box = huntGroups[item.group].box;
+  const box = huntGroups[item.group].fields;
   if (!item.row) { box.append(cell); return; }
   // 同一個 row 的欄位排同一列（例如門檻與指令）
   if (!huntRows[item.row]) {

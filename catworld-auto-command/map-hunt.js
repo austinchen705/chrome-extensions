@@ -81,7 +81,7 @@ const FIELDS = [
   { key: 'commandGapMaxMs', group: 'move', row: 'gap', label: '最長（毫秒）', hint: '每次在最短與最長之間隨機', type: 'number', default: 2000, min: 0, max: 3000 },
   { key: 'learnExits', group: 'move', label: '自動學習出口', hint: '記下看到的出口與實際走到的房間；路線不通時才試出口', type: 'select', options: [['off', '關'], ['on', '開']], default: 'off' },
   { key: 'prescan', group: 'move', label: '打怪前先補掃沒走過的房間', hint: '沒有圖資的房間才掃，走過的、走不到的不再掃；掃完再開始打', type: 'select', options: ON_OFF, default: 'on' },
-  { key: 'fightMode', group: 'fight', label: '戰鬥方式', hint: '只下 fight：戰鬥、補氣、撿屍交給你的觸發規則，巡怪只看 i 與 l 的輸出；吃藥模式照樣吃藥，氣低於危險線回家', type: 'select', options: [['full', '完整（巡怪自己打、補氣、撿屍）'], ['assist', '只下 fight（交給你的觸發規則）']], default: 'full' },
+  { key: 'fightMode', group: 'fight', label: '戰鬥方式', wide: true, hint: '只下 fight：戰鬥、補氣、撿屍交給你的觸發規則，巡怪只看 i 與 l 的輸出；吃藥模式照樣吃藥，氣低於危險線回家', type: 'select', options: [['full', '完整（巡怪自己打、補氣、撿屍）'], ['assist', '只下 fight（交給你的觸發規則）']], default: 'full' },
   { key: 'fightCommand', group: 'fight', verify: 'fight', label: '開打用的指令', hint: '開打時送「這個指令 順位」，順位＝這隻怪在 l 列出的 ※ 怪物行裡是第幾個（例如 fight 3）。遊戲的 fight 順位數的是 look 顯示的所有東西，前面有玩家或物品時會偏；fight NPC 順位只數 NPC，比較準。可以填你的別名，例如 f 或 fn（不能有 ; 或 @等待，否則用 fight）', type: 'text', default: 'fight' },
   { key: 'killCommand', group: 'fight', verify: 'kill', show: full, label: '打死用的指令', hint: '怪不想打、或補刀時送「這個指令 順位」；可以填你的別名，例如 k', type: 'text', default: 'kill' },
   { key: 'afterKillCommand', group: 'fight', show: full, label: '怪倒下後送的指令', hint: '可多個，用 ; 分隔', type: 'text', default: 'gc' },
@@ -131,7 +131,7 @@ const FIELDS = [
   { key: 'standbyCommand', group: 'rounds', show: s => s.loopRounds === 'on', label: '巡完一輪後的待命指令', hint: '可空；這一區有記可 ride 的格子時，會先走到最近的一格才送。把你帶離巡怪地圖的（例如 ride 回城），要填下面的「回到巡怪區的指令」', type: 'text', default: '' },
   { key: 'restReturnCommand', group: 'rounds', show: s => s.loopRounds === 'on', advise: s => s.humanize === 'on' && !s.restReturnCommand, label: '回到巡怪區的指令／巨集', hint: '等完重生、人不在巡怪地圖上時（待命指令帶你離開、或掛機休息回家）先送它走回巡怪區再開始下一輪；可用 ; 與 @巨集 N。擬人化的掛機休息沒填就不會休息', type: 'text', default: '' },
   { key: 'chain', group: 'rounds', label: '跨區巡怪', hint: '照「跨區路線」的順序巡好幾區，最後一區巡完回到第一區等重生；要有兩區以上、每段換區指令都有填；從角色所在的那一區開始；關＝只巡地圖顯示的這一區', type: 'select', options: ON_OFF, default: 'off' },
-  { key: 'timeSource', group: 'rounds', show: s => s.loopRounds === 'on' || s.stopBeforeSpawnSec > 0, label: '重生時間從哪裡讀', hint: '讀畫面左下角的時間：不送任何指令（遊戲自己跟伺服器對時，一般模式與倒數模式都行）；讀不到才退回送 time。送 time 指令：每次校準都會送一次', type: 'select', options: [['screen', '畫面左下角的時間（不送指令）'], ['command', '送 time 指令']], default: 'screen' },
+  { key: 'timeSource', group: 'rounds', show: s => s.loopRounds === 'on' || s.stopBeforeSpawnSec > 0, label: '重生時間從哪裡讀', wide: true, hint: '讀畫面左下角的時間：不送任何指令（遊戲自己跟伺服器對時，一般模式與倒數模式都行）；讀不到才退回送 time。送 time 指令：每次校準都會送一次', type: 'select', options: [['screen', '畫面左下角的時間（不送指令）'], ['command', '送 time 指令']], default: 'screen' },
   { key: 'timeKeepMin', group: 'rounds', show: s => (s.loopRounds === 'on' || s.stopBeforeSpawnSec > 0) && s.timeSource === 'command', label: '伺服器時間沿用幾分鐘', hint: '量到伺服器時間後，這麼久之內不再送 time（實際在這個數字的 2/3～4/3 之間隨機）；0＝每次都送 time（較準，但每輪都會送）；電腦時鐘被調過就改成 0', type: 'number', default: 60, min: 0, max: 240 },
   { key: 'stopBeforeSpawnSec', group: 'rounds', label: '重生前幾秒停打', hint: '0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；沒開「等下一個重生」就直接停', type: 'number', default: 0, min: 0, max: 600 },
   { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣。開＝每一輪重排目標順序（近的優先）、等長的路線隨機挑一條、重生前停打秒數與吃藥線、休息線隨機偏移一點、偶爾在到房間後與打完一隻後多停幾秒、每跑幾輪（下面設定，預設 6～12）回家休息跳過幾輪（預設 1～3）（要填「輪與重生」的「回到巡怪區的指令」）；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
@@ -165,6 +165,8 @@ const GROUPS = [
   { id: 'advanced', title: '進階', summary: s => (s.npcWhitelist ? `白名單 ${s.npcWhitelist}` : '') },
 ];
 const fieldShown = (field, settings) => !field.show || field.show(settings);
+// 設定頁寬螢幕時佔整列的欄位：文字欄位，或欄位表標了 wide: true 的（選項字很長的下拉）
+const isWideField = field => field.type === 'text' || field.wide === true;
 const missingFields = settings => FIELDS.filter(field => field.required?.(settings) && !settings[field.key]);
 
 // 儲存的設定可能缺欄位或被改壞：每個欄位都檢查，不合法用預設
@@ -2417,5 +2419,5 @@ function create(deps) {
   return { start, trialRun, stop, on, summary, snapshot, exportLog, noteSent, recordLine };
 }
 
-globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, CHAIN_KEY, CHAIN_TRIAL_KEY, FIELDS, GROUPS, fieldShown, missingFields, normalizeSettings, normalizeVisited, normalizeChain, rearrangeChain, chainStatus, gapMs, splitIds, summaryLines, RESPAWN_MS, create };
+globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, CHAIN_KEY, CHAIN_TRIAL_KEY, FIELDS, GROUPS, fieldShown, isWideField, missingFields, normalizeSettings, normalizeVisited, normalizeChain, rearrangeChain, chainStatus, gapMs, splitIds, summaryLines, RESPAWN_MS, create };
 })();

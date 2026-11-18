@@ -78,6 +78,24 @@
     .delaybox { border:1px solid #ddd; border-radius:9px; padding:0 10px 10px; margin-top:10px; }
     /* 面板的 ⚙ 把這一頁開在分頁裡：放寬、置中 */
     body.page { width:460px; margin:0 auto; }
+    /* 設定頁（body.page）寬螢幕：內容寬度跟著視窗，只有「地圖巡怪」區塊（#sec-hunt）用到整頁寬度，其餘維持 460px 靠左，
+       所以小視窗（沒有 body.page）完全不受影響。斷點：小於 900px 單欄 460px；900px 起放寬、巡怪群組 2 欄；1400px 起 3 欄，整頁最寬 1500px。 */
+    @media (min-width: 900px) {
+      body.page { width:auto; max-width:1500px; box-sizing:border-box; margin:0 auto; }
+      body.page > :not([data-pane]), body.page > [data-pane]:not([data-pane="settings"]) { max-width:460px; }
+      body.page [data-pane="settings"] > details.group:not(#grp-assist) { max-width:460px; }
+      body.page #grp-assist > :not(#sec-hunt) { max-width:460px; }
+      body.page #sec-hunt > :not(#huntFields) { max-width:460px; }
+      body.page #huntFields { column-count:2; column-gap:12px; }
+      body.page #huntFields > details { break-inside:avoid; margin-top:0; margin-bottom:10px; }
+      /* 群組內：短欄位並排（每格至少 190px，格數隨群組寬度變），長欄位與成對欄位（.hrow，自己內部兩欄）佔整列 */
+      body.page #huntFields .hbody { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); column-gap:12px; align-items:start; }
+      body.page #huntFields .hbody > .hfield.hlong, body.page #huntFields .hbody > .hrow { grid-column:1 / -1; }
+      body.page #huntFields .hbody > .hrow { gap:12px; }
+    }
+    @media (min-width: 1400px) {
+      body.page #huntFields { column-count:3; }
+    }
     .safety { border:1px solid #ecd9a0; border-radius:9px; padding:8px 10px 10px; margin-top:10px; background:#fff6dd; }
     .safety h4 { margin:0 0 2px; font-size:13px; }
     .safety .check { display:flex; gap:6px; align-items:flex-start; font-size:12px; color:#222; margin-top:8px; }

@@ -564,3 +564,17 @@ ui('ride rooms: the home command and the trip command say that a recorded ride r
     dom.window.close();
   }
 });
+
+ui('long fields carry the full-row marker for the wide settings page, short ones do not', async () => {
+  const { dom, doc } = await boot();
+  try {
+    const long = ['homeCommand', 'afterKillCommand', 'npcWhitelist', 'ginCommand', 'fightMode', 'timeSource'];
+    const short = ['eatBelow', 'fightTimeoutSec', 'ginBelow', 'learnExits', 'healMode', 'loopRounds'];
+    long.forEach(key => assert.ok(cellOf(doc, key).classList.contains('hlong'), `${key} spans the full row`));
+    short.forEach(key => assert.ok(!cellOf(doc, key).classList.contains('hlong'), `${key} shares a row`));
+    assert.ok(cellOf(doc, 'ginBelow').closest('.hrow'), 'a pair stays inside its row');
+    assert.ok(cellOf(doc, 'homeCommand').closest('.hbody'), 'fields live in the group body');
+  } finally {
+    dom.window.close();
+  }
+});
