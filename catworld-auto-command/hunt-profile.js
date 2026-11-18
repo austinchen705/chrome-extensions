@@ -54,7 +54,7 @@ const bump = (map, key, by = 1) => { if (key !== '') map[key] = (map[key] || 0) 
 
 function emptyProfile() {
   return {
-    segments: 0, commands: 0, typos: 0, rooms: 0, downs: 0,
+    segments: 0, commands: 0, typos: 0, rooms: 0, stops: 0, downs: 0,
     walkGaps: [], reactGaps: [], fights: [],
     firstAttack: {}, knockoutAttack: {}, afterDown: {}, habitArrive: {}, habitKill: {},
   };
@@ -98,7 +98,7 @@ function extract(events, settings = {}) {
       out.rooms += 1;
       pendingReact = event.at;
       armed = true;
-      arrive = { seenLook: false };
+      arrive = { seenLook: false, counted: false };
       fight = null;
       return;
     }
@@ -143,6 +143,7 @@ function extract(events, settings = {}) {
       if (HABIT_COMMANDS.includes(command.toLowerCase())) bump(out.habitKill, command.toLowerCase());
     }
     if (arrive) {
+      if (type !== 'walk' && !arrive.counted) { out.stops += 1; arrive.counted = true; }
       if (type === 'walk' || type === 'attack') arrive = null;
       else if (HABIT_COMMANDS.includes(command.toLowerCase())) {
         if (command.toLowerCase() === 'l' && !arrive.seenLook) arrive.seenLook = true;
@@ -152,6 +153,89 @@ function extract(events, settings = {}) {
   });
   finishDown();
   return out;
+}
+
+const percentile = (sorted, p) => sorted[Math.round(p * (sorted.length - 1))];
+const median = list => { const sorted = [...list].sort((x, y) => x - y); const mid = sorted.length >> 1; return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2; };
+const topOf = map => Object.entries(map).sort((x, y) => y[1] - x[1])[0] || null;
+const sumOf = map => Object.values(map).reduce((total, n) => total + n, 0);
+const squash = text => String(text ?? '').replace(/\s*;\s*/g, ';').trim().toLowerCase();
+
+// 依累積資料算建議的設定值。回傳每一列 { keys, label, current, value, basis, enough, need, same }：
+// 資料不夠時 enough 為 false、value 是 null、need 是還差幾個；same 是建議值和目前值一樣。fields 是巡怪設定的欄位表（取標籤與範圍）
+function suggest(rawProfile, settings = {}, fields = []) {
+  const profile = normalizeProfile(rawProfile);
+  const field = key => fields.find(item => item.key === key) || {};
+  const clamp = (key, value) => {
+    const { min = -Infinity, max = Infinity } = field(key);
+    return Math.min(max, Math.max(min, value));
+  };
+  const toMs = (key, ms) => clamp(key, Math.round(ms / 100) * 100);
+  const rows = [];
+  const add = (keys, label, have, needed, build) => {
+    const row = { keys, label, current: Object.fromEntries(keys.map(key => [key, settings[key]])), value: null, basis: '', enough: have >= needed, need: Math.max(0, needed - have), same: false };
+    if (row.enough) {
+      const built = build();
+      if (built) {
+        row.value = built.value;
+        row.basis = built.basis;
+        row.same = keys.every(key => (built.same ? built.same(key) : String(row.current[key]) === String(built.value[key])));
+      } else { row.enough = false; row.need = 0; }
+    }
+    rows.push(row);
+  };
+  const range = (minKey, maxKey, label, gaps, needed, what) => add([minKey, maxKey], label, gaps.length, needed, () => {
+    const sorted = [...gaps].sort((x, y) => x - y);
+    const low = toMs(minKey, percentile(sorted, 0.2));
+    const high = Math.max(low, toMs(maxKey, percentile(sorted, 0.8)));
+    return { value: { [minKey]: low, [maxKey]: high }, basis: `依 ${gaps.length} 個${what}（取 20%～80%）` };
+  });
+  range('commandGapMinMs', 'commandGapMaxMs', '指令間隔 最短／最長（毫秒）', profile.walkGaps, 30, '連續走路的間隔');
+  range('reactMinMs', 'reactMaxMs', '看完房間到開打 最短／最長（毫秒）', profile.reactGaps, 15, '看完房間到開打的時間');
+
+  const verb = (key, map, needed, what) => {
+    const total = sumOf(map);
+    add([key], field(key).label || key, total, needed, () => {
+      const [word, n] = topOf(map);
+      return { value: { [key]: word }, basis: `依 ${total} 次${what}，最多的是「${word}」${n} 次`, same: () => String(settings[key] ?? '').trim().toLowerCase() === word };
+    });
+  };
+  verb('fightCommand', profile.firstAttack, 10, '進房後第一個開打');
+  verb('killCommand', profile.knockoutAttack, 5, '昏迷後的開打');
+
+  // 特攻：出現在最多場的重複指令；間隔取它相鄰兩次的中位數
+  const inFights = {};
+  const times = {};
+  const gapsOf = {};
+  profile.fights.forEach(fight => fight.forEach(item => {
+    inFights[item.cmd] = (inFights[item.cmd] || 0) + 1;
+    times[item.cmd] = (times[item.cmd] || 0) + item.count;
+    (gapsOf[item.cmd] = gapsOf[item.cmd] || []).push(...item.gaps);
+  }));
+  const ranked = Object.entries(inFights).sort((x, y) => y[1] - x[1] || times[y[0]] - times[x[0]]);
+  const topFights = ranked[0]?.[1] || 0;
+  add(['specialCommand', 'specialIntervalSec'], '特攻指令與間隔（秒）', topFights, 5, () => {
+    const [cmd, fights] = ranked[0];
+    const seconds = gapsOf[cmd].length ? clamp('specialIntervalSec', Math.round(median(gapsOf[cmd]) / 1000)) : settings.specialIntervalSec;
+    const second = ranked[1];
+    return {
+      value: { specialCommand: cmd, specialIntervalSec: seconds },
+      basis: `依 ${fights} 場裡重複出現的「${cmd}」（共 ${times[cmd]} 次）${second ? `，另有 ${second[0]} ${times[second[0]]} 次` : ''}`,
+      same: key => (key === 'specialCommand' ? squash(settings.specialCommand) === squash(cmd) : String(settings.specialIntervalSec) === String(seconds)),
+    };
+  });
+
+  add(['afterKillCommand'], field('afterKillCommand').label || 'afterKillCommand', profile.downs, 10, () => {
+    const top = topOf(profile.afterDown);
+    if (!top) return null;
+    return { value: { afterKillCommand: top[0] }, basis: `依 ${profile.downs} 隻倒下，最多的是「${top[0]}」${top[1]} 次`, same: () => squash(settings.afterKillCommand) === squash(top[0]) };
+  });
+
+  add(['typoPercent'], field('typoPercent').label || 'typoPercent', profile.commands, 200, () => {
+    const percent = clamp('typoPercent', Math.round(profile.typos / profile.commands * 100));
+    return { value: { typoPercent: percent }, basis: `${profile.commands} 個指令裡有 ${profile.typos} 次打錯字` };
+  });
+  return rows;
 }
 
 const keepLatest = (list, extra) => [...list, ...extra].slice(-SAMPLE_MAX);
@@ -170,6 +254,7 @@ function merge(profile, extracted) {
     commands: base.commands + add.commands,
     typos: base.typos + add.typos,
     rooms: base.rooms + add.rooms,
+    stops: base.stops + add.stops,
     downs: base.downs + add.downs,
     walkGaps: keepLatest(base.walkGaps, add.walkGaps),
     reactGaps: keepLatest(base.reactGaps, add.reactGaps),
@@ -204,12 +289,12 @@ function fightList(value) {
 function normalizeProfile(raw) {
   const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   return {
-    segments: count(source.segments), commands: count(source.commands), typos: count(source.typos), rooms: count(source.rooms), downs: count(source.downs),
+    segments: count(source.segments), commands: count(source.commands), typos: count(source.typos), rooms: count(source.rooms), stops: count(source.stops), downs: count(source.downs),
     walkGaps: samples(source.walkGaps), reactGaps: samples(source.reactGaps), fights: fightList(source.fights),
     firstAttack: counts(source.firstAttack), knockoutAttack: counts(source.knockoutAttack), afterDown: counts(source.afterDown),
     habitArrive: counts(source.habitArrive), habitKill: counts(source.habitKill),
   };
 }
 
-globalThis.CatworldHuntProfile = { PROFILE_KEY, SAMPLE_MAX, HABIT_COMMANDS, classify, extract, merge, normalizeProfile, emptyProfile };
+globalThis.CatworldHuntProfile = { PROFILE_KEY, SAMPLE_MAX, HABIT_COMMANDS, classify, extract, merge, normalizeProfile, emptyProfile, suggest };
 })();

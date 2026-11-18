@@ -639,7 +639,7 @@ ui('long fields carry the full-row marker for the wide settings page, short ones
 });
 
 ui('profile: the manual-record fold shows what has been accumulated, and clear empties it only after the confirm', async () => {
-  const { dom, doc, store } = await boot({ mapHuntProfile: { segments: 3, commands: 120, rooms: 14, downs: 9, walkGaps: [900, 1100] } });
+  const { dom, doc, store } = await boot({ mapHuntProfile: { segments: 3, commands: 120, rooms: 14, stops: 6, downs: 9, walkGaps: [900, 1100] } });
   try {
     const fold = doc.getElementById('fold-hunt-profile');
     assert.equal(fold.tagName, 'DETAILS');
@@ -647,7 +647,7 @@ ui('profile: the manual-record fold shows what has been accumulated, and clear e
     assert.ok(doc.getElementById('huntFields').compareDocumentPosition(fold) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING, 'after the fields');
     const info = doc.getElementById('huntProfileInfo');
     assert.ok(await waitFor(() => /累積 120 個指令/.test(info.textContent)), info.textContent);
-    assert.match(info.textContent, /來自 3 段紀錄（進房 14 間、倒下 9 隻）/);
+    assert.match(info.textContent, /來自 3 段紀錄（進房 14 間、停下來的房間 6 間、倒下 9 隻）/);
     dom.window.confirm = () => false;
     doc.getElementById('huntProfileClear').click();
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -665,6 +665,71 @@ ui('profile: a broken stored profile shows as nothing accumulated, without error
   const { dom, doc } = await boot({ mapHuntProfile: 'garbage' });
   try {
     assert.ok(await waitFor(() => /還沒有累積的資料/.test(doc.getElementById('huntProfileInfo').textContent)));
+  } finally {
+    dom.window.close();
+  }
+});
+
+const tuneProfile = () => ({
+  segments: 2, commands: 300, typos: 12, rooms: 30, stops: 20, downs: 12,
+  walkGaps: Array.from({ length: 40 }, (_, i) => 700 + i * 20),
+  reactGaps: [900, 1000],
+  firstAttack: { k: 12 }, knockoutAttack: { k: 3 },
+  afterDown: { 'l;gc': 8, gc: 2 },
+});
+const tuneRow = (doc, text) => [...doc.querySelectorAll('#huntTune tbody tr')].find(tr => tr.cells[1].textContent.includes(text));
+
+ui('tune: the suggestion table shows current, suggested and basis; not-enough rows have no checkbox, equal rows are unchecked', async () => {
+  const { dom, doc } = await boot({ mapHuntProfile: tuneProfile(), mapHuntSettings: { killCommand: 'kill' } });
+  try {
+    assert.ok(await waitFor(() => doc.querySelectorAll('#huntTune tbody tr').length === 7), 'seven rows');
+    const gap = tuneRow(doc, '指令間隔');
+    assert.ok(gap.querySelector('input[type=checkbox]').checked, 'a different value is checked by default');
+    assert.match(gap.cells[2].textContent, /1000～2000/);
+    assert.match(gap.cells[4].textContent, /40 個/);
+    const react = tuneRow(doc, '看完房間');
+    assert.equal(react.querySelector('input'), null, 'not enough data: no checkbox');
+    assert.match(react.cells[4].textContent, /資料不夠（還要 13 個）/);
+    assert.equal(tuneRow(doc, '打死用的指令').querySelector('input'), null, '3 of 5');
+    const fight = tuneRow(doc, '開打用的指令');
+    assert.equal(fight.cells[3].textContent, 'k');
+    assert.ok(fight.querySelector('input').checked);
+    const typo = tuneRow(doc, '打錯字機率');
+    assert.equal(typo.cells[3].textContent, '4');
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('tune: applying writes the checked values into the settings and updates the fields; unchecked rows stay', async () => {
+  const { dom, doc, store } = await boot({ mapHuntProfile: tuneProfile() });
+  try {
+    assert.ok(await waitFor(() => doc.querySelectorAll('#huntTune tbody tr').length === 7));
+    tuneRow(doc, '打錯字機率').querySelector('input').checked = false;
+    doc.getElementById('huntTuneApply').click();
+    assert.ok(await waitFor(() => store.mapHuntSettings?.fightCommand === 'k'));
+    assert.equal(store.mapHuntSettings.afterKillCommand, 'l;gc');
+    assert.equal(store.mapHuntSettings.commandGapMinMs, 900);
+    assert.equal(store.mapHuntSettings.commandGapMaxMs, 1300);
+    assert.equal(store.mapHuntSettings.typoPercent, 2, 'unchecked row is untouched');
+    assert.equal(field(doc, 'fightCommand').value, 'k');
+    assert.equal(field(doc, 'afterKillCommand').value, 'l;gc');
+    assert.match(doc.getElementById('huntTuneMsg').textContent, /已套用/);
+    assert.ok(await waitFor(() => tuneRow(doc, '開打用的指令').cells[4].textContent.startsWith('已相同')), 'recomputed after applying');
+    assert.equal(tuneRow(doc, '開打用的指令').querySelector('input').checked, false);
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('tune: applying with nothing checked says so and writes nothing', async () => {
+  const { dom, doc, store } = await boot({ mapHuntProfile: tuneProfile() });
+  try {
+    assert.ok(await waitFor(() => doc.querySelectorAll('#huntTune tbody tr').length === 7));
+    doc.querySelectorAll('#huntTune input').forEach(check => { check.checked = false; });
+    doc.getElementById('huntTuneApply').click();
+    assert.match(doc.getElementById('huntTuneMsg').textContent, /沒有勾選/);
+    assert.equal(store.mapHuntSettings, undefined);
   } finally {
     dom.window.close();
   }

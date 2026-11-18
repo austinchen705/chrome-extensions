@@ -1291,6 +1291,7 @@ CatworldMacroIOUI.attach(document.getElementById('sec-macro'), {
 // 欄位依 GROUPS 分成摺疊區塊（id 是 fold-hunt-<組>，展開狀態和其他摺疊一樣記在 popupFolds），收起時標題寫出重點；
 // 用不到的欄位（show 為 false）藏起來但照樣存，開始前必填但沒填的（missingFields）用琥珀色標出來
 let huntSettings = CatworldMapHunt.normalizeSettings(null);
+let huntProfileData = null; // 手動紀錄累積的資料（showHuntProfile 讀進來），建議表用
 let huntBusy = false; // 遊戲分頁的巡怪或掃描正在跑（refreshLive 每秒更新）：驗證按鈕停用
 const huntGroups = {};
 const showHuntSettings = () => {
@@ -1309,6 +1310,7 @@ const showHuntSettings = () => {
     summary.textContent = `${group.title}　${lacking ? '⚠ 有必填的沒填　' : ''}${group.summary(huntSettings)}`;
     summary.classList.toggle('hlacking', lacking);
   });
+  renderHuntTune();
 };
 CatworldMapHunt.GROUPS.forEach(group => {
   const box = document.createElement('details');
@@ -1437,10 +1439,57 @@ async function showHuntProfile() {
   const key = CatworldHuntProfile.PROFILE_KEY;
   const profile = CatworldHuntProfile.normalizeProfile((await chrome.storage.local.get(key))[key]);
   $('huntProfileInfo').textContent = profile.segments
-    ? `累積 ${profile.commands} 個指令，來自 ${profile.segments} 段紀錄（進房 ${profile.rooms} 間、倒下 ${profile.downs} 隻）`
+    ? `累積 ${profile.commands} 個指令，來自 ${profile.segments} 段紀錄（進房 ${profile.rooms} 間、停下來的房間 ${profile.stops} 間、倒下 ${profile.downs} 隻）`
     : '還沒有累積的資料，用面板「● 記錄」手打幾輪';
   $('huntProfileClear').disabled = !profile.segments;
+  huntProfileData = profile;
+  renderHuntTune();
 }
+// 建議值表：每列勾選、設定、目前值、建議值、依據；資料不夠的沒有勾選，和目前一樣的標「已相同」不預設勾
+const tuneText = (row, values) => row.keys.map(key => values[key]).map(value => (value === '' || value === undefined ? '（空）' : value)).join('～');
+function renderHuntTune() {
+  const box = $('huntTune');
+  if (!huntProfileData) return;
+  box.textContent = '';
+  const rows = huntProfileData.segments ? CatworldHuntProfile.suggest(huntProfileData, huntSettings, CatworldMapHunt.FIELDS) : [];
+  $('huntTuneApply').hidden = !rows.length;
+  if (!rows.length) return;
+  const table = document.createElement('table');
+  table.className = 'htune';
+  const head = table.createTHead().insertRow();
+  ['', '設定', '目前', '建議', '依據'].forEach(text => { head.insertCell().textContent = text; });
+  const body = table.createTBody();
+  rows.forEach(row => {
+    const tr = body.insertRow();
+    const pick = tr.insertCell();
+    if (row.enough) {
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = !row.same;
+      check.dataset.tuneKeys = row.keys.join(',');
+      pick.append(check);
+    }
+    tr.insertCell().textContent = row.label;
+    tr.insertCell().textContent = tuneText(row, row.current);
+    tr.insertCell().textContent = row.enough ? tuneText(row, row.value) : '—';
+    const basis = tr.insertCell();
+    if (!row.enough) { basis.textContent = row.need ? `資料不夠（還要 ${row.need} 個）` : '資料不夠'; markLevel(basis, 'warn'); }
+    else basis.textContent = row.same ? `已相同　${row.basis}` : row.basis;
+    tr._row = row;
+  });
+  box.append(table);
+}
+$('huntTuneApply').addEventListener('click', () => {
+  const msg = $('huntTuneMsg');
+  const picked = [...document.querySelectorAll('#huntTune input[data-tune-keys]:checked')].map(check => check.closest('tr')._row);
+  if (!picked.length) { msg.textContent = '沒有勾選要套用的項目'; markLevel(msg, 'warn'); return; }
+  const values = Object.assign({}, ...picked.map(row => row.value));
+  huntSettings = CatworldMapHunt.normalizeSettings({ ...huntSettings, ...values });
+  showHuntSettings();
+  chrome.storage.local.set({ [CatworldMapHunt.SETTINGS_KEY]: huntSettings });
+  msg.textContent = `已套用 ${picked.length} 項：${picked.map(row => row.label).join('、')}`;
+  markLevel(msg, 'info');
+});
 $('huntProfileClear').addEventListener('click', async () => {
   if (!confirm('清除從手動紀錄累積的資料？清掉就回不來了。')) return;
   await chrome.storage.local.remove(CatworldHuntProfile.PROFILE_KEY);

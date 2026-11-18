@@ -35,6 +35,8 @@
     .msg-warn { background:#fdecc8; color:#8a5a00; border-left-color:#e0a100; }
     .status.msg-error, .status.msg-warn { margin-top:0; }
     .hint.tight { margin-top:4px; }
+    .htune { width:100%; border-collapse:collapse; font-size:12px; margin-top:4px; }
+    .htune th, .htune td { padding:2px 4px; text-align:left; vertical-align:top; }
 
     .ritem { display:grid; grid-template-columns:minmax(0, 1fr) 62px 62px 22px; gap:6px; align-items:center; margin-top:6px; }
     .ritem input { padding:6px 8px; }
@@ -401,6 +403,9 @@
           <summary>從手動紀錄調整</summary>
           <p class="hint tight">面板「巡怪」列的「● 記錄」開著時，你手打的指令、進的房間、倒下的怪都會記下來；每一段（15 分鐘重生為界，或關掉記錄時）結束就累加到這裡，不分地圖、跨多次記錄。之後會依這份資料建議指令間隔、反應時間、打錯字機率等設定。</p>
           <div id="huntProfileInfo" class="hint tight"></div>
+          <div id="huntTune"></div>
+          <button id="huntTuneApply" type="button">套用勾選的</button>
+          <div id="huntTuneMsg" class="hint tight"></div>
           <button id="huntProfileClear" type="button">清除累積的資料</button>
         </details>
         <details class="fold" id="fold-hunt-chain">

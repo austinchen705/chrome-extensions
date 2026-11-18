@@ -144,3 +144,102 @@ test('normalizeProfile: garbage becomes an empty profile, bad fields are dropped
   assert.deepEqual(out.habitArrive, { l: 2 });
   assert.deepEqual(out.fights, [[{ cmd: 'pp', count: 3, gaps: [1000] }]]);
 });
+
+test('stops: a room counts as a stop only when a non-walk command follows before the next walk or room', () => {
+  const events = [
+    { at: 0, kind: 'room', room: 'a/1' }, send(500, 'n'),
+    { at: 1000, kind: 'room', room: 'a/2' }, { at: 1500, kind: 'room', room: 'a/3' },
+    { at: 2000, kind: 'room', room: 'a/4' }, send(2500, 'l'), send(3000, 'hp'), send(3500, 'e'),
+    { at: 4000, kind: 'room', room: 'a/5' }, send(4500, 'k 1'),
+  ];
+  const out = P.extract(events);
+  assert.equal(out.rooms, 5);
+  assert.equal(out.stops, 2, 'only the rooms where the player did something');
+  assert.equal(P.merge(P.merge(undefined, out), out).stops, 4);
+  assert.equal(P.normalizeProfile({ rooms: 3 }).stops, 0, 'an old stored profile reads as 0');
+  assert.equal(P.emptyProfile().stops, 0);
+});
+
+const FIELDS = [
+  { key: 'commandGapMinMs', label: '指令間隔最短', min: 0, max: 3000 },
+  { key: 'commandGapMaxMs', label: '最長', min: 0, max: 3000 },
+  { key: 'reactMinMs', label: '反應最短', min: 0, max: 5000 },
+  { key: 'reactMaxMs', label: '反應最長', min: 0, max: 5000 },
+  { key: 'fightCommand', label: '開打用的指令' },
+  { key: 'killCommand', label: '打死用的指令' },
+  { key: 'specialCommand', label: '特攻指令' },
+  { key: 'specialIntervalSec', label: '最小間隔（秒）', min: 1, max: 600 },
+  { key: 'afterKillCommand', label: '怪倒下後送的指令' },
+  { key: 'typoPercent', label: '打錯字機率 %', min: 0, max: 20 },
+];
+const rowOf = (rows, key) => rows.find(row => row.keys[0] === key);
+const SETTINGS = { commandGapMinMs: 1000, commandGapMaxMs: 2000, reactMinMs: 800, reactMaxMs: 1500, fightCommand: 'fight', killCommand: 'kill', specialCommand: '', specialIntervalSec: 10, afterKillCommand: 'gc', typoPercent: 2 };
+
+test('suggest: an empty profile asks for more data on every row, without values', () => {
+  const rows = P.suggest(undefined, SETTINGS, FIELDS);
+  assert.equal(rows.length, 7);
+  rows.forEach(row => { assert.equal(row.enough, false); assert.equal(row.value, null); assert.ok(row.need > 0); });
+  assert.equal(rowOf(rows, 'commandGapMinMs').need, 30);
+  assert.equal(rowOf(rows, 'typoPercent').need, 200);
+});
+
+test('suggest: gaps need exactly 30 (walk) or 15 (reaction), then take the 20th and 80th percentile rounded to 100 ms', () => {
+  const gaps = n => Array.from({ length: n }, (_, i) => 500 + i * 100);
+  assert.equal(rowOf(P.suggest({ walkGaps: gaps(29) }, SETTINGS, FIELDS), 'commandGapMinMs').need, 1);
+  const row = rowOf(P.suggest({ walkGaps: gaps(30) }, SETTINGS, FIELDS), 'commandGapMinMs');
+  assert.equal(row.enough, true);
+  assert.deepEqual(row.value, { commandGapMinMs: 1100, commandGapMaxMs: 2800 });
+  assert.match(row.basis, /30 個/);
+  assert.equal(rowOf(P.suggest({ reactGaps: gaps(14) }, SETTINGS, FIELDS), 'reactMinMs').enough, false);
+  assert.equal(rowOf(P.suggest({ reactGaps: gaps(15) }, SETTINGS, FIELDS), 'reactMinMs').enough, true);
+});
+
+test('suggest: values are clamped to the field range and the longest is never below the shortest', () => {
+  const huge = Array.from({ length: 30 }, () => 4900);
+  const row = rowOf(P.suggest({ walkGaps: huge }, SETTINGS, FIELDS), 'commandGapMinMs');
+  assert.deepEqual(row.value, { commandGapMinMs: 3000, commandGapMaxMs: 3000 });
+  const typo = rowOf(P.suggest({ commands: 200, typos: 150 }, SETTINGS, FIELDS), 'typoPercent');
+  assert.equal(typo.value.typoPercent, 20);
+});
+
+test('suggest: the fight and kill verbs are the most used ones, same as now is flagged', () => {
+  const profile = { firstAttack: { k: 8, fight: 3 }, knockoutAttack: { kill: 5 } };
+  const rows = P.suggest(profile, SETTINGS, FIELDS);
+  assert.deepEqual(rowOf(rows, 'fightCommand').value, { fightCommand: 'k' });
+  assert.equal(rowOf(rows, 'fightCommand').same, false);
+  assert.match(rowOf(rows, 'fightCommand').basis, /11 次.*「k」8 次/);
+  assert.equal(rowOf(rows, 'killCommand').enough, true, 'exactly 5');
+  assert.equal(rowOf(rows, 'killCommand').same, true, 'kill is already set');
+  assert.equal(rowOf(P.suggest({ firstAttack: { k: 9 } }, SETTINGS, FIELDS), 'fightCommand').need, 1);
+});
+
+test('suggest: the special is the repeated command in the most fights, its interval the median in seconds, the runner-up in the basis', () => {
+  const fight = (cmd, count, gaps) => ({ cmd, count, gaps });
+  const fights = [
+    ...Array.from({ length: 5 }, () => [fight('pp', 4, [3000, 3000, 6000])]),
+    [fight('pf', 12, [3000]), fight('hp', 2, [1000])],
+  ];
+  const row = rowOf(P.suggest({ fights }, SETTINGS, FIELDS), 'specialCommand');
+  assert.equal(row.enough, true);
+  assert.deepEqual(row.value, { specialCommand: 'pp', specialIntervalSec: 3 });
+  assert.match(row.basis, /另有 pf 12 次/);
+  assert.equal(rowOf(P.suggest({ fights: fights.slice(0, 4) }, SETTINGS, FIELDS), 'specialCommand').need, 1);
+  const same = rowOf(P.suggest({ fights }, { ...SETTINGS, specialCommand: 'PP', specialIntervalSec: 3 }, FIELDS), 'specialCommand');
+  assert.equal(same.same, true);
+});
+
+test('suggest: the after-kill sequence needs 10 downs and is compared ignoring spaces around ;', () => {
+  const profile = { downs: 10, afterDown: { 'l;gc': 6, gc: 3 } };
+  const row = rowOf(P.suggest(profile, SETTINGS, FIELDS), 'afterKillCommand');
+  assert.deepEqual(row.value, { afterKillCommand: 'l;gc' });
+  assert.equal(rowOf(P.suggest({ ...profile, downs: 9 }, SETTINGS, FIELDS), 'afterKillCommand').need, 1);
+  assert.equal(rowOf(P.suggest(profile, { ...SETTINGS, afterKillCommand: 'l ; gc' }, FIELDS), 'afterKillCommand').same, true);
+});
+
+test('suggest: the typo percentage is typos over commands, rounded; equal to now is flagged', () => {
+  assert.equal(rowOf(P.suggest({ commands: 199, typos: 9 }, SETTINGS, FIELDS), 'typoPercent').need, 1);
+  const row = rowOf(P.suggest({ commands: 200, typos: 9 }, SETTINGS, FIELDS), 'typoPercent');
+  assert.equal(row.value.typoPercent, 5);
+  assert.equal(row.same, false);
+  assert.equal(rowOf(P.suggest({ commands: 200, typos: 4 }, SETTINGS, FIELDS), 'typoPercent').same, true);
+});
