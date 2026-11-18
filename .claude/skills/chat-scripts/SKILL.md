@@ -5,7 +5,7 @@ description: 產一批新的劇本對話（catworld 擴充功能「劇本對話�
 
 # 產劇本對話
 
-產出 `docs/data/chat-scripts-<批次>.csv`，用 `node tools/check-chat-scripts.js` 檢查，改到全部通過才交。劇本的格式、驗證規則、比對方式寫在專案 `CLAUDE.md` 的「劇本對話」一節，這裡只寫產的流程。
+產出 `docs/data/chat-scripts-<批次>.csv`，用 `node tools/check-chat-scripts.js` 檢查，改到全部通過才交。劇本的格式、驗證規則、比對方式寫在 `docs/claude/chat-script.md`，這裡只寫產的流程。
 
 ## 1. 讀參數
 
