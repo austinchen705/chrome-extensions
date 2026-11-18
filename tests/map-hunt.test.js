@@ -1847,6 +1847,75 @@ ui('rounds: it reads the server time at the start, sends the standby command aft
   }
 });
 
+// ---- 巡完一輪：先走到可 ride 的格子才送待命指令；巡完就整理；待命把人帶離巡怪地圖時，等完重生先送回到巡怪區的指令 ----
+// 待命指令 ride 把人送到地圖外（town），回到巡怪區的指令 back 送回 a；r 只用在 a 是可 ride 的格子
+const standbyRun = async ({ settings = {}, rides = { t: ['t/a'] }, back = true } = {}) => {
+  const page = await roundPage({ standbyCommand: 'ride', restReturnCommand: 'back', ...settings });
+  page.store.mapHuntRideRooms = rides;
+  const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
+  const looks = [];
+  const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script: timeScript(page, clock, (command, { game: state }) => {
+    if (command === 'l') looks.push(clock.server());
+    if (command === 'ride') state.at = 'town';
+    if (command === 'back' && back) state.at = 'a';
+    if (command === 'sell all') { say(page, '你把牛皮拳套賣掉，獲得了一兩銀子。'); return true; }
+    return false;
+  }) });
+  await pick(page, MOB);
+  click(page, '.hstart');
+  return { page, game, looks };
+};
+
+ui('round end: it walks to the nearest ride room before the standby command, and after the respawn sends the command back to the hunting area before the next round', async () => {
+  const { page, game, looks } = await standbyRun();
+  try {
+    assert.ok(await waitFor(() => /等下一個重生/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log.slice(game.log.indexOf('l') + 1, game.log.indexOf('ride') + 1), ['w', 'w', 'ride'], 'walked c → a (the ride room), then the standby command');
+    assert.ok(await waitFor(() => looks.length >= 2, 9000), 'the second round starts');
+    const second = game.log.lastIndexOf('l');
+    assert.deepEqual(game.log.slice(game.log.indexOf('ride') + 1, second + 1).filter(command => command !== 'time'), ['back', 'e', 'e', 'l'], 'back to the hunting area first, then the round');
+    assert.match(await huntLog(page), /待命 回到巡怪區，回程花了/);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('round end: away from the hunting map at the respawn without the command back, it stops with an alert', async () => {
+  const { page, game } = await standbyRun({ settings: { restReturnCommand: '' } });
+  try {
+    assert.ok(await waitFor(() => alerts(page).length > 0, 9000), game.log.join(','));
+    assert.match(alerts(page)[0].reason, /人不在巡怪區.*沒填「回到巡怪區的指令」/);
+    assert.equal(await hunting(page), false);
+  } finally {
+    page.close();
+  }
+});
+
+ui('round end: with sort after every round on, it sorts from the ride room, skips the sort return command and sends the standby command', async () => {
+  const { page, game } = await standbyRun({ settings: { sortAfterRound: 'on', tripCommand: 'go', returnCommand: 'goback', sortKeep: 'none' } });
+  try {
+    assert.ok(await waitFor(() => /等下一個重生/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log.slice(game.log.indexOf('l') + 1, game.log.indexOf('ride') + 1), ['w', 'w', 'go', 'sell all', 'ride'], 'ride room, trip, sell, then the standby command');
+    assert.equal(game.log.includes('goback'), false, 'the sort return command is not sent');
+    assert.match(await huntLog(page), /巡完一輪的整理做完/);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('round end: without a ride room recorded the standby command goes where it stands, as before', async () => {
+  const { page, game } = await standbyRun({ rides: {} });
+  try {
+    assert.ok(await waitFor(() => /等下一個重生/.test(huntText(page)), 4000), huntText(page));
+    assert.equal(game.log[game.log.indexOf('l') + 1], 'ride');
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
 // 左下角的 #uptime（遊戲的計時器）：H7 一般模式顯示開機時間的「分:秒」（除以一小時的餘數），H1 倒數模式顯示距下一個 15 分鐘整點的倒數
 // （使用者貼的真實樣本：class H1「13:06」、class H7「32:41」）。文字隨假的伺服器時鐘走，假設伺服器在整點開機
 const screenClock = (page, clock, mode) => {
@@ -3399,12 +3468,14 @@ ui('ride: a step sent just before no medicine that does not go through is walked
 });
 
 ui('ride: no medicine while waiting for the respawn in the hunting area walks to the ride room before going home', async () => {
-  const page = await roundPage({});
+  // 待命指令 goc 把人從 ride 格子 a 帶到 c（還在巡怪地圖上）
+  const page = await roundPage({ standbyCommand: 'goc' });
   try {
     page.store.mapHuntRideRooms = { t: ['t/a'] };
     const clock = fakeClock(page, '2026-11-04T10:00:00+08:00');
     let recallAt = null;
     const game = world(page, { at: 'a', looks: { c: { lines: [] } }, script: timeScript(page, clock, (command, { game: state }) => {
+      if (command === 'goc') { state.at = 'c'; return false; }
       if (command === 'eat pill') { say(page, '你身上沒有藥了。'); return true; }
       if (command === 'recall') recallAt = state.at;
       return false;
@@ -3412,6 +3483,7 @@ ui('ride: no medicine while waiting for the respawn in the hunting area walks to
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /等下一個重生/.test(huntText(page)), 4000), huntText(page));
+    assert.deepEqual(game.log.slice(game.log.indexOf('l') + 1, game.log.indexOf('goc') + 1), ['w', 'w', 'goc'], 'the round end walked to the ride room before the standby command');
     setKee(page, 30);
     assert.ok(await waitFor(() => game.log.includes('recall'), 5000), game.log.join(','));
     assert.equal(recallAt, 'a', game.log.join(','));
@@ -3979,7 +4051,7 @@ ui('rest: after the drawn number of rounds it skips whole rounds, goes home, com
   }
 });
 
-ui('rest: with a ride room recorded, the standby command goes where it stands, then it walks to the ride room and only there sends the home command', async () => {
+ui('rest: with a ride room recorded, the standby command goes at the ride room, then it walks back to the ride room and only there sends the home command', async () => {
   const { page, game } = await restRun({ settings: { restEveryMin: 2, restEveryMax: 2 }, rides: { t: ['t/c'] } });
   try {
     assert.ok(await waitFor(() => game.log.includes('recall'), 15000), game.log.join(','));
@@ -3994,11 +4066,12 @@ ui('rest: with a ride room recorded, the standby command goes where it stands, t
   }
 });
 
-ui('rest: a ride room it cannot reach stops the hunt with an alert and the home command is never sent', async () => {
+ui('rest: a ride room it cannot reach stops the hunt at the end of the round with an alert, and neither the standby nor the home command is sent', async () => {
   const { page, game } = await restRun({ settings: { restEveryMin: 2, restEveryMax: 2 }, rides: { t: ['t/z'] } });
   try {
     assert.ok(await waitFor(() => alerts(page).length > 0, 15000), game.log.join(','));
-    assert.match(alerts(page)[0].reason, /休息.*可 ride/);
+    assert.match(alerts(page)[0].reason, /待命.*可 ride/);
+    assert.equal(game.log.includes('home'), false);
     assert.equal(game.log.includes('recall'), false);
     assert.equal(await hunting(page), false);
   } finally {

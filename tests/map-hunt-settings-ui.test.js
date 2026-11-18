@@ -153,28 +153,50 @@ ui('the human-like switch is off by default, has its own fold, is saved with the
   }
 });
 
-ui('the rest return command shows only with the switch on, is marked (but does not block starting) while empty, and is saved', async () => {
+ui('the return-to-the-hunting-area command is in the round settings, shows while waiting for the next respawn, is marked (but does not block starting) only for the humanized rest, and is saved', async () => {
   const { dom, doc, store } = await boot({ mapHuntSettings: { humanize: 'on' } });
   try {
     const cell = cellOf(doc, 'restReturnCommand');
     assert.equal(cell.hidden, false);
-    assert.ok(cell.classList.contains('hmissing'), 'marked while it is empty');
+    assert.ok(cell.closest('#fold-hunt-rounds'), 'it sits with the round settings, next to the standby command');
+    assert.ok(cell.classList.contains('hmissing'), 'marked while it is empty and the humanized rest is on');
     const title = () => doc.querySelector('#fold-hunt-human > summary').textContent;
     assert.match(title(), /沒填回程指令，不會掛機休息/);
-    assert.doesNotMatch(title(), /有必填的沒填/, 'it only turns the rest off, so it is not a field that must be filled to start');
+    assert.doesNotMatch(doc.querySelector('#fold-hunt-rounds > summary').textContent, /有必填的沒填/, 'it only turns the rest off, so it is not a field that must be filled to start');
     change(dom, field(doc, 'restReturnCommand'), '@巨集 5');
     assert.ok(await waitFor(() => store.mapHuntSettings?.restReturnCommand === '@巨集 5'));
     assert.equal(cell.classList.contains('hmissing'), false);
     assert.doesNotMatch(title(), /沒填回程指令/);
     change(dom, field(doc, 'restReturnCommand'), '');
     assert.ok(await waitFor(() => cell.classList.contains('hmissing')));
-    change(dom, field(doc, 'loopRounds'), 'off');
-    assert.ok(await waitFor(() => !cell.classList.contains('hmissing')), 'not marked when waiting for the next respawn is off: it can never rest then');
+    change(dom, field(doc, 'humanize'), 'off');
+    assert.ok(await waitFor(() => !cell.classList.contains('hmissing')), 'not marked without the humanized rest');
+    assert.equal(cell.hidden, false, 'still shown: the standby command may take you off the hunting map');
     change(dom, field(doc, 'restReturnCommand'), '@巨集 5');
     assert.ok(await waitFor(() => store.mapHuntSettings?.restReturnCommand === '@巨集 5'));
-    change(dom, field(doc, 'humanize'), 'off');
-    assert.ok(await waitFor(() => cell.hidden === true), 'hidden again when the switch is off');
+    change(dom, field(doc, 'loopRounds'), 'off');
+    assert.ok(await waitFor(() => cell.hidden === true), 'hidden when it never waits for a respawn');
     assert.equal(store.mapHuntSettings.restReturnCommand, '@巨集 5', 'but kept');
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('sort after every round shows while waiting for the next respawn, shows the sort fields even with the load check off, and needs the trip command', async () => {
+  const { dom, doc, store } = await boot({ mapHuntSettings: { loadMaxPercent: 0 } });
+  try {
+    const cell = cellOf(doc, 'sortAfterRound');
+    assert.equal(cell.hidden, false);
+    assert.equal(cellOf(doc, 'tripCommand').hidden, true, 'no sort fields with the load check off');
+    change(dom, field(doc, 'sortAfterRound'), 'on');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.sortAfterRound === 'on'));
+    assert.ok(await waitFor(() => cellOf(doc, 'tripCommand').hidden === false), 'the sort fields show');
+    assert.equal(cellOf(doc, 'overloadAction').hidden, true, 'what to do over the load limit still needs the load check');
+    assert.ok(cellOf(doc, 'tripCommand').classList.contains('hmissing'), 'the trip command must be filled');
+    change(dom, field(doc, 'tripCommand'), 'go shop');
+    assert.ok(await waitFor(() => !cellOf(doc, 'tripCommand').classList.contains('hmissing')));
+    change(dom, field(doc, 'loopRounds'), 'off');
+    assert.ok(await waitFor(() => cell.hidden === true), 'no round end without waiting for the respawn');
   } finally {
     dom.window.close();
   }

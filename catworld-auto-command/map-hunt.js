@@ -73,7 +73,9 @@ const NO_MEDICINE_WINDOW_TICKS = 10 * TICKS_PER_SEC; // 吃藥指令真的送出
 const ON_OFF = [['on', '開'], ['off', '關']];
 const full = s => s.fightMode === 'full';
 const eatMode = s => s.healMode === 'eat';
-const sorting = s => s.loadMaxPercent > 0;
+// 巡完一輪就整理：要開著「巡完一輪後等下一個重生」才有一輪的結束
+const roundSorting = s => s.loopRounds === 'on' && s.sortAfterRound === 'on';
+const sorting = s => s.loadMaxPercent > 0 || roundSorting(s);
 const FIELDS = [
   { key: 'commandGapMinMs', group: 'move', row: 'gap', label: '指令間隔最短（毫秒）', hint: '走路、看房間、打怪、補氣都算；和「指令間隔」取較大的，想更快兩個都要調小', type: 'number', default: 1000, min: 0, max: 3000 },
   { key: 'commandGapMaxMs', group: 'move', row: 'gap', label: '最長（毫秒）', hint: '每次在最短與最長之間隨機', type: 'number', default: 2000, min: 0, max: 3000 },
@@ -116,8 +118,9 @@ const FIELDS = [
   { key: 'loadCheckEveryMin', group: 'sort', show: s => s.loadMaxPercent > 0, row: 'loadEvery', label: '每打完幾間看一次負重：最少', hint: '只算有打倒怪的房間；每次在最少與最多之間隨機；1～1＝每間都看', type: 'number', default: 3, min: 1, max: 20 },
   { key: 'loadCheckEveryMax', group: 'sort', show: s => s.loadMaxPercent > 0, row: 'loadEvery', label: '最多', type: 'number', default: 6, min: 1, max: 20 },
   { key: 'loadAlwaysPercent', group: 'sort', show: s => s.loadMaxPercent > 0, label: '負重到 % 以上就每間都看', hint: '上一次看到的負重到這條線就改回每間都看，免得超重撿不了屍體；0＝不用', type: 'number', default: 80, min: 0, max: 100 },
-  { key: 'overloadAction', group: 'sort', show: sorting, label: '負重超標時', hint: '整理＝照下面的設定去整理再回來；停止巡怪＝直接停止並警報，不整理（例如在謎宮裡走不了固定路線，停下來自己騎車去整理）', type: 'select', options: [['sort', '整理'], ['stop', '停止巡怪']], default: 'sort' },
-  { key: 'tripCommand', group: 'sort', show: sorting, label: '前往整理處的指令／巨集', hint: '路線、鑑定全寫在這裡，最後停在能 sell all 的地方；不要自己寫 sell all。前往與回程至少填一個才走自動整理；可用 ; 與 @等待。這一區有記可 ride 的格子時，會先走到最近的一格才送', type: 'text', default: '' },
+  { key: 'sortAfterRound', group: 'sort', show: s => s.loopRounds === 'on', label: '巡完一輪就整理', hint: '開＝每巡完一輪（跨區是整條路線）都去整理，不管負重多少：先走到可 ride 的格子，送前往整理處的指令、鑑定、標記、賣完，不送回程指令，直接送待命指令等重生；要開著「巡完一輪後等下一個重生」', type: 'select', options: ON_OFF, default: 'off' },
+  { key: 'overloadAction', group: 'sort', show: s => s.loadMaxPercent > 0, label: '負重超標時', hint: '整理＝照下面的設定去整理再回來；停止巡怪＝直接停止並警報，不整理（例如在謎宮裡走不了固定路線，停下來自己騎車去整理）', type: 'select', options: [['sort', '整理'], ['stop', '停止巡怪']], default: 'sort' },
+  { key: 'tripCommand', group: 'sort', show: sorting, label: '前往整理處的指令／巨集', hint: '路線、鑑定全寫在這裡，最後停在能 sell all 的地方；不要自己寫 sell all。前往與回程至少填一個才走自動整理；可用 ; 與 @等待。這一區有記可 ride 的格子時，會先走到最近的一格才送', type: 'text', default: '', required: s => roundSorting(s) && !s.tripCommand },
   { key: 'sortKeep', group: 'sort', show: sorting, label: '鑑定完留不留好裝備', hint: '留＝好的 secure 或 give 給小號再賣其餘；全賣＝不看背包直接 sell all，只有你自己 secure 過的不會賣', type: 'select', options: [['keep', '留好裝備'], ['none', '全賣，不留']], default: 'keep' },
   { key: 'altId', group: 'sort', show: s => sorting(s) && s.sortKeep !== 'none', label: '小號的英文 ID', hint: '好東西 give 給它；不填就只用 secure 標記留在身上', type: 'text', default: '' },
   { key: 'sortLookMinSec', group: 'sort', show: sorting, row: 'sortLook', label: '賣完後停留（秒）最短', hint: 'sell all 之後不馬上回去，先停一會、中間送一次 i 看看身上的裝備，像人在整理；0～0＝賣完馬上回去', type: 'number', default: 20, min: 0, max: 300 },
@@ -125,19 +128,19 @@ const FIELDS = [
   { key: 'returnCommand', group: 'sort', show: sorting, label: '回到巡怪地圖的指令／巨集', hint: '回來後要在原本這一區才會繼續', type: 'text', default: '' },
   { key: 'sortPerHour', group: 'sort', show: sorting, label: '每小時最多整理幾次', hint: '超過就停止並警報', type: 'number', default: 6, min: 1, max: 60 },
   { key: 'loopRounds', group: 'rounds', label: '巡完一輪後等下一個重生', hint: '關＝巡完就停', type: 'select', options: ON_OFF, default: 'on' },
-  { key: 'standbyCommand', group: 'rounds', show: s => s.loopRounds === 'on', label: '巡完一輪後的待命指令', hint: '可空', type: 'text', default: '' },
+  { key: 'standbyCommand', group: 'rounds', show: s => s.loopRounds === 'on', label: '巡完一輪後的待命指令', hint: '可空；這一區有記可 ride 的格子時，會先走到最近的一格才送。把你帶離巡怪地圖的（例如 ride 回城），要填下面的「回到巡怪區的指令」', type: 'text', default: '' },
+  { key: 'restReturnCommand', group: 'rounds', show: s => s.loopRounds === 'on', advise: s => s.humanize === 'on' && !s.restReturnCommand, label: '回到巡怪區的指令／巨集', hint: '等完重生、人不在巡怪地圖上時（待命指令帶你離開、或掛機休息回家）先送它走回巡怪區再開始下一輪；可用 ; 與 @巨集 N。擬人化的掛機休息沒填就不會休息', type: 'text', default: '' },
   { key: 'chain', group: 'rounds', label: '跨區巡怪', hint: '照「跨區路線」的順序巡好幾區，最後一區巡完回到第一區等重生；要有兩區以上、每段換區指令都有填；從角色所在的那一區開始；關＝只巡地圖顯示的這一區', type: 'select', options: ON_OFF, default: 'off' },
   { key: 'timeSource', group: 'rounds', show: s => s.loopRounds === 'on' || s.stopBeforeSpawnSec > 0, label: '重生時間從哪裡讀', hint: '讀畫面左下角的時間：不送任何指令（遊戲自己跟伺服器對時，一般模式與倒數模式都行）；讀不到才退回送 time。送 time 指令：每次校準都會送一次', type: 'select', options: [['screen', '畫面左下角的時間（不送指令）'], ['command', '送 time 指令']], default: 'screen' },
   { key: 'timeKeepMin', group: 'rounds', show: s => (s.loopRounds === 'on' || s.stopBeforeSpawnSec > 0) && s.timeSource === 'command', label: '伺服器時間沿用幾分鐘', hint: '量到伺服器時間後，這麼久之內不再送 time（實際在這個數字的 2/3～4/3 之間隨機）；0＝每次都送 time（較準，但每輪都會送）；電腦時鐘被調過就改成 0', type: 'number', default: 60, min: 0, max: 240 },
   { key: 'stopBeforeSpawnSec', group: 'rounds', label: '重生前幾秒停打', hint: '0＝不停；到了就不再開打新的一隻，打到一半的打完，等重生後接著巡；沒開「等下一個重生」就直接停', type: 'number', default: 0, min: 0, max: 600 },
-  { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣。開＝每一輪重排目標順序（近的優先）、等長的路線隨機挑一條、重生前停打秒數與吃藥線、休息線隨機偏移一點、偶爾在到房間後與打完一隻後多停幾秒、每跑幾輪（下面設定，預設 6～12）回家休息跳過幾輪（預設 1～3）（要填下面的回程指令）；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
+  { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣。開＝每一輪重排目標順序（近的優先）、等長的路線隨機挑一條、重生前停打秒數與吃藥線、休息線隨機偏移一點、偶爾在到房間後與打完一隻後多停幾秒、每跑幾輪（下面設定，預設 6～12）回家休息跳過幾輪（預設 1～3）（要填「輪與重生」的「回到巡怪區的指令」）；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
   { key: 'typoPercent', group: 'human', show: s => s.humanize === 'on', row: 'slips', label: '打錯字機率 %', hint: '走路的方向、l、finger 每次送出時，這個機率先送一個打錯的指令（遊戲回「什麼﹖」），隔 1～3 秒再送正確的；戰鬥與補氣的指令不會打錯；0＝不打錯', type: 'number', default: 2, min: 0, max: 20 },
   { key: 'wrongWayPercent', group: 'human', show: s => s.humanize === 'on', row: 'slips', label: '走錯路機率 %', hint: '每走一步，這個機率故意走進旁邊不在路線上的房間再走回來（每輪最多 2 次，氣太低、最後一步、掃描時不會）；0＝不走錯', type: 'number', default: 1, min: 0, max: 20 },
   { key: 'restEveryMin', group: 'human', show: s => s.humanize === 'on', row: 'restEvery', label: '每跑幾輪休息一次 最少', hint: '掛機休息的間隔，每次在最少與最多之間隨機抽（整數輪）', type: 'number', default: 6, min: 1, max: 100 },
-  { key: 'restEveryMax', group: 'human', show: s => s.humanize === 'on', row: 'restEvery', label: '最多', hint: '要有填回程指令才會休息', type: 'number', default: 12, min: 1, max: 100 },
+  { key: 'restEveryMax', group: 'human', show: s => s.humanize === 'on', row: 'restEvery', label: '最多', hint: '要有填「輪與重生」的「回到巡怪區的指令」才會休息', type: 'number', default: 12, min: 1, max: 100 },
   { key: 'restSkipMin', group: 'human', show: s => s.humanize === 'on', row: 'restSkip', label: '一次休息跳過幾輪 最少', hint: '一輪＝一個 15 分鐘的重生，每次在最少與最多之間隨機抽（整數輪）', type: 'number', default: 1, min: 1, max: 20 },
   { key: 'restSkipMax', group: 'human', show: s => s.humanize === 'on', row: 'restSkip', label: '最多', hint: '休息大約是跳過的輪數 × 15 分鐘', type: 'number', default: 3, min: 1, max: 20 },
-  { key: 'restReturnCommand', group: 'human', show: s => s.humanize === 'on', advise: s => s.loopRounds === 'on' && !s.restReturnCommand, label: '休息後回到巡怪區的指令／巨集', hint: '掛機休息結束時從家走回巡怪區用，重生整點才送，可用 ; 與 @巨集 N；沒填就不會掛機休息（要開著「巡完一輪後等下一個重生」）', type: 'text', default: '' },
   { key: 'npcWhitelist', group: 'advanced', label: 'NPC 白名單', hint: '英文 ID，用、分隔', type: 'text', default: '' },
 ];
 // 精、神（目前值）與精氣神內傷（傷勢 %）的補充：比照吃藥，各自一組「低於 %」與指令（設定鍵是 key＋Below／Command），沒填就不看。
@@ -1313,7 +1316,8 @@ function create(deps) {
       poll();
     });
   }
-  async function sortOut(here, token) {
+  // then：巡完一輪的整理，賣完不送回程指令，交給 then（送待命指令）；不算負重整理（不設 sorted、loadDue）
+  async function sortOut(here, token, { then = null } = {}) {
     const settings = state.settings;
     const stage = name => { if (state === token) { state.phase = 'sort'; state.sortStage = name; deps.notify(); } };
     const fail = reason => { if (state === token) finish(reason, { alert: true }); };
@@ -1377,6 +1381,12 @@ function create(deps) {
         if (state !== token) return;
         await pause(lookMs - before);
         if (state !== token) return;
+      }
+      if (then) {
+        record('-', '整理', '巡完一輪的整理做完，不回程，接著送待命指令');
+        state.sortStage = null;
+        then();
+        return;
       }
       stage('back');
       ok = await runStep(sortReturn(settings), token);
@@ -1632,31 +1642,35 @@ function create(deps) {
     return percent >= returnQiLine() && !(state.settings.healMode === 'rest' && state.resting);
   };
   // 等到的那個重生：休息中就先走回巡怪區（再開始下一輪），否則直接開始下一輪
+  // 不在休息、但人不在巡怪地圖上（待命指令帶你離開，例如 ride 回城）：也先送「回到巡怪區的指令」走回去；沒填就停止並警報
+  const awayFromHunt = () => !deps.room()?.startsWith(`${state.area}/`);
   function startRound(after, offset) {
-    if (!state.rest) { beginRound(after, offset); return; }
+    if (!state.rest && !awayFromHunt()) { beginRound(after, offset); return; }
+    if (!state.rest && !state.baseSettings.restReturnCommand) { finish(`等完重生，人不在巡怪區（${state.area}；目前 ${deps.room() ?? '讀不到房間'}），沒填「回到巡怪區的指令」，已停止`, { alert: true }); return; }
     const token = state;
     returnFromRest(token, after, offset).catch(() => { if (state === token) finish('休息後走回巡怪區時出錯，已停止', { alert: true }); });
   }
-  // 休息結束的那個重生整點：等氣回到「回到 %」（在家補氣照常，vitals 每秒都在跑）→ 送回程指令 → 等到地圖房間回到巡怪區（巨集跑完）→ 一般的開始一輪。
+  // 休息結束（或待命時人離開了巡怪地圖）的那個重生整點：等氣回到「回到 %」（在家補氣照常，vitals 每秒都在跑）→ 送回程指令 → 等到地圖房間回到巡怪區（巨集跑完）→ 一般的開始一輪。
   // 氣一直沒回到、或回程後一直回不到巡怪區就停止並警報，不重送回程指令；每個 await 之後要確認這一次巡怪還在
   async function returnFromRest(token, after, offset) {
     state.waiting = null;
     state.phase = 'return';
     state.returnStage = 'qi';
+    const when = state.rest ? '休息結束後' : '等完重生後';
     for (let waited = 0; !qiBack(); waited += 1) {
-      if (waited >= RETURN_QI_WAIT_TICKS) { finish(`休息結束後氣一直沒回到 ${returnQiLine()}%，已停止（回程指令沒有送）`, { alert: true }); return; }
+      if (waited >= RETURN_QI_WAIT_TICKS) { finish(`${when}氣一直沒回到 ${returnQiLine()}%，已停止（回程指令沒有送）`, { alert: true }); return; }
       await sleepTick();
       if (state !== token) return;
     }
     state.returnStage = 'walk';
     const secs = RETURN_WALK_TICKS / TICKS_PER_SEC;
     const walkMs = await walkToArea(token, state.baseSettings.restReturnCommand, state.area, {
-      unsent: `休息結束後回程指令 ${secs} 秒內沒有送出（指令被擋住，或 @巨集 讀不到），已停止`,
-      missed: `休息後送出回程指令，${secs} 秒內沒有回到巡怪區（${state.area}），已停止`,
+      unsent: `${when}回到巡怪區的指令 ${secs} 秒內沒有送出（指令被擋住，或 @巨集 讀不到），已停止`,
+      missed: `${when}送出回到巡怪區的指令，${secs} 秒內沒有回到巡怪區（${state.area}），已停止`,
     });
     if (walkMs === null) return;
-    record('-', '休息', `回到巡怪區，回程花了 ${secText(walkMs)} 秒`);
-    state.restReturn = { skip: state.rest.skip, walkMs };
+    record('-', state.rest ? '休息' : '待命', `回到巡怪區，回程花了 ${secText(walkMs)} 秒`);
+    if (state.rest) state.restReturn = { skip: state.rest.skip, walkMs };
     Object.assign(state, { rest: null, sinceRest: 0, restAfter: null, returnStage: null }); // 下一次休息的輪數重新抽
     beginRound(after, offset);
   }
@@ -1758,12 +1772,26 @@ function create(deps) {
       .catch(() => { if (state === token) finish('換區時出錯，已停止', { alert: true }); });
   }
   const huntArea = () => { state.phase = 'plan'; deps.notify(); };
-  // 一輪結束後在原地送待命指令（是巨集的話等它跑完），數這一輪要不要休息，之後校準、等重生
-  function standbyAfterRound() {
-    if (state.settings.standbyCommand && !sendOrStop(state.settings.standbyCommand)) return;
-    if (countRoundForRest()) beginRest();
-    state.phase = 'standby';
-    deps.notify();
+  // 一輪結束（含重生前停打）：這一區有記可 ride 的格子就先走到最近的一格（retreat；人不在巡怪地圖上就原地），
+  // 「巡完一輪就整理」開著就從那裡去整理、賣完不回程，接著送待命指令（是巨集的話等它跑完）；
+  // countRest：跑完的一輪才數要不要掛機休息（重生前停打不算）。之後 waitTick 校準、等重生
+  function standbyAfterRound({ countRest = true } = {}) {
+    const token = state;
+    const standby = () => {
+      if (state !== token) return;
+      if (state.settings.standbyCommand && !sendOrStop(state.settings.standbyCommand)) return;
+      if (countRest && countRoundForRest()) beginRest();
+      state.phase = 'standby';
+      deps.notify();
+    };
+    const sortFirst = roundSorting(state.settings) && sortConfigured(state.settings);
+    const next = () => {
+      if (state !== token) return;
+      if (!sortFirst) { standby(); return; }
+      sortOut(deps.room(), token, { then: standby });
+    };
+    if (!state.graph.rooms[deps.room()]) { next(); return; }
+    retreat(sortFirst ? 'roundSort' : 'standby', token, next);
   }
 
   // 每個目標房間都處理過一次＝一輪（跨區時是整條路線的每一區）。沒開「等下一個重生」或這一輪什麼都沒處理（沒有走得到的目標）就停（第 2 輪以後警報）；
@@ -1804,11 +1832,7 @@ function create(deps) {
     if (state.settings.loopRounds !== 'on') { finish(`重生前 ${sec} 秒停打（${hhmm(spawn)} 重生），已停止`); return true; }
     console.log(`[catworld] 巡怪：重生前 ${sec} 秒停打，等 ${hhmm(spawn)} 的重生`);
     state.after = spawn - 1; // calibrate 用 nextSpawn(after) 決定等哪一個重生
-    const standby = () => {
-      if (state.settings.standbyCommand && !sendOrStop(state.settings.standbyCommand)) return;
-      state.phase = 'standby';
-      deps.notify();
-    };
+    const standby = () => standbyAfterRound({ countRest: false });
     // 跨區時停打後回到第一區等重生，下一輪從第一區開始
     if (state.chain && state.chain.index !== 0) nextArea(standby, { home: true });
     else standby();
@@ -1890,7 +1914,7 @@ function create(deps) {
   // 沒記格子或已經站在格子上直接做 then。
   // 讀格子要等，這段期間 state.retreatPending 擋住重複開始（休息的 standby 每個 tick 都會再進來）；沒藥、危險線可以在讀的期間或走的途中改掉 why 與 then（retreatHome）。
   // takeOver：人站著不動（整理、休息、等重生）或剛結束打架時馬上從 plan 開始走；正在走一步、看房間時不搶階段，等它回到 plan 再走
-  const RETREAT_TEXT = { sort: '整理', rest: '休息', medicine: '沒藥回家', danger: '危險線回家' };
+  const RETREAT_TEXT = { sort: '整理', rest: '休息', medicine: '沒藥回家', danger: '危險線回家', standby: '待命', roundSort: '巡完整理' };
   async function retreat(why, token, then, { takeOver = true } = {}) {
     const pending = { why, then };
     state.retreatPending = pending;
