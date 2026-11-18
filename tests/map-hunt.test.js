@@ -5782,6 +5782,62 @@ ui('fight: when the game answers 你想攻擊誰 the position is stale, so it lo
   }
 });
 
+ui('fight: kill answering 你想殺誰 is a stale position too, so it looks again at once and does not wait for the fight timeout', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...page.store.mapHuntSettings, killCommand: 'k', refuseKeyword: '不想和你打' };
+    const looks = { c: { lines: [OTHER_LINE, MOB_LINE] } };
+    const times = {};
+    const game = world(page, {
+      at: 'a', looks,
+      script: (command, { say: tell }) => {
+        (times[command] ??= []).push(Date.now());
+        if (command === 'fight 2') { tell('測試怪不想和你打。'); return true; }
+        if (command === 'k 2') { looks.c.lines = [MOB_LINE]; tell('你想殺誰？'); return true; }
+        return false;
+      },
+    });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    const at = game.log.indexOf('k 2');
+    assert.ok(at >= 0, game.log.join(','));
+    assert.deepEqual(game.log.slice(at, at + 3), ['k 2', 'l', 'fight 1'], game.log.join(','));
+    assert.ok(times['fight 1'][0] - times['k 2'][0] < 1500, 'did not wait for the fight timeout');
+    assert.match(await huntLog(page), /順位沒有東西/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('fight: finishing a knocked-out monster that was not picked sends the kill again when the first one never landed', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('d');
+    const OUT = '  ※腐屍(zombie) <昏迷不醒> [fight][kill]';
+    let kills = 0;
+    const game = world(page, { at: 'a', arrivals: { b: { lines: [ZOMBIE, ATTACK_LINE] } }, looks: { b: { lines: [ZOMBIE_FIGHTING] }, d: { lines: [MOB_LINE] } }, script: (command, { say, looks }) => {
+      if (command === 'kill 1' && game.at === 'b') {
+        kills += 1;
+        if (kills === 1) { looks.b.lines = [OUT]; say('腐屍一動也不動了。'); } // 打昏
+        else if (kills === 3) { looks.b.lines = []; say('腐屍死了。'); } // 第二次補刀才打到
+        else say('你的攻擊落了空。'); // 第一次補刀沒打到：怪還躺著（有回應，看門狗才不會停）
+        return true;
+      }
+      if (command.startsWith('fight ')) looks[game.at].lines = [];
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.equal(kills, 3, `kill sent again until the monster died: ${game.log.join(',')}`);
+    assert.equal(game.at, 'd');
+  } finally {
+    page.close();
+  }
+});
+
 ui('fight: 你想攻擊誰 three times in a row skips the room instead of looping', async () => {
   const page = await boot({ scale: SCALE });
   try {

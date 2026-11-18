@@ -47,7 +47,7 @@ const NO_TARGET = /你要對誰施展這個招式|只能對戰鬥中的對手使
 const ENGAGE = /你對著(\S+?)(?:說道|喝道)/;
 const NOT_ALIVE = /並不是活物/; // 順位數到屍體（使用者貼的真實輸出「看清楚一點，扶桑浪人的屍體並不是活物。」）
 const LOOT_REFUSED = /你還在戰鬥中[!！]?只能一次拿一樣/; // 還在打時撿屍被拒（使用者貼的真實輸出）
-const NO_SUCH_TARGET = /你想攻擊誰/; // fight／kill 的順位上沒有東西（使用者貼的真實輸出）：順位已經過期 // 開打時遊戲印的句子，名字是實際打到的那一隻
+const NO_SUCH_TARGET = /你想(?:攻擊|殺)誰/; // fight 回「你想攻擊誰？」、kill 回「你想殺誰？」：順位上沒有東西（使用者貼的真實輸出），順位已經過期 // 開打時遊戲印的句子，名字是實際打到的那一隻
 const LEAVE = /往\S{1,6}離開/; // 有東西離開房間，順位會變
 const ATTACKED = /看起來(\S+?)想殺死你/; // 怪主動攻擊（使用者貼的真實輸出：「看起來腐屍想殺死你！」）；自己開打、補刀時對方也會回這句
 const ATTACKED_ALL = new RegExp(ATTACKED.source, 'g');
@@ -974,7 +974,8 @@ function create(deps) {
       fight.waited = 0;
       const info = Parse.parseLook(text);
       if (!info.exits.length) { if ((fight.silentChecks += 1) >= MAX_STUCK) endFight(fight); return; }
-      const mine = info.monsters.filter(mob => token.mobs.includes(mob.full));
+      // 這場打的那一隻也算（沒勾選、但主動攻擊我們的怪：反擊、補刀的對象）
+      const mine = info.monsters.filter(mob => token.mobs.includes(mob.full) || mob.full === fight.mob.full);
       if (mine.some(mob => mob.state === '戰鬥中')) return;
       // 重送時用這次 l 看到的位置（前面的怪倒下後，第幾個會變）。補刀時找的是還昏迷著的同一種怪：補刀沒打到（例如順位數到屍體）
       // 怪還躺著，不能當成打死了
