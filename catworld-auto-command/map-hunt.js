@@ -122,7 +122,8 @@ const FIELDS = [
   { key: 'overloadAction', group: 'sort', show: s => s.loadMaxPercent > 0, label: '負重超標時', hint: '整理＝照下面的設定去整理再回來；停止巡怪＝直接停止並警報，不整理（例如在謎宮裡走不了固定路線，停下來自己騎車去整理）', type: 'select', options: [['sort', '整理'], ['stop', '停止巡怪']], default: 'sort' },
   { key: 'tripCommand', group: 'sort', show: sorting, label: '前往整理處的指令／巨集', hint: '路線、鑑定全寫在這裡，最後停在能 sell all 的地方；不要自己寫 sell all。前往與回程至少填一個才走自動整理；可用 ; 與 @等待。這一區有記可 ride 的格子時，會先走到最近的一格才送', type: 'text', default: '', required: s => roundSorting(s) && !s.tripCommand },
   { key: 'sortKeep', group: 'sort', show: sorting, label: '鑑定完留不留好裝備', hint: '留＝好的 secure 或 give 給小號再賣其餘；全賣＝不看背包直接 sell all，只有你自己 secure 過的不會賣', type: 'select', options: [['keep', '留好裝備'], ['none', '全賣，不留']], default: 'keep' },
-  { key: 'altId', group: 'sort', show: s => sorting(s) && s.sortKeep !== 'none', label: '小號的英文 ID', hint: '好東西 give 給它；不填就只用 secure 標記留在身上', type: 'text', default: '' },
+  { key: 'giveItems', group: 'sort', show: sorting, label: '整理時一律給小號的物品', hint: '填物品英文 ID，例如 unknown herb、unknown object（用、或逗號分開）；每件給一次，背包寫幾株／幾個就給幾次；沒填小號 ID 就 secure 留在身上；全賣模式也會先給', type: 'text', default: '' },
+  { key: 'altId', group: 'sort', show: s => sorting(s) && (s.sortKeep !== 'none' || giveList(s).length > 0), label: '小號的英文 ID', hint: '好東西 give 給它；不填就只用 secure 標記留在身上', type: 'text', default: '' },
   { key: 'sortLookMinSec', group: 'sort', show: sorting, row: 'sortLook', label: '賣完後停留（秒）最短', hint: 'sell all 之後不馬上回去，先停一會、中間送一次 i 看看身上的裝備，像人在整理；0～0＝賣完馬上回去', type: 'number', default: 20, min: 0, max: 300 },
   { key: 'sortLookMaxSec', group: 'sort', show: sorting, row: 'sortLook', label: '最長（秒）', hint: '每次在最短與最長之間隨機', type: 'number', default: 60, min: 0, max: 300 },
   { key: 'returnCommand', group: 'sort', show: sorting, label: '回到巡怪地圖的指令／巨集', hint: '回來後要在原本這一區才會繼續', type: 'text', default: '' },
@@ -171,6 +172,20 @@ const missingFields = settings => FIELDS.filter(field => field.required?.(settin
 
 // 儲存的設定可能缺欄位或被改壞：每個欄位都檢查，不合法用預設
 const FIGHT_COMMAND_MAX = 20; // 開打用的指令最多幾個字（別名通常很短）
+// 「整理時一律給小號的物品」：用、或逗號分開，只留能放進指令的 ID，不分大小寫去重，最多 GIVE_ITEMS_MAX 個
+const GIVE_ITEMS_MAX = 10;
+const GIVE_ID_MAX = 30;
+function giveList(settings) {
+  const seen = new Set();
+  const out = [];
+  String(settings?.giveItems ?? '').split(/[、,，]/).map(part => part.trim()).forEach(id => {
+    if (!id || id.length > GIVE_ID_MAX || !SAFE_ID.test(id) || seen.has(id.toLowerCase()) || out.length >= GIVE_ITEMS_MAX) return;
+    seen.add(id.toLowerCase());
+    out.push(id);
+  });
+  return out;
+}
+
 function normalizeSettings(rawSettings) {
   // 舊版的巡怪間隔單位是秒（commandGapMinSec／commandGapMaxSec），沒有新欄位時換算成毫秒
   const raw = rawSettings && typeof rawSettings === 'object' ? { ...rawSettings } : rawSettings;
@@ -195,6 +210,7 @@ function normalizeSettings(rawSettings) {
   if (out.commandGapMaxMs < out.commandGapMinMs) out.commandGapMaxMs = out.commandGapMinMs;
   if (out.reactMaxMs < out.reactMinMs) out.reactMaxMs = out.reactMinMs;
   if (out.sortLookMaxSec < out.sortLookMinSec) out.sortLookMaxSec = out.sortLookMinSec;
+  out.giveItems = giveList(out).join('、');
   out.loadCheckEveryMin = Math.round(out.loadCheckEveryMin);
   out.loadCheckEveryMax = Math.max(Math.round(out.loadCheckEveryMax), out.loadCheckEveryMin);
   out.restEveryMin = Math.round(out.restEveryMin);
@@ -1356,9 +1372,16 @@ function create(deps) {
       if (ok === null || state !== token) return;
       // 全賣模式：不看背包、不標記、不轉給小號，鑑定完直接 sell all（已手動標記的仍不會賣）
       let keep = [];
+      const giveIds = giveList(settings);
+      let items = [];
+      if (settings.sortKeep === 'none' && giveIds.length) {
+        stage('inventory');
+        items = Parse.parseInventory(await deps.ask('i', 'inventory'));
+        if (state !== token) return;
+      }
       if (settings.sortKeep !== 'none') {
         stage('inventory');
-        const items = Parse.parseInventory(await deps.ask('i', 'inventory'));
+        items = Parse.parseInventory(await deps.ask('i', 'inventory'));
         if (state !== token) return;
         if (!items.length) { fail('讀不到背包（i 的輸出沒有物品），已停止，沒有賣東西'); return; }
         const picked = await deps.keepers(captured);
@@ -1379,6 +1402,19 @@ function create(deps) {
         // 送了哪個 ref、遊戲回什麼：物品常有好幾個 ID、i 只顯示第一個，同一個 ID 可能對到別件
         record('-', '整理', `${command}（${item.name}）→ ${reply.trim().split('\n')[0].slice(0, 40) || '沒有回應'}`);
         if (!SORT_REPLY[kind].test(reply)) { fail(`${kind === 'give' ? '轉給小號' : '標記'} ${item.name} 沒成功（遊戲回：${reply.trim().slice(0, 40) || '沒有回應'}），已停止，沒有賣東西`); return; }
+      }
+      // 一律給小號的物品：沒標記、沒穿著、ID 對得上的，有小號就一件給一次（遊戲的 give 一次一件，每次都送單純的 ID），沒小號就逐行 secure
+      for (const id of giveIds) {
+        const lines = items.filter(item => !item.marked && !item.worn && item.id.toLowerCase() === id.toLowerCase());
+        const sends = settings.altId
+          ? Array.from({ length: lines.reduce((sum, item) => sum + Parse.quantityOf(item.name), 0) }, () => ({ kind: 'give', command: `give ${id} to ${settings.altId}`, name: id }))
+          : lines.map(item => ({ kind: 'secure', command: `secure ${item.ref}`, name: item.name }));
+        for (const send of sends) {
+          const reply = await deps.ask(send.command, send.kind);
+          if (state !== token) return;
+          record('-', '整理', `${send.command}（一律給小號：${send.name}）→ ${reply.trim().split('\n')[0].slice(0, 40) || '沒有回應'}`);
+          if (!SORT_REPLY[send.kind].test(reply)) { fail(`${send.kind === 'give' ? '轉給小號' : '標記'} ${send.name} 沒成功（遊戲回：${reply.trim().slice(0, 40) || '沒有回應'}），已停止，沒有賣東西`); return; }
+        }
       }
       stage('sell');
       await deps.ask('sell all', 'sell');

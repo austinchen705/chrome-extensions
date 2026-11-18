@@ -127,6 +127,24 @@ function parseInventory(text) {
   return items;
 }
 
+// 背包物品名稱開頭的中文數量：「二株不知名藥草」＝2、「十二個…」＝12、「兩…」＝2、沒有數詞或看不懂＝1
+const NUMERALS = { 零: 0, 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+function quantityOf(name) {
+  const match = /^([零一二三四五六七八九十兩]+)/.exec(String(name ?? '').normalize('NFKC'));
+  if (!match) return 1;
+  const text = match[1];
+  const ten = text.indexOf('十');
+  let value;
+  if (ten === -1) value = text.length === 1 ? NUMERALS[text] : NaN;
+  else if (text.indexOf('十', ten + 1) !== -1 || text.length > 3) value = NaN;
+  else {
+    const tens = ten === 0 ? 1 : NUMERALS[text.slice(0, ten)];
+    const ones = ten === text.length - 1 ? 0 : NUMERALS[text.slice(ten + 1)];
+    value = tens * 10 + ones;
+  }
+  return Number.isInteger(value) && value >= 1 ? value : 1;
+}
+
 // alias：遊戲列出的別名，一行一個「名稱   = 展開內容」（$1、$2 是參數位置）。標題（你目前設定的 alias 有：）、
 // 分頁提示（== 未完繼續 58% == …，名稱不能以 = 開頭）、指令回聲與空行都對不上，不會被當成別名。回傳 Map（名稱小寫 → 展開內容）
 const ALIAS_LINE = /^\s*([^\s=]+)\s+=\s?(.*?)\s*$/;
@@ -177,5 +195,5 @@ function suggestAliases(aliases, verb) {
   return items.sort((a, b) => (a.rank === b.rank ? 0 : a.rank === 'best' ? -1 : 1) || a.name.length - b.name.length || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
-globalThis.CatworldHuntParse = { parseTime, parseFinger, parseLook, parseLoad, parseInventory, parseAliases, judgeAlias, suggestAliases };
+globalThis.CatworldHuntParse = { parseTime, parseFinger, parseLook, parseLoad, parseInventory, quantityOf, parseAliases, judgeAlias, suggestAliases };
 })();

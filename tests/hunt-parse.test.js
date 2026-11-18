@@ -251,3 +251,9 @@ test('suggest: semicolons, *, a misplaced $1, extra words and other verbs are no
   assert.deepEqual(P.suggestAliases(aliases, 'fight').map(item => item.name + ':' + item.rank), ['xyz:best', 'long:best', 'zz:ok', 'aaaa:ok', 'bbbb:ok']);
   assert.deepEqual(P.suggestAliases(aliases, 'kill').map(item => item.name), ['eee']);
 });
+
+test('quantityOf reads the Chinese numeral in front of an item name, 1 when there is none or it cannot be read', () => {
+  const expected = { 二株不知名藥草: 2, 三個石頭: 3, 兩把刀: 2, 十二個蛋: 12, 十個蛋: 10, 二十個蛋: 20, 二十五個蛋: 25, 一瓶普洱茶: 1, 不知名物品: 1, 十二十: 1, 二三個蛋: 1, '': 1 };
+  Object.entries(expected).forEach(([name, n]) => assert.equal(P.quantityOf(name), n, name));
+  assert.equal(P.quantityOf(undefined), 1);
+});

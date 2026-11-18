@@ -2908,7 +2908,7 @@ const sortPage = async (settings = {}) => {
 // 假背包與商店：i 列出背包；identify 印鑑定區塊；secure／give 回成功字樣（記下對象）；sell all 之後負重降到 20
 const sortScript = (page, state) => (command, { game }) => {
   if (command === 'gc') state.load = state.afterFight ?? state.load;
-  if (command === 'i') { say(page, `你身上帶著下列這些東西( 載重 ${state.load}% ):\n${bagLines.join('\n')}`); return true; }
+  if (command === 'i') { say(page, `你身上帶著下列這些東西( 載重 ${state.load}% ):\n${(state.bag ?? bagLines).join('\n')}`); return true; }
   if (command === 'identify') { say(page, state.block ?? blockOf(ARMOR)); return true; }
   if (command.startsWith('secure ')) { state.secured.push(command.slice(7)); say(page, '標記完成。'); return true; }
   if (command.startsWith('give ')) { state.given.push(command); say(page, state.giveReply ?? '你給某人一件黑羽長風鎧。'); return true; }
@@ -2996,6 +2996,51 @@ ui('sort: sell-everything mode skips the inventory and marking and sells right a
     assert.deepEqual(state.secured, []);
     assert.deepEqual(state.given, []);
     assert.equal(alerts(page).length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+const herbBag = [...bagLines, '    二株不知名藥草(unknown herb)', '    不知名物品(unknown object)', '  ˇ三株不知名藥草(unknown herb 3)'];
+ui('sort: items to always give to the alt go one per unit before selling, in keep mode', async () => {
+  const page = await sortPage({ altId: 'mukoda', giveItems: 'Unknown Herb、unknown object' });
+  try {
+    const state = sortState({ bag: herbBag });
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(state.given, ['give black armor to mukoda', 'give Unknown Herb to mukoda', 'give Unknown Herb to mukoda', 'give unknown object to mukoda']);
+    assert.ok(game.log.lastIndexOf('give unknown object to mukoda') < game.log.indexOf('sell all'), 'given before selling');
+  } finally {
+    page.close();
+  }
+});
+
+ui('sort: sell-everything mode also gives the listed items first, and reads the inventory only for that', async () => {
+  const page = await sortPage({ sortKeep: 'none', altId: 'mukoda', giveItems: 'unknown herb、unknown object' });
+  try {
+    const state = sortState({ bag: herbBag });
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'gc', 'i', 'go', 'identify', 'i', 'give unknown herb to mukoda', 'give unknown herb to mukoda', 'give unknown object to mukoda', 'sell all', 'back', 'i']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('sort: without an alt ID the listed items are secured by line', async () => {
+  const page = await sortPage({ sortKeep: 'none', giveItems: 'unknown herb' });
+  try {
+    const state = sortState({ bag: herbBag });
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(state.secured, ['unknown herb']);
+    assert.deepEqual(state.given, []);
   } finally {
     page.close();
   }

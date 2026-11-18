@@ -182,6 +182,18 @@ ui('the return-to-the-hunting-area command is in the round settings, shows while
   }
 });
 
+ui('the alt ID field stays visible in sell-everything mode when always-give items are filled', async () => {
+  const { dom, doc, store } = await boot({ mapHuntSettings: { loadMaxPercent: 90, sortKeep: 'none' } });
+  try {
+    assert.equal(cellOf(doc, 'altId').hidden, true, 'hidden in sell-everything mode with no items');
+    change(dom, field(doc, 'giveItems'), 'unknown herb、unknown object');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.giveItems === 'unknown herb、unknown object'));
+    assert.ok(await waitFor(() => cellOf(doc, 'altId').hidden === false), 'shown once items are filled');
+  } finally {
+    dom.window.close();
+  }
+});
+
 ui('sort after every round shows with or without waiting for the next respawn, shows the sort fields even with the load check off, and needs the trip command', async () => {
   const { dom, doc, store } = await boot({ mapHuntSettings: { loadMaxPercent: 0 } });
   try {
