@@ -182,7 +182,7 @@ ui('the return-to-the-hunting-area command is in the round settings, shows while
   }
 });
 
-ui('sort after every round shows while waiting for the next respawn, shows the sort fields even with the load check off, and needs the trip command', async () => {
+ui('sort after every round shows with or without waiting for the next respawn, shows the sort fields even with the load check off, and needs the trip command', async () => {
   const { dom, doc, store } = await boot({ mapHuntSettings: { loadMaxPercent: 0 } });
   try {
     const cell = cellOf(doc, 'sortAfterRound');
@@ -196,7 +196,11 @@ ui('sort after every round shows while waiting for the next respawn, shows the s
     change(dom, field(doc, 'tripCommand'), 'go shop');
     assert.ok(await waitFor(() => !cellOf(doc, 'tripCommand').classList.contains('hmissing')));
     change(dom, field(doc, 'loopRounds'), 'off');
-    assert.ok(await waitFor(() => cell.hidden === true), 'no round end without waiting for the respawn');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.loopRounds === 'off'));
+    assert.equal(cell.hidden, false, 'still shown: with no waiting for the respawn it sorts and stops');
+    assert.equal(cellOf(doc, 'tripCommand').hidden, false);
+    change(dom, field(doc, 'tripCommand'), '');
+    assert.ok(await waitFor(() => cellOf(doc, 'tripCommand').classList.contains('hmissing')), 'the trip command is still required');
   } finally {
     dom.window.close();
   }

@@ -1909,6 +1909,34 @@ ui('round end: with sort after every round on, it sorts from the ride room, skip
   }
 });
 
+ui('round end: without waiting for the respawn, sort after every round walks to the ride room, sorts without the return or standby command, then stops without an alert', async () => {
+  const { page, game } = await standbyRun({ settings: { loopRounds: 'off', sortAfterRound: 'on', tripCommand: 'go', returnCommand: 'goback', sortKeep: 'none' } });
+  try {
+    assert.ok(await waitFor(() => /巡完、整理完，已停止/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log.slice(game.log.indexOf('l') + 1), ['w', 'w', 'go', 'sell all'], 'ride room, trip, sell, nothing after');
+    assert.equal(game.log.includes('goback'), false, 'the sort return command is not sent');
+    assert.equal(game.log.includes('ride'), false, 'the standby command is not sent');
+    assert.equal(alerts(page).length, 0, 'a normal end, no alert');
+    assert.equal(await hunting(page), false);
+    assert.match(await huntLog(page), /巡完一輪的整理做完/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('round end: without waiting for the respawn and without sort after every round, it just stops', async () => {
+  const { page, game } = await standbyRun({ settings: { loopRounds: 'off', sortAfterRound: 'off', tripCommand: 'go' } });
+  try {
+    assert.ok(await waitFor(() => /這一輪巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.equal(game.log.includes('go'), false);
+    assert.equal(game.log.includes('sell all'), false);
+    assert.equal(game.log.includes('ride'), false);
+    assert.equal(await hunting(page), false);
+  } finally {
+    page.close();
+  }
+});
+
 ui('round end: without a ride room recorded the standby command goes where it stands, as before', async () => {
   const { page, game } = await standbyRun({ rides: {} });
   try {

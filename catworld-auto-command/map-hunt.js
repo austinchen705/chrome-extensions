@@ -73,8 +73,8 @@ const NO_MEDICINE_WINDOW_TICKS = 10 * TICKS_PER_SEC; // 吃藥指令真的送出
 const ON_OFF = [['on', '開'], ['off', '關']];
 const full = s => s.fightMode === 'full';
 const eatMode = s => s.healMode === 'eat';
-// 巡完一輪就整理：要開著「巡完一輪後等下一個重生」才有一輪的結束
-const roundSorting = s => s.loopRounds === 'on' && s.sortAfterRound === 'on';
+// 巡完一輪就整理（沒開「等下一個重生」時整理完就停止）
+const roundSorting = s => s.sortAfterRound === 'on';
 const sorting = s => s.loadMaxPercent > 0 || roundSorting(s);
 const FIELDS = [
   { key: 'commandGapMinMs', group: 'move', row: 'gap', label: '指令間隔最短（毫秒）', hint: '走路、看房間、打怪、補氣都算；和「指令間隔」取較大的，想更快兩個都要調小', type: 'number', default: 1000, min: 0, max: 3000 },
@@ -118,7 +118,7 @@ const FIELDS = [
   { key: 'loadCheckEveryMin', group: 'sort', show: s => s.loadMaxPercent > 0, row: 'loadEvery', label: '每打完幾間看一次負重：最少', hint: '只算有打倒怪的房間；每次在最少與最多之間隨機；1～1＝每間都看', type: 'number', default: 3, min: 1, max: 20 },
   { key: 'loadCheckEveryMax', group: 'sort', show: s => s.loadMaxPercent > 0, row: 'loadEvery', label: '最多', type: 'number', default: 6, min: 1, max: 20 },
   { key: 'loadAlwaysPercent', group: 'sort', show: s => s.loadMaxPercent > 0, label: '負重到 % 以上就每間都看', hint: '上一次看到的負重到這條線就改回每間都看，免得超重撿不了屍體；0＝不用', type: 'number', default: 80, min: 0, max: 100 },
-  { key: 'sortAfterRound', group: 'sort', show: s => s.loopRounds === 'on', label: '巡完一輪就整理', hint: '開＝每巡完一輪（跨區是整條路線）都去整理，不管負重多少：先走到可 ride 的格子，送前往整理處的指令、鑑定、標記、賣完，不送回程指令，直接送待命指令等重生；要開著「巡完一輪後等下一個重生」', type: 'select', options: ON_OFF, default: 'off' },
+  { key: 'sortAfterRound', group: 'sort', label: '巡完一輪就整理', hint: '開＝每巡完一輪（跨區是整條路線）都去整理，不管負重多少：先走到可 ride 的格子，送前往整理處的指令、鑑定、標記、賣完，不送回程指令，直接送待命指令等重生。沒開「巡完一輪後等下一個重生」時，整理完就停止（這一輪什麼都沒處理就不整理）', type: 'select', options: ON_OFF, default: 'off' },
   { key: 'overloadAction', group: 'sort', show: s => s.loadMaxPercent > 0, label: '負重超標時', hint: '整理＝照下面的設定去整理再回來；停止巡怪＝直接停止並警報，不整理（例如在謎宮裡走不了固定路線，停下來自己騎車去整理）', type: 'select', options: [['sort', '整理'], ['stop', '停止巡怪']], default: 'sort' },
   { key: 'tripCommand', group: 'sort', show: sorting, label: '前往整理處的指令／巨集', hint: '路線、鑑定全寫在這裡，最後停在能 sell all 的地方；不要自己寫 sell all。前往與回程至少填一個才走自動整理；可用 ; 與 @等待。這一區有記可 ride 的格子時，會先走到最近的一格才送', type: 'text', default: '', required: s => roundSorting(s) && !s.tripCommand },
   { key: 'sortKeep', group: 'sort', show: sorting, label: '鑑定完留不留好裝備', hint: '留＝好的 secure 或 give 給小號再賣其餘；全賣＝不看背包直接 sell all，只有你自己 secure 過的不會賣', type: 'select', options: [['keep', '留好裝備'], ['none', '全賣，不留']], default: 'keep' },
@@ -1398,7 +1398,7 @@ function create(deps) {
         if (state !== token) return;
       }
       if (then) {
-        record('-', '整理', '巡完一輪的整理做完，不回程，接著送待命指令');
+        record('-', '整理', '巡完一輪的整理做完，不回程');
         state.sortStage = null;
         then();
         return;
@@ -1809,6 +1809,15 @@ function create(deps) {
     retreat(sortFirst ? 'roundSort' : 'standby', token, next);
   }
 
+  // 沒開「等下一個重生」、這一輪處理過房間，而且「巡完一輪就整理」開著並有設定整理：走到可 ride 的格子（沒記就原地）整理，賣完不回程，直接停止（正常結束，不警報）
+  function sortThenStop() {
+    const token = state;
+    const done = () => { if (state === token) finish('巡完、整理完，已停止'); };
+    const next = () => { if (state === token) sortOut(deps.room(), token, { then: done }); };
+    if (!state.graph.rooms[deps.room()]) { next(); return; }
+    retreat('roundSort', token, next);
+  }
+
   // 每個目標房間都處理過一次＝一輪（跨區時是整條路線的每一區）。沒開「等下一個重生」或這一輪什麼都沒處理（沒有走得到的目標）就停（第 2 輪以後警報）；
   // 否則送待命指令（是巨集的話等它跑完），用 time 校準，等到下一個重生再開始下一輪
   function endRound() {
@@ -1829,6 +1838,7 @@ function create(deps) {
     if (state.chain && state.chain.index < state.chain.areas.length - 1) { nextArea(huntArea); return; }
     if (state.handled) logRound();
     const message = state.handled ? `這一輪巡完了（到過 ${state.visited.length} 間）` : '沒有走得到的目標房間了';
+    if (state.settings.loopRounds !== 'on' && state.handled && roundSorting(state.settings) && sortConfigured(state.settings)) { sortThenStop(); return; }
     // 跨區時從第一區以外開始的第一輪只巡了半條路線，什麼都沒處理也回第一區、等重生從頭巡
     if (state.settings.loopRounds !== 'on' || (!state.handled && !state.chain?.partial)) { finish(message, { alert: !state.handled && state.round > 1 }); return; }
     if (state.chain) { nextArea(standbyAfterRound); return; }
