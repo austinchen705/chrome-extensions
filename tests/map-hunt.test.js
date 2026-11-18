@@ -4441,6 +4441,64 @@ ui('counter: when several monsters attack in a target room, gc waits until l sho
   }
 });
 
+// 使用者貼的礦坑甬道：三隻會主動攻擊的同名怪，打死第一隻後屍體排在最前面，「fight 1」「kill 1」都打到屍體
+const CORPSE_LINE = '  測試怪的屍體(corpse) [sac]';
+const NOT_ALIVE_LINE = '看清楚一點，測試怪的屍體並不是活物。';
+
+ui('corpse: when the position hits a corpse, the hunt counts the corpses from then on, finishes the knocked-out one and loots every corpse', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const FIGHTING = '  ※測試怪(test mob) <戰鬥中> [fight][kill]';
+    const OUT = '  ※測試怪(test mob) <昏迷不醒> [fight][kill]';
+    const ATTACK = '看起來測試怪想殺死你！';
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [MOB_LINE, MOB_LINE, MOB_LINE, ATTACK, ATTACK, ATTACK] } }, looks: { c: { lines: [] } }, script: (command, { say, looks }) => {
+      const lines = looks.c.lines;
+      const at = Number(command.split(' ')[1]); // 遊戲連屍體一起數
+      if (/^(fight|kill) \d+$/.test(command) && game.at === 'c') {
+        if (!lines.length) { looks.c.lines = [CORPSE_LINE, FIGHTING, OUT]; say('測試怪死了。'); return true; }
+        if (lines[at - 1] === CORPSE_LINE) { say(NOT_ALIVE_LINE); return true; }
+        lines[at - 1] = CORPSE_LINE;
+        say('測試怪死了。');
+        return true;
+      }
+      return command === 'gc';
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.deepEqual(game.log.slice(2), [FIGHT, 'l', FIGHT, 'l', 'fight 2', 'l', 'gc', 'gc', 'kill 1', 'l', 'kill 3', 'gc'],
+      'fight 1 on the corpse → looks again and fights 2; kill 1 on the corpse → kill 3; three corpses, three gc');
+    const { text } = await page.ask({ type: 'HUNT_LOG' });
+    assert.match(text, /順位數到屍體 fight 之後連屍體一起數/);
+    assert.match(text, /順位數到屍體 kill 之後連屍體一起數/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('corpse: a gc refused because a fight is still on is sent again after the room is looked at again', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const ATTACK = '看起來測試怪想殺死你！';
+    let gcs = 0;
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [MOB_LINE, ATTACK, ATTACK] } }, looks: { c: { lines: [] } }, script: (command, { say, looks }) => {
+      if (command === FIGHT) { looks.c.lines = [CORPSE_LINE]; say('測試怪死了。'); return true; }
+      if (command === 'gc') { gcs += 1; say(gcs === 1 ? '你還在戰鬥中！只能一次拿一樣。' : '你從屍體上拿到東西。'); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.deepEqual(game.log.slice(2), [FIGHT, 'l', 'gc', 'l', 'gc']);
+    const { text } = await page.ask({ type: 'HUNT_LOG' });
+    assert.match(text, /撿屍被拒 1 次/);
+  } finally {
+    page.close();
+  }
+});
+
 ui('counter: with the setting off, an attack on the way is not answered', async () => {
   const page = await boot({ scale: SCALE });
   try {

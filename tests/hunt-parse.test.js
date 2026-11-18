@@ -55,12 +55,22 @@ const monstersOf = text => JSON.parse(JSON.stringify(P.parseLook(text).monsters)
 test('look monsters: one entry per ※ line, same-name monsters are not merged', () => {
   const three = monstersOf(sample('look-garden'));
   assert.equal(three.length, 3);
-  three.forEach((mob, i) => assert.deepEqual(mob, { name: '峨嵋派 第五代弟子', id: 'emei pupil', full: '峨嵋派 第五代弟子(emei pupil)', state: '', ref: ['emei pupil', 'emei pupil 2', 'emei pupil 3'][i], position: i + 1 }));
+  three.forEach((mob, i) => assert.deepEqual(mob, { name: '峨嵋派 第五代弟子', id: 'emei pupil', full: '峨嵋派 第五代弟子(emei pupil)', state: '', ref: ['emei pupil', 'emei pupil 2', 'emei pupil 3'][i], position: i + 1, slot: i + 1 }));
 });
 
 test('look monsters: the state tag is kept, corpses and the prompt are not monsters', () => {
-  assert.deepEqual(monstersOf(sample('look-treetop-fighting')), [{ name: '炎蛛', id: 'fire spider', full: '炎蛛(fire spider)', state: '戰鬥中', ref: 'fire spider', position: 1 }]);
-  assert.deepEqual(monstersOf(sample('look-treetop-ko')), [{ name: '炎蛛', id: 'fire spider', full: '炎蛛(fire spider)', state: '昏迷不醒', ref: 'fire spider', position: 1 }]);
+  // 兩具屍體排在怪前面：只數怪是第 1 個，連屍體一起數是第 3 個
+  assert.deepEqual(monstersOf(sample('look-treetop-fighting')), [{ name: '炎蛛', id: 'fire spider', full: '炎蛛(fire spider)', state: '戰鬥中', ref: 'fire spider', position: 1, slot: 3 }]);
+  assert.deepEqual(monstersOf(sample('look-treetop-ko')), [{ name: '炎蛛', id: 'fire spider', full: '炎蛛(fire spider)', state: '昏迷不醒', ref: 'fire spider', position: 1, slot: 3 }]);
+  assert.equal(P.parseLook(sample('look-treetop-ko')).corpses, 2);
+  assert.equal(P.parseLook(sample('look-garden')).corpses, 0);
+});
+
+test('look monsters: slot counts every thing in the room, and combat lines with brackets are not things', () => {
+  // 使用者貼的礦坑甬道：屍體在前，後面接著戰鬥訊息
+  const text = ['    這裡唯一的出口是 southeast。', '  扶桑浪人的屍體(corpse) [sac]', '  紙皮水袋(waterskin)', '  ※「牙修羅」扶桑浪人(bakayaro) <戰鬥中> [fight][kill]', '  ※「牙修羅」扶桑浪人(bakayaro) <昏迷不醒> [fight][kill]', '> f 1', '( 扶桑浪人看起來已經力不從心了。 ) [31.0%]'].join('\n');
+  assert.deepEqual(monstersOf(text).map(mob => [mob.position, mob.slot]), [[1, 3], [2, 4]]);
+  assert.equal(P.parseLook(text).corpses, 1);
 });
 
 test('look monsters: ids shared by several monsters get their place in the room as ref (fight guard would hit the first one)', () => {

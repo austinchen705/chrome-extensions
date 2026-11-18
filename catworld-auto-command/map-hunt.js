@@ -40,10 +40,13 @@ const ARRIVAL_QUIET_TICKS = 3; // 目標房間：出口行之後要這麼多個 
 const ARRIVAL_WAIT_TICKS = PASS_WAIT_TICKS + 6; // 已經看到出口行時，等它印完（安靜）的上限，到了還沒印完就退回送 l；連出口行都沒有時只等 PASS_WAIT_TICKS
 const MOVE_TEXT_PHASES = ['move', 'pass', 'look']; // 這幾個階段把遊戲的輸出接進 moveText
 const TICKS_PER_SEC = 1000 / TICK_MS;
+const LOOT_REPLY_TICKS = 3; // 好幾隻打你的房間，撿屍送出後再等這麼久看會不會被拒（「你還在戰鬥中」）才離開
 const CORPSE_WAIT_TICKS = 5 * TICKS_PER_SEC; // 打完最後一隻、不重數就離開時，最多等撿屍指令送完這麼久（巡怪結束會丟掉還沒送出的指令）
 const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
 const NO_TARGET = /你要對誰施展這個招式|只能對戰鬥中的對手使用/; // 特攻沒有對象：這一場不再送
 const ENGAGE = /你對著(\S+?)(?:說道|喝道)/;
+const NOT_ALIVE = /並不是活物/; // 順位數到屍體（使用者貼的真實輸出「看清楚一點，扶桑浪人的屍體並不是活物。」）
+const LOOT_REFUSED = /你還在戰鬥中[!！]?只能一次拿一樣/; // 還在打時撿屍被拒（使用者貼的真實輸出）
 const NO_SUCH_TARGET = /你想攻擊誰/; // fight／kill 的順位上沒有東西（使用者貼的真實輸出）：順位已經過期 // 開打時遊戲印的句子，名字是實際打到的那一隻
 const LEAVE = /往\S{1,6}離開/; // 有東西離開房間，順位會變
 const ATTACKED = /看起來(\S+?)想殺死你/; // 怪主動攻擊（使用者貼的真實輸出：「看起來腐屍想殺死你！」）；自己開打、補刀時對方也會回這句
@@ -562,7 +565,7 @@ function create(deps) {
     const target = mine.find(mob => SAFE_ID.test(mob.id));
     if (!target) { leave('怪的 ID 不能用'); return; }
     if (spawnPause()) { trace('重生前停打'); return; }
-    trace(`送 ${fightCmd()} ${targetOf(target)}`);
+    trace(`送 ${aimText(fightCmd(), target)}`);
     const token = state;
     const send = () => {
       a.reacting = false;
@@ -571,7 +574,7 @@ function create(deps) {
       a.target = target;
       a.dead = false;
       a.tail = '';
-      if (!deps.send(`${fightCmd()} ${targetOf(target)}`)) finish('指令送不出去，已停止', { alert: true });
+      if (!deps.send(aim(fightCmd(), target))) finish('指令送不出去，已停止', { alert: true });
     };
     const ms = reactMs();
     if (ms > 0) { a.reacting = true; setTimeout(send, ms); } else send();
@@ -651,6 +654,10 @@ function create(deps) {
     let loot = 0; // 倒下了、還沒撿屍的隻數
     let downs = 0; // 這間倒下（打倒與補刀）的次數，和 state.hostile 比
     let lastLoot = { done: true }; // 最近一次撿屍的送出旗標
+    let looted = 0; // 這間送出、沒被拒的撿屍次數
+    let lootRetries = 0;
+    const corpsesAtStart = first.corpses ?? 0;
+    state.lootRefused = 0;
     const seen = new Set(info.monsters.filter(mob => mob.state === '戰鬥中').map(mob => mob.full));
     // 離開這間：why 是略過的原因（反擊時只記一行、不略過）
     const leave = why => {
@@ -665,10 +672,13 @@ function create(deps) {
     };
     // 撿屍：送 loot 次，回傳的旗標在最後一次真的送出時變成 true
     const sendLoot = () => {
+      if (!loot) return lastLoot; // 沒有要撿的：不換掉前一次的旗標，離開前才等得到它送完
       const command = state.settings.afterKillCommand;
-      const sent = { done: !command || !loot };
+      const sent = { done: !command };
       lastLoot = sent;
       if (command) for (let i = 0; i < loot; i += 1) deps.send(command, i === loot - 1 ? () => { sent.done = true; } : undefined);
+      sent.any = !!command && loot > 0;
+      looted += loot;
       loot = 0;
       return sent;
     };
@@ -682,10 +692,34 @@ function create(deps) {
       again.monsters.filter(mob => mob.state === '戰鬥中').forEach(mob => seen.add(mob.full));
       return again;
     };
+    // 撿屍送完再離開：等指令（或巨集）送完；好幾隻打你的房間再等一下遊戲的回應。被拒（還在打）回 false，由呼叫端重看房間再撿
+    const lootSettled = async () => {
+      const sent = lastLoot;
+      for (let waited = 0; !(sent.done && !deps.macroRunning()) && waited < CORPSE_WAIT_TICKS; waited += 1) {
+        await sleepTick();
+        if (state !== token) return null;
+      }
+      if (sent.any && state.hostile > 1) for (let i = 0; i < LOOT_REPLY_TICKS; i += 1) {
+        await sleepTick();
+        if (state !== token) return null;
+      }
+      return !state.lootRefused || lootRetries >= MAX_STUCK;
+    };
     for (;;) {
+      // 被拒的撿屍還回來；房間裡比進來時多出來的屍體＝這間打倒的（倒下時不一定在打它，例如自動戰鬥打死的別隻），沒撿的補上
+      if (state.lootRefused) { record(here, '撿屍被拒', `${state.lootRefused} 次，等打完再撿`); loot += state.lootRefused; looted -= state.lootRefused; state.lootRefused = 0; }
+      const owed = (info.corpses ?? 0) - corpsesAtStart - looted - loot;
+      if (owed > 0) loot += owed;
       if (loot && !info.monsters.some(mob => mob.state === '戰鬥中')) sendLoot();
       const mine = roomTargets(info, token, seen);
-      if (!mine.length) { sendLoot(); leave(); return; }
+      if (!mine.length) {
+        sendLoot();
+        const settled = await lootSettled();
+        if (settled === null) return;
+        if (!settled) { lootRetries += 1; info = await lookAgain(); if (!info) return; continue; }
+        leave();
+        return;
+      }
       // ID 會被放進 fight 指令，和 finger 一樣只收普通英數
       const target = mine.find(mob => SAFE_ID.test(mob.id));
       if (!target) { sendLoot(); leave('怪的 ID 不能用'); return; }
@@ -730,6 +764,12 @@ function create(deps) {
       if (outcome === 'knockedOut' && state.settings.finishKnockedOut === 'on') {
         outcome = await fightOne(token, target, { finishing: true });
         if (state !== token || outcome === 'stopped') return;
+        // 補刀沒打到（順位上沒有東西、數到屍體、打到別隻）：怪還昏迷著，重看房間，由下一圈用新的順位補刀；不算倒下、不撿屍
+        if (outcome === 'missing' || outcome === 'wrong') {
+          info = await lookAgain();
+          if (!info) return;
+          continue;
+        }
         downs += 1;
       }
       if (!(await notBusy(token))) return;
@@ -740,13 +780,11 @@ function create(deps) {
       if (!attackedStill) sendLoot();
       if (mine.length <= 1 && !attackedStill) {
         // 不重數就離開：撿屍指令（或巨集）還在排隊時先等它送完，不然這一輪剛好結束時會被一起丟掉
-        const sent = lastLoot;
         await humanPause(here, '打完一隻後');
         if (state !== token) return;
-        for (let waited = 0; !(sent.done && !deps.macroRunning()) && waited < CORPSE_WAIT_TICKS; waited += 1) {
-          await sleepTick();
-          if (state !== token) return;
-        }
+        const settled = await lootSettled();
+        if (settled === null) return;
+        if (!settled) { lootRetries += 1; info = await lookAgain(); if (!info) return; continue; }
         if (!counter) record(here, '打完這間', '最後一隻，不重數');
         leave();
         return;
@@ -806,7 +844,11 @@ function create(deps) {
   const fightCmd = () => state.settings.fightCommand || 'fight';
   // 指令後面接順位：這份 l／抵達描述裡第幾個 ※ 怪物行。不用怪的 ID：遊戲的別名 $1 只帶第一個字，
   // 「f soldier 2」會變成 fight soldier（打到第一隻），ID 有空格的怪也打不到（使用者實測）；順位只有一個字，別名照樣帶得進去
-  const targetOf = mob => String(mob.position ?? mob.ref ?? mob.id);
+  // 順位預設只數 ※ 怪物行；遊戲回「…的屍體並不是活物」（使用者貼的真實輸出：f 1 打到排在怪前面的屍體）＝這個指令連屍體、物品一起數，
+  // 之後這次巡怪這個指令改用 slot（parseLook 算的，房間裡所有東西的第幾個）。別名寫成 fight NPC $1 的不會遇到，照舊只數怪
+  const targetOf = (mob, command) => String((state.slotCmds.has(command) ? mob.slot : null) ?? mob.position ?? mob.ref ?? mob.id);
+  const aimText = (command, mob) => `${command} ${targetOf(mob, command)}`;
+  const aim = (command, mob) => { state.lastAim = command; return aimText(command, mob); };
   // kill 為真＝反擊：一開始就送打死用的指令（對方已經在殺你），其餘和一般開打相同
   function fightOne(token, mob, { finishing = false, kill = false } = {}) {
     return new Promise(resolve => {
@@ -815,7 +857,7 @@ function create(deps) {
       // 特攻從開打算起隔一個間隔才送第一次，免得緊跟在 fight 後面被拒戰時得到「你要對誰施展這個招式」
       state.fight = { mob, name: shortName(mob), engaged: false, wrong: false, resolve, finishing, knockout, knockedOut: false, killSent: finishing || kill, buffer: '', noTarget: false, waited: 0, lastSpecial: state.ticks, checking: false, silentChecks: 0, endWords };
       deps.notify();
-      if (!deps.send(`${finishing || kill ? killCmd() : fightCmd()} ${targetOf(mob)}`)) finish('指令送不出去，已停止', { alert: true });
+      if (!deps.send(aim(finishing || kill ? killCmd() : fightCmd(), mob))) finish('指令送不出去，已停止', { alert: true });
     });
   }
   // 遊戲的戰鬥訊息只寫短名稱（「蒙古兵死了。」），不帶稱號：取最後一個空白或」之後的那一段（千夫長 蒙古兵→蒙古兵、落第才子「…」衰老頭→衰老頭）
@@ -849,6 +891,8 @@ function create(deps) {
     if (state && LEAVE.test(text)) state.leftTick = state.ticks;
     // 被怪主動攻擊：記下來，由 tick 在能停下來的時候反擊。正在打的那一隻也會印這句（自己下 kill 後對方回殺），名字相同的不算
     const plain = state ? text.normalize('NFKC') : '';
+    if (state && state.lastAim && !state.slotCmds.has(state.lastAim) && NOT_ALIVE.test(plain)) { state.slotCmds.add(state.lastAim); record(deps.room() ?? '-', '順位數到屍體', `${state.lastAim} 之後連屍體一起數`); }
+    if (state) state.lootRefused += (plain.match(new RegExp(LOOT_REFUSED.source, 'g')) || []).length;
     if (state) state.hostile += (plain.match(ATTACKED_ALL) || []).length; // 這間聽到幾次「看起來X想殺死你」：fightRoom 用它判斷是不是還有別隻在打你
     const attacked = state && ATTACKED.exec(plain);
     if (attacked && !state.scan && state.settings.fightMode === 'full' && state.settings.counterAttack === 'on'
@@ -887,13 +931,13 @@ function create(deps) {
       fight.killSent = true;
       fight.noTarget = false; // 前面的特攻對著還沒開打的怪，不算這場沒有目標
       fight.buffer = '';
-      deps.send(`${killCmd()} ${targetOf(fight.mob)}`);
+      deps.send(aim(killCmd(), fight.mob));
       return;
     }
     // 還沒開打就回「你想攻擊誰」：那個順位沒有東西，結束這一場（回 missing），由 fightRoom 重看房間；不然要等到逾時才看
-    if (!fight.engaged && NO_SUCH_TARGET.test(fight.buffer)) {
+    if (!fight.engaged && (NO_SUCH_TARGET.test(fight.buffer) || NOT_ALIVE.test(fight.buffer))) {
       fight.missing = true;
-      record(deps.room() ?? '-', '順位沒有東西', `${fight.killSent ? killCmd() : fightCmd()} ${targetOf(fight.mob)}`);
+      record(deps.room() ?? '-', '順位沒有東西', aimText(fight.killSent ? killCmd() : fightCmd(), fight.mob));
       endFight(fight);
       return;
     }
@@ -927,10 +971,12 @@ function create(deps) {
       if (!info.exits.length) { if ((fight.silentChecks += 1) >= MAX_STUCK) endFight(fight); return; }
       const mine = info.monsters.filter(mob => token.mobs.includes(mob.full));
       if (mine.some(mob => mob.state === '戰鬥中')) return;
-      // 重送時用這次 l 看到的位置（前面的怪倒下後，第幾個會變）
-      const again = mine.find(mob => mob.state !== KNOCKED_OUT && SAFE_ID.test(mob.id));
-      if (again && (fight.silentChecks += 1) < MAX_STUCK) { deps.send(`${fight.killSent ? killCmd() : fightCmd()} ${targetOf(again)}`); return; }
+      // 重送時用這次 l 看到的位置（前面的怪倒下後，第幾個會變）。補刀時找的是還昏迷著的同一種怪：補刀沒打到（例如順位數到屍體）
+      // 怪還躺著，不能當成打死了
+      const again = mine.find(mob => (fight.finishing ? mob.state === KNOCKED_OUT && mob.full === fight.mob.full : mob.state !== KNOCKED_OUT) && SAFE_ID.test(mob.id));
+      if (again && (fight.silentChecks += 1) < MAX_STUCK) { deps.send(aim(fight.killSent ? killCmd() : fightCmd(), again)); return; }
       fight.knockedOut = !fight.finishing && mine.some(mob => mob.id === fight.mob.id && mob.state === KNOCKED_OUT);
+      if (fight.finishing && mine.some(mob => mob.full === fight.mob.full && mob.state === KNOCKED_OUT)) fight.missing = true; // 補刀一直沒打到
       endFight(fight);
     }).catch(() => { if (state === token) finish('看房間時出錯，已停止', { alert: true }); });
   }
@@ -2113,7 +2159,7 @@ function create(deps) {
     return {
       round: 1, after: deps.now() + offset, allTargets: new Set(), baseSkipped: [], waiting: null, calibrating: false,
       mobs: [], area: '', offset, scan: false, prescan: false, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph: { rooms: {} }, targets: new Set(), skipped: [], fixed: [],
-      baseSettings: fields.settings, chain: null, trialRun: false, resume: null, order: null, retreat: null, retreatPending: null, loadDue: false, loadFought: false, loadRooms: 0, loadEvery: 1, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: false, learned: {}, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
+      baseSettings: fields.settings, chain: null, trialRun: false, resume: null, order: null, retreat: null, retreatPending: null, slotCmds: new Set(), lastAim: null, lootRefused: 0, loadDue: false, loadFought: false, loadRooms: 0, loadEvery: 1, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: false, learned: {}, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
       ...roundFields(offset), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       ...fields,
     };

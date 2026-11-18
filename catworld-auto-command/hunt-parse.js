@@ -59,6 +59,11 @@ function parsePerson(rawLine) {
   return titled && /[「」\s]/.test(titled[1]) ? { id: titled[2].trim(), state: '' } : null;
 }
 
+// 房間裡一樣東西的行：名稱(英文ID)，後面可以有 <狀態> 與 [動作]（扶桑浪人的屍體(corpse) [sac]、※…(bakayaro) <戰鬥中> [fight][kill]）。
+// 戰鬥訊息的括號是「( 扶桑浪人… ) [75.1%]」，括號裡不是英文開頭，對不上
+const OBJECT_LINE = /\S\s*\([A-Za-z][^()]*\)\s*(?:<[^>]*>\s*)*(?:\[[^\]]*\]\s*)*$/;
+const CORPSE_LINE = /屍體\s*\(corpse\)/i;
+
 // 有東西離開房間的句子（怪或人都算：fight 的順位數的是房間裡所有東西）。走進來的句子沒有樣本，不處理
 const LEAVE_LINE = /往\S{1,6}離開/;
 
@@ -77,17 +82,24 @@ function parseLook(text) {
     counts.set(key, n);
     return n === 1 ? id : `${id} ${n}`;
   };
-  // position：這隻怪是第幾個 ※ 怪物行（從 1 起算，沒勾選的、昏迷的都算），給「指令 順位」的寫法用
+  // position：這隻怪是第幾個 ※ 怪物行（從 1 起算，沒勾選的、昏迷的都算），給「指令 順位」的寫法用。
+  // slot：房間裡所有東西（屍體、地上的物品、人、怪）一起數的第幾個：「f 1」打到屍體、回「看清楚一點，X的屍體並不是活物」
+  // （使用者貼的真實輸出），所以至少有一種寫法是連屍體一起數的；map-hunt.js 看到這句才改用 slot。corpses：屍體有幾具
   const monsters = [];
   const people = [];
+  let slots = 0;
+  let corpses = 0;
   lines.forEach(line => {
+    const plain = line.normalize('NFKC');
+    if (OBJECT_LINE.test(plain)) slots += 1;
+    if (CORPSE_LINE.test(plain)) corpses += 1;
     const mob = parseMonster(line);
-    if (mob) { monsters.push({ ...mob, ref: refOf(mob.id), position: monsters.length + 1 }); return; }
+    if (mob) { monsters.push({ ...mob, ref: refOf(mob.id), position: monsters.length + 1, slot: slots }); return; }
     const person = parsePerson(line);
     if (person) people.push({ ...person, ref: refOf(person.id) });
   });
   // moved：最後一份描述之後又有東西離開房間（「野狗往北離開。」），順位已經不準（使用者貼的真實輸出）
-  return { exits: parseExits(out), monsters, people, moved: LEAVE_LINE.test(out) };
+  return { exits: parseExits(out), monsters, people, corpses, moved: LEAVE_LINE.test(out) };
 }
 
 // i：「你身上帶著下列這些東西( 載重 23% ):」→ 23；讀不到回 null
