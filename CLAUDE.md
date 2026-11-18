@@ -147,7 +147,7 @@
 4. `/implement`：依票實作，盡量 TDD；常跑單檔測試；完成後自動進 `/code-review`；commit 到目前分支。測試範圍見下面「測試範圍」。
 5. `/code-review`：以固定點（分支或 commit）到 HEAD 做兩軸審查（Standards、Spec），兩份報告分開看，由使用者決定哪些要修。
 
-- **測試範圍**（使用者指定）：bug fix 或小功能，改完跑完整的 `npm test`；大功能切成好幾張票時，每張票只跑和這張票的功能有關的測試檔（新寫的與受影響的），全部的票都做完再跑一次完整的 `npm test`。
+- **測試範圍**（使用者指定）：只跑受這次改動影響的測試檔（新寫的、改到的模組自己的測試、會載入改到的檔案的介面測試，例如改 `popup.html`／`popup.js` 就跑 `tests/*-ui.test.js` 裡相關的），不必跑完整的 `npm test`；大功能切成好幾張票時也一樣，每張票只跑相關的。改到很多功能共用的核心（`content.js` 的送出佇列與看門狗、manifest 與備援注入的載入清單、`trigger-engine.js`）時才自己判斷要不要全跑。`tests/force-extras-settings-ui.test.js` 在整套一起跑、機器忙時會偶發失敗（載入後固定只等 100 毫秒），單獨跑會過，不是改動造成的。
 - **各步驟用哪個模型**（使用者指定）：規劃（`/grill-me`、`/to-spec`、`/to-tickets`）用 Fable；開發（`/implement`）用 Sonnet，由主對話用 Agent 工具開 `model: sonnet` 的 agent 照票實作；測試與驗收（跑測試、看截圖、`/code-review`、確認 agent 的改動）用 Opus。主對話自己在哪個模型上要看 `/model`，派 agent 時照這個分工指定模型。
 - 這套取代 superpowers 的 brainstorming／writing-plans／executing-plans，兩套不混用，規格只留一份。
 - 專案其他規則仍然優先：改了 extension 的任何檔案都要升 `manifest.json` 版本並在 `CHANGELOG.md` 加一筆；commit 之後要不要 push 一律先問使用者。
