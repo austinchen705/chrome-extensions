@@ -171,13 +171,15 @@ const FIELDS = [
   { key: 'specialIntervalSec', label: '最小間隔（秒）', min: 1, max: 600 },
   { key: 'afterKillCommand', label: '怪倒下後送的指令' },
   { key: 'typoPercent', label: '打錯字機率 %', min: 0, max: 20 },
+  { key: 'habitAfterArrive', label: '到房間後的習慣指令' },
+  { key: 'habitAfterKill', label: '打完一隻後的習慣指令' },
 ];
 const rowOf = (rows, key) => rows.find(row => row.keys[0] === key);
 const SETTINGS = { commandGapMinMs: 1000, commandGapMaxMs: 2000, reactMinMs: 800, reactMaxMs: 1500, fightCommand: 'fight', killCommand: 'kill', specialCommand: '', specialIntervalSec: 10, afterKillCommand: 'gc', typoPercent: 2 };
 
 test('suggest: an empty profile asks for more data on every row, without values', () => {
   const rows = P.suggest(undefined, SETTINGS, FIELDS);
-  assert.equal(rows.length, 7);
+  assert.equal(rows.length, 9);
   rows.forEach(row => { assert.equal(row.enough, false); assert.equal(row.value, null); assert.ok(row.need > 0); });
   assert.equal(rowOf(rows, 'commandGapMinMs').need, 30);
   assert.equal(rowOf(rows, 'typoPercent').need, 200);
@@ -242,4 +244,25 @@ test('suggest: the typo percentage is typos over commands, rounded; equal to now
   assert.equal(row.value.typoPercent, 5);
   assert.equal(row.same, false);
   assert.equal(rowOf(P.suggest({ commands: 200, typos: 4 }, SETTINGS, FIELDS), 'typoPercent').same, true);
+});
+
+test('suggest: habit commands need 15 stops (arrive) or 10 downs (kill), are rounded percents over those counts, and 0 is left out', () => {
+  assert.equal(rowOf(P.suggest({ stops: 14, habitArrive: { hp: 7 } }, SETTINGS, FIELDS), 'habitAfterArrive').need, 1);
+  const arrive = rowOf(P.suggest({ stops: 15, habitArrive: { l: 5, hp: 2, edf: 0 } }, SETTINGS, FIELDS), 'habitAfterArrive');
+  assert.deepEqual(arrive.value, { habitAfterArrive: 'l 33、hp 13' });
+  assert.equal(arrive.same, false);
+  assert.equal(rowOf(P.suggest({ downs: 9, habitKill: { edf: 3 } }, SETTINGS, FIELDS), 'habitAfterKill').need, 1);
+  const kill = rowOf(P.suggest({ downs: 10, habitKill: { edf: 3, i: 1, sc: 0 } }, SETTINGS, FIELDS), 'habitAfterKill');
+  assert.deepEqual(kill.value, { habitAfterKill: 'i 10、edf 30' });
+  const none = rowOf(P.suggest({ stops: 20, habitArrive: { l: 0 } }, SETTINGS, FIELDS), 'habitAfterArrive');
+  assert.equal(none.enough, true);
+  assert.deepEqual(none.value, { habitAfterArrive: '' }, 'nothing seen suggests an empty list');
+});
+
+test('suggest: habit rows divide by stops, not rooms, and equal to the current value is flagged', () => {
+  const profile = { rooms: 100, stops: 20, downs: 10, habitArrive: { hp: 4 }, habitKill: { l: 5 } };
+  const rows = P.suggest(profile, { ...SETTINGS, habitAfterArrive: 'hp 20', habitAfterKill: 'l 10' }, FIELDS);
+  assert.deepEqual(rowOf(rows, 'habitAfterArrive').value, { habitAfterArrive: 'hp 20' });
+  assert.equal(rowOf(rows, 'habitAfterArrive').same, true);
+  assert.equal(rowOf(rows, 'habitAfterKill').same, false);
 });

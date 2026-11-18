@@ -682,7 +682,7 @@ const tuneRow = (doc, text) => [...doc.querySelectorAll('#huntTune tbody tr')].f
 ui('tune: the suggestion table shows current, suggested and basis; not-enough rows have no checkbox, equal rows are unchecked', async () => {
   const { dom, doc } = await boot({ mapHuntProfile: tuneProfile(), mapHuntSettings: { killCommand: 'kill' } });
   try {
-    assert.ok(await waitFor(() => doc.querySelectorAll('#huntTune tbody tr').length === 7), 'seven rows');
+    assert.ok(await waitFor(() => doc.querySelectorAll('#huntTune tbody tr').length === 9), 'nine rows');
     const gap = tuneRow(doc, '指令間隔');
     assert.ok(gap.querySelector('input[type=checkbox]').checked, 'a different value is checked by default');
     assert.match(gap.cells[2].textContent, /1000～2000/);
@@ -704,7 +704,7 @@ ui('tune: the suggestion table shows current, suggested and basis; not-enough ro
 ui('tune: applying writes the checked values into the settings and updates the fields; unchecked rows stay', async () => {
   const { dom, doc, store } = await boot({ mapHuntProfile: tuneProfile() });
   try {
-    assert.ok(await waitFor(() => doc.querySelectorAll('#huntTune tbody tr').length === 7));
+    assert.ok(await waitFor(() => doc.querySelectorAll('#huntTune tbody tr').length === 9));
     tuneRow(doc, '打錯字機率').querySelector('input').checked = false;
     doc.getElementById('huntTuneApply').click();
     assert.ok(await waitFor(() => store.mapHuntSettings?.fightCommand === 'k'));
@@ -725,11 +725,57 @@ ui('tune: applying writes the checked values into the settings and updates the f
 ui('tune: applying with nothing checked says so and writes nothing', async () => {
   const { dom, doc, store } = await boot({ mapHuntProfile: tuneProfile() });
   try {
-    assert.ok(await waitFor(() => doc.querySelectorAll('#huntTune tbody tr').length === 7));
+    assert.ok(await waitFor(() => doc.querySelectorAll('#huntTune tbody tr').length === 9));
     doc.querySelectorAll('#huntTune input').forEach(check => { check.checked = false; });
     doc.getElementById('huntTuneApply').click();
     assert.match(doc.getElementById('huntTuneMsg').textContent, /沒有勾選/);
     assert.equal(store.mapHuntSettings, undefined);
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('habit commands: the two fields show only with the human-like switch on, and saving keeps only whitelisted commands with 0-100 percents, deduped, scaled to at most 100 in total', async () => {
+  const { dom, doc, store } = await boot();
+  try {
+    const arrive = cellOf(doc, 'habitAfterArrive');
+    const kill = cellOf(doc, 'habitAfterKill');
+    assert.ok(doc.getElementById('fold-hunt-human').contains(arrive) && doc.getElementById('fold-hunt-human').contains(kill));
+    assert.equal(arrive.hidden, true);
+    assert.equal(kill.hidden, true);
+    assert.equal(field(doc, 'habitAfterArrive').value, '');
+    change(dom, field(doc, 'humanize'), 'on');
+    assert.ok(await waitFor(() => !arrive.hidden && !kill.hidden), 'shown with the switch on');
+    change(dom, field(doc, 'habitAfterArrive'), ' L 30，hp 10 、 give 50 、 hp 5、edf x、sc 101、i 0、 score 20 ');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.habitAfterArrive === 'l 30、hp 10、score 20'), store.mapHuntSettings?.habitAfterArrive);
+    assert.equal(field(doc, 'habitAfterArrive').value, 'l 30、hp 10、score 20', 'the canonical text is written back');
+    change(dom, field(doc, 'habitAfterKill'), 'l 60、hp 60');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.habitAfterKill === 'l 50、hp 50'), 'over 100 in total is scaled down proportionally');
+    change(dom, field(doc, 'humanize'), 'off');
+    assert.ok(await waitFor(() => arrive.hidden), 'hidden again');
+    assert.equal(store.mapHuntSettings.habitAfterArrive, 'l 30、hp 10、score 20', 'the value is kept while hidden');
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('tune: the habit rows are suggested from the profile and applying them writes the canonical text into the fields', async () => {
+  const profile = { ...tuneProfile(), stops: 20, downs: 12, habitArrive: { l: 6, hp: 2 }, habitKill: { edf: 6 } };
+  const { dom, doc, store } = await boot({ mapHuntProfile: profile });
+  try {
+    assert.ok(await waitFor(() => doc.querySelectorAll('#huntTune tbody tr').length === 9));
+    const arrive = tuneRow(doc, '到房間後的習慣指令');
+    assert.equal(arrive.cells[3].textContent, 'l 30、hp 10');
+    assert.match(arrive.cells[4].textContent, /20 個停下來的房間/);
+    assert.equal(tuneRow(doc, '打完一隻後的習慣指令').cells[3].textContent, 'edf 50');
+    doc.querySelectorAll('#huntTune input').forEach(check => { check.checked = false; });
+    arrive.querySelector('input').checked = true;
+    tuneRow(doc, '打完一隻後的習慣指令').querySelector('input').checked = true;
+    doc.getElementById('huntTuneApply').click();
+    assert.ok(await waitFor(() => store.mapHuntSettings?.habitAfterArrive === 'l 30、hp 10'));
+    assert.equal(store.mapHuntSettings.habitAfterKill, 'edf 50');
+    assert.equal(field(doc, 'habitAfterArrive').value, 'l 30、hp 10');
+    assert.ok(await waitFor(() => tuneRow(doc, '到房間後的習慣指令').cells[4].textContent.startsWith('已相同')), 'compared as normalized text');
   } finally {
     dom.window.close();
   }

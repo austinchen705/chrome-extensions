@@ -138,6 +138,8 @@ const FIELDS = [
   { key: 'humanize', group: 'human', label: '擬人化', hint: '關＝和以前完全一樣。開＝每一輪重排目標順序（近的優先）、等長的路線隨機挑一條、重生前停打秒數與吃藥線、休息線隨機偏移一點、偶爾在到房間後與打完一隻後多停幾秒、每跑幾輪（下面設定，預設 6～12）回家休息跳過幾輪（預設 1～3）（要填「輪與重生」的「回到巡怪區的指令」）；每輪摘要不受這個開關影響，一律寫在巡怪紀錄', type: 'select', options: ON_OFF, default: 'off' },
   { key: 'typoPercent', group: 'human', show: s => s.humanize === 'on', row: 'slips', label: '打錯字機率 %', hint: '走路的方向、l、finger 每次送出時，這個機率先送一個打錯的指令（遊戲回「什麼﹖」），隔 1～3 秒再送正確的；戰鬥與補氣的指令不會打錯；0＝不打錯', type: 'number', default: 2, min: 0, max: 20 },
   { key: 'wrongWayPercent', group: 'human', show: s => s.humanize === 'on', row: 'slips', label: '走錯路機率 %', hint: '每走一步，這個機率故意走進旁邊不在路線上的房間再走回來（每輪最多 2 次，氣太低、最後一步、掃描時不會）；0＝不走錯', type: 'number', default: 1, min: 0, max: 20 },
+  { key: 'habitAfterArrive', group: 'human', show: s => s.humanize === 'on', label: '到房間後的習慣指令', hint: '擬人化開著時，每到一間房（看完房間之後）依百分比最多送一個，格式「指令 百分比」用 、 或逗號分開，例如 l 30、hp 10；只收 l、i、hp、sc、score、edf（不改變任何東西的指令），加總超過 100 會等比縮小；走路途中不送；空白＝不送', type: 'text', default: '' },
+  { key: 'habitAfterKill', group: 'human', show: s => s.humanize === 'on', label: '打完一隻後的習慣指令', hint: '同上，在每打倒一隻（撿屍指令送出之後）依百分比最多送一個；空白＝不送', type: 'text', default: '' },
   { key: 'restEveryMin', group: 'human', show: s => s.humanize === 'on', row: 'restEvery', label: '每跑幾輪休息一次 最少', hint: '掛機休息的間隔，每次在最少與最多之間隨機抽（整數輪）', type: 'number', default: 6, min: 1, max: 100 },
   { key: 'restEveryMax', group: 'human', show: s => s.humanize === 'on', row: 'restEvery', label: '最多', hint: '要有填「輪與重生」的「回到巡怪區的指令」才會休息', type: 'number', default: 12, min: 1, max: 100 },
   { key: 'restSkipMin', group: 'human', show: s => s.humanize === 'on', row: 'restSkip', label: '一次休息跳過幾輪 最少', hint: '一輪＝一個 15 分鐘的重生，每次在最少與最多之間隨機抽（整數輪）', type: 'number', default: 1, min: 1, max: 20 },
@@ -186,6 +188,26 @@ function giveList(settings) {
   return out;
 }
 
+// 習慣指令：「指令 百分比」用 、 或逗號分開。只收白名單（hunt-profile.js 的 HABIT_COMMANDS，不分大小寫、不帶引數）的指令、0～100 的整數百分比（0 不收），
+// 同一個指令只收第一次；加總超過 100 就等比縮小（取整數往下）。回 [{ command, percent }]；白名單（hunt-profile.js）還沒載入時什麼都不收
+function habitList(text) {
+  const allowed = globalThis.CatworldHuntProfile?.HABIT_COMMANDS ?? [];
+  const seen = new Set();
+  const list = [];
+  String(text ?? '').split(/[、,，]/).forEach(part => {
+    const match = /^(\S+)\s+(\d+)$/.exec(part.trim());
+    if (!match) return;
+    const command = match[1].toLowerCase();
+    const percent = Number(match[2]);
+    if (!allowed.includes(command) || seen.has(command) || percent < 1 || percent > 100) return;
+    seen.add(command);
+    list.push({ command, percent });
+  });
+  const total = list.reduce((sum, item) => sum + item.percent, 0);
+  return total > 100 ? list.map(item => ({ command: item.command, percent: Math.floor(item.percent * 100 / total) })).filter(item => item.percent > 0) : list;
+}
+const habitText = text => habitList(text).map(item => `${item.command} ${item.percent}`).join('、');
+
 function normalizeSettings(rawSettings) {
   // 舊版的巡怪間隔單位是秒（commandGapMinSec／commandGapMaxSec），沒有新欄位時換算成毫秒
   const raw = rawSettings && typeof rawSettings === 'object' ? { ...rawSettings } : rawSettings;
@@ -211,6 +233,8 @@ function normalizeSettings(rawSettings) {
   if (out.reactMaxMs < out.reactMinMs) out.reactMaxMs = out.reactMinMs;
   if (out.sortLookMaxSec < out.sortLookMinSec) out.sortLookMaxSec = out.sortLookMinSec;
   out.giveItems = giveList(out).join('、');
+  out.habitAfterArrive = habitText(out.habitAfterArrive);
+  out.habitAfterKill = habitText(out.habitAfterKill);
   out.loadCheckEveryMin = Math.round(out.loadCheckEveryMin);
   out.loadCheckEveryMax = Math.max(Math.round(out.loadCheckEveryMax), out.loadCheckEveryMin);
   out.restEveryMin = Math.round(out.restEveryMin);
@@ -503,6 +527,8 @@ function create(deps) {
     if (now && now !== here) { state.phase = 'plan'; return; }
     if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
     record(here, '看房間', `${lookText(info)}（來源 ${source}）`);
+    await humanHabit(token, here, '到房間後');
+    if (state !== token) return;
     const wanted = info.monsters.some(mob => token.mobs.includes(mob.full));
     state.stats.lookedCount += 1;
     if (wanted) state.stats.mobRooms += 1;
@@ -803,6 +829,8 @@ function create(deps) {
         // 不重數就離開：撿屍指令（或巨集）還在排隊時先等它送完，不然這一輪剛好結束時會被一起丟掉
         await humanPause(here, '打完一隻後');
         if (state !== token) return;
+        await humanHabit(token, here, '打完一隻後');
+        if (state !== token) return;
         const settled = await lootSettled();
         if (settled === null) return;
         if (!settled) { lootRetries += 1; info = await lookAgain(); if (!info) return; continue; }
@@ -812,6 +840,7 @@ function create(deps) {
       }
       await humanPause(here, '打完一隻後');
       if (state !== token) return;
+      if (!attackedStill) { await humanHabit(token, here, '打完一隻後'); if (state !== token) return; }
       const before = mine.length;
       info = await lookAgain();
       if (!info) return;
@@ -1618,6 +1647,29 @@ function create(deps) {
     const ms = PAUSE_MIN_MS + (roll / PAUSE_CHANCE) * (PAUSE_MAX_MS - PAUSE_MIN_MS);
     record(here, '停頓', `${(ms / 1000).toFixed(1)} 秒（${when}）`);
     await new Promise(resolve => setTimeout(resolve, ms));
+  }
+  // 習慣指令（habitAfterArrive／habitAfterKill）：humanize 開著、不是掃描、兩個欄位有填才作用，在長停頓的兩個點各抽一次，依百分比最多送一個白名單內的無害指令（走 deps.send，來源 hunt）。
+  // 到房間後的那一個放在「看完房間之後」而不是之前：habit l 的回應會被房間判斷（抵達描述的緩衝、自己的 l）當成房間描述；打完一隻後的放在撿屍指令之後。
+  // 送出後再等 ARRIVAL_QUIET_TICKS 個 tick 讓回應印完，免得它混進下一步走路的描述緩衝；走路途中絕不送。呼叫端在 await 之後要確認這一次巡怪還在
+  async function humanHabit(token, here, when) {
+    if (!humanizeOn()) return;
+    const list = habitList(state.baseSettings[when === '到房間後' ? 'habitAfterArrive' : 'habitAfterKill']);
+    if (!list.length) return;
+    const roll = random() * 100;
+    let upto = 0;
+    const hit = list.find(item => { upto += item.percent; return roll < upto; });
+    if (!hit) return;
+    const sent = { done: false };
+    if (!deps.send(hit.command, () => { sent.done = true; })) return;
+    record(here, '習慣指令', `${hit.command}（${when}）`);
+    for (let waited = 0; !sent.done && waited < CORPSE_WAIT_TICKS; waited += 1) {
+      await sleepTick();
+      if (state !== token) return;
+    }
+    for (let waited = 0; waited < ARRIVAL_QUIET_TICKS; waited += 1) {
+      await sleepTick();
+      if (state !== token) return;
+    }
   }
   // ---- 擬人化的失誤：打錯字、故意走錯路（humanize 開著、不是掃描才作用；機率 0＝不作用）----
   // 打錯字：把指令最後一個字母重複一次（ee、ll、fingerr：不是任何方向或常用指令，遊戲回「什麼﹖」）；只用在走路、l、finger，戰鬥與補氣的指令不打錯
@@ -2466,5 +2518,5 @@ function create(deps) {
   return { start, trialRun, stop, on, summary, snapshot, exportLog, noteSent, recordLine };
 }
 
-globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, CHAIN_KEY, CHAIN_TRIAL_KEY, FIELDS, GROUPS, fieldShown, isWideField, missingFields, normalizeSettings, normalizeVisited, normalizeChain, rearrangeChain, chainStatus, gapMs, splitIds, summaryLines, RESPAWN_MS, create };
+globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, CHAIN_KEY, CHAIN_TRIAL_KEY, FIELDS, GROUPS, fieldShown, isWideField, missingFields, normalizeSettings, habitList, habitText, normalizeVisited, normalizeChain, rearrangeChain, chainStatus, gapMs, splitIds, summaryLines, RESPAWN_MS, create };
 })();

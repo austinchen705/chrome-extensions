@@ -159,6 +159,7 @@ const percentile = (sorted, p) => sorted[Math.round(p * (sorted.length - 1))];
 const median = list => { const sorted = [...list].sort((x, y) => x - y); const mid = sorted.length >> 1; return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2; };
 const topOf = map => Object.entries(map).sort((x, y) => y[1] - x[1])[0] || null;
 const sumOf = map => Object.values(map).reduce((total, n) => total + n, 0);
+const canonHabit = text => globalThis.CatworldMapHunt?.habitText?.(String(text ?? '')) ?? String(text ?? '');
 const squash = text => String(text ?? '').replace(/\s*;\s*/g, ';').trim().toLowerCase();
 
 // 依累積資料算建議的設定值。回傳每一列 { keys, label, current, value, basis, enough, need, same }：
@@ -230,6 +231,15 @@ function suggest(rawProfile, settings = {}, fields = []) {
     if (!top) return null;
     return { value: { afterKillCommand: top[0] }, basis: `依 ${profile.downs} 隻倒下，最多的是「${top[0]}」${top[1]} 次`, same: () => squash(settings.afterKillCommand) === squash(top[0]) };
   });
+
+  // 習慣指令：白名單裡每個指令在「停下來的房間」「倒下的怪」出現的比例（整數百分比，0 的不列）；最後交給設定的整理（加總超過 100 會等比縮小）
+  const habit = (key, map, total, needed, what) => add([key], field(key).label || key, total, needed, () => {
+    const parts = HABIT_COMMANDS.map(cmd => [cmd, Math.round((map[cmd] || 0) / total * 100)]).filter(([, percent]) => percent > 0).map(([cmd, percent]) => `${cmd} ${percent}`);
+    const value = canonHabit(parts.join('、'));
+    return { value: { [key]: value }, basis: `依 ${total} ${what}${value ? '' : '，沒看到習慣指令'}`, same: () => canonHabit(settings[key]) === value };
+  });
+  habit('habitAfterArrive', profile.habitArrive, profile.stops, 15, '個停下來的房間');
+  habit('habitAfterKill', profile.habitKill, profile.downs, 10, '隻倒下的怪');
 
   add(['typoPercent'], field('typoPercent').label || 'typoPercent', profile.commands, 200, () => {
     const percent = clamp('typoPercent', Math.round(profile.typos / profile.commands * 100));

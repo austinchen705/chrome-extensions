@@ -578,3 +578,36 @@ ui('manual: a game macro with @等待 that I press is recorded step by step at t
     page.close();
   }
 });
+
+ui('habit: with the switch on, a habit command is sent once after the room was read (never while walking) and logged', async () => {
+  const { commands, text } = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], r: 0.5, settings: { habitAfterArrive: 'hp 100' } });
+  assert.deepEqual(commands, ['e', 'e', 'e', 'e', 'e', 'l', 'hp', FIGHT, 'gc'], 'hp comes after the look of the target room, none between the five steps');
+  assert.match(text, /t\/f 習慣指令 hp（到房間後）/);
+  assert.ok(text.indexOf('看房間') < text.indexOf('習慣指令'), 'logged after the room was read');
+});
+
+ui('habit: nothing is sent with the switch off, with an empty list, or when the draw falls past the percent', async () => {
+  for (const options of [{ humanize: 'off', settings: { habitAfterArrive: 'hp 100', habitAfterKill: 'edf 100' } }, { settings: {} }, { r: 0.9, settings: { habitAfterArrive: 'hp 50', habitAfterKill: 'edf 50' } }]) {
+    const { commands, text } = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], r: 0.5, ...options });
+    assert.deepEqual(commands, ['e', 'e', 'e', 'e', 'e', 'l', FIGHT, 'gc'], JSON.stringify(options));
+    assert.doesNotMatch(text, /習慣指令/);
+  }
+});
+
+ui('habit: the command is picked by the percents, and a habit l after arriving does not take the place of the room reading', async () => {
+  // roll 60：l 30 + hp 40 → 累計 30、70，60 落在 hp
+  const hp = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], r: 0.6, settings: { habitAfterArrive: 'l 30、hp 40' } });
+  assert.ok(hp.commands.includes('hp') && hp.text.match(/習慣指令/g).length === 1, hp.commands.join());
+  // 抵達描述已經印了，所以判斷房間不送 l；habit 的 l 在看完房間之後才送，打怪照常
+  const arrivals = Object.fromEntries(LINE.slice(1).map(id => [id, id === 'f' ? { lines: [MOB_LINE] } : {}]));
+  const look = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], r: 0.1, settings: { habitAfterArrive: 'l 30、hp 40' }, worldOptions: { arrivals } });
+  assert.deepEqual(look.commands, ['e', 'e', 'e', 'e', 'e', 'l', FIGHT, 'gc'], 'the only l is the habit one, sent after reading the arrival description');
+  assert.match(look.text, /看房間.*來源 抵達描述/);
+  assert.match(look.text, /習慣指令 l（到房間後）/);
+});
+
+ui('habit: after a kill the command goes after the corpse command, once per monster', async () => {
+  const { commands, text } = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], r: 0.5, settings: { habitAfterKill: 'edf 100' }, worldOptions: { looks: { f: { lines: [MOB_LINE, MOB_LINE] } } } });
+  assert.deepEqual(commands, ['e', 'e', 'e', 'e', 'e', 'l', FIGHT, 'gc', 'edf', 'l', FIGHT, 'gc', 'edf'], commands.join());
+  assert.equal(text.match(/習慣指令 edf（打完一隻後）/g).length, 2);
+});
