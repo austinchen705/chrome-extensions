@@ -1253,7 +1253,7 @@ async function refreshLive() {
   updateHints();
   renderCountdown(status);
   huntBusy = Boolean(status?.hunt?.on);
-  document.querySelectorAll('.hverify, .htrial').forEach(button => { if (!button.dataset.busy) button.disabled = huntBusy; });
+  document.querySelectorAll('.hverify, .hsuggest, .htrial').forEach(button => { if (!button.dataset.busy) button.disabled = huntBusy; });
   Object.values(panes).forEach(pane => pane.refresh(status));
 }
 
@@ -1344,6 +1344,7 @@ CatworldMapHunt.FIELDS.forEach(item => {
   // 開打／打死用的指令：驗證按鈕請遊戲分頁送 alias、讀別名列表，顯示這個指令展開後是什麼（content.js 的 HUNT_VERIFY_ALIAS）；
   // 巡怪在跑時停用（refreshLive），遊戲分頁那邊也會拒絕
   let verifyMessage = null;
+  let suggestList = null;
   if (item.verify) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -1366,6 +1367,51 @@ CatworldMapHunt.FIELDS.forEach(item => {
       say(reply.text, reply.level);
     });
     cell.append(button);
+    // 從別名挑：讀別名列表，列出適合這個欄位的別名，點一個就填進欄位並存檔（走輸入框 change 同一條存檔路徑）
+    const suggest = document.createElement('button');
+    suggest.type = 'button';
+    suggest.className = 'hsuggest';
+    suggest.textContent = '從別名挑';
+    suggest.title = '讀遊戲的別名列表，列出適合這個欄位的別名';
+    suggestList = document.createElement('div');
+    suggestList.className = 'hsuggest-list';
+    suggestList.hidden = true;
+    const settingHint = item.verify === 'kill'
+      ? '別名裡沒有適合的；可以在遊戲裡打 alias kn kill NPC $1 設一個（kill NPC 沒實測過，設好後按驗證確認），或直接用 kill'
+      : '別名裡沒有適合的；可以在遊戲裡打 alias fn fight NPC $1 設一個，或直接用 fight';
+    suggest.addEventListener('click', async () => {
+      suggest.disabled = true;
+      suggest.dataset.busy = '1';
+      suggestList.hidden = true;
+      suggestList.replaceChildren();
+      say('讀取遊戲的別名列表…', 'info');
+      let reply;
+      try { reply = await send({ type: 'HUNT_SUGGEST_ALIAS', verb: item.verify }); }
+      catch (error) { reply = { ok: false, error: `讀不到遊戲分頁：${error.message}` }; }
+      delete suggest.dataset.busy;
+      suggest.disabled = huntBusy;
+      if (!reply?.ok) { say(reply?.error || '遊戲頁沒有回應（請重新整理遊戲頁後再試）', 'error'); return; }
+      if (reply.empty) { say('讀不到別名列表（alias 的輸出裡沒有任何別名）', 'error'); return; }
+      const prefix = reply.tooLong ? '只讀了前 10 頁；' : '';
+      if (!reply.items.length) { say(prefix + settingHint, 'info'); return; }
+      say(`${prefix}點一個別名填進欄位`, 'info');
+      reply.items.forEach(entry => {
+        const pick = document.createElement('button');
+        pick.type = 'button';
+        pick.className = 'hsuggest-pick';
+        pick.textContent = `${entry.name} ＝ ${entry.expansion}${entry.rank === 'best' ? '（建議）' : ''}`;
+        pick.addEventListener('click', () => {
+          input.value = entry.name;
+          input.dispatchEvent(new Event('change'));
+          suggestList.hidden = true;
+          suggestList.replaceChildren();
+          say(`已填入 ${entry.name}`, 'info');
+        });
+        suggestList.append(pick);
+      });
+      suggestList.hidden = false;
+    });
+    cell.append(suggest);
   }
   if (item.hint) {
     const hint = document.createElement('div');
@@ -1374,6 +1420,7 @@ CatworldMapHunt.FIELDS.forEach(item => {
     cell.append(hint);
   }
   if (verifyMessage) cell.append(verifyMessage);
+  if (suggestList) cell.append(suggestList);
   const box = huntGroups[item.group].fields;
   if (!item.row) { box.append(cell); return; }
   // 同一個 row 的欄位排同一列（例如門檻與指令）

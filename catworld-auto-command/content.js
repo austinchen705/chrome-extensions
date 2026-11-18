@@ -2334,6 +2334,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
+  // 從別名挑：和驗證同一套（巡怪在跑時拒絕、readAliasList 讀整份別名列表），回適合這個動詞的別名清單
+  if (message.type === 'HUNT_SUGGEST_ALIAS') {
+    if (hunt?.on()) { sendResponse({ ok: false, error: '巡怪或掃描進行中，停下來才能讀別名（別名列表會分頁，會吃掉巡怪的指令）' }); return; }
+    readAliasList().then(({ text, tooLong }) => {
+      const aliases = CatworldHuntParse.parseAliases(text);
+      sendResponse({ ok: true, items: CatworldHuntParse.suggestAliases(aliases, message.verb), tooLong: !!tooLong, empty: !aliases.size });
+    });
+    return true;
+  }
   if (message.type === 'MACRO_READ') {
     try {
       sendResponse({ ok: true, raw: window.localStorage.getItem('MACROS') });

@@ -4704,6 +4704,44 @@ ui('verify: refused while the hunt is running, and nothing is sent', async () =>
   }
 });
 
+ui('suggest: idle answers with the suggested aliases of the verb, and nothing is suggested for kill', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    const game = world(page, { at: 'a', script: (command, { say: tell }) => {
+      if (command === 'alias') { tell(ALIAS_LIST.split('== 未完')[0].trimEnd()); return true; }
+      return false;
+    } });
+    const reply = await page.ask({ type: 'HUNT_SUGGEST_ALIAS', verb: 'fight' });
+    assert.equal(reply.ok, true);
+    assert.equal(reply.empty, false);
+    assert.ok(reply.items.some(item => item.name === 'f' && item.rank === 'ok'));
+    assert.equal(countOf(game, 'alias'), 1);
+    const none = await page.ask({ type: 'HUNT_SUGGEST_ALIAS', verb: 'kill' });
+    assert.equal(none.items.length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('suggest: refused while the hunt is running, and nothing is sent', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('d');
+    page.store.mapHuntSettings = { ...REQUIRED, commandGapMinMs: 2000, commandGapMaxMs: 2000 };
+    const game = world(page, { at: 'a' });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => hunting(page), 2000));
+    const reply = await page.ask({ type: 'HUNT_SUGGEST_ALIAS', verb: 'fight' });
+    assert.equal(reply.ok, false);
+    assert.match(reply.error, /巡怪/);
+    assert.equal(countOf(game, 'alias'), 0);
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
 // 分頁：第一頁（到「未完繼續」那一行為止）送 alias 時印，之後每次空白行（Enter）印下一頁
 const [ALIAS_PAGE_1, ALIAS_PAGE_2] = (() => {
   const at = ALIAS_LIST.indexOf('\nrunto11'); // 第二頁的第一個別名

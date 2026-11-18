@@ -162,5 +162,20 @@ function judgeAlias(aliases, command, { verb }) {
   return { level: 'info', text: `${shown}，巡怪送「${name} 順位」，遊戲執行「${words.slice(0, -1).join(' ')} 順位」${notes.length ? `；${notes.join('；')}` : ''}` };
 }
 
-globalThis.CatworldHuntParse = { parseTime, parseFinger, parseLook, parseLoad, parseInventory, parseAliases, judgeAlias };
+// 從玩家的別名挑出適合當「開打／打死用的指令」的：只收 judgeAlias 判為 info 的別名（第一個字是 verb、恰好一個 $1 在最後、沒有分號與 *）。
+// 中間有 NPC 的是 best（只數 NPC，順位不會被玩家或物品擠偏），沒有多餘字的是 ok；中間還有別的字的不推薦。
+// 排序：best 在前、同級名稱短的在前、再依名稱。回 [{ name, expansion, rank }]
+function suggestAliases(aliases, verb) {
+  const items = [];
+  aliases.forEach((expansion, name) => {
+    if (judgeAlias(aliases, name, { verb }).level !== 'info') return;
+    const middle = expansion.trim().split(/\s+/).slice(1, -1);
+    const npc = middle.some(word => word.toLowerCase() === 'npc');
+    if (middle.length && !(middle.length === 1 && npc)) return;
+    items.push({ name, expansion, rank: npc ? 'best' : 'ok' });
+  });
+  return items.sort((a, b) => (a.rank === b.rank ? 0 : a.rank === 'best' ? -1 : 1) || a.name.length - b.name.length || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+globalThis.CatworldHuntParse = { parseTime, parseFinger, parseLook, parseLoad, parseInventory, parseAliases, judgeAlias, suggestAliases };
 })();

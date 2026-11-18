@@ -337,6 +337,49 @@ ui('the two command fields have a verify button: it asks the game page with the 
   }
 });
 
+ui('from-alias button: lists the suggestions best first, a click fills the field and saves it, no suitable alias shows the setup hint, and it is disabled while the hunt runs', async () => {
+  let huntOn = false;
+  let items = [{ name: 'fn', expansion: 'fight NPC $1', rank: 'best' }, { name: 'f', expansion: 'fight $1', rank: 'ok' }];
+  let empty = false;
+  const asked = [];
+  const game = message => {
+    if (message.type === 'HUNT_SUGGEST_ALIAS') { asked.push(message.verb); return { ok: true, items, tooLong: false, empty }; }
+    if (message.type === 'STATUS') return { hunt: { on: huntOn } };
+    return {};
+  };
+  const { dom, doc, store } = await boot({}, { game });
+  try {
+    const cell = cellOf(doc, 'fightCommand');
+    const button = cell.querySelector('.hsuggest');
+    const message = cell.querySelector('.hverify-msg');
+    const list = cell.querySelector('.hsuggest-list');
+    button.click();
+    assert.ok(await waitFor(() => list.querySelectorAll('button').length === 2), message.textContent);
+    assert.deepEqual(asked, ['fight']);
+    const texts = [...list.querySelectorAll('button')].map(b => b.textContent);
+    assert.equal(texts[0], 'fn ＝ fight NPC $1（建議）');
+    assert.equal(texts[1], 'f ＝ fight $1');
+    list.querySelectorAll('button')[0].click();
+    assert.equal(cell.querySelector('input').value, 'fn');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.fightCommand === 'fn'), 'saved like typing it');
+    assert.match(message.textContent, /已填入 fn/);
+    assert.equal(list.querySelectorAll('button').length, 0, 'the list closes');
+    items = [];
+    cellOf(doc, 'killCommand').querySelector('.hsuggest').click();
+    const killMessage = cellOf(doc, 'killCommand').querySelector('.hverify-msg');
+    assert.ok(await waitFor(() => /alias kn kill NPC \$1/.test(killMessage.textContent)), killMessage.textContent);
+    assert.match(killMessage.textContent, /沒實測過/);
+    empty = true;
+    button.click();
+    assert.ok(await waitFor(() => /讀不到別名列表/.test(message.textContent)), message.textContent);
+    assert.ok(message.classList.contains('msg-error'));
+    huntOn = true;
+    assert.ok(await waitFor(() => button.disabled, 3000), 'disabled while the hunt runs');
+  } finally {
+    dom.window.close();
+  }
+});
+
 // ---- 跨區路線（hunt-chain 05）：設定頁巡怪底下的「跨區路線」編輯器 ----
 const MOB_T = '測試怪(test mob)';
 const MOB_U = '另一隻怪(other mob)';

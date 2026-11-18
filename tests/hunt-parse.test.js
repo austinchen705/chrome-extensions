@@ -224,3 +224,30 @@ test('alias verdict: no alias list at all is an error that says so', () => {
   assert.equal(verdict.level, 'error');
   assert.match(verdict.text, /讀不到別名列表/);
 });
+
+test('suggest: with the real alias list fight gives fn (best) before f (ok) and nothing else; kill gives nothing', () => {
+  const aliases = P.parseAliases(sample('alias-list'));
+  assert.deepEqual(P.suggestAliases(aliases, 'fight').map(item => ({ ...item })), [
+    { name: 'fn', expansion: 'fight NPC $1', rank: 'best' },
+    { name: 'f', expansion: 'fight $1', rank: 'ok' },
+  ]);
+  assert.deepEqual(P.suggestAliases(aliases, 'kill'), []);
+});
+
+test('suggest: semicolons, *, a misplaced $1, extra words and other verbs are not suggested; same rank sorts by name length then name', () => {
+  const aliases = P.parseAliases([
+    'aaa = fight $1;look',
+    'bbb = fight *',
+    'ccc = fight $1 now',
+    'ddd = fight foo $1',
+    'eee = kill $1',
+    'fff = fight $1 $2',
+    'zz = fight $1',
+    'bbbb = fight $1',
+    'aaaa = fight $1',
+    'long = fight npc $1',
+    'xyz = fight NPC $1',
+  ].join('\n'));
+  assert.deepEqual(P.suggestAliases(aliases, 'fight').map(item => item.name + ':' + item.rank), ['xyz:best', 'long:best', 'zz:ok', 'aaaa:ok', 'bbbb:ok']);
+  assert.deepEqual(P.suggestAliases(aliases, 'kill').map(item => item.name), ['eee']);
+});
