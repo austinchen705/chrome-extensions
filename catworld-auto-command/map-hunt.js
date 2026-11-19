@@ -844,7 +844,7 @@ function create(deps) {
       }
       await humanPause(here, '打完一隻後');
       if (state !== token) return;
-      if (!attackedStill) { await humanHabit(token, here, '打完一隻後'); if (state !== token) return; }
+      if (!attackedStill) { await humanHabit(token, here, '打完一隻後', { mergeLook: true }); if (state !== token) return; }
       const before = mine.length;
       info = await lookAgain();
       if (!info) return;
@@ -1671,8 +1671,9 @@ function create(deps) {
   }
   // 習慣指令（habitAfterArrive／habitAfterKill）：humanize 開著、不是掃描、兩個欄位有填才作用，在長停頓的兩個點各抽一次，依百分比最多送一個白名單內的無害指令（走 deps.send，來源 hunt）。
   // 到房間後的那一個放在「看完房間之後」而不是之前：habit l 的回應會被房間判斷（抵達描述的緩衝、自己的 l）當成房間描述；打完一隻後的放在撿屍指令之後。
+  // 打完一隻後還要重數時（mergeLook）抽到 l 不另外送：緊接著的重數本來就會送 l，連送兩個 l 太不自然；只記「l 併入重數」，抽籤照常消耗，其他指令照送。
   // 送出後再等 ARRIVAL_QUIET_TICKS 個 tick 讓回應印完，免得它混進下一步走路的描述緩衝；走路途中絕不送。呼叫端在 await 之後要確認這一次巡怪還在
-  async function humanHabit(token, here, when) {
+  async function humanHabit(token, here, when, { mergeLook = false } = {}) {
     if (!humanizeOn()) return;
     const list = habitList(state.baseSettings[when === '到房間後' ? 'habitAfterArrive' : 'habitAfterKill']);
     if (!list.length) return;
@@ -1680,6 +1681,7 @@ function create(deps) {
     let upto = 0;
     const hit = list.find(item => { upto += item.percent; return roll < upto; });
     if (!hit) return;
+    if (mergeLook && hit.command === 'l') { record(here, '習慣指令', `l 併入重數（${when}）`); return; }
     const sent = { done: false };
     if (!deps.send(hit.command, () => { sent.done = true; })) return;
     record(here, '習慣指令', `${hit.command}（${when}）`);

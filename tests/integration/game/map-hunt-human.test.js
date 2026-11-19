@@ -606,6 +606,14 @@ ui('habit: the command is picked by the percents, and a habit l after arriving d
   assert.match(look.text, /習慣指令 l（到房間後）/);
 });
 
+ui('habit: a habit l right before a recount is merged into the recount look, the last monster still sends it', async () => {
+  const { commands, text } = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], r: 0.5, settings: { habitAfterKill: 'l 100' }, worldOptions: { looks: { f: { lines: [MOB_LINE, MOB_LINE] } } } });
+  // 第一隻打完後還要重數：習慣的 l 不送，重數的 l 就是那一個；最後一隻不重數，習慣的 l 照送
+  assert.deepEqual(commands, ['e', 'e', 'e', 'e', 'e', 'l', FIGHT, 'gc', 'l', FIGHT, 'gc', 'l'], commands.join());
+  assert.match(text, /習慣指令 l 併入重數（打完一隻後）/);
+  assert.match(text, /習慣指令 l（打完一隻後）/);
+});
+
 ui('habit: after a kill the command goes after the corpse command, once per monster', async () => {
   const { commands, text } = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], r: 0.5, settings: { habitAfterKill: 'edf 100' }, worldOptions: { looks: { f: { lines: [MOB_LINE, MOB_LINE] } } } });
   assert.deepEqual(commands, ['e', 'e', 'e', 'e', 'e', 'l', FIGHT, 'gc', 'edf', 'l', FIGHT, 'gc', 'edf'], commands.join());
