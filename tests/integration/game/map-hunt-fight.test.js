@@ -1,4 +1,4 @@
-// 地圖巡怪：map-hunt-fight（74 組；共用底座在 tests/helpers/map-hunt-world.js，整個 content script 在 jsdom 裡跑）。
+// 地圖巡怪：map-hunt-fight（78 組；共用底座在 tests/helpers/map-hunt-world.js，整個 content script 在 jsdom 裡跑）。
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ui, sleep, waitFor, fixture } = require('../../helpers/game-page');
@@ -1667,6 +1667,58 @@ ui('fight: after resting before a fight, it looks again first, since the room ma
     assert.equal(game.log[fightAt], 'fight 1', game.log.join(','));
     assert.equal(game.log[fightAt - 1], 'l', 'looked again after the rest');
     assert.match(await huntLog(page), /重數 休息過/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('fight: a knocked-out monster that wakes up while being finished is fought normally, with the special attack, and knocked out again it is finished again', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'pt', specialIntervalSec: 1 };
+    let kills = 0;
+    // 使用者貼的真實輸出：被補刀的怪「慢慢睜開眼睛，清醒了過來」，又被打昏時是「跌在地上一動也不動了」
+    const script = command => {
+      if (command === FIGHT) { say(page, KO_LINE); return true; }
+      if (command === 'kill 1') {
+        kills += 1;
+        setTimeout(() => say(page, kills === 1 ? '測試怪慢慢睜開眼睛，清醒了過來。' : '測試怪死了。'), 0);
+        return true;
+      }
+      if (command === 'pt') { setTimeout(() => say(page, KO_LINE), 0); return true; }
+      return command === 'gc';
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), `${huntText(page)} ${game.log.join(',')}`);
+    assert.deepEqual(game.log.slice(game.log.indexOf(FIGHT)), [FIGHT, 'kill 1', 'pt', 'kill 1', 'gc'], 'woke: special attack after the interval; knocked out again: finished again; then the corpse');
+  } finally {
+    page.close();
+  }
+});
+
+ui('fight: a monster knocked out again while being finished (no wake-up seen) gets the kill again at once, not after the fight timeout', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, fightTimeoutSec: 600 }; // 逾時要 30 秒（SCALE 之後），測試只等 8 秒
+    let kills = 0;
+    const script = command => {
+      if (command === FIGHT) { say(page, KO_LINE); return true; }
+      if (command === 'kill 1') {
+        kills += 1;
+        setTimeout(() => say(page, kills === 1 ? KO_LINE : '測試怪死了。'), 0);
+        return true;
+      }
+      return command === 'gc';
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), `${huntText(page)} ${game.log.join(',')}`);
+    assert.deepEqual(game.log.slice(game.log.indexOf(FIGHT)), [FIGHT, 'kill 1', 'kill 1', 'gc']);
   } finally {
     page.close();
   }

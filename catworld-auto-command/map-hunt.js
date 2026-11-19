@@ -44,6 +44,8 @@ const LOOT_REPLY_TICKS = 3; // 好幾隻打你的房間，撿屍送出後再等�
 const CORPSE_WAIT_TICKS = 5 * TICKS_PER_SEC; // 打完最後一隻、不重數就離開時，最多等撿屍指令送完這麼久（巡怪結束會丟掉還沒送出的指令）
 const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
 const NO_TARGET = /你要對誰施展這個招式|只能對戰鬥中的對手使用/; // 特攻沒有對象：這一場不再送
+// 補刀時昏迷的怪醒過來（使用者貼的真實輸出：「扶桑浪人慢慢睜開眼睛，清醒了過來。」「扶桑浪人一見到你，愣了一愣，大叫：「我宰了你！」」）；NFKC 之後比對，所以逗號寫半形
+const WAKE_UP = /慢慢睜開眼睛,清醒了過來|一見到你,愣了一愣/;
 const ENGAGE = /你對著(\S+?)(?:說道|喝道)/;
 const NOT_ALIVE = /並不是活物/; // 順位數到屍體（使用者貼的真實輸出「看清楚一點，扶桑浪人的屍體並不是活物。」）
 const LOOT_REFUSED = /你還在戰鬥中[!！]?只能一次拿一樣/; // 還在打時撿屍被拒（使用者貼的真實輸出）
@@ -772,7 +774,8 @@ function create(deps) {
       if (!target) { sendLoot(); leave('怪的 ID 不能用'); return; }
       if (state.retreat || state.retreatPending) { sendLoot(); state.phase = 'plan'; deps.notify(); return; } // 要撤退（含正在讀格子）：不打下一隻，這間留著不算處理過
       if (spawnPause()) return;
-      if (!(await restGate(token))) return;
+      // 房間裡有怪在 <戰鬥中>（正在打你）時不能原地休息：氣回不來、只會一直被打；先打，戰鬥中的危險線照樣擋。沒人在打了才休息
+      if (!info.monsters.some(mob => mob.state === '戰鬥中') && !(await restGate(token))) return;
       if (!(await reactWait(token))) return;
       if (!(await notBusy(token))) return;
       // 看完房間之後有東西離開（同一份輸出裡、或等反應時間的期間）、或停下來休息過：順位已經不準，先重看一次（最多連續 MAX_STUCK 次）
@@ -808,7 +811,8 @@ function create(deps) {
       }
       downs += 1;
       // 打到昏迷（不是死）：補一個 kill 確實打死，出現死亡的字才算數；然後才撿屍
-      if (outcome === 'knockedOut' && state.settings.finishKnockedOut === 'on') {
+      // 補刀時醒過來又被打昏（fightOne 回 knockedOut）就再補一次
+      while (outcome === 'knockedOut' && state.settings.finishKnockedOut === 'on') {
         outcome = await fightOne(token, target, { finishing: true });
         if (state !== token || outcome === 'stopped') return;
         // 補刀沒打到（順位上沒有東西、數到屍體、打到別隻）：怪還昏迷著，重看房間，由下一圈用新的順位補刀；不算倒下、不撿屍
@@ -905,11 +909,13 @@ function create(deps) {
       const knockout = splitIds(state.settings.knockoutKeywords);
       const endWords = splitIds(state.settings.endKeywords).filter(word => !finishing || !knockout.includes(word));
       // 特攻從開打算起隔一個間隔才送第一次，免得緊跟在 fight 後面被拒戰時得到「你要對誰施展這個招式」
-      state.fight = { mob, name: shortName(mob), engaged: false, wrong: false, resolve, finishing, knockout, knockedOut: false, killSent: finishing || kill, buffer: '', noTarget: false, waited: 0, lastSpecial: state.ticks, checking: false, silentChecks: 0, endWords };
+      state.fight = { mob, name: shortName(mob), engaged: false, wrong: false, resolve, finishing, knockout, knockedOut: false, killSent: finishing || kill, buffer: '', noTarget: false, waited: 0, lastSpecial: state.ticks, checking: false, silentChecks: 0, endWords, reKills: 0 };
       deps.notify();
       if (!deps.send(aim(finishing || kill ? killCmd() : fightCmd(), mob))) finish('指令送不出去，已停止', { alert: true });
     });
   }
+  // 同一行有這隻怪的短名稱、而且符合 pattern（醒來的句子用）
+  const nameLineMatches = (buffer, name, pattern) => buffer.normalize('NFKC').split(/\r?\n/).some(line => pattern.test(line) && (!name || line.includes(name)));
   // 遊戲的戰鬥訊息只寫短名稱（「蒙古兵死了。」），不帶稱號：取最後一個空白或」之後的那一段（千夫長 蒙古兵→蒙古兵、落第才子「…」衰老頭→衰老頭）
   const shortName = mob => String(mob?.name ?? '').split(/[\s」]/).filter(Boolean).pop() ?? '';
   // 結束的字要和這隻怪的名字出現在同一行才算：只看字的話，同房間別的怪或別人的戰鬥印出「某某死了」會被當成這隻死了，
@@ -999,6 +1005,21 @@ function create(deps) {
         fight.wrong = true;
         fight.name = engaged[1];
         record(deps.room() ?? '-', '打到別隻', engaged[1]);
+      }
+    }
+    if (fight.finishing) {
+      // 補刀時這隻醒過來：改成一般的打（結束字含昏迷的字、可以放特攻，間隔從醒來算起），又被打昏就由 fightRoom 再補刀
+      if (nameLineMatches(fight.buffer, fight.name, WAKE_UP)) {
+        fight.finishing = false;
+        fight.endWords = splitIds(settings.endKeywords);
+        fight.lastSpecial = state.ticks;
+        record(deps.room() ?? '-', '醒來', `${fight.name} 補刀時醒過來，改一般的打`);
+      } else if (fight.reKills < MAX_STUCK && endWordFor(fight.buffer, fight.knockout, { name: fight.name })) {
+        // 沒看到醒來就又被打昏：馬上再補一刀，不等逾時（每次昏迷只補一次，最多 MAX_STUCK 次）
+        fight.reKills += 1;
+        fight.buffer = '';
+        deps.send(aim(killCmd(), fight.mob));
+        return;
       }
     }
     const hit = endWordFor(fight.buffer, fight.endWords, { name: fight.name });
