@@ -64,7 +64,7 @@
 - **測試範圍**（使用者指定）：測試依需要的環境分資料夾，資料夾決定怎麼跑。`tests/unit/`（純函式、讀檔比對，不起 jsdom、不執行 background、不載入 popup.html，整批約 2 秒）：日常一律跑 `npm run test:unit`。`tests/integration/`（慢，平常不跑）：只跑「載入或執行了這次改到的程式」的整合測試檔，分三個資料夾：`tests/integration/game/`（整個 content script 在 jsdom，`npm run test:game`）、`tests/integration/settings/`（jsdom 載入真正的 popup.html，`npm run test:settings`）、`tests/integration/background/`（執行 background.js，`npm run test:background`）；`npm run test:integration` 是三個全部。挑法是 grep 改到的檔名看哪些測試載入它，例如改 `map-hunt.js` 的整理（sort）程式就跑 `tests/integration/game/map-hunt-sort.test.js`，改 `popup.html`／`popup.js` 就跑 `tests/integration/settings/` 裡相關的 `*-ui.test.js`；單檔用 `node --test <路徑>`。地圖巡怪的整合測試按主題分檔（`tests/integration/game/map-hunt-` 加 `core`、`fight`、`rest`、`sort`、`chain`、`scan`、`rounds`、`human`），共用的假地圖與假遊戲在 `tests/helpers/map-hunt-world.js`，新測試放進對應主題的檔案。新測試依環境放：用不到 jsdom 與 background 的放 `tests/unit/`；同一個檔案混著純函式與 jsdom 的放它需要的整合資料夾。整套 `npm test`（Node 22 以上，各檔平行跑）只在改到很多功能共用的核心（`content.js` 的送出佇列與看門狗、manifest 與備援注入的載入清單、`trigger-engine.js`）時才自己判斷要不要跑；大功能切成好幾張票時也一樣，每張票只跑相關的。`tests/integration/settings/force-extras-settings-ui.test.js` 在整套一起跑、機器忙時會偶發失敗（載入後固定只等 100 毫秒），單獨跑會過，不是改動造成的。
 - **各步驟用哪個模型**（使用者指定）：規劃（`/grill-me`、`/to-spec`、`/to-tickets`）用 Fable；開發（`/implement`）用 Sonnet，由主對話用 Agent 工具開 `model: sonnet` 的 agent 照票實作；測試與驗收（跑測試、看截圖、`/code-review`、確認 agent 的改動）用 Opus。主對話自己在哪個模型上要看 `/model`，派 agent 時照這個分工指定模型。
 - 這套取代 superpowers 的 brainstorming／writing-plans／executing-plans，兩套不混用，規格只留一份。
-- 專案其他規則仍然優先：改了 extension 的任何檔案都要升 `manifest.json` 版本並在 `CHANGELOG.md` 加一筆；commit 之後要不要 push 一律先問使用者。
+- 專案其他規則仍然優先：升版與 CHANGELOG 照下面「版本號」一節；commit 之後要不要 push 一律先問使用者。
 - 這些 skill 只能由使用者用 `/名稱` 觸發；使用者要先跑過一次 `/setup-matt-pocock-skills`，沒有 `docs/agents/` 時 `/to-spec`、`/to-tickets`、`/code-review` 會要求先設定。
 
 ## 驗證、錯誤、警告訊息的顯示
@@ -83,7 +83,7 @@
 
 ## 版本號
 
-- 每次改動 extension 的任何檔案，都要同步升該 extension 的 `manifest.json` `version`：小修正升 patch、新功能升 minor；並在根目錄 `CHANGELOG.md` 最上面加一筆（版本、日期、使用者看得到的變化）。同一次 commit 累積了多個版本時，在紀錄裡註明一起發布。
+- 每次改動 extension 的任何檔案，都要同步升該 extension 的 `manifest.json` `version`：小修正升 patch、新功能升 minor；並在根目錄 `CHANGELOG.md` 最上面加一筆（版本、日期、使用者看得到的變化）。同一次 commit 累積了多個版本時，在紀錄裡註明一起發布。切成好幾張票的功能例外：每張票不升版、不寫 CHANGELOG，最後一張做完才升一次，紀錄裡註明哪幾張票一起發布。
 - popup 上的版本顯示一律讀 `chrome.runtime.getManifest().version`，不要另外寫死。
 - 改完要提醒使用者：到 `chrome://extensions` 重新載入 extension，並重新整理目標分頁，content script 才會更新。
 
