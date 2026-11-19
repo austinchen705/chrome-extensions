@@ -278,6 +278,22 @@ ui('sort: armor that is worse than what is worn is sold, not kept', async () => 
   }
 });
 
+ui('sort: armor with no baseline (worn equipment never read) is sold, not kept', async () => {
+  const page = await sortPage();
+  try {
+    delete page.store.wornEquipment;
+    const state = sortState();
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: sortScript(page, state) });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.deepEqual(state.secured, []);
+    assert.ok(game.log.includes('sell all'));
+  } finally {
+    page.close();
+  }
+});
+
 ui('sort: a weapon is kept only when it is the main weapon type', async () => {
   const page = await sortPage();
   try {
@@ -304,7 +320,7 @@ ui('sort: the hunt log says which identified items were kept and why, the main w
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
     const log = await huntLog(page);
-    assert.match(log, /整理 鑑定 2 件，主要武器 暗器；留下：黑羽長風鎧（盔甲類防具，沒有基準可比）/);
+    assert.match(log, /整理 鑑定 2 件，主要武器 暗器；留下：黑羽長風鎧（盔甲類防具，比現在好，建議留下）/);
     assert.match(log, /整理 secure black armor（黑羽長風鎧）→ 標記完成。/);
     assert.ok(!/留下：[^\n]*牛皮拳套/.test(log), 'the glove is not kept');
   } finally {

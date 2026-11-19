@@ -1611,7 +1611,7 @@ hunt = CatworldMapHunt.create({
   visited: async () => (await chrome.storage.local.get(CatworldMapHunt.VISITED_KEY))[CatworldMapHunt.VISITED_KEY] ?? {},
   markVisited: markHuntVisited,
   ask: askGame,
-  // 整理用：從鑑定輸出裡挑出要留的裝備（比現在穿的好或屬性達門檻、沒基準的，武器只留主要武器職業的）。
+  // 整理用：從鑑定輸出裡挑出要留的裝備（比現在穿的好或屬性達門檻的；沒基準可比的不留，武器只留主要武器職業的）。
   // 回 { total: 鑑定出幾件, mainWeapon, kept: [{ name, category, why }] }，巡怪紀錄寫留了什麼、為什麼
   keepers: async text => {
     const E = CatworldZapEquipment;

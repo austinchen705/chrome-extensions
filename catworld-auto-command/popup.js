@@ -786,10 +786,11 @@ function showEquipmentKeep() {
 // 裝備比較計分：存進 equipmentScore，遊戲頁的面板與商人、背包整理都監聽或每次重讀，馬上生效。每次改都交給 normalizeScoreRule 整理、把整理後的值寫回欄位
 // （數字填空白回到預設、清單用「、」分開；清單清空＝沒有）。「還原預設計分」直接拿掉這個鍵
 let equipmentScore = CatworldZapEquipment.normalizeScoreRule(undefined);
-const SCORE_FIELDS = ['scorePrimaryGap', 'scorePrimaryWeight', 'scoreRelatedWeight', 'scoreOtherWeight', 'scoreRelated', 'scoreIgnored'];
+const SCORE_FIELDS = ['scorePrimaryGap', 'scorePrimaryWeight', 'scoreSkillWeight', 'scoreRelatedWeight', 'scoreOtherWeight', 'scoreRelated', 'scoreIgnored'];
 function showEquipmentScore() {
   $('scorePrimaryGap').value = equipmentScore.primaryGap;
   $('scorePrimaryWeight').value = equipmentScore.primaryWeight;
+  $('scoreSkillWeight').value = equipmentScore.skillWeight;
   $('scoreRelatedWeight').value = equipmentScore.relatedWeight;
   $('scoreOtherWeight').value = equipmentScore.otherWeight;
   $('scoreRelated').value = equipmentScore.related.join('、');
@@ -799,6 +800,7 @@ SCORE_FIELDS.forEach(id => $(id).addEventListener('change', () => {
   equipmentScore = CatworldZapEquipment.normalizeScoreRule({
     primaryGap: $('scorePrimaryGap').value,
     primaryWeight: $('scorePrimaryWeight').value,
+    skillWeight: $('scoreSkillWeight').value,
     relatedWeight: $('scoreRelatedWeight').value,
     otherWeight: $('scoreOtherWeight').value,
     related: $('scoreRelated').value,

@@ -74,13 +74,13 @@ async function boot(store = {}, gameReply = { ok: true, scriptId: 'x' }) {
 }
 
 
-const DEFAULTS = { primaryGap: 3, primaryWeight: 4, relatedWeight: 2, otherWeight: 1, ignored: ['重量', '硬度', '潛能', '損修'], related: ['攻擊', '輔助氣恢復', '內功'] };
+const DEFAULTS = { primaryGap: 3, primaryWeight: 4, skillWeight: 3, relatedWeight: 2, otherWeight: 1, ignored: ['重量', '硬度', '潛能', '損修'], related: ['攻擊', '輔助氣恢復', '內功'] };
 const value = (doc, id) => doc.getElementById(id).value;
 
 ui('with nothing stored the score fields show the built-in rule', async () => {
   const { dom, doc } = await boot();
   try {
-    assert.deepEqual(['scorePrimaryGap', 'scorePrimaryWeight', 'scoreRelatedWeight', 'scoreOtherWeight'].map(id => value(doc, id)), ['3', '4', '2', '1']);
+    assert.deepEqual(['scorePrimaryGap', 'scorePrimaryWeight', 'scoreSkillWeight', 'scoreRelatedWeight', 'scoreOtherWeight'].map(id => value(doc, id)), ['3', '4', '3', '2', '1']);
     assert.equal(value(doc, 'scoreRelated'), '攻擊、輔助氣恢復、內功');
     assert.equal(value(doc, 'scoreIgnored'), '重量、硬度、潛能、損修');
   } finally {
@@ -97,6 +97,9 @@ ui('a stored rule is shown, and a change is saved as one cleaned equipmentScore 
     change('scorePrimaryWeight', '2.5');
     assert.ok(await waitFor(() => store.equipmentScore?.primaryWeight === 2.5));
     assert.deepEqual(store.equipmentScore, { ...DEFAULTS, primaryGap: 1, primaryWeight: 2.5, relatedWeight: 3, ignored: ['重量'] });
+    change('scoreSkillWeight', '5');
+    assert.ok(await waitFor(() => store.equipmentScore.skillWeight === 5), 'the weapon skill weight is saved');
+    assert.deepEqual(store.equipmentScore, { ...DEFAULTS, primaryGap: 1, primaryWeight: 2.5, skillWeight: 5, relatedWeight: 3, ignored: ['重量'] });
     change('scoreRelated', '補助氣回復、 攻擊 、攻擊');
     assert.ok(await waitFor(() => store.equipmentScore.related.length === 2));
     assert.deepEqual(store.equipmentScore.related, ['輔助氣恢復', '攻擊'], 'names normalised and de-duplicated');
@@ -117,6 +120,9 @@ ui('bad numbers are cleaned, a blank number goes back to the default, and a clea
     assert.equal(value(doc, 'scorePrimaryWeight'), '0');
     change('scoreOtherWeight', '99999');
     assert.ok(await waitFor(() => store.equipmentScore.otherWeight === 1000));
+    change('scoreSkillWeight', '');
+    assert.ok(await waitFor(() => store.equipmentScore.skillWeight === 3));
+    assert.equal(value(doc, 'scoreSkillWeight'), '3', 'blank goes back to the default');
     change('scoreRelatedWeight', '');
     assert.ok(await waitFor(() => store.equipmentScore.relatedWeight === 2));
     assert.equal(value(doc, 'scoreRelatedWeight'), '2', 'blank goes back to the default');

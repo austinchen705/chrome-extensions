@@ -308,6 +308,8 @@ const bagLines = [
 const sortPage = async (settings = {}) => {
   const page = await loadPage({ tripCommand: 'go;identify', returnCommand: 'back', ...settings });
   page.w.document.title = '小明 - 貓的世界';
+  // 現在穿著一件防禦 10 的舊甲：沒有基準可比的裝備不會被留下，預設的鑑定結果（防禦 50）才有東西可比而被留
+  page.store.wornEquipment = { 小明: { 盔甲類防具: [{ name: '舊甲', primary: 10, attrs: [], needExp: null, readAt: 1 }] } };
   return page;
 };
 

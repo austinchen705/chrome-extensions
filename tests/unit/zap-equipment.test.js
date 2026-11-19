@@ -383,16 +383,20 @@ test('keep rule: off by default; an attribute just under the threshold, an ignor
   assert.equal(thin([{ name: '行動', value: -12 }]), 'worse');
 });
 
-test('keep rule: applies without a baseline and when the piece cannot be worn yet; a better piece stays better', () => {
+test('keep rule: applies with a baseline and when the piece cannot be worn yet; a better piece stays better; without a baseline it stays none', () => {
   const alone = E.compareEquipment(piece('孤品', 5, [{ name: '攻擊', value: 12 }]), [], { ...stats, keep: KEEP });
-  assert.deepEqual([alone.verdict, alone.against, alone.reasons], ['keep', null, ['攻擊 +12 達門檻 10']]);
+  assert.deepEqual([alone.verdict, alone.against], ['none', null], 'no baseline: the threshold does not turn none into keep');
+  const unread = E.compareEquipment(piece('孤品', 5, [{ name: '攻擊', value: 12 }]), [base('乙', null)], { ...stats, keep: KEEP });
+  assert.equal(unread.verdict, 'none', 'worn but never read: also none');
+  const worse = E.compareEquipment(piece('薄品', 5, [{ name: '攻擊', value: 12 }]), [base('暮歌', 31)], { ...stats, keep: KEEP });
+  assert.deepEqual([worse.verdict, worse.reasons[0]], ['keep', '攻擊 +12 達門檻 10'], 'with a baseline the threshold still keeps a worse piece');
   const blocked = E.compareEquipment(piece('重品', 5, [{ name: '攻擊', value: 12 }], { needExp: 999999999 }), [base('暮歌', 31)], { ...stats, keep: KEEP });
   assert.deepEqual([blocked.verdict, blocked.blocked], ['keep', true]);
   assert.equal(E.compareEquipment(piece('新披風', 40, [{ name: '攻擊', value: 12 }]), [base('暮歌', 31)], { ...stats, keep: KEEP }).verdict, 'better');
 });
 
 // ---- 比較的計分規則可以調（設定頁「裝備比較計分」，存在 equipmentScore）----
-const DEFAULT_SCORE = { primaryGap: 3, primaryWeight: 4, relatedWeight: 2, otherWeight: 1, ignored: ['重量', '硬度', '潛能', '損修'], related: ['攻擊', '輔助氣恢復', '內功'] };
+const DEFAULT_SCORE = { primaryGap: 3, primaryWeight: 4, skillWeight: 3, relatedWeight: 2, otherWeight: 1, ignored: ['重量', '硬度', '潛能', '損修'], related: ['攻擊', '輔助氣恢復', '內功'] };
 
 test('normalizeScoreRule: nothing stored is the built-in rule, bad numbers fall back or are clamped, lists are cleaned', () => {
   assert.deepEqual(E.normalizeScoreRule(undefined), DEFAULT_SCORE);
@@ -453,4 +457,43 @@ test('pickKeepers follows the score rule too', () => {
   const baselineOf = () => [base('乙', 48)];
   assert.equal(E.pickKeepers(blocks, { baselineOf, mainWeapon: '劍', exp: 414748 }).length, 1);
   assert.equal(E.pickKeepers(blocks, { baselineOf, mainWeapon: '劍', exp: 414748, score: { relatedWeight: 1 } }).length, 0);
+});
+
+test('pickKeepers: a piece with no baseline is not kept, even with the keep threshold on; weapons are still filtered by main weapon', () => {
+  const blocks = [armor('甲', 30, [{ name: '攻擊', value: 12 }]), { ...piece('劍', 30, [], { category: '劍類武器' }), kind: 'weapon' }];
+  const none = baselineOf => E.pickKeepers(blocks, { baselineOf, mainWeapon: '劍', exp: 414748, keep: KEEP });
+  assert.equal(none(() => undefined).length, 0, 'category not worn');
+  assert.equal(none(() => [base('乙', null)]).length, 0, 'worn but never read');
+  assert.deepEqual(none(category => (category === '盔甲類防具' ? [base('乙', 10)] : undefined)).map(block => block.name), ['甲'], 'with a baseline it is judged normally');
+  const axe = { ...piece('斧', 99, [], { category: '斧類武器' }), kind: 'weapon' };
+  assert.equal(E.pickKeepers([axe], { baselineOf: () => [base('乙', 1)], mainWeapon: '劍' }).length, 0, 'other weapon type');
+});
+
+test('skill attributes weigh 3, the related list 2, everything else 1', () => {
+  const rule = E.normalizeScoreRule(undefined);
+  const related = E.relatedAttrNames('劍');
+  const skills = E.skillAttrNames('劍');
+  assert.deepEqual(skills, ['劍術']);
+  assert.deepEqual(E.skillAttrNames('鞭'), ['鞭法']);
+  assert.deepEqual(E.skillAttrNames(undefined), []);
+  assert.equal(E.scoreAttrs([{ name: '劍術', value: 4 }], related, rule, skills), 12, '4 × 3');
+  assert.equal(E.scoreAttrs([{ name: '攻擊', value: 4 }], related, rule, skills), 8, '4 × 2');
+  assert.equal(E.scoreAttrs([{ name: '行動', value: 4 }], related, rule, skills), 4, '4 × 1');
+  assert.equal(E.scoreAttrs([{ name: '鞭法', value: 4 }], related, rule, skills), 4, 'another weapon skill is just other for a sword user');
+  assert.equal(E.scoreAttrs([{ name: '鞭法', value: 4 }], E.relatedAttrNames('鞭'), rule, E.skillAttrNames('鞭')), 12, 'but 3 per point for a whip user');
+  assert.equal(E.scoreAttrs([{ name: '劍術', value: 4 }], [...related, '劍術'], rule, skills), 12, 'in both lists: the skill weight wins');
+  assert.equal(E.scoreAttrs([{ name: '劍術', value: 4 }], related, E.normalizeScoreRule({ skillWeight: 5 }), skills), 20);
+  assert.equal(E.scoreAttrs([{ name: '劍術', value: 4 }], related, E.normalizeScoreRule({ ignored: ['劍術'] }), skills), 0, 'ignored is not scored');
+  // 主要數值少 3（−12 分）：劍術 +5 在權重 3 時 15 − 12 = +3 比較好，權重 2 時 10 − 12 = −2 比較差
+  const verdict = score => E.compareEquipment(armor('甲', 27, [{ name: '劍術', value: 5 }]), [base('乙', 30)], { ...stats, score }).verdict;
+  assert.equal(verdict(undefined), 'better');
+  assert.equal(verdict({ skillWeight: 2 }), 'worse');
+});
+
+test('normalizeScoreRule: an old saved rule without skillWeight gets 3; the weight is clamped like the others', () => {
+  assert.equal(E.normalizeScoreRule({ primaryGap: 3, primaryWeight: 4, relatedWeight: 2, otherWeight: 1 }).skillWeight, 3);
+  assert.equal(E.normalizeScoreRule({ skillWeight: 1e9 }).skillWeight, 1000);
+  assert.equal(E.normalizeScoreRule({ skillWeight: -2 }).skillWeight, 0);
+  assert.equal(E.normalizeScoreRule({ skillWeight: 'x' }).skillWeight, 3);
+  assert.equal(E.normalizeScoreRule({ skillWeight: 0 }).skillWeight, 0);
 });
