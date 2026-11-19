@@ -145,9 +145,11 @@ ui('after a list page the summary suggests the wearable items with a higher requ
     const text = shopBox(page).textContent;
     assert.match(text, /經驗 414748/);
     assert.match(text, /已蒐集 3 件/);
-    assert.match(text, /建議 check（穿得了、佩帶經驗比現在穿的高，或身上沒穿這個類別；實際數值 check 後才知道）：1 黃金鎖鍊（需經驗 200000，身上沒穿這類）；4 烈火棍（需經驗 100，現穿 舊棍 0）/);
+    assert.match(text, /建議 check（穿得了、佩帶經驗比現在穿的高；實際數值 check 後才知道）：4 烈火棍（需經驗 100，現穿 舊棍 0）/);
+    assert.doesNotMatch(text, /黃金鎖鍊（/, 'the whip category is not worn, so it is not suggested');
+    assert.match(text, /身上沒穿這個類別：1 件（沒有可比的，不建議）/);
     assert.match(text, /經驗還不夠穿：1 件/);
-    assert.doesNotMatch(text, /沒有目前穿著的資料可比/, 'the whip category is empty on a read worn list, so it is suggested instead');
+    assert.doesNotMatch(text, /沒有目前穿著的資料可比/, 'the worn gear was read, so the whip is counted as not worn instead');
     assert.match(text, /還沒蒐集（1）：2/);
     assert.match(text, /批次 check 預估約 1S10C～1S16C/, '虹色項鍊 22S: 5% is 1S10C, up to 1S16C');
     assert.equal(shopBox(page).previousElementSibling.id, 'listpage', 'inserted right under the list page');
@@ -275,13 +277,14 @@ ui('right after a check the item is compared with what is worn, using this check
     assert.match(page.w.document.querySelectorAll('[data-catworld-shop]')[1].textContent, /經驗還不夠穿（需要 99999999）/);
     page.output(`<span>${checkOutput('黃金鎖鍊', '鞭類武器', 47, 200000)}</span>`);
     assert.ok(await waitFor(() => page.w.document.querySelectorAll('[data-catworld-shop]').length === 3, 2000));
-    assert.match(page.w.document.querySelectorAll('[data-catworld-shop]')[2].textContent, /身上沒穿這個類別的裝備，穿得了可以直接穿/, 'the worn gear was read but there is no whip on it');
+    assert.match(page.w.document.querySelectorAll('[data-catworld-shop]')[2].textContent, /身上沒穿這個類別，沒有可比的，不推薦/, 'the worn gear was read but there is no whip on it');
+    assert.equal(page.w.document.querySelectorAll('[data-catworld-shop]')[2].querySelectorAll('button').length, 0, 'not worth buying, so no buy button');
   } finally {
     page.close();
   }
 });
 
-ui('without a read of the worn gear nothing can be compared, and with one an empty category is suggested when wearable', async () => {
+ui('without a read of the worn gear nothing can be compared, and with one an empty category is counted as not worn and not suggested', async () => {
   const page = await boot({ scale: SCALE });
   try {
     seed(page);
@@ -292,6 +295,7 @@ ui('without a read of the worn gear nothing can be compared, and with one an emp
     page.output(`<span>${SUMMARY_LIST}</span>`);
     const lastBox = () => [...page.w.document.querySelectorAll('[data-catworld-shop]')].pop();
     assert.ok(await waitFor(() => /沒有目前穿著的資料可比/.test(lastBox().textContent), 2000));
+    assert.doesNotMatch(lastBox().textContent, /身上沒穿這個類別：/, 'nothing was read, so it is not "not worn"');
   } finally {
     page.close();
   }
@@ -321,10 +325,10 @@ ui('the list summary also offers a batch check for the suggested ones', async ()
     page.output(`<span>${SUMMARY_LIST}</span>`);
     assert.ok(await waitFor(() => shopBox(page), 2000));
     const start = [...shopBox(page).querySelectorAll('button')].find(button => button.textContent.startsWith('批次 check 建議的'));
-    assert.match(start.textContent, /批次 check 建議的 2 個（約 10S～10S50C）/, '黃金鎖鍊 60S + 烈火棍 1G40S = 200S: 5% is 10S');
+    assert.match(start.textContent, /批次 check 建議的 1 個（約 7S～7S35C）/, 'only 烈火棍 1G40S = 140S: 5% is 7S; the unworn whip is not suggested');
     start.click();
     [...shopBox(page).querySelectorAll('button')].find(button => button.textContent === '確認送出').click();
-    assert.deepEqual(sent, ['check 1;check 4']);
+    assert.deepEqual(sent, ['check 4']);
   } finally {
     page.close();
   }

@@ -94,9 +94,9 @@ function rows(db) {
 
 // 把 list 這一頁的項目逐一和資料庫比：沒蒐集過的放 unknown；蒐集過的只看佩帶經驗（等級）：
 // 經驗不夠穿的只計數；穿得了的和「現在穿的同類別裡佩帶經驗最低的那件」（最該換掉的）比，要求經驗更高的放 suggest（建議 check），
-// 不比它高的只計數；同類別沒有穿著資料可比的只計數。傷害、屬性不拿來判斷（同名裝備的數值可能不同）
+// 不比它高的只計數；同類別沒有基準可比的（沒讀過穿著 noBaseline、讀過但這個類別身上沒穿 notWorn）只計數，不建議。傷害、屬性不拿來判斷（同名裝備的數值可能不同）
 function evaluate(items, db, { exp, baseline, minPrice = 0, skip = [], nonEquip = new Set() } = {}) {
-  const out = { total: 0, skipped: 0, nonEquipment: 0, known: 0, suggest: [], unknown: [], unknownPrices: [], unknownItems: [], cheap: 0, tooHigh: 0, notHigher: 0, noBaseline: 0 };
+  const out = { total: 0, skipped: 0, nonEquipment: 0, known: 0, suggest: [], unknown: [], unknownPrices: [], unknownItems: [], cheap: 0, tooHigh: 0, notHigher: 0, noBaseline: 0, notWorn: 0 };
   items.forEach(item => {
     if (skip.some(word => item.name.includes(word))) { out.skipped += 1; return; }
     if (nonEquip.has(item.name)) { out.nonEquipment += 1; return; }
@@ -115,9 +115,8 @@ function evaluate(items, db, { exp, baseline, minPrice = 0, skip = [], nonEquip 
     const level = entry.needExp ?? 0;
     if (Number.isFinite(exp) && level > exp) { out.tooHigh += 1; return; }
     const worn = (baseline?.[entry.category] ?? []).slice().sort((a, b) => (a.needExp ?? 0) - (b.needExp ?? 0))[0];
-    // 讀過目前穿著（baseline 有值）但這個類別身上沒穿：穿得了就直接建議；根本沒讀過穿著才算沒資料可比
-    if (!worn && baseline) out.suggest.push({ ...item, level, against: null, wornLevel: null });
-    else if (!worn) out.noBaseline += 1;
+    // 沒有基準可比的不建議（和裝備比較的 verdict none 一致）：讀過目前穿著（baseline 有值）但這個類別身上沒穿算 notWorn，根本沒讀過穿著算 noBaseline
+    if (!worn) { if (baseline) out.notWorn += 1; else out.noBaseline += 1; }
     else if (level > (worn.needExp ?? 0)) out.suggest.push({ ...item, level, against: worn.name, wornLevel: worn.needExp ?? 0 });
     else out.notHigher += 1;
   });
@@ -158,11 +157,12 @@ function summaryLines(result, exp, pages = 1, minSilver = 0) {
   if (result.skipped) lines.push(`略過 ${result.skipped} 件（名稱含「不 check 名單」裡的字，例如馬；設定頁可調）`);
   if (result.nonEquipment) lines.push(`略過 ${result.nonEquipment} 件已確認不是裝備的商品`);
   if (result.suggest.length) {
-    const shown = result.suggest.slice(0, SUGGEST_MAX).map(item => `${item.no} ${item.name}（需經驗 ${item.level}，${item.against ? `現穿 ${item.against} ${item.wornLevel}` : '身上沒穿這類'}）`);
-    lines.push(`建議 check（穿得了、佩帶經驗比現在穿的高，或身上沒穿這個類別；實際數值 check 後才知道）：${shown.join('；')}${result.suggest.length > SUGGEST_MAX ? `…共 ${result.suggest.length} 件` : ''}`);
+    const shown = result.suggest.slice(0, SUGGEST_MAX).map(item => `${item.no} ${item.name}（需經驗 ${item.level}，現穿 ${item.against} ${item.wornLevel}）`);
+    lines.push(`建議 check（穿得了、佩帶經驗比現在穿的高；實際數值 check 後才知道）：${shown.join('；')}${result.suggest.length > SUGGEST_MAX ? `…共 ${result.suggest.length} 件` : ''}`);
   } else if (result.known) lines.push('建議 check：沒有');
   if (result.tooHigh) lines.push(`經驗還不夠穿：${result.tooHigh} 件`);
   if (result.notHigher) lines.push(`佩帶經驗不比現在穿的高：${result.notHigher} 件`);
+  if (result.notWorn) lines.push(`身上沒穿這個類別：${result.notWorn} 件（沒有可比的，不建議）`);
   if (result.noBaseline) lines.push(`沒有目前穿著的資料可比：${result.noBaseline} 件（先用面板的「讀取目前穿著」）`);
   if (result.unknown.length) {
     lines.push(`還沒蒐集（${result.unknown.length}）：${result.unknown.slice(0, UNKNOWN_MAX).join(' ')}${result.unknown.length > UNKNOWN_MAX ? ' …' : ''}`);
@@ -214,16 +214,15 @@ function place(box) {
 }
 
 // 剛 check 到的這件和現在穿的同類別比（用這次的實際數值，不是資料庫裡同名的舊資料）
-// kind：good（比現在好或屬性達門檻）、blocked（經驗不夠穿）、nobase（沒有同類別穿著資料）、other（不比現在好）
+// kind：good（比現在好或屬性達門檻）、blocked（經驗不夠穿）、nobase（沒有基準可比：沒讀過穿著，或這個類別身上沒穿；都不算值得換）、other（不比現在好）
 function classify(block, data) {
   const E = globalThis.CatworldZapEquipment;
   const baseline = data.wornEquipment?.[characterName()]?.[block.category];
   const result = E.compareEquipment(block, baseline, { mainWeapon: data.mainWeapon, exp: readExp(), keep: E.normalizeKeepRule(data.equipmentKeep), score: E.normalizeScoreRule(data.equipmentScore) });
   const reasons = result.reasons.slice(0, 3).join('，');
   if (result.blocked) return { kind: 'blocked', text: `和現在穿的比：經驗還不夠穿（需要 ${block.needExp}）`, reasons };
-  // 讀過目前穿著、但這個類別身上沒穿：穿得了就是值得換（沒東西可比），沒讀過穿著才是沒資料可比
-  if (result.verdict === 'none' && data.wornEquipment?.[characterName()]) return { kind: 'good', text: '身上沒穿這個類別的裝備，穿得了可以直接穿', reasons, against: null };
-  if (result.verdict === 'none') return { kind: 'nobase', text: '和現在穿的比：沒有這個類別的穿著資料可比（先用面板的「讀取目前穿著」）', reasons };
+  // 沒有基準可比（verdict none）一律不算值得換；兩種原因文字不同：讀過目前穿著但這個類別身上沒穿，與根本沒讀過穿著
+  if (result.verdict === 'none') return { kind: 'nobase', text: data.wornEquipment?.[characterName()] ? '和現在穿的比：身上沒穿這個類別，沒有可比的，不推薦' : '和現在穿的比：沒有這個類別的穿著資料可比（先用面板的「讀取目前穿著」）', reasons };
   const good = result.verdict === 'better' || result.verdict === 'keep';
   return { kind: good ? 'good' : 'other', text: `和現在穿的 ${result.against} 比：${result.text}${reasons ? `（${reasons}）` : ''}`, reasons, against: result.against };
 }
@@ -392,7 +391,7 @@ function finishBatch() {
   else lines.push('沒有比現在好的');
   const others = [
     run.blocked && `經驗還不夠穿 ${run.blocked} 件`,
-    run.nobase && `沒有穿著資料可比 ${run.nobase} 件`,
+    run.nobase && `沒有基準可比 ${run.nobase} 件`,
     run.other && `不比現在好 ${run.other} 件`,
     run.notEquipment && `不是裝備 ${run.notEquipment} 件`,
   ].filter(Boolean);
