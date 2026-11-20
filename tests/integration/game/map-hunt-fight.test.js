@@ -15,6 +15,7 @@ const {
   click,
   alerts,
   MOB_LINE,
+  KNOCKED_LINE,
   FIGHT,
   KO_LINE,
   mobsLines,
@@ -99,6 +100,27 @@ ui('fight: the kill command is a setting, so a refusal gets k when the user set 
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
     assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'k 1', 'gc']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('fight: a monster already knocked out before the fight (the game says it cannot fight any more) is finished off right away, not after the timeout', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const room = { lines: mobsLines(1) };
+    // 使用者貼的真實輸出：被打時自動戰鬥把牠打昏，接著送的 f 2 回「扶桑浪人已經無法戰鬥了。」，之後等到逾時才動
+    const script = (command, { say: tell }) => {
+      if (command === FIGHT) { room.lines = [KNOCKED_LINE]; tell('測試怪已經無法戰鬥了。'); return true; }
+      if (command === 'kill 1') { room.lines = []; tell('測試怪死了。'); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: room }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kill 1', 'gc']);
   } finally {
     page.close();
   }

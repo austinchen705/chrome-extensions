@@ -47,6 +47,7 @@ const NO_TARGET = /你要對誰施展這個招式|只能對戰鬥中的對手使
 // 補刀時昏迷的怪醒過來（使用者貼的真實輸出：「扶桑浪人慢慢睜開眼睛，清醒了過來。」「扶桑浪人一見到你，愣了一愣，大叫：「我宰了你！」」）；NFKC 之後比對，所以逗號寫半形
 const WAKE_UP = /慢慢睜開眼睛,清醒了過來|一見到你,愣了一愣/;
 const ENGAGE = /你對著(\S+?)(?:說道|喝道)/;
+const ALREADY_DOWN = /已經無法戰鬥了/; // 開打前那隻已經昏了（使用者貼的真實輸出：被打時自動戰鬥把牠打昏，接著送的 f 2 回「扶桑浪人已經無法戰鬥了。」）
 const NOT_ALIVE = /並不是活物/; // 順位數到屍體（使用者貼的真實輸出「看清楚一點，扶桑浪人的屍體並不是活物。」）
 const LOOT_REFUSED = /你還在戰鬥中[!！]?只能一次拿一樣/; // 還在打時撿屍被拒（使用者貼的真實輸出）
 const NO_SUCH_TARGET = /你想(?:攻擊|殺)誰/; // fight 回「你想攻擊誰？」、kill 回「你想殺誰？」：順位上沒有東西（使用者貼的真實輸出），順位已經過期 // 開打時遊戲印的句子，名字是實際打到的那一隻
@@ -998,6 +999,13 @@ function create(deps) {
     if (!fight.engaged && (NO_SUCH_TARGET.test(fight.buffer) || NOT_ALIVE.test(fight.buffer))) {
       fight.missing = true;
       record(deps.room() ?? '-', '順位沒有東西', aimText(fight.killSent ? killCmd() : fightCmd(), fight.mob));
+      endFight(fight);
+      return;
+    }
+    // 還沒開打那隻就已經昏了（「X已經無法戰鬥了」）：昏迷的字早就印過、不會再來，當成這一場打到昏迷結束，由 fightRoom 補刀；不然要等到逾時才看
+    if (!fight.engaged && !fight.finishing && nameLineMatches(fight.buffer, fight.name, ALREADY_DOWN)) {
+      fight.knockedOut = true;
+      fight.buffer = '';
       endFight(fight);
       return;
     }
