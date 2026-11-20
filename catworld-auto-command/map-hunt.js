@@ -23,7 +23,7 @@ const MAX_SKIPS = 3;
 const MAX_WRONG = 3; // 同一個目標走錯房間幾次就略過
 const SAFE_ID = /^[A-Za-z][A-Za-z0-9 _.'-]*$/;
 const MAX_STUCK = 3; // 連續幾次打完指令後怪的數量沒減少就略過這間
-const LOG_MAX = 600; // 巡怪紀錄最多留幾行
+const LOG_MAX = 2000; // 巡怪紀錄最多留幾行
 const JITTER_STOP_RATIO = 0.3; // 擬人化：重生前停打秒數每輪偏移 ±30%
 const JITTER_STOP_MIN_SEC = 10; // 小於這個秒數不偏移（取整數會超過 ±30%，例如 2 秒變 1 或 3）
 const JITTER_LINE_POINTS = 3; // 擬人化：吃藥線、休息線每輪偏移 ±3 個百分點
@@ -150,6 +150,7 @@ const FIELDS = [
   { key: 'restEveryMax', group: 'human', show: s => s.humanize === 'on', row: 'restEvery', label: '最多', hint: '要有填「輪與重生」的「回到巡怪區的指令」才會休息', type: 'number', default: 12, min: 1, max: 100 },
   { key: 'restSkipMin', group: 'human', show: s => s.humanize === 'on', row: 'restSkip', label: '一次休息跳過幾輪 最少', hint: '一輪＝一個 15 分鐘的重生，每次在最少與最多之間隨機抽（整數輪）', type: 'number', default: 1, min: 1, max: 20 },
   { key: 'restSkipMax', group: 'human', show: s => s.humanize === 'on', row: 'restSkip', label: '最多', hint: '休息大約是跳過的輪數 × 15 分鐘', type: 'number', default: 3, min: 1, max: 20 },
+  { key: 'logCommands', group: 'advanced', label: '巡怪紀錄記下送出的指令', hint: '開＝巡怪進行中，每個送出的指令（巡怪、觸發、定時、隨機、巨集、手動…）都記一行「時間 房間 送出 指令（來源）」；走路的指令不記，聊天回覆、劇本、表情只記來源不記內容', type: 'select', options: ON_OFF, default: 'on' },
   { key: 'npcWhitelist', group: 'advanced', label: 'NPC 白名單', hint: '英文 ID，用、分隔', type: 'text', default: '' },
 ];
 // 精、神（目前值）與精氣神內傷（傷勢 %）的補充：比照吃藥，各自一組「低於 %」與指令（設定鍵是 key＋Below／Command），沒填就不看。
@@ -1265,8 +1266,9 @@ function create(deps) {
   };
   const learnedAt = key => (state.learned[key] ??= { exits: null, to: {} });
   // 送指令；送不出去就停止並警報
-  function sendOrStop(command, onSent) {
-    if (deps.send(command, onSent)) return true;
+  // quiet：走路的指令（巡怪紀錄已經有「走 X → 目標…」那一行），送出佇列不再另記一行「送出」
+  function sendOrStop(command, onSent, quiet = false) {
+    if (deps.send(command, onSent, quiet)) return true;
     finish('指令送不出去，已停止', { alert: true });
     return false;
   }
@@ -1362,7 +1364,7 @@ function create(deps) {
       trial.cmd = cmd;
       trial.stage = 'moving';
       trial.waited = 0;
-      sendOrStop(cmd);
+      sendOrStop(cmd, undefined, true);
     } else if (trial.stage === 'moving') {
       if (here && here !== trial.room) {
         if (!state.graph.rooms[here]) { backOut(trial.room, trial.cmd, { exploring: true }); return; }
@@ -1376,7 +1378,7 @@ function create(deps) {
       }
     } else if (trial.stage === 'back-send') {
       if (!enoughQi()) return;
-      if (!sendOrStop(trial.back)) return;
+      if (!sendOrStop(trial.back, undefined, true)) return;
       trial.stage = 'back';
       trial.waited = 0;
     } else if (here === trial.room) {
@@ -1632,6 +1634,16 @@ function create(deps) {
   // 不是引擎決定要送的時間，所以排隊等指令間隔、巨集拆出來的每一步都量得到
   const roundFields = offset => ({ slips: { typos: 0, wrongWays: 0 }, detour: null, attacked: null, counterRoom: null, hostile: 0, skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [], stats: { startAt: deps.now() + offset, sends: [], path: [], lookedCount: 0, mobRooms: 0 } });
   const noteSent = command => { state?.stats?.sends.push({ at: deps.now(), command }); };
+  // 巡怪紀錄的「送出」行：送出佇列真的送出（或玩家自己送出）的每個指令；只在巡怪進行中、設定開著時記。
+  // 聊天回覆、劇本、表情的內容可能含別人的 ID 或對話，只記來源
+  const NO_TEXT_SOURCES = ['聊天回覆', '劇本', '表情'];
+  // finger、give、tell 只留指令名（後面是玩家 ID 或密語內容，和每輪摘要一樣不記）
+  const noteCommand = (command, source) => {
+    if (!state || state.baseSettings.logCommands !== 'on') return;
+    const where = deps.room() ?? '-';
+    if (NO_TEXT_SOURCES.includes(source)) record(where, `送出（${source}）`);
+    else record(where, '送出', `${command.replace(/^(finger|give|tell)\b.*$/i, '$1')}（${source}）`);
+  };
   // 每輪摘要：寫進巡怪紀錄（組字在模組層的 summaryLines，手動紀錄也用它）
   function logRound() {
     const { startAt, sends, path, lookedCount, mobRooms } = state.stats;
@@ -2192,7 +2204,7 @@ function create(deps) {
   // 學習開著時分兩張圖：嚴格圖（已知出口的房間只走出口裡有的）優先；只有寬鬆圖（純地圖圖示）走得到時，圖示的猜測可能走不通
   // 送一步移動指令並進入 move 階段（plan 與故意走錯路共用）
   function walk(here, cmd, goal, expected, text) {
-    if (!sendOrStop(cmd, () => { if (state) { state.moveText = ''; state.walkedTo = null; state.hostile = 0; } })) return; // hostile：換房間，重新數這間有幾隻打你 // 指令真的送出時才開始收這一步的輸出（抵達時印的房間描述）
+    if (!sendOrStop(cmd, () => { if (state) { state.moveText = ''; state.walkedTo = null; state.hostile = 0; } }, true)) return; // hostile：換房間，重新數這間有幾隻打你 // 指令真的送出時才開始收這一步的輸出（抵達時印的房間描述）
     record(here, '走', text);
     state.goal = goal;
     state.expected = expected;
@@ -2263,7 +2275,7 @@ function create(deps) {
     const go = () => walk(here, cmd, chosen.key, state.expected, `${cmd} → 目標 ${chosen.key}（還要 ${chosen.way.length} 步，剩 ${state.targets.size} 間）`);
     if (typoRoll()) {
       const typo = typoOf(cmd);
-      if (!sendOrStop(typo)) return;
+      if (!sendOrStop(typo, undefined, true)) return;
       state.slips.typos += 1;
       record(here, '擬人化', `打錯字 ${typo} → ${cmd}`);
       const token = state;
@@ -2596,7 +2608,7 @@ function create(deps) {
   // 別的功能（手動紀錄）寫一行到同一份巡怪紀錄，和巡怪自己的紀錄共用上限
   const recordLine = (event, text) => record('-', event, text);
 
-  return { start, trialRun, stop, on, summary, snapshot, exportLog, noteSent, recordLine };
+  return { start, trialRun, stop, on, summary, snapshot, exportLog, noteSent, noteCommand, recordLine };
 }
 
 globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, CHAIN_KEY, CHAIN_TRIAL_KEY, FIELDS, GROUPS, fieldShown, isWideField, missingFields, normalizeSettings, habitList, habitText, normalizeVisited, normalizeChain, rearrangeChain, chainStatus, gapMs, splitIds, summaryLines, RESPAWN_MS, create };

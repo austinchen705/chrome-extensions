@@ -153,6 +153,18 @@ ui('the human-like switch is off by default, has its own fold, is saved with the
   }
 });
 
+ui('the command log switch is on by default, sits in the advanced fold and is saved', async () => {
+  const { dom, doc, store } = await boot();
+  try {
+    assert.equal(field(doc, 'logCommands').value, 'on');
+    assert.ok(doc.getElementById('fold-hunt-advanced').contains(field(doc, 'logCommands')), 'it sits in the advanced fold');
+    change(dom, field(doc, 'logCommands'), 'off');
+    assert.ok(await waitFor(() => store.mapHuntSettings?.logCommands === 'off'));
+  } finally {
+    dom.window.close();
+  }
+});
+
 ui('the return-to-the-hunting-area command is in the round settings, shows while waiting for the next respawn, is marked (but does not block starting) only for the humanized rest, and is saved', async () => {
   const { dom, doc, store } = await boot({ mapHuntSettings: { humanize: 'on' } });
   try {

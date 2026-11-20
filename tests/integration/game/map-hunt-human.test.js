@@ -619,3 +619,89 @@ ui('habit: after a kill the command goes after the corpse command, once per mons
   assert.deepEqual(commands, ['e', 'e', 'e', 'e', 'e', 'l', FIGHT, 'gc', 'edf', 'l', FIGHT, 'gc', 'edf'], commands.join());
   assert.equal(text.match(/習慣指令 edf（打完一隻後）/g).length, 2);
 });
+
+// ---- 巡怪紀錄記下每個送出的指令 ----
+ui('command log: the hunt own commands are logged with the room and their source, in the order they were sent, and walking is not logged', async () => {
+  const { commands, text } = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], humanize: 'off' });
+  assert.deepEqual(commands, ['e', 'e', 'e', 'e', 'e', 'l', FIGHT, 'gc']);
+  const sent = text.split('\n').filter(line => / 送出/.test(line)).map(line => line.replace(/^\d\d:\d\d:\d\d t\/f 送出 /, ''));
+  assert.deepEqual(sent, ['l（巡怪）', FIGHT + '（巡怪）', 'gc（巡怪）'], text);
+  assert.doesNotMatch(text, /送出 e（/, 'the walking steps are only in the walk lines');
+  assert.ok(text.indexOf('開打') < text.indexOf('送出 gc'), 'interleaved with the other log lines in time order');
+});
+
+ui('command log: a typo while walking is not logged as a sent command either', async () => {
+  const { text } = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], settings: { typoPercent: 20 }, r: 0.1 });
+  assert.match(text, /打錯字/);
+  assert.doesNotMatch(text, /送出 (e|ee)（/);
+});
+
+ui('command log: a trigger, a fixed timer and a random command sent during the hunt carry their own source; a chat reply keeps its text out', async () => {
+  const page = await boot({ scale: SCALE, initialStore: { autoReward: false, chatReply: { enabled: true, threshold: 0.4, cooldownSec: 0, perHour: 100, delayMin: 0, delayMax: 0 }, chatPairs: [{ said: '今天天氣真好', reply: '對啊出去走走', at: 1 }] } });
+  try {
+    page.store.mapMonsters = mobsAt('f');
+    world(page, { at: 'a', ...lineWorld(LINE), looks: { f: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    page.store.mapHuntSettings = { ...REQUIRED, commandGapMinMs: 1000, commandGapMaxMs: 1000 };
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => page.sent.length >= 1, 5000));
+    await page.ask({ type: 'START_TRIGGER', group: 'practice', config: { rules: [{ kind: 'keyword', enabled: true, pattern: '口渴', commands: ['drink'], cooldown: 0 }], delayMax: 0, requireNormal: false } });
+    page.output('<span>你覺得口渴。\n</span>');
+    assert.ok(await waitFor(() => page.sent.includes('drink'), 5000), 'the trigger sent its command');
+    await page.ask({ type: 'START', settings: { fixedItems: [{ command: 'timed1', minSeconds: 600, maxSeconds: 600 }], commandDelayMs: 0 } });
+    assert.ok(await waitFor(() => page.sent.includes('timed1'), 5000), 'the timer sent its command');
+    await page.ask({ type: 'START_RANDOM', settings: { fixedItems: [], randomItems: [{ command: 'rand1', minSeconds: 1, maxSeconds: 1 }], commandDelayMs: 0 } });
+    assert.ok(await waitFor(() => page.sent.includes('rand1'), 5000), 'the random command was sent');
+    page.output('<span>[P]有氣質回答你：今天天氣不錯\n</span>');
+    assert.ok(await waitFor(() => page.sent.includes('reply 對啊出去走走'), 15000), 'the chat reply was sent');
+    const text = await huntLog(page);
+    assert.match(text, / 送出 drink（觸發）/);
+    assert.match(text, / 送出 timed1（定時）/);
+    assert.match(text, / 送出 rand1（隨機）/);
+    assert.match(text, / 送出（聊天回覆）(\n|$)/, 'only the source of a chat reply');
+    assert.ok(!/對啊出去走走/.test(text), 'the chat text is not in the log');
+    assert.ok(text.indexOf('送出 drink') < text.indexOf('送出 timed1') && text.indexOf('送出 timed1') < text.indexOf('送出 rand1'), 'in the order they were sent');
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+ui('command log: nothing is logged with the setting off, or when the hunt is not running', async () => {
+  const off = await huntOnce({ map: lineWorld(LINE), at: 'a', targets: ['f'], humanize: 'off', settings: { logCommands: 'off' } });
+  assert.doesNotMatch(off.text, /送出/);
+  const page = await boot({ scale: SCALE });
+  try {
+    world(page, { at: 'a' });
+    await page.ask({ type: 'START_TRIGGER', group: 'practice', config: { rules: [{ kind: 'keyword', enabled: true, pattern: '口渴', commands: ['drink'], cooldown: 0 }], delayMax: 0, requireNormal: false } });
+    page.output('<span>你覺得口渴。\n</span>');
+    assert.ok(await waitFor(() => page.sent.includes('drink'), 5000));
+    typeIn(page, 'l');
+    assert.equal(await huntLog(page), '', 'no hunt, no log');
+  } finally {
+    page.close();
+  }
+});
+
+ui('command log: what I type and a game macro key I press during the hunt are logged as manual, without turning the manual record on', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('f');
+    world(page, { at: 'a', ...lineWorld(LINE), looks: { f: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    macroWindow(page, [[112, 'hp;sc'], [113, 'p1;@等待 1;p2']]);
+    page.store.mapHuntSettings = { ...REQUIRED, commandGapMinMs: 1000, commandGapMaxMs: 1000 };
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => page.sent.length >= 1, 5000));
+    typeIn(page, 'score');
+    pressKey(page, 112);
+    pressKey(page, 113);
+    assert.ok(await waitFor(() => page.sent.includes('p2'), 5000), 'the extension runs the @等待 macro');
+    const text = await huntLog(page);
+    for (const command of ['score', 'hp', 'sc', 'p1', 'p2']) assert.match(text, new RegExp(' 送出 ' + command + '（手動）'), command);
+    assert.equal(text.match(/ 送出 p1（手動）/g).length, 1, 'a step is logged once, not by both the queue and the manual hook');
+    await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});

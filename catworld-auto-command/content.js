@@ -944,19 +944,19 @@ function clearTimers() {
 
 // 固定、隨機兩條循環與狀態觸發共用同一個送出佇列，任兩次送出至少間隔 commandDelayMs；
 // 每個項目記下來源，停掉定時時只丟掉定時的項目，不影響還在跑的觸發
-function enqueue(command, source = 'timer', run = null, onSent = null) {
-  queue.push({ command, source, run, onSent });
+function enqueue(command, source = 'timer', run = null, onSent = null, quiet = false) {
+  queue.push({ command, source, run, onSent, quiet });
   pumpQueue();
 }
 
 // 定時、隨機、觸發的指令入口：單一指令照舊直接排進佇列；含 ; 或 @等待 的交給巨集執行器拆開依序送，
 // 並記下是誰啟動的（owner），停止那個功能時才能只取消它自己的巨集
 // onSent：指令真的送出時呼叫（巨集沒有單一的送出時刻，開始時就呼叫）
-function queueCommand(command, owner, onSent = null) {
+function queueCommand(command, owner, onSent = null, quiet = false) {
   if (CatworldMacro.isSequence(command)) {
     startMacro(command, owner);
     onSent?.();
-  } else enqueue(command, owner, null, onSent);
+  } else enqueue(command, owner, null, onSent, quiet);
 }
 
 function dropQueue(source) {
@@ -1005,6 +1005,9 @@ const isChatEntry = entry => CHAT_OWNERS.includes(entry.source) || CHAT_OWNERS.i
 const switchGapMs = () => Math.round(SWITCH_GAP_MS[0] + (SWITCH_GAP_MS[1] - SWITCH_GAP_MS[0]) * Math.random());
 // 巡怪的指令（單一指令或巡怪巨集拆出來的）另外再隔巡怪自己設的隨機間隔，和共用的 commandDelayMs 取較大的
 let huntSettings = CatworldMapHunt.normalizeSettings(undefined);
+// 巡怪紀錄「送出」行的來源；對不到的照原字串
+const SOURCE_LABELS = { hunt: '巡怪', 'hunt-home': '巡怪回家', timer: '定時', random: '隨機', macro: '巨集', user: '巨集', manual: '手動', chat: '聊天回覆', script: '劇本', emote: '表情', alias: '別名', shop: '商人' };
+const sourceLabel = source => (String(source).startsWith('trigger:') ? '觸發' : SOURCE_LABELS[source] ?? source);
 const isHuntEntry = entry => entry.source === 'hunt' || entry.run?.owner === 'hunt';
 function pumpQueue() {
   if (queueTimer || nextQueued() < 0) return;
@@ -1024,7 +1027,9 @@ function pumpQueue() {
     lastSentAt = Date.now();
     lastSentChat = isChatEntry(entry);
     if (isHuntEntry(entry)) hunt?.noteSent(entry.command);
+    // 按下的遊戲巨集（pressed）由 noteManualSend 記成手動，其餘照來源記進巡怪紀錄；quiet 是巡怪的走路指令
     if (entry.run?.owner === PRESSED_MACRO_OWNER) noteManualSend(entry.command);
+    else if (!entry.quiet) hunt?.noteCommand(entry.command, sourceLabel(entry.run?.owner ?? entry.source));
     entry.onSent?.();
     if (entry.run) {
       entry.run.pending -= 1;
@@ -1653,9 +1658,9 @@ hunt = CatworldMapHunt.create({
     const stat = readStat('氣');
     return stat && stat.max > 0 ? (stat.value / stat.max) * 100 : NaN;
   },
-  send: (command, onSent) => {
+  send: (command, onSent, quiet) => {
     const text = expandHuntCommand(command);
-    if (text.trim()) queueCommand(text, 'hunt', onSent);
+    if (text.trim()) queueCommand(text, 'hunt', onSent, quiet);
     return true;
   },
   // 停止後才送的回家指令：用巨集（執行中算 active()，佇列才送得出去），owner 不是 hunt，所以停止巡怪時不會被一起取消
@@ -1782,7 +1787,9 @@ function stopManual() {
 // 記一個玩家的指令（空白行與 <enter> 不算）
 function noteManualSend(raw) {
   const command = CatworldTimer.commandText(String(raw ?? '')).trim();
-  if (!manualRecord || !command) return;
+  if (!command) return;
+  hunt?.noteCommand(command, '手動'); // 巡怪紀錄的「送出」行，不管手動紀錄有沒有開
+  if (!manualRecord) return;
   rollManual();
   noteManualRoom();
   const send = { at: Date.now(), command };
@@ -1792,12 +1799,11 @@ function noteManualSend(raw) {
 // 遊戲巨集按鍵（沒有 @等待，遊戲自己一次全部送出）：那一格用 ; 分開的每一段都記成一個指令，時間都是按下的這一刻；
 // 不靠回聲（巨集送出的指令在輸出裡是單獨一行，和一般輸出分不開；使用者貼的真實樣本）
 function noteManualMacro(text) {
-  if (!manualRecord) return;
   text.split(/\s*;\s*/).forEach(noteManualSend);
 }
 // 捕獲階段：在遊戲處理送出（清空輸入框）之前讀輸入框的值
 document.addEventListener('submit', event => {
-  if (!manualRecord || sendingOwn) return;
+  if ((!manualRecord && !hunt?.on()) || sendingOwn) return;
   const input = document.querySelector('#input');
   if (!input || event.target !== input.form) return;
   noteManualSend(input.value);
