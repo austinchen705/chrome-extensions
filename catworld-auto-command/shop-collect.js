@@ -214,7 +214,7 @@ function place(box) {
 }
 
 // 剛 check 到的這件和現在穿的同類別比（用這次的實際數值，不是資料庫裡同名的舊資料）
-// kind：good（比現在好或屬性達門檻）、blocked（經驗不夠穿）、nobase（沒有基準可比：沒讀過穿著，或這個類別身上沒穿；都不算值得換）、other（不比現在好）
+// kind：good（比現在好或屬性達門檻；「相當也建議留下」改判的不算，買一件一樣的沒有用）、blocked（經驗不夠穿）、nobase（沒有基準可比：沒讀過穿著，或這個類別身上沒穿；都不算值得換）、other（不比現在好）
 function classify(block, data) {
   const E = globalThis.CatworldZapEquipment;
   const baseline = data.wornEquipment?.[characterName()]?.[block.category];
@@ -223,7 +223,7 @@ function classify(block, data) {
   if (result.blocked) return { kind: 'blocked', text: `和現在穿的比：經驗還不夠穿（需要 ${block.needExp}）`, reasons };
   // 沒有基準可比（verdict none）一律不算值得換；兩種原因文字不同：讀過目前穿著但這個類別身上沒穿，與根本沒讀過穿著
   if (result.verdict === 'none') return { kind: 'nobase', text: data.wornEquipment?.[characterName()] ? '和現在穿的比：身上沒穿這個類別，沒有可比的，不推薦' : '和現在穿的比：沒有這個類別的穿著資料可比（先用面板的「讀取目前穿著」）', reasons };
-  const good = result.verdict === 'better' || result.verdict === 'keep';
+  const good = result.verdict === 'better' || (result.verdict === 'keep' && !result.equal);
   return { kind: good ? 'good' : 'other', text: `和現在穿的 ${result.against} 比：${result.text}${reasons ? `（${reasons}）` : ''}`, reasons, against: result.against };
 }
 const judge = (block, data) => classify(block, data).text;

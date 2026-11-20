@@ -108,7 +108,7 @@ function scoreAttrs(attrs, related, rule = SCORE_DEFAULT, skills = []) {
     .reduce((sum, attr) => sum + attr.value * weightOf(attr.name), 0);
 }
 
-const VERDICT_TEXT = { better: '比現在好，建議留下', keep: '屬性達門檻，建議留下', worse: '比現在差', equal: '相當', none: '沒有基準可比' };
+const VERDICT_TEXT = { better: '比現在好，建議留下', keep: '屬性達門檻，建議留下', keepEqual: '相當，建議留下', worse: '比現在差', equal: '相當', none: '沒有基準可比' };
 
 // baseline 是「同類別」現在穿的清單（呼叫端先依類別取出）；同類別有好幾件時（兩枚戒指）和最弱的那一件比，
 // 這樣比較差的裝備不可能被標成比較好
@@ -143,11 +143,12 @@ function compareWithBaseline(candidate, baseline, { mainWeapon, exp, score } = {
 
 // 附屬能力門檻（設定頁「附屬能力達到門檻就建議留下」，存在 chrome.storage.local.equipmentKeep）：
 // 開著時，候選裝備只要有一條計分的屬性（重量、硬度、潛能、損修不算）數值達到門檻就標「留下」，
-// 不管主要數值比不比得過、能不能穿；本來就「比現在好」的維持原判斷；沒有基準可比（verdict none）的不套用，維持 none
-const KEEP_DEFAULT = { enabled: false, min: 10 };
+// 不管主要數值比不比得過、能不能穿；本來就「比現在好」的維持原判斷；沒有基準可比（verdict none）的不套用，維持 none。
+// equal（設定頁「和現在穿的相當也建議留下」，預設關）：和現在穿的比是「相當」的也改判 keep，結果多帶 equal: true（商人不把它算值得買）
+const KEEP_DEFAULT = { enabled: false, min: 10, equal: false };
 function normalizeKeepRule(value) {
   const min = value?.min;
-  return { enabled: value?.enabled === true, min: Number.isInteger(min) && min >= 1 ? min : KEEP_DEFAULT.min };
+  return { enabled: value?.enabled === true, min: Number.isInteger(min) && min >= 1 ? min : KEEP_DEFAULT.min, equal: value?.equal === true };
 }
 // 好幾條都達門檻時理由寫數值最大的那條
 const keepHit = (attrs, keep, ignored) => (keep?.enabled ? attrs.filter(attr => !ignored.includes(attr.name) && attr.value >= keep.min).sort((a, b) => b.value - a.value)[0] : undefined);
@@ -155,12 +156,13 @@ const keepHit = (attrs, keep, ignored) => (keep?.enabled ? attrs.filter(attr => 
 function compareEquipment(candidate, baseline, { mainWeapon, exp, keep, score } = {}) {
   const result = compareWithBaseline(candidate, baseline, { mainWeapon, exp, score });
   const hit = keepHit(candidate.attrs, keep, normalizeScoreRule(score).ignored);
-  if (!hit || result.verdict === 'better' || result.verdict === 'none') return result;
-  return { ...result, verdict: 'keep', text: VERDICT_TEXT.keep, reasons: [`${hit.name} +${hit.value} 達門檻 ${keep.min}`, ...result.reasons] };
+  if (hit && result.verdict !== 'better' && result.verdict !== 'none') return { ...result, verdict: 'keep', text: VERDICT_TEXT.keep, reasons: [`${hit.name} +${hit.value} 達門檻 ${keep.min}`, ...result.reasons] };
+  if (keep?.equal && result.verdict === 'equal') return { ...result, verdict: 'keep', text: VERDICT_TEXT.keepEqual, equal: true };
+  return result;
 }
 
 // 整理背包時要留下的鑑定結果（巡怪的整理流程用）：武器只留主要武器職業的（沒設定主要武器就不篩）；比現在好或屬性達門檻的留下，
-// 沒有基準可比的（沒穿同類別、或沒讀過穿著）、比現在差或相當的都不留。baselineOf(類別) 回該類別現在穿的清單
+// 開了「相當也建議留下」時相當的也留；沒有基準可比的（沒穿同類別、或沒讀過穿著）、比現在差的都不留。baselineOf(類別) 回該類別現在穿的清單
 function pickKeepers(blocks, { baselineOf, mainWeapon, exp, keep, score } = {}) {
   return blocks.filter(block => {
     if (block.kind === 'weapon' && mainWeapon && !block.category.startsWith(mainWeapon)) return false;

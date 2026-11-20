@@ -770,9 +770,10 @@ let equipmentKeep = CatworldZapEquipment.normalizeKeepRule(undefined);
 function showEquipmentKeep() {
   $('keepEnabled').checked = equipmentKeep.enabled;
   $('keepMin').value = equipmentKeep.min;
+  $('keepEqual').checked = equipmentKeep.equal;
 }
-['keepEnabled', 'keepMin'].forEach(id => $(id).addEventListener('change', () => {
-  const raw = { enabled: $('keepEnabled').checked, min: Number($('keepMin').value) };
+['keepEnabled', 'keepMin', 'keepEqual'].forEach(id => $(id).addEventListener('change', () => {
+  const raw = { enabled: $('keepEnabled').checked, min: Number($('keepMin').value), equal: $('keepEqual').checked };
   const valid = CatworldZapEquipment.normalizeKeepRule(raw);
   if (valid.min !== raw.min) {
     showEquipmentKeep();

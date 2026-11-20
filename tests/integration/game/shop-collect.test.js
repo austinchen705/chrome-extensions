@@ -475,6 +475,27 @@ ui('during a confirmed batch each check is recorded quietly, then one digest lis
   }
 });
 
+ui('with "equal also keep" on, an equal piece checked at the shop is still not worth buying', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    seed(page);
+    page.store.equipmentKeep = { enabled: false, min: 10, equal: true };
+    page.w.CatworldShopCollect.setSender(() => true);
+    page.output(`<span>${batchList(['新棍C'])}</span>`);
+    assert.ok(await waitFor(() => shopBox(page), 2000));
+    buttonOf(page, '批次 check 還沒蒐集的').click();
+    buttonOf(page, '確認送出').click();
+    const boxes = () => [...page.w.document.querySelectorAll('[data-catworld-shop]')];
+    page.output(`<span>${checkOutput('新棍C', '棍類武器', 50, 100)}</span>`);
+    assert.ok(await waitFor(() => boxes().length === 2, 2000));
+    const text = boxes()[1].textContent;
+    assert.match(text, /沒有比現在好的/);
+    assert.match(text, /不比現在好 1 件/);
+  } finally {
+    page.close();
+  }
+});
+
 ui('the digest lists the recommended ones from the largest list number down, whatever order the answers came in', async () => {
   const page = await boot({ scale: SCALE });
   try {

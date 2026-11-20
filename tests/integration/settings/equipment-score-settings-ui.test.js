@@ -147,3 +147,21 @@ ui('the reset button drops the stored rule and shows the built-in one again', as
     dom.window.close();
   }
 });
+
+ui('the equal also keep box is off by default, saved into equipmentKeep next to the threshold, and shown again', async () => {
+  const { dom, doc, store, change } = await boot({ equipmentKeep: { enabled: true, min: 15 } });
+  try {
+    assert.equal(doc.getElementById('keepEqual').checked, false);
+    change('keepEqual', true);
+    assert.ok(await waitFor(() => store.equipmentKeep?.equal === true));
+    assert.deepEqual(store.equipmentKeep, { enabled: true, min: 15, equal: true }, 'the threshold settings are kept');
+  } finally {
+    dom.window.close();
+  }
+  const again = await boot({ equipmentKeep: { enabled: false, min: 10, equal: true } });
+  try {
+    assert.equal(again.doc.getElementById('keepEqual').checked, true);
+  } finally {
+    again.dom.window.close();
+  }
+});

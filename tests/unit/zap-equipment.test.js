@@ -354,14 +354,36 @@ test('compareEquipment phrases a missing attribute without a misleading plus sig
 
 // ---- 附屬能力門檻（設定頁「附屬能力達到門檻就建議留下」）----
 test('normalizeKeepRule: off with the default threshold when unset or broken, a valid rule is kept as is', () => {
-  assert.deepEqual(E.normalizeKeepRule(undefined), { enabled: false, min: 10 });
-  assert.deepEqual(E.normalizeKeepRule({ enabled: true, min: 15 }), { enabled: true, min: 15 });
-  assert.deepEqual(E.normalizeKeepRule({ enabled: 'yes', min: 0 }), { enabled: false, min: 10 });
-  assert.deepEqual(E.normalizeKeepRule({ enabled: true, min: 2.5 }), { enabled: true, min: 10 });
-  assert.deepEqual(E.normalizeKeepRule({ enabled: true, min: '8' }), { enabled: true, min: 10 });
+  assert.deepEqual(E.normalizeKeepRule(undefined), { enabled: false, min: 10, equal: false });
+  assert.deepEqual(E.normalizeKeepRule({ enabled: true, min: 15 }), { enabled: true, min: 15, equal: false }, 'an old save without equal is off');
+  assert.deepEqual(E.normalizeKeepRule({ enabled: 'yes', min: 0 }), { enabled: false, min: 10, equal: false });
+  assert.deepEqual(E.normalizeKeepRule({ enabled: true, min: 2.5 }), { enabled: true, min: 10, equal: false });
+  assert.deepEqual(E.normalizeKeepRule({ enabled: true, min: '8' }), { enabled: true, min: 10, equal: false });
+  assert.deepEqual(E.normalizeKeepRule({ equal: true }), { enabled: false, min: 10, equal: true });
+  assert.deepEqual(E.normalizeKeepRule({ equal: 'yes' }), { enabled: false, min: 10, equal: false });
 });
 
 const KEEP = { enabled: true, min: 10 };
+
+test('keep equal: off by default an equal piece stays equal; on, it is keep with its own text and kept by pickKeepers, worse and none are not touched', () => {
+  const same = piece('同品', 31);
+  const off = E.compareEquipment(same, [base('暮歌', 31)], stats);
+  assert.deepEqual([off.verdict, off.text], ['equal', '相當']);
+  const on = E.compareEquipment(same, [base('暮歌', 31)], { ...stats, keep: { enabled: false, min: 10, equal: true } });
+  assert.deepEqual([on.verdict, on.text, on.equal], ['keep', '相當，建議留下', true]);
+  assert.equal(E.compareEquipment(piece('薄品', 20), [base('暮歌', 31)], { ...stats, keep: { equal: true } }).verdict, 'worse');
+  assert.equal(E.compareEquipment(same, [], { ...stats, keep: { equal: true } }).verdict, 'none');
+  assert.equal(E.compareEquipment(piece('新披風', 40), [base('暮歌', 31)], { ...stats, keep: { equal: true } }).verdict, 'better');
+  const blocks = [same];
+  const baselineOf = () => [base('暮歌', 31)];
+  assert.equal(E.pickKeepers(blocks, { baselineOf, ...stats }).length, 0);
+  assert.equal(E.pickKeepers(blocks, { baselineOf, ...stats, keep: { equal: true } }).length, 1);
+});
+
+test('keep equal: an attribute at the threshold still gives the threshold reason first', () => {
+  const result = E.compareEquipment(piece('同品', 31, [{ name: '攻擊', value: 12 }]), [base('暮歌', 31, [{ name: '攻擊', value: 12 }])], { ...stats, keep: { enabled: true, min: 10, equal: true } });
+  assert.deepEqual([result.verdict, result.text, result.equal], ['keep', '屬性達門檻，建議留下', undefined]);
+});
 
 test('keep rule: a worse piece with one attribute at the threshold is marked keep, the comparison reasons stay', () => {
   const result = E.compareEquipment(armor('薄甲', 20, [{ name: '行動', value: 10 }]), [BLACK], { ...stats, keep: KEEP });
