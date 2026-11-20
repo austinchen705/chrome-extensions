@@ -795,7 +795,8 @@ function create(deps) {
       seen.add(target.full);
       const knocked = target.state === KNOCKED_OUT;
       record(here, counter ? '反擊' : '開打', `${target.full}${knocked ? '（補刀）' : ''}`);
-      let outcome = await fightOne(token, target, knocked ? { finishing: true } : { kill: target.state === '戰鬥中' && !token.mobs.includes(target.full) });
+      // calm：補刀時剛看的 l 沒有 <戰鬥中>（沒有醒著在打你的），氣低於危險線也先補完（見 fightOne）
+      let outcome = await fightOne(token, target, knocked ? { finishing: true, calm: !info.monsters.some(mob => mob.state === '戰鬥中') } : { kill: target.state === '戰鬥中' && !token.mobs.includes(target.full) });
       if (state !== token || outcome === 'stopped') return;
       record(here, '打完', outcome);
       // 那個順位沒有東西（遊戲回「你想攻擊誰」）：馬上重看房間再打；連續 MAX_STUCK 次就略過這間，免得一直來回
@@ -816,8 +817,19 @@ function create(deps) {
       downs += 1;
       // 打到昏迷（不是死）：補一個 kill 確實打死，出現死亡的字才算數；然後才撿屍
       // 補刀時醒過來又被打昏（fightOne 回 knockedOut）就再補一次
+      let downed = target;
       while (outcome === 'knockedOut' && state.settings.finishKnockedOut === 'on') {
-        outcome = await fightOne(token, target, { finishing: true });
+        // 打的途中有東西離開或走進來：順位已經變了（朋友貼的真實輸出：f 2 途中「雪鼠往北離開。」，補刀 k 2 殺到醒著的另一隻），
+        // 先重看房間，用新的順位補第一隻昏迷的同種怪；沒看到昏迷的就回外圈重新挑
+        if (state.leftTick >= state.readTick || state.arrivedTick >= state.readTick) {
+          record(here, '重數', '打的途中有東西進出，補刀前重看順位');
+          info = await lookAgain();
+          if (!info) return;
+          downed = info.monsters.find(mob => mob.state === KNOCKED_OUT && mob.full === target.full && SAFE_ID.test(mob.id));
+          if (!downed) continue room;
+        }
+        // 打這一隻時聽到的「想殺死你」比倒下的多，就是還有別隻在打你，不算 calm
+        outcome = await fightOne(token, downed, { finishing: true, calm: !info.monsters.some(mob => mob.state === '戰鬥中') && state.hostile <= downs && !state.attacked });
         if (state !== token || outcome === 'stopped') return;
         // 補刀沒打到（順位上沒有東西、數到屍體、打到別隻）：怪還昏迷著，重看房間，回到外圈用新的順位補刀；不算倒下、不撿屍
         // （只跳出這個 while 會接著算一次撿屍，最後一隻時還會直接離開、把昏迷的留在原地）
@@ -909,12 +921,13 @@ function create(deps) {
   const aimText = (command, mob) => `${command} ${targetOf(mob, command)}`;
   const aim = (command, mob) => { state.lastAim = command; return aimText(command, mob); };
   // kill 為真＝反擊：一開始就送打死用的指令（對方已經在殺你），其餘和一般開打相同
-  function fightOne(token, mob, { finishing = false, kill = false } = {}) {
+  // calm 為真＝補刀時房間裡沒有醒著的在打你：自己回模式戰鬥中不看危險線（補完才休息，回家會把昏迷的留在原地），補刀途中有別隻說要殺你（state.attacked，或同名的醒過來：state.hostile 比開始時多了不只 1 次——補的那隻自己會回一次）就照常看
+  function fightOne(token, mob, { finishing = false, kill = false, calm = false } = {}) {
     return new Promise(resolve => {
       const knockout = splitIds(state.settings.knockoutKeywords);
       const endWords = splitIds(state.settings.endKeywords).filter(word => !finishing || !knockout.includes(word));
       // 特攻從開打算起隔一個間隔才送第一次，免得緊跟在 fight 後面被拒戰時得到「你要對誰施展這個招式」
-      state.fight = { mob, name: shortName(mob), engaged: false, wrong: false, resolve, finishing, knockout, knockedOut: false, killSent: finishing || kill, buffer: '', noTarget: false, waited: 0, lastSpecial: state.ticks, checking: false, silentChecks: 0, endWords, reKills: 0 };
+      state.fight = { mob, name: shortName(mob), engaged: false, wrong: false, resolve, finishing, calm, hostileAt: state.hostile, knockout, knockedOut: false, killSent: finishing || kill, buffer: '', noTarget: false, waited: 0, lastSpecial: state.ticks, checking: false, silentChecks: 0, endWords, reKills: 0 };
       deps.notify();
       if (!deps.send(aim(finishing || kill ? killCmd() : fightCmd(), mob))) finish('指令送不出去，已停止', { alert: true });
     });
@@ -1169,7 +1182,7 @@ function create(deps) {
     const percent = deps.kee();
     if (!Number.isFinite(percent)) { finish('讀不到氣，已停止', { alert: true }); return; }
     if (settings.healMode === 'rest') {
-      if (percent < settings.dangerBelow) retreatHome('danger', `戰鬥中氣只剩 ${Math.round(percent)}%（低於 ${settings.dangerBelow}%）`);
+      if (percent < settings.dangerBelow && !(state.fight?.calm && !state.attacked && state.hostile <= state.fight.hostileAt + 1)) retreatHome('danger', `戰鬥中氣只剩 ${Math.round(percent)}%（低於 ${settings.dangerBelow}%）`);
       return;
     }
     if (percent < settings.eatBelow && settings.eatCommand && state.ticks - state.lastEat >= EAT_GAP_TICKS) eat();

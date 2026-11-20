@@ -1464,6 +1464,29 @@ ui('fight: something leaving right after the room was read makes it look again b
   }
 });
 
+ui('fight: something leaving during the fight makes it look again before the finishing kill, so the kill does not hit the one behind', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const room = { lines: [DOG_LINE, MOB_LINE, MOB_LINE] };
+    // 朋友貼的真實輸出：f 2 打第一隻鸞天宮女，途中「雪鼠往北離開。」，打昏後補刀還送 k 2，殺到醒著的另一隻
+    const script = (command, { say: tell }) => {
+      if (command === 'fight 2' && countOf(game, 'fight 2') === 1) { tell('> 野狗往北離開。'); room.lines = [KNOCKED_LINE, MOB_LINE]; tell(KO_LINE); return true; }
+      if (command === 'kill 1' && room.lines[0] === KNOCKED_LINE) { room.lines = [MOB_LINE]; tell('測試怪死了。'); return true; }
+      if (command === 'fight 1') { room.lines = []; tell('測試怪死了。'); return true; }
+      return command === 'gc';
+    };
+    const game = world(page, { at: 'a', looks: { c: room }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), `${huntText(page)} ${game.log.join(',')}`);
+    assert.deepEqual(game.log.slice(0, 6), ['e', 'e', 'l', 'fight 2', 'l', 'kill 1'], 'looked again and finished the knocked-out one at its new position');
+    assert.equal(countOf(game, 'kill 2'), 0, 'never killed the awake one behind it');
+  } finally {
+    page.close();
+  }
+});
+
 ui('fight: something leaving while waiting to react makes it look again before the fight', async () => {
   const page = await boot({ scale: SCALE });
   try {

@@ -271,6 +271,53 @@ ui('rest: when what is left is knocked out, it is finished off first even below 
   }
 });
 
+ui('rest: finishing off a knocked-out monster does not go home below the danger line when nobody in the room is fighting you', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', restBelow: 50, restResume: 80, dangerBelow: 10, finishKnockedOut: 'on' };
+    setKee(page, 90);
+    const room = { lines: mobsLines(2) };
+    // 使用者貼的真實 log：三隻一起打，氣掉到危險線以下時剩下的都被打昏了，補刀時危險線回家，昏迷的就留在原地
+    const script = command => {
+      if (command === FIGHT) { setKee(page, 5); room.lines = [KNOCKED_LINE]; say(page, '測試怪死了。'); return true; }
+      if (command === 'kill 1') { say(page, '看起來測試怪想殺死你！'); setTimeout(() => { room.lines = []; say(page, '測試怪死了。'); }, 200); return true; }
+      return command === 'gc';
+    };
+    const game = world(page, { at: 'a', looks: { c: room }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, 'kill 1') === 1, 6000), game.log.join(','));
+    await sleep(400); // 補刀的死亡字 200 毫秒後才來，期間戰鬥中每秒看一次氣
+    assert.deepEqual(alerts(page), [], 'no danger-line retreat while finishing a monster that cannot fight back');
+    setKee(page, 90);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+  } finally {
+    page.close();
+  }
+});
+
+ui('rest: finishing off a knocked-out monster below the danger line still goes home when another one wakes up and attacks', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', restBelow: 50, restResume: 80, dangerBelow: 10, finishKnockedOut: 'on' };
+    setKee(page, 90);
+    const room = { lines: mobsLines(2) };
+    const script = command => {
+      if (command === FIGHT) { setKee(page, 5); room.lines = [KNOCKED_LINE, KNOCKED_LINE]; say(page, '測試怪死了。'); return true; }
+      if (command === 'kill 1') { say(page, '看起來測試怪想殺死你！'); setTimeout(() => say(page, '看起來測試怪想殺死你！'), 60); return true; }
+      return command === 'gc';
+    };
+    const game = world(page, { at: 'a', looks: { c: room }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => alerts(page).some(alert => /戰鬥中氣只剩/.test(alert.reason)), 6000), `${game.log.join(',')} ${huntText(page)}`);
+  } finally {
+    page.close();
+  }
+});
+
 ui('rest: a monster that is fighting you is fought even when the qi is below the rest line, and the rest comes once nobody is fighting', async () => {
   const page = await boot({ scale: SCALE });
   try {
