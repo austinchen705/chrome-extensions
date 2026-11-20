@@ -321,9 +321,10 @@ function batchControls(label, list) {
 }
 
 // 快速購買：list 裡名稱符合的商品全部一次買（每個編號 buy 一次，用 ; 接起來交給同一個 sender 依序送），
-// 一顆按鈕、點了就送出、不再確認（使用者明確要求「一按 buy」、不要輸入數量）。一次最多 BUY_MAX 個編號，多的再按一次前先重新 list
+// 一顆按鈕、點了就送出、不再確認（使用者明確要求「一按 buy」、不要輸入數量）。一次最多 BUY_MAX 個編號，多的再按一次前先重新 list。
+// 從大編號買到小編號（使用者指定）：先買掉前面的商品可能讓後面的編號往前移，從後面買起，還沒買的編號才不會變
 function buyAll(matches) {
-  const batch = matches.slice(0, BUY_MAX);
+  const batch = [...matches].sort((a, b) => b.no - a.no).slice(0, BUY_MAX);
   const prices = batch.map(item => parsePrice(item.price)).filter(price => price !== null);
   const total = prices.reduce((sum, price) => sum + price, 0);
   const area = document.createElement('div');

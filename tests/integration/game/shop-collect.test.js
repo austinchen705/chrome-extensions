@@ -569,9 +569,9 @@ ui('the buy button takes every listed item named in the buy list in one click, n
     assert.ok(await waitFor(() => shopBox(page), 2000));
     assert.equal(shopBox(page).querySelector('input[type=number]'), null, 'no quantity to type');
     assert.match(buyButton(page).textContent, /買全部符合的 2 件（約 5S）/, '不知名藥草 2S + 無名物品 3S; 包子 and 烈火棍 are not in the default names');
-    assert.match(shopBox(page).textContent, /快速購買（點了就送出 buy，不再確認）：5 不知名藥草、30 無名物品/);
+    assert.match(shopBox(page).textContent, /快速購買（點了就送出 buy，不再確認）：30 無名物品、5 不知名藥草/);
     buyButton(page).click();
-    assert.deepEqual(sent, ['buy 5;buy 30'], 'one click, every match once, no confirmation step');
+    assert.deepEqual(sent, ['buy 30;buy 5'], 'one click, every match once, largest number first, no confirmation step');
     assert.match(shopBox(page).textContent, /已送出 2 個 buy/);
   } finally {
     page.close();
@@ -589,7 +589,7 @@ ui('the buy list comes from the setting: custom names, and an empty setting show
     assert.ok(await waitFor(() => shopBox(page), 2000));
     assert.match(buyButton(page).textContent, /買全部符合的 2 件/);
     buyButton(page).click();
-    assert.deepEqual(sent, ['buy 4;buy 23']);
+    assert.deepEqual(sent, ['buy 23;buy 4']);
   } finally {
     page.close();
   }
@@ -622,8 +622,8 @@ ui('matches from every accumulated list page are bought together, and more than 
     assert.match(shopBox(page).textContent, /還有 5 件超過一次 20 個的上限/);
     buyButton(page).click();
     assert.equal(sent[0].split(';').length, 20);
-    assert.equal(sent[0].split(';')[0], 'buy 1');
-    assert.equal(sent[0].split(';')[19], 'buy 20');
+    assert.equal(sent[0].split(';')[0], 'buy 25', 'largest numbers first, so the ones not bought yet keep their numbers');
+    assert.equal(sent[0].split(';')[19], 'buy 6');
   } finally {
     page.close();
   }
