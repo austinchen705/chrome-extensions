@@ -775,8 +775,9 @@ function create(deps) {
       if (!target) { sendLoot(); leave('怪的 ID 不能用'); return; }
       if (state.retreat || state.retreatPending) { sendLoot(); state.phase = 'plan'; deps.notify(); return; } // 要撤退（含正在讀格子）：不打下一隻，這間留著不算處理過
       if (spawnPause()) return;
-      // 房間裡有怪在 <戰鬥中>（正在打你）時不能原地休息：氣回不來、只會一直被打；先打，戰鬥中的危險線照樣擋。沒人在打了才休息
-      if (!info.monsters.some(mob => mob.state === '戰鬥中') && !(await restGate(token))) return;
+      // 房間裡有怪在 <戰鬥中>（正在打你）時不能原地休息：氣回不來、只會一直被打；先打，戰鬥中的危險線照樣擋。沒人在打了才休息。
+      // 下一隻要補刀（剩下的都昏了，例如被打時自動戰鬥把牠打昏）也先補完再休息：等回氣的期間牠會醒過來（使用者要求）
+      if (!info.monsters.some(mob => mob.state === '戰鬥中') && target.state !== KNOCKED_OUT && !(await restGate(token))) return;
       if (!(await reactWait(token))) return;
       if (!(await notBusy(token))) return;
       // 看完房間之後有東西離開或走進來（同一份輸出裡、或等反應時間的期間）、或停下來休息過：順位已經不準，先重看一次再下 fight／kill（最多連續 MAX_STUCK 次）

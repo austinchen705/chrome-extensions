@@ -15,6 +15,7 @@ const {
   FIGHT,
   MOB_LINE,
   MOB_FIGHTING,
+  KNOCKED_LINE,
   huntText,
   click,
   alerts,
@@ -241,6 +242,30 @@ ui('rest: a captcha during a rest ends it and stops the hunt like everything els
     assert.ok(await waitFor(() => alerts(page).length >= 1, 8000), 'three unanswered tries stop everything');
     assert.equal(await hunting(page), false);
     assert.equal(times.back.length, 0);
+  } finally {
+    page.close();
+  }
+});
+
+ui('rest: when what is left is knocked out, it is finished off first even below the rest line, so it does not wake up during the rest', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', restBelow: 50, restResume: 80, dangerBelow: 10, finishKnockedOut: 'on' };
+    setKee(page, 90);
+    const room = { lines: mobsLines(2) };
+    // 使用者貼的真實 log：被打的時候自動戰鬥把另一隻打昏，房間裡只剩昏迷的，氣在休息線以下就原地等回氣，牠會醒過來
+    const script = command => {
+      if (command === FIGHT) { setKee(page, 40); room.lines = [KNOCKED_LINE]; say(page, '測試怪死了。'); return true; }
+      if (command === 'kill 1') { room.lines = []; say(page, '測試怪死了。'); return true; }
+      return command === 'gc';
+    };
+    const game = world(page, { at: 'a', looks: { c: room }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, 'kill 1') === 1, 6000), `the knocked-out one is finished without waiting for the qi (${game.log.join(',')})`);
+    setKee(page, 90);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
   } finally {
     page.close();
   }
