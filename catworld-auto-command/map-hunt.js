@@ -40,6 +40,7 @@ const ARRIVAL_QUIET_TICKS = 3; // 目標房間：出口行之後要這麼多個 
 const ARRIVAL_WAIT_TICKS = PASS_WAIT_TICKS + 6; // 已經看到出口行時，等它印完（安靜）的上限，到了還沒印完就退回送 l；連出口行都沒有時只等 PASS_WAIT_TICKS
 const MOVE_TEXT_PHASES = ['move', 'pass', 'look']; // 這幾個階段把遊戲的輸出接進 moveText
 const TICKS_PER_SEC = 1000 / TICK_MS;
+const LOOT_PART_TICKS = 2; // 撿屍指令送出一段後等遊戲回應（忙碌狀態跟著亮起來）這麼久，再看忙不忙、送下一段
 const LOOT_REPLY_TICKS = 3; // 好幾隻打你的房間，撿屍送出後再等這麼久看會不會被拒（「你還在戰鬥中」）才離開
 const CORPSE_WAIT_TICKS = 5 * TICKS_PER_SEC; // 打完最後一隻、不重數就離開時，最多等撿屍指令送完這麼久（巡怪結束會丟掉還沒送出的指令）
 const EAT_GAP_TICKS = 5 * TICKS_PER_SEC; // 吃藥指令至少間隔 5 秒
@@ -708,6 +709,8 @@ function create(deps) {
     let lastLoot = { done: true }; // 最近一次撿屍的送出旗標
     let looted = 0; // 這間送出、沒被拒的撿屍次數
     let lootRetries = 0;
+    let lootChain = Promise.resolve(); // 撿屍指令一段一段送的進度（sendLoot）
+    let lootSending = false;
     const corpsesAtStart = first.corpses ?? 0;
     state.lootRefused = 0;
     const seen = new Set(info.monsters.filter(mob => mob.state === '戰鬥中').map(mob => mob.full));
@@ -722,13 +725,32 @@ function create(deps) {
       }
       if (why) { state.skipped.push({ key: here, why }); record(here, '略過', why); doneWith(here); } else doneWith(here, here);
     };
-    // 撿屍：送 loot 次，回傳的旗標在最後一次真的送出時變成 true
+    // 撿屍：送 loot 次，回傳的旗標在最後一段真的送出時變成 true。
+    // 指令用 ; 拆開一段一段送，每段之前等角色不忙碌（朋友回報的真實輸出：er;gc 的 er 運氣讓角色忙碌，緊接著的 gc 回「你上一個動作還沒有完成！」）
     const sendLoot = () => {
       if (!loot) return lastLoot; // 沒有要撿的：不換掉前一次的旗標，離開前才等得到它送完
       const command = state.settings.afterKillCommand;
       const sent = { done: !command };
       lastLoot = sent;
-      if (command) for (let i = 0; i < loot; i += 1) deps.send(command, i === loot - 1 ? () => { sent.done = true; } : undefined);
+      if (command) {
+        // 有 @（@等待、@巨集）的整串交給巨集執行器照舊送：拆開送 @等待 就不會擋住後面那段
+        const parts = command.includes('@') ? [command] : command.split(';').map(part => part.trim()).filter(Boolean);
+        const all = Array.from({ length: loot }, () => parts).flat();
+        // 前一次還沒送完才等它；不忙時第一段當下就送（async 函式在第一個 await 之前是同步的），順序才不會落在接著送的習慣指令後面
+        const previous = lootSending ? lootChain : null;
+        lootSending = true;
+        lootChain = (async () => {
+          if (previous) await previous;
+          for (const [i, part] of all.entries()) {
+            if (i > 0) for (let t = 0; t < LOOT_PART_TICKS; t += 1) { await sleepTick(); if (state !== token) return; }
+            if (deps.busy?.() && !(await notBusy(token))) return;
+            if (i === all.length - 1) { if (!deps.send(part, () => { sent.done = true; })) sent.done = true; break; }
+            await new Promise(resolve => { if (!deps.send(part, resolve)) resolve(); });
+            if (state !== token) return;
+          }
+        })().finally(() => { if (lootChain === chain) lootSending = false; });
+        const chain = lootChain;
+      }
       sent.any = !!command && loot > 0;
       looted += loot;
       loot = 0;
@@ -788,6 +810,9 @@ function create(deps) {
       if (!info.monsters.some(mob => mob.state === '戰鬥中') && target.state !== KNOCKED_OUT && !(await restGate(token))) return;
       if (!(await reactWait(token))) return;
       if (!(await notBusy(token))) return;
+      // 撿屍指令還沒送完（一段一段等不忙碌）就先不打，免得 fight 夾在 er 和 gc 中間、gc 變成戰鬥中被拒
+      await lootChain;
+      if (state !== token) return;
       // 看完房間之後有東西離開或走進來（同一份輸出裡、或等反應時間的期間）、或停下來休息過：順位已經不準，先重看一次再下 fight／kill（最多連續 MAX_STUCK 次）
       const rested = state.restedTick >= state.readTick;
       const arrived = info.arrived || state.arrivedTick >= state.readTick;

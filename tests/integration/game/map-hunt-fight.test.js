@@ -1384,6 +1384,36 @@ ui('corpse: "previous action not done" for some other command (not the gc) does 
   }
 });
 
+ui('corpse: the parts of the after-kill command wait for the character to stop being busy (er then gc)', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, afterKillCommand: 'er;gc' };
+    const doc = page.w.document;
+    if (!doc.getElementById('status')) doc.body.insertAdjacentHTML('beforeend', '<span id="status"></span>');
+    const status = doc.getElementById('status');
+    status.textContent = '正常';
+    let busyGc = 0;
+    // 朋友回報的真實輸出：er 運氣讓角色忙碌，緊接著送的 gc 回「你上一個動作還沒有完成！」
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: (command, { say, looks }) => {
+      if (command === FIGHT) { looks.c.lines = [CORPSE_LINE]; say('測試怪死了。'); return true; }
+      if (command === 'er') { status.textContent = '忙碌:2'; say('你坐下來運氣用功。'); setTimeout(() => { status.textContent = '正常'; }, 300); return true; }
+      if (command === 'gc') {
+        if (/^忙碌/.test(status.textContent)) { busyGc += 1; say('你上一個動作還沒有完成！'); return true; }
+        looks.c.lines = []; say('你從屍體上拿到東西。'); return true;
+      }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.equal(busyGc, 0, `gc is not sent while busy (${game.log.join(',')})`);
+    assert.equal(countOf(game, 'gc'), 1, game.log.join(','));
+  } finally {
+    page.close();
+  }
+});
+
 ui('counter: with the setting off, an attack on the way is not answered', async () => {
   const page = await boot({ scale: SCALE });
   try {
