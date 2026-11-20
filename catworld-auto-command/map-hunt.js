@@ -756,7 +756,7 @@ function create(deps) {
       }
       return !state.lootRefused || lootRetries >= MAX_STUCK;
     };
-    for (;;) {
+    room: for (;;) {
       // 被拒的撿屍還回來；房間裡比進來時多出來的屍體＝這間打倒的（倒下時不一定在打它，例如自動戰鬥打死的別隻），沒撿的補上
       if (state.lootRefused) { record(here, '撿屍被拒', `${state.lootRefused} 次，等打完再撿`); loot += state.lootRefused; looted -= state.lootRefused; state.lootRefused = 0; }
       const owed = (info.corpses ?? 0) - corpsesAtStart - looted - loot;
@@ -819,11 +819,12 @@ function create(deps) {
       while (outcome === 'knockedOut' && state.settings.finishKnockedOut === 'on') {
         outcome = await fightOne(token, target, { finishing: true });
         if (state !== token || outcome === 'stopped') return;
-        // 補刀沒打到（順位上沒有東西、數到屍體、打到別隻）：怪還昏迷著，重看房間，由下一圈用新的順位補刀；不算倒下、不撿屍
+        // 補刀沒打到（順位上沒有東西、數到屍體、打到別隻）：怪還昏迷著，重看房間，回到外圈用新的順位補刀；不算倒下、不撿屍
+        // （只跳出這個 while 會接著算一次撿屍，最後一隻時還會直接離開、把昏迷的留在原地）
         if (outcome === 'missing' || outcome === 'wrong') {
           info = await lookAgain();
           if (!info) return;
-          continue;
+          continue room;
         }
         downs += 1;
       }

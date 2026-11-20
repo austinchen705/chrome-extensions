@@ -105,6 +105,27 @@ ui('fight: the kill command is a setting, so a refusal gets k when the user set 
   }
 });
 
+ui('fight: when the finishing kill misses (nothing at that number), it looks again and finishes the monster still lying there, without taking a corpse first', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    const room = { lines: mobsLines(1) };
+    const script = (command, { say: tell }) => {
+      if (command === FIGHT) { room.lines = [KNOCKED_LINE]; tell(KO_LINE); return true; }
+      if (command === 'kill 1' && countOf(game, 'kill 1') === 1) { tell('你想殺誰？'); return true; }
+      if (command === 'kill 1') { room.lines = []; tell('測試怪死了。'); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: room }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', FIGHT, 'kill 1', 'l', 'kill 1', 'gc'], 'the miss is not a kill: no corpse command and no leaving until it is dead');
+  } finally {
+    page.close();
+  }
+});
+
 ui('fight: a monster already knocked out before the fight (the game says it cannot fight any more) is finished off right away, not after the timeout', async () => {
   const page = await boot({ scale: SCALE });
   try {
