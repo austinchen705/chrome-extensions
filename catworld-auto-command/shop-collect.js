@@ -405,8 +405,9 @@ function finishBatch() {
   };
   addLine(lines[0]);
   addLine(lines[1]);
-  // 值得換的每件：有編號就一顆「買 編號」按鈕（點了直接送 buy），底下一行比較結果
-  run.good.forEach(item => {
+  // 值得換的每件：有編號就一顆「買 編號」按鈕（點了直接送 buy），底下一行比較結果；
+  // 照編號由大到小列（和快速購買同一個順序，由上往下買時還沒買的編號不會變），對不回編號的放最後
+  [...run.good].sort((a, b) => (b.no ?? -1) - (a.no ?? -1)).forEach(item => {
     if (item.no !== undefined) box.append(buyOne(item));
     addLine(`　${item.no === undefined ? `${item.name}　` : ''}${item.text}`);
   });
