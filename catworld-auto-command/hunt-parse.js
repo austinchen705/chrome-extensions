@@ -64,8 +64,9 @@ function parsePerson(rawLine) {
 const OBJECT_LINE = /\S\s*\([A-Za-z][^()]*\)\s*(?:<[^>]*>\s*)*(?:\[[^\]]*\]\s*)*$/;
 const CORPSE_LINE = /屍體\s*\(corpse\)/i;
 
-// 有東西離開房間的句子（怪或人都算：fight 的順位數的是房間裡所有東西）。走進來的句子沒有樣本，不處理
+// 有東西離開房間、走進房間的句子（怪或人都算：fight 的順位數的是房間裡所有東西）。走進來的樣本是遊戲輸出「竹雞走了過來。」
 const LEAVE_LINE = /往\S{1,6}離開/;
+const ARRIVE_LINE = /走了過來/;
 
 // 輸出裡可能有兩份房間描述（抵達時印的、再加 l 印的）：只算最後一份（從最後一個出口行開始，怪物與人物行都在它後面）
 function parseLook(text) {
@@ -98,8 +99,8 @@ function parseLook(text) {
     const person = parsePerson(line);
     if (person) people.push({ ...person, ref: refOf(person.id) });
   });
-  // moved：最後一份描述之後又有東西離開房間（「野狗往北離開。」），順位已經不準（使用者貼的真實輸出）
-  return { exits: parseExits(out), monsters, people, corpses, moved: LEAVE_LINE.test(out) };
+  // moved：最後一份描述之後又有東西離開房間（「野狗往北離開。」，使用者貼的真實輸出）；arrived：又有東西走進來（「竹雞走了過來。」）。兩種順位都已經不準
+  return { exits: parseExits(out), monsters, people, corpses, moved: LEAVE_LINE.test(out), arrived: ARRIVE_LINE.test(out) };
 }
 
 // i：「你身上帶著下列這些東西( 載重 23% ):」→ 23；讀不到回 null

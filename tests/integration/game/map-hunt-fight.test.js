@@ -1440,6 +1440,46 @@ ui('fight: something leaving while waiting to react makes it look again before t
   }
 });
 
+ui('fight: something walking in right after the room was read makes it look again before the fight', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    let looked = 0;
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE] } }, script: (command, { say: tell, looks }) => {
+      if (command !== 'l' || (looked += 1) > 1) return false;
+      tell(['測試房間 - ', '    這裡明顯的出口是 east。', MOB_LINE].join('\n'));
+      tell('> 竹雞走了過來。'); // 遊戲輸出的走進來的句子
+      looks.c.lines = [DOG_LINE, MOB_LINE];
+      return true;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'l', 'fight 2', 'gc'], 'looked again and fought my monster at its new position');
+  } finally {
+    page.close();
+  }
+});
+
+ui('fight: something walking in while waiting to react makes it look again before the fight', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, reactMinMs: 4000, reactMaxMs: 4000 };
+    let looked = 0;
+    const game = world(page, { at: 'a', looks: { c: { lines: [MOB_LINE] } }, script: (command, { looks }) => {
+      if (command === 'l' && (looked += 1) === 1) setTimeout(() => { looks.c.lines = [DOG_LINE, MOB_LINE]; say(page, '> 竹雞走了過來。'); }, 40);
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'l', 'fight 2', 'gc']);
+  } finally {
+    page.close();
+  }
+});
+
 ui('fight: when the fight lands on another monster, it waits for that one to fall, then looks again and fights mine', async () => {
   const page = await boot({ scale: SCALE });
   try {

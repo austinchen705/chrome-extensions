@@ -51,6 +51,7 @@ const NOT_ALIVE = /並不是活物/; // 順位數到屍體（使用者貼的真�
 const LOOT_REFUSED = /你還在戰鬥中[!！]?只能一次拿一樣/; // 還在打時撿屍被拒（使用者貼的真實輸出）
 const NO_SUCH_TARGET = /你想(?:攻擊|殺)誰/; // fight 回「你想攻擊誰？」、kill 回「你想殺誰？」：順位上沒有東西（使用者貼的真實輸出），順位已經過期 // 開打時遊戲印的句子，名字是實際打到的那一隻
 const LEAVE = /往\S{1,6}離開/; // 有東西離開房間，順位會變
+const ARRIVE = /走了過來/; // 有東西走進房間（遊戲輸出「竹雞走了過來。」），順位也會變
 const ATTACKED = /看起來(\S+?)想殺死你/; // 怪主動攻擊（使用者貼的真實輸出：「看起來腐屍想殺死你！」）；自己開打、補刀時對方也會回這句
 const ATTACKED_ALL = new RegExp(ATTACKED.source, 'g');
 const COUNTER_PHASES = ['plan', 'move', 'pass', 'look', 'slip']; // 這幾個階段（加上打怪中）看到被攻擊的句子才記下來；待命、休息、整理、換區不處理
@@ -778,11 +779,12 @@ function create(deps) {
       if (!info.monsters.some(mob => mob.state === '戰鬥中') && !(await restGate(token))) return;
       if (!(await reactWait(token))) return;
       if (!(await notBusy(token))) return;
-      // 看完房間之後有東西離開（同一份輸出裡、或等反應時間的期間）、或停下來休息過：順位已經不準，先重看一次（最多連續 MAX_STUCK 次）
+      // 看完房間之後有東西離開或走進來（同一份輸出裡、或等反應時間的期間）、或停下來休息過：順位已經不準，先重看一次再下 fight／kill（最多連續 MAX_STUCK 次）
       const rested = state.restedTick >= state.readTick;
-      if ((info.moved || state.leftTick >= state.readTick || rested) && recounts < MAX_STUCK) {
+      const arrived = info.arrived || state.arrivedTick >= state.readTick;
+      if ((info.moved || state.leftTick >= state.readTick || arrived || rested) && recounts < MAX_STUCK) {
         recounts += 1;
-        record(here, '重數', rested ? '休息過，順位可能變了' : '有東西離開房間，順位可能變了');
+        record(here, '重數', rested ? '休息過，順位可能變了' : arrived ? '有東西走進來，順位可能變了' : '有東西離開房間，順位可能變了');
         info = await lookAgain();
         if (!info) return;
         continue;
@@ -945,6 +947,7 @@ function create(deps) {
   // 「你要對誰施展這個招式」→這場不再送特攻。忙碌拒絕句不用處理：被拒的特攻不重排，等下一次間隔
   function onText(text) {
     if (state && LEAVE.test(text)) state.leftTick = state.ticks;
+    if (state && ARRIVE.test(text)) state.arrivedTick = state.ticks;
     // 被怪主動攻擊：記下來，由 tick 在能停下來的時候反擊。正在打的那一隻也會印這句（自己下 kill 後對方回殺），名字相同的不算
     const plain = state ? text.normalize('NFKC') : '';
     if (state && state.lastAim && !state.slotCmds.has(state.lastAim) && NOT_ALIVE.test(plain)) { state.slotCmds.add(state.lastAim); record(deps.room() ?? '-', '順位數到屍體', `${state.lastAim} 之後連屍體一起數`); }
