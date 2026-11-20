@@ -370,7 +370,7 @@ test('keep equal: off by default an equal piece stays equal; on, it is keep with
   const off = E.compareEquipment(same, [base('暮歌', 31)], stats);
   assert.deepEqual([off.verdict, off.text], ['equal', '相當']);
   const on = E.compareEquipment(same, [base('暮歌', 31)], { ...stats, keep: { enabled: false, min: 10, equal: true } });
-  assert.deepEqual([on.verdict, on.text, on.equal], ['keep', '相當，建議留下', true]);
+  assert.deepEqual([on.verdict, on.text], ['keep', '相當，建議留下']);
   assert.equal(E.compareEquipment(piece('薄品', 20), [base('暮歌', 31)], { ...stats, keep: { equal: true } }).verdict, 'worse');
   assert.equal(E.compareEquipment(same, [], { ...stats, keep: { equal: true } }).verdict, 'none');
   assert.equal(E.compareEquipment(piece('新披風', 40), [base('暮歌', 31)], { ...stats, keep: { equal: true } }).verdict, 'better');
@@ -382,7 +382,7 @@ test('keep equal: off by default an equal piece stays equal; on, it is keep with
 
 test('keep equal: an attribute at the threshold still gives the threshold reason first', () => {
   const result = E.compareEquipment(piece('同品', 31, [{ name: '攻擊', value: 12 }]), [base('暮歌', 31, [{ name: '攻擊', value: 12 }])], { ...stats, keep: { enabled: true, min: 10, equal: true } });
-  assert.deepEqual([result.verdict, result.text, result.equal], ['keep', '屬性達門檻，建議留下', undefined]);
+  assert.deepEqual([result.verdict, result.text], ['keep', '屬性達門檻，建議留下']);
 });
 
 test('keep rule: a worse piece with one attribute at the threshold is marked keep, the comparison reasons stay', () => {

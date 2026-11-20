@@ -475,7 +475,7 @@ ui('during a confirmed batch each check is recorded quietly, then one digest lis
   }
 });
 
-ui('with "equal also keep" on, an equal piece checked at the shop is still not worth buying', async () => {
+ui('with "equal also keep" on, an equal piece checked at the shop is worth buying, and off it is not', async () => {
   const page = await boot({ scale: SCALE });
   try {
     seed(page);
@@ -489,10 +489,26 @@ ui('with "equal also keep" on, an equal piece checked at the shop is still not w
     page.output(`<span>${checkOutput('新棍C', '棍類武器', 50, 100)}</span>`);
     assert.ok(await waitFor(() => boxes().length === 2, 2000));
     const text = boxes()[1].textContent;
-    assert.match(text, /沒有比現在好的/);
-    assert.match(text, /不比現在好 1 件/);
+    assert.match(text, /值得換（1）：/);
+    assert.match(text, /買 1 新棍C（10S）/);
+    assert.match(text, /和現在穿的 舊棍 比：相當，建議留下/);
   } finally {
     page.close();
+  }
+  const off = await boot({ scale: SCALE });
+  try {
+    seed(off);
+    off.w.CatworldShopCollect.setSender(() => true);
+    off.output(`<span>${batchList(['新棍C'])}</span>`);
+    assert.ok(await waitFor(() => shopBox(off), 2000));
+    buttonOf(off, '批次 check 還沒蒐集的').click();
+    buttonOf(off, '確認送出').click();
+    const boxes = () => [...off.w.document.querySelectorAll('[data-catworld-shop]')];
+    off.output(`<span>${checkOutput('新棍C', '棍類武器', 50, 100)}</span>`);
+    assert.ok(await waitFor(() => boxes().length === 2, 2000));
+    assert.match(boxes()[1].textContent, /不比現在好 1 件/);
+  } finally {
+    off.close();
   }
 });
 

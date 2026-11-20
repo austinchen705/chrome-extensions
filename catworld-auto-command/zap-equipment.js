@@ -144,7 +144,7 @@ function compareWithBaseline(candidate, baseline, { mainWeapon, exp, score } = {
 // 附屬能力門檻（設定頁「附屬能力達到門檻就建議留下」，存在 chrome.storage.local.equipmentKeep）：
 // 開著時，候選裝備只要有一條計分的屬性（重量、硬度、潛能、損修不算）數值達到門檻就標「留下」，
 // 不管主要數值比不比得過、能不能穿；本來就「比現在好」的維持原判斷；沒有基準可比（verdict none）的不套用，維持 none。
-// equal（設定頁「和現在穿的相當也建議留下」，預設關）：和現在穿的比是「相當」的也改判 keep，結果多帶 equal: true（商人不把它算值得買）
+// equal（設定頁「和現在穿的相當也建議留下」，預設關）：和現在穿的比是「相當」的也改判 keep（背包整理會留、商人算值得買）
 const KEEP_DEFAULT = { enabled: false, min: 10, equal: false };
 function normalizeKeepRule(value) {
   const min = value?.min;
@@ -157,7 +157,7 @@ function compareEquipment(candidate, baseline, { mainWeapon, exp, keep, score } 
   const result = compareWithBaseline(candidate, baseline, { mainWeapon, exp, score });
   const hit = keepHit(candidate.attrs, keep, normalizeScoreRule(score).ignored);
   if (hit && result.verdict !== 'better' && result.verdict !== 'none') return { ...result, verdict: 'keep', text: VERDICT_TEXT.keep, reasons: [`${hit.name} +${hit.value} 達門檻 ${keep.min}`, ...result.reasons] };
-  if (keep?.equal && result.verdict === 'equal') return { ...result, verdict: 'keep', text: VERDICT_TEXT.keepEqual, equal: true };
+  if (keep?.equal && result.verdict === 'equal') return { ...result, verdict: 'keep', text: VERDICT_TEXT.keepEqual };
   return result;
 }
 
