@@ -1343,6 +1343,28 @@ ui('corpse: a gc refused because a fight is still on is sent again after the roo
   }
 });
 
+ui('corpse: a gc refused because the previous action is not done yet (edf before it) is sent again', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    let gcs = 0;
+    // 使用者貼的真實輸出：撿屍指令 edf、gc，gc 回「你上一個動作還沒有完成！」，那具屍體一直沒撿
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: (command, { say, looks }) => {
+      if (command === FIGHT) { looks.c.lines = [CORPSE_LINE]; say('測試怪死了。'); return true; }
+      if (command === 'gc') { gcs += 1; say(gcs === 1 ? '你上一個動作還沒有完成！' : '你從屍體上拿到東西。'); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.equal(game.log.filter(command => command === 'gc').length, 2, game.log.join(','));
+    const { text } = await page.ask({ type: 'HUNT_LOG' });
+    assert.match(text, /撿屍被拒 1 次/);
+  } finally {
+    page.close();
+  }
+});
+
 ui('counter: with the setting off, an attack on the way is not answered', async () => {
   const page = await boot({ scale: SCALE });
   try {
