@@ -758,8 +758,14 @@ function create(deps) {
       return !state.lootRefused || lootRetries >= MAX_STUCK;
     };
     room: for (;;) {
-      // 被拒的撿屍還回來；房間裡比進來時多出來的屍體＝這間打倒的（倒下時不一定在打它，例如自動戰鬥打死的別隻），沒撿的補上
-      if (state.lootRefused) { record(here, '撿屍被拒', `${state.lootRefused} 次，等打完再撿`); loot += state.lootRefused; looted -= state.lootRefused; state.lootRefused = 0; }
+      // 被拒的撿屍還回來，最多還到剛看的房間裡還躺著的屍體數（被拒的屍體一定還在；「你上一個動作還沒有完成」是通用的忙碌回覆，
+      // 撿屍指令前面的 er 運氣時別的指令也會收到，gc 其實撿到了——朋友回報的真實 log：之後多送一次 er;gc 回「你找不到 corpse 這樣東西」）。
+      // 房間裡比進來時多出來的屍體＝這間打倒的（倒下時不一定在打它，例如自動戰鬥打死的別隻），沒撿的補上
+      if (state.lootRefused) {
+        const back = Math.min(state.lootRefused, Math.max(0, (info.corpses ?? 0) - corpsesAtStart - loot));
+        if (back) { record(here, '撿屍被拒', `${back} 次，等打完再撿`); loot += back; looted -= back; }
+        state.lootRefused = 0;
+      }
       const owed = (info.corpses ?? 0) - corpsesAtStart - looted - loot;
       if (owed > 0) loot += owed;
       if (loot && !info.monsters.some(mob => mob.state === '戰鬥中')) sendLoot();

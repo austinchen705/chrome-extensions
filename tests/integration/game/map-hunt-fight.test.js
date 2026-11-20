@@ -1365,6 +1365,25 @@ ui('corpse: a gc refused because the previous action is not done yet (edf before
   }
 });
 
+ui('corpse: "previous action not done" for some other command (not the gc) does not send another gc when the room has no corpse left', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    // 朋友回報的真實 log：撿屍指令 er;gc，er 運氣還沒做完時別的指令也會回「你上一個動作還沒有完成！」，gc 其實撿到了，之後又多送一次 er;gc（「你找不到 corpse 這樣東西」）
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: (command, { say, looks }) => {
+      if (command === FIGHT) { looks.c.lines = [CORPSE_LINE]; say('你上一個動作還沒有完成！'); say('測試怪死了。'); return true; }
+      if (command === 'gc') { looks.c.lines = []; say('你從屍體上拿到東西。'); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.equal(game.log.filter(command => command === 'gc').length, 1, game.log.join(','));
+  } finally {
+    page.close();
+  }
+});
+
 ui('counter: with the setting off, an attack on the way is not answered', async () => {
   const page = await boot({ scale: SCALE });
   try {
