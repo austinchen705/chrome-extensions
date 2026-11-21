@@ -815,6 +815,7 @@ function create(deps) {
       const mine = roomTargets(info, token, seen, sieged);
       if (siegeOpen) {
         siegeOpen = false;
+        downs = Math.max(downs, state.hostile); // 圍攻裡倒下的沒經過 fightOne、沒算進 downs：l 已經看不到醒著在打你的，聽到的「想殺死你」都算處理掉了
         if (mine.some(mob => mob.state === KNOCKED_OUT)) record(here, '全部打昏', '開始補刀');
       }
       if (!mine.length) {
@@ -872,15 +873,18 @@ function create(deps) {
         continue;
       }
       downs += 1;
-      // 自己開打的這隻昏了、但聽到的「想殺死你」比倒下的多：l 確認還有醒著的在打你，就不補刀，改走圍攻的流程
+      let downed = target;
+      // 自己開打的這隻昏了、但聽到的「想殺死你」比倒下的多：l 確認還有醒著的在打你，就不補刀，改走圍攻的流程；
+      // 沒有就用這份新 l 的順位補刀（打的途中有東西離開，順位可能變了），找不到昏迷的就回外圈重新挑
       if (outcome === 'knockedOut' && state.settings.finishKnockedOut === 'on' && (state.hostile > downs || state.attacked)) {
         info = await lookAgain();
         if (!info) return;
         if (besiegers(info, token).length) continue;
+        downed = info.monsters.find(mob => mob.state === KNOCKED_OUT && mob.full === target.full && SAFE_ID.test(mob.id));
+        if (!downed) continue;
       }
       // 打到昏迷（不是死）：補一個 kill 確實打死，出現死亡的字才算數；然後才撿屍
       // 補刀時醒過來又被打昏（fightOne 回 knockedOut）就再補一次
-      let downed = target;
       while (outcome === 'knockedOut' && state.settings.finishKnockedOut === 'on') {
         // 打的途中有東西離開或走進來：順位已經變了（朋友貼的真實輸出：f 2 途中「雪鼠往北離開。」，補刀 k 2 殺到醒著的另一隻），
         // 先重看房間，用新的順位補第一隻昏迷的同種怪；沒看到昏迷的就回外圈重新挑
