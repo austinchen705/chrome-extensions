@@ -318,11 +318,11 @@ ui('rest: finishing off a knocked-out monster below the danger line still goes h
   }
 });
 
-ui('rest: a monster that is fighting you is fought even when the qi is below the rest line, and the rest comes once nobody is fighting', async () => {
+ui('rest: a monster that is fighting you is waited for (only the special is sent) even when the qi is below the rest line, and the rest comes once nobody is fighting', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
-    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', restBelow: 50, restResume: 80, dangerBelow: 10 };
+    page.store.mapHuntSettings = { ...REQUIRED, healMode: 'rest', restBelow: 50, restResume: 80, dangerBelow: 10, specialCommand: 'sp', specialIntervalSec: 1 };
     setKee(page, 90);
     const room = { lines: mobsLines(3) };
     // 使用者貼的真實 log：第一隻打倒後氣掉到休息線以下，重數時房間裡有一隻 <戰鬥中>，原地休息會一直被打、氣回不來
@@ -330,23 +330,23 @@ ui('rest: a monster that is fighting you is fought even when the qi is below the
       if (command === FIGHT) {
         const fights = countOf(game, FIGHT);
         if (fights === 1) { setKee(page, 40); room.lines = [MOB_FIGHTING, MOB_LINE]; }
-        if (fights === 2) room.lines = [MOB_LINE];
-        if (fights === 3) room.lines = [];
+        if (fights === 2) room.lines = [];
         say(page, '測試怪死了。');
         return true;
       }
+      if (command === 'sp') { room.lines = [MOB_LINE]; say(page, '測試怪死了。'); return true; }
       return command === 'gc';
     };
     const game = world(page, { at: 'a', looks: { c: room }, script });
     await pick(page, MOB);
     click(page, '.hstart');
-    assert.ok(await waitFor(() => countOf(game, FIGHT) === 2, 6000), `the monster in <戰鬥中> is fought without resting (${game.log.join(',')})`);
+    assert.ok(await waitFor(() => countOf(game, 'sp') >= 1, 6000), `the monster in <戰鬥中> is waited for without resting (${game.log.join(',')})`);
     assert.ok(await waitFor(() => /休息中/.test(huntText(page)), 6000), huntText(page));
     await sleep(300);
-    assert.equal(countOf(game, FIGHT), 2, 'nobody is fighting any more, so it rests before the third one');
+    assert.equal(countOf(game, FIGHT), 1, 'no fight was sent to the monster that was already fighting; nobody is fighting any more, so it rests before the next one');
     setKee(page, 90);
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 6000), huntText(page));
-    assert.equal(countOf(game, FIGHT), 3);
+    assert.equal(countOf(game, FIGHT), 2);
   } finally {
     page.close();
   }
