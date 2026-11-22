@@ -112,7 +112,7 @@ const alerts = page => page.messages.filter(message => message.type === 'ALERT')
 
 const PLAYER_FINGER = '英文代號：    somebody\n姓    名：    某人\n權限等級：    (player)\n';
 
-const NOT_FOUND = '找不到這個人。';
+const NOT_FOUND = '沒有這個玩家。';
 
 const MOB_LINE = '  ※測試怪(test mob) [fight][kill]';
 

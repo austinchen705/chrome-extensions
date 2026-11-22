@@ -24,8 +24,12 @@ test('finger: a player record is a player', () => {
   assert.equal(P.parseFinger(sample('finger-player')), 'player');
 });
 
-test('finger: not found is an NPC (no real NPC sample yet: the user only said it says it cannot be found)', () => {
-  assert.equal(P.parseFinger('> finger ferryman\n找不到這個人。'), 'npc');
+test('finger: "no such player" is an NPC (real output of finger guard)', () => {
+  assert.equal(P.parseFinger('> finger guard\n沒有這個玩家。'), 'npc');
+});
+
+test('finger: other text that says something cannot be found is not an NPC (a reply from another command can land in the finger window)', () => {
+  assert.equal(P.parseFinger('> finger gvt\n你找不到這樣東西。'), 'unknown');
 });
 
 test('finger: anything else is unknown, and the caller treats unknown as a player', () => {

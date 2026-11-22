@@ -1497,7 +1497,7 @@ function refreshHuntChainNote() {
 // ASK_QUIET_MS 就交出去；一直等不到就在 ASK_MAX_MS 後交出目前收到的（可能是空的）。指令走共用送出佇列（來源 hunt）
 const ASK = {
   look: { pattern: /出口是/, quietMs: 400 },
-  finger: { pattern: /權限等級|找不到/, quietMs: 250 },
+  finger: { pattern: /權限等級|沒有這個玩家/, quietMs: 250 },
   time: { pattern: /台北時間為/, quietMs: 250 },
   inventory: { pattern: /載重\s*\d+/, quietMs: 400 },
   secure: { pattern: /標記|沒有|找不到|什麼/, quietMs: 250 },

@@ -11,11 +11,12 @@ function parseTime(text) {
   return Date.UTC(year, month - 1, day, hour - 8, minute, second);
 }
 
-// finger <ID>：輸出有「權限等級：(player)」是玩家，有「找不到」是 NPC，其他（沒回應、讀不懂）是 unknown；呼叫端把 unknown 當玩家
+// finger <ID>：輸出有「權限等級：(player)」是玩家，有「沒有這個玩家。」（使用者貼的真實輸出：finger guard）是 NPC，其他（沒回應、讀不懂）是 unknown；呼叫端把 unknown 當玩家。
+// NPC 只認這一句：收回應的期間別的指令或頻道印出含「找不到」的字，會讓還沒回應的玩家被記成 NPC、以後都不再 finger
 function parseFinger(text) {
   const out = String(text ?? '');
   if (/權限等級\s*[：:]\s*\(player\)/.test(out)) return 'player';
-  if (/找不到/.test(out)) return 'npc';
+  if (/沒有這個玩家/.test(out)) return 'npc';
   return 'unknown';
 }
 
