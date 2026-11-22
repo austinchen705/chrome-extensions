@@ -1,4 +1,4 @@
-// 地圖巡怪：map-hunt-fight（99 組；共用底座在 tests/helpers/map-hunt-world.js，整個 content script 在 jsdom 裡跑）。
+// 地圖巡怪：map-hunt-fight（103 組；共用底座在 tests/helpers/map-hunt-world.js，整個 content script 在 jsdom 裡跑）。
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ui, sleep, waitFor, fixture } = require('../../helpers/game-page');
@@ -8,6 +8,7 @@ const {
   boot,
   MOB,
   mobsAt,
+  mobsIn,
   world,
   tick,
   pick,
@@ -2244,6 +2245,141 @@ ui('ambush: monsters already knocked out on arrival with nobody attacking are le
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
     assert.equal(countOf(game, 'kill 1') + countOf(game, 'gc') + countOf(game, FIGHT), 0, game.log.join(','));
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 稱號：怪叫「玉衡閣」「下等」狗腿幫眾，遊戲的開打句與「想殺死你」只寫最內層稱號「下等」狗腿幫眾 ----
+const TITLED = '「玉衡閣」「下等」狗腿幫眾(prog)';
+const TITLED_LINE = `  ※${TITLED} [fight][kill]`;
+const TITLED_KNOCKED = `  ※${TITLED} <昏迷不醒> [fight][kill]`;
+const TITLED_FIGHTING = `  ※${TITLED} <戰鬥中> [fight][kill]`;
+const TITLED_BUSY = `  ※${TITLED} <忙碌中> [fight][kill]`;
+const TITLED_CORPSE = '  「下等」狗腿幫眾的屍體(corpse) [sac]';
+const TITLED_ENGAGE = '你對著「下等」狗腿幫眾喝道：「臭賊！今日不是你死就是我活！」';
+const TITLED_DEAD = '「下等」狗腿幫眾死了。';
+const TITLED_ATTACK = '看起來「下等」狗腿幫眾想殺死你！';
+const TITLED_BURY = '你埋葬了「下等」狗腿幫眾的屍體。';
+
+// gc 埋葬第一具屍體（屍體從房間消失）
+const buryFirst = (lines, tell) => {
+  const index = lines.indexOf(TITLED_CORPSE);
+  if (index < 0) return;
+  lines.splice(index, 1);
+  tell(TITLED_BURY);
+};
+
+ui('title: the engage line with only the inner title is not a wrong target, and every finished monster is looted even though gc buries the corpse', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsIn(TITLED, 'c');
+    page.store.mapHuntSettings = SIEGE_SETTINGS;
+    const lines = [TITLED_FIGHTING, TITLED_FIGHTING, TITLED_FIGHTING];
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [...lines, TITLED_ATTACK, TITLED_ATTACK, TITLED_ATTACK] } }, looks: { c: { lines } }, script: (command, { say: tell }) => {
+      if (command === 'sp') { lines.fill(TITLED_KNOCKED); tell(KO_LINE); return true; }
+      if (command.startsWith('kill ')) {
+        tell(TITLED_ENGAGE);
+        const index = lines.findIndex(line => line === TITLED_KNOCKED);
+        lines[index] = TITLED_CORPSE;
+        tell(TITLED_DEAD);
+        return true;
+      }
+      if (command === 'gc') { buryFirst(lines, tell); return true; }
+      return false;
+    } });
+    await pick(page, TITLED);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.equal(countOf(game, 'kill 1'), 3, game.log.join(','));
+    assert.equal(countOf(game, 'gc'), 3, `three kills, three gc: ${game.log.join(',')}`);
+    assert.doesNotMatch(await huntLog(page), /打到別隻/);
+    assert.equal(lines.filter(line => line === TITLED_CORPSE).length, 0, 'no corpse left behind');
+  } finally {
+    page.close();
+  }
+});
+
+ui('title: when gc buries the corpse, the corpses that fell without being fought are still looted (buried ones are added back)', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsIn(TITLED, 'c');
+    const lines = [TITLED_LINE, TITLED_LINE, TITLED_LINE];
+    const game = world(page, { at: 'a', looks: { c: { lines } }, script: (command, { say: tell }) => {
+      if (command.startsWith('fight ') || command.startsWith('kill ')) {
+        tell(TITLED_ENGAGE);
+        // 打這一隻時順便被別的打死一隻（沒自己打的倒下）
+        for (let i = 0; i < 2; i += 1) {
+          const index = lines.findIndex(line => line === TITLED_LINE);
+          if (index >= 0) lines[index] = TITLED_CORPSE;
+        }
+        tell(TITLED_DEAD);
+        return true;
+      }
+      if (command === 'gc') { buryFirst(lines, tell); return true; }
+      return false;
+    } });
+    await pick(page, TITLED);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.equal(countOf(game, 'gc'), 3, `three corpses, three gc: ${game.log.join(',')}`);
+    assert.equal(lines.filter(line => line === TITLED_CORPSE).length, 0, 'no corpse left behind');
+  } finally {
+    page.close();
+  }
+});
+
+ui('title: a monster in <忙碌中> counts as awake, so nothing is killed until it is down too', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsIn(TITLED, 'c');
+    page.store.mapHuntSettings = SIEGE_SETTINGS;
+    const lines = [TITLED_KNOCKED, TITLED_BUSY, TITLED_KNOCKED];
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [...lines, TITLED_ATTACK, TITLED_ATTACK, TITLED_ATTACK] } }, looks: { c: { lines } }, script: (command, { say: tell }) => {
+      if (command === 'sp') { lines[1] = TITLED_KNOCKED; tell(KO_LINE); return true; }
+      if (command.startsWith('kill ')) {
+        tell(TITLED_ENGAGE);
+        lines[lines.findIndex(line => line === TITLED_KNOCKED)] = TITLED_CORPSE;
+        tell(TITLED_DEAD);
+        return true;
+      }
+      if (command === 'gc') { buryFirst(lines, tell); return true; }
+      return false;
+    } });
+    await pick(page, TITLED);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    const firstKill = game.log.indexOf('kill 1');
+    assert.ok(game.log.indexOf('sp') >= 0 && game.log.indexOf('sp') < firstKill, `special first, no kill while the busy one is awake: ${game.log.join(',')}`);
+    assert.equal(countOf(game, FIGHT), 0, game.log.join(','));
+    assert.equal(countOf(game, 'gc'), 3, game.log.join(','));
+    assert.match(await huntLog(page), /被圍攻 「玉衡閣」「下等」狗腿幫眾/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('title: an engage line naming another monster (even with the same tail but another title) is still a wrong target', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsIn(TITLED, 'c');
+    let fights = 0;
+    const game = world(page, { at: 'a', looks: { c: { lines: [TITLED_LINE] } }, script: (command, { say: tell, looks }) => {
+      if (!command.startsWith('fight ')) return command === 'gc';
+      if ((fights += 1) === 1) {
+        tell('你對著「上等」狗腿幫眾喝道：「臭賊！」'); // 別隻（稱號不同）
+        setTimeout(() => say(page, '「上等」狗腿幫眾死了。'), 30);
+      } else {
+        tell(TITLED_ENGAGE);
+        setTimeout(() => { looks.c.lines = [TITLED_CORPSE]; say(page, TITLED_DEAD); }, 30);
+      }
+      return true;
+    } });
+    await pick(page, TITLED);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.match(await huntLog(page), /打到別隻 「上等」狗腿幫眾/);
+    assert.ok(countOf(game, FIGHT) >= 2, game.log.join(','));
   } finally {
     page.close();
   }

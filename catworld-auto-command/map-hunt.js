@@ -59,6 +59,9 @@ const ATTACKED = /看起來(\S+?)想殺死你/; // 怪主動攻擊（使用者�
 const ATTACKED_ALL = new RegExp(ATTACKED.source, 'g');
 const COUNTER_PHASES = ['plan', 'move', 'pass', 'look', 'slip']; // 這幾個階段（加上打怪中）看到被攻擊的句子才記下來；待命、休息、整理、換區不處理
 const KNOCKED_OUT = '昏迷不醒';
+const AWAKE_STATES = ['戰鬥中', '忙碌中']; // 醒著還在打的怪：<忙碌中> 是被特攻定住、仍在戰鬥（使用者貼的真實 l），和 <戰鬥中> 一樣算在打你
+const awake = mob => AWAKE_STATES.includes(mob.state);
+const BURIED = /你埋葬了[^。\n]*?的屍體/g; // 撿屍指令（gc）把屍體埋掉：房間裡不再有這具屍體
 const RESPAWN_MS = 15 * 60 * 1000; // 怪在伺服器時間的每小時 00、15、30、45 分重生
 const RECALIBRATE_LEAD_MS = 30 * 1000; // 距開始時間不到這麼久（或估計已經到了），而上次校準已經超過 RECALIBRATE_GAP_MS，就重新校準
 const RECALIBRATE_GAP_MS = 20 * 1000;
@@ -594,7 +597,7 @@ function create(deps) {
     const picked = info.monsters.filter(mob => state.mobs.includes(mob.full));
     const mine = picked.filter(mob => mob.state !== KNOCKED_OUT);
     // 診斷：每次決定都印一行，使用者回報「怪還沒死就下 fight」時看這行就知道當時看到什麼、為什麼送
-    const trace = action => record(a.here, '只下fight', `${fresh ? '剛到房間或逾時自己看' : '被動看到'}：${lookText(info)} → ${action}`) || console.log('[catworld] 只下 fight：', a.here, `看到 ${picked.length} 隻、昏迷 ${picked.length - mine.length}、戰鬥中 ${mine.filter(mob => mob.state === '戰鬥中').length}`, fresh ? '〔剛到房間或逾時自己看的 l〕' : '〔被動看到的 l〕', '→', action);
+    const trace = action => record(a.here, '只下fight', `${fresh ? '剛到房間或逾時自己看' : '被動看到'}：${lookText(info)} → ${action}`) || console.log('[catworld] 只下 fight：', a.here, `看到 ${picked.length} 隻、昏迷 ${picked.length - mine.length}、戰鬥中 ${mine.filter(awake).length}`, fresh ? '〔剛到房間或逾時自己看的 l〕' : '〔被動看到的 l〕', '→', action);
     const leave = why => {
       state.assist = null;
       if (why) { state.skipped.push({ key: a.here, why }); record(a.here, '略過', why); }
@@ -606,7 +609,7 @@ function create(deps) {
     if (picked.length > mine.length && !fresh) { a.waited = 0; trace('等昏迷的怪死掉'); return; }
     if (!mine.length) { trace('沒有可打的怪，換格'); leave(); return; }
     a.waited = 0;
-    if (mine.some(mob => mob.state === '戰鬥中')) { trace('有怪在戰鬥中，繼續等'); return; } // 在打，繼續等（戰鬥中不休息）
+    if (mine.some(awake)) { trace('有怪在戰鬥中，繼續等'); return; } // 在打，繼續等（戰鬥中不休息）
     // 自己回：每次要下 fight 之前（剛打死一隻、或剛到房間）先看氣，低於休息線就先休息等回氣，回到繼續線才下 fight
     if (state.settings.healMode === 'rest') {
       const percent = deps.kee();
@@ -684,7 +687,7 @@ function create(deps) {
   }
 
   // 被圍攻＝l 看到醒著、標 <戰鬥中> 的怪（反擊開著時有沒有勾選都算，關著只算勾選的）：不對牠們送 fight／kill，由 siegeWait 等牠們倒下
-  const besiegers = (info, token) => info.monsters.filter(mob => mob.state === '戰鬥中' && (state.settings.counterAttack === 'on' || token.mobs.includes(mob.full)));
+  const besiegers = (info, token) => info.monsters.filter(mob => awake(mob) && (state.settings.counterAttack === 'on' || token.mobs.includes(mob.full)));
 
   // 這間要打的怪（不含被圍攻的）：勾選的 → 昏迷沒打死的（補刀開著時；
   // 這間打過、或打過你的同名怪（l 看過 <戰鬥中>、或這間聽到「看起來X想殺死你」的 X 同名）：被打昏的不一定是你正在打的那隻，自動戰鬥會一起打所有打你的怪，
@@ -692,7 +695,7 @@ function create(deps) {
   // 昏迷的用「打死用的指令」補刀。圍攻處理完（finishFirst）先補刀、再打勾選但沒在打你的怪
   const roomTargets = (info, token, seen, finishFirst = false) => {
     const s = state.settings;
-    const picked = info.monsters.filter(mob => mob.state !== KNOCKED_OUT && mob.state !== '戰鬥中' && token.mobs.includes(mob.full));
+    const picked = info.monsters.filter(mob => mob.state !== KNOCKED_OUT && !awake(mob) && token.mobs.includes(mob.full));
     const out = s.finishKnockedOut === 'on' ? info.monsters.filter(mob => mob.state === KNOCKED_OUT && (seen.has(mob.full) || state.attackers.has(shortName(mob)))) : [];
     return finishFirst ? [...out, ...picked] : [...picked, ...out];
   };
@@ -718,7 +721,8 @@ function create(deps) {
     let lootSending = false;
     const corpsesAtStart = first.corpses ?? 0;
     state.lootRefused = 0;
-    const seen = new Set(info.monsters.filter(mob => mob.state === '戰鬥中').map(mob => mob.full));
+    state.buried = 0;
+    const seen = new Set(info.monsters.filter(awake).map(mob => mob.full));
     let sieged = false; // 這間被圍攻過：之後先補刀、再打勾選的
     let siegeOpen = false; // 正在圍攻中（記過「被圍攻」、還沒記「全部打昏」）
     // 離開這間：why 是略過的原因（反擊時只記一行、不略過）
@@ -769,7 +773,7 @@ function create(deps) {
       state.readTick = state.ticks;
       state.attacked = null; // 這份 l 已經看過誰在打你
       if (!again.exits.length) { if (counter) leave('讀不到房間'); else skipTarget(here, '讀不到房間'); return null; }
-      again.monsters.filter(mob => mob.state === '戰鬥中').forEach(mob => seen.add(mob.full));
+      again.monsters.filter(awake).forEach(mob => seen.add(mob.full));
       return again;
     };
     const lookAgain = async () => {
@@ -794,13 +798,13 @@ function create(deps) {
       // 撿屍指令前面的 er 運氣時別的指令也會收到，gc 其實撿到了——朋友回報的真實 log：之後多送一次 er;gc 回「你找不到 corpse 這樣東西」）。
       // 房間裡比進來時多出來的屍體＝這間打倒的（倒下時不一定在打它，例如自動戰鬥打死的別隻），沒撿的補上
       if (state.lootRefused) {
-        const back = Math.min(state.lootRefused, Math.max(0, (info.corpses ?? 0) - corpsesAtStart - loot));
+        const back = Math.min(state.lootRefused, Math.max(0, (info.corpses ?? 0) + state.buried - corpsesAtStart - loot));
         if (back) { record(here, '撿屍被拒', `${back} 次，等打完再撿`); loot += back; looted -= back; }
         state.lootRefused = 0;
       }
-      const owed = (info.corpses ?? 0) - corpsesAtStart - looted - loot;
+      const owed = (info.corpses ?? 0) + state.buried - corpsesAtStart - looted - loot;
       if (owed > 0) loot += owed;
-      if (loot && !info.monsters.some(mob => mob.state === '戰鬥中')) sendLoot();
+      if (loot && !info.monsters.some(awake)) sendLoot();
       const attackers = besiegers(info, token);
       if (attackers.length) {
         sieged = true;
@@ -834,7 +838,7 @@ function create(deps) {
       if (spawnPause()) return;
       // 房間裡有怪在 <戰鬥中>（正在打你）時不能原地休息：氣回不來、只會一直被打；先打，戰鬥中的危險線照樣擋。沒人在打了才休息。
       // 下一隻要補刀（剩下的都昏了，例如被打時自動戰鬥把牠打昏）也先補完再休息：等回氣的期間牠會醒過來（使用者要求）
-      if (!info.monsters.some(mob => mob.state === '戰鬥中') && target.state !== KNOCKED_OUT) {
+      if (!info.monsters.some(awake) && target.state !== KNOCKED_OUT) {
         const gate = await restGate(token);
         if (!gate) return;
         if (gate === 'attacked') { record(here, '重數', '休息、開打前聽到有怪打你，先看房間'); info = await lookAgain(); if (!info) return; continue; }
@@ -859,7 +863,7 @@ function create(deps) {
       const knocked = target.state === KNOCKED_OUT;
       record(here, counter ? '反擊' : '開打', `${target.full}${knocked ? '（補刀）' : ''}`);
       // calm：補刀時剛看的 l 沒有 <戰鬥中>（沒有醒著在打你的），氣低於危險線也先補完（見 fightOne）
-      let outcome = await fightOne(token, target, knocked ? { finishing: true, calm: !info.monsters.some(mob => mob.state === '戰鬥中') } : {});
+      let outcome = await fightOne(token, target, knocked ? { finishing: true, calm: !info.monsters.some(awake) } : {});
       if (state !== token || outcome === 'stopped') return;
       record(here, '打完', outcome);
       // 那個順位沒有東西（遊戲回「你想攻擊誰」）：馬上重看房間再打；連續 MAX_STUCK 次就略過這間，免得一直來回
@@ -902,7 +906,7 @@ function create(deps) {
           if (!downed) continue room;
         }
         // 打這一隻時聽到的「想殺死你」比倒下的多，就是還有別隻在打你，不算 calm
-        outcome = await fightOne(token, downed, { finishing: true, calm: !info.monsters.some(mob => mob.state === '戰鬥中') && state.hostile <= downs && !state.attacked });
+        outcome = await fightOne(token, downed, { finishing: true, calm: !info.monsters.some(awake) && state.hostile <= downs && !state.attacked });
         if (state !== token || outcome === 'stopped') return;
         // 補刀沒打到（順位上沒有東西、數到屍體、打到別隻）：怪還昏迷著，重看房間，回到外圈用新的順位補刀；不算倒下、不撿屍
         // （只跳出這個 while 會接著算一次撿屍，最後一隻時還會直接離開、把昏迷的留在原地）
@@ -959,7 +963,7 @@ function create(deps) {
     state.readTick = state.ticks;
     const now = deps.room();
     if (now && now !== here) { state.phase = 'plan'; return; } // 人已經不在這間（被打跑、或手動走掉）：重新規劃
-    if (info.monsters.some(mob => mob.state === '戰鬥中')) { await fightRoom(token, here, info, { counter: true }); return; }
+    if (info.monsters.some(awake)) { await fightRoom(token, here, info, { counter: true }); return; }
     record(here, '反擊', 'l 沒看到戰鬥中的怪，照原本的路線');
     if (info.exits.length && wantsPassCheck(here) && info.monsters.some(mob => token.mobs.includes(mob.full) && mob.state !== KNOCKED_OUT)) {
       state.targets.add(here);
@@ -1022,6 +1026,9 @@ function create(deps) {
   const nameLineMatches = (buffer, name, pattern) => buffer.normalize('NFKC').split(/\r?\n/).some(line => pattern.test(line) && (!name || line.includes(name)));
   // 遊戲的戰鬥訊息只寫短名稱（「蒙古兵死了。」），不帶稱號：取最後一個空白或」之後的那一段（千夫長 蒙古兵→蒙古兵、落第才子「…」衰老頭→衰老頭）
   const shortName = mob => String(mob?.name ?? '').split(/[\s」]/).filter(Boolean).pop() ?? '';
+  // 遊戲訊息裡的名字可能多帶最內層稱號（怪「玉衡閣」「下等」狗腿幫眾，開打句與「想殺死你」寫「下等」狗腿幫眾）：短名稱相同，帶稱號時還要是這隻怪全名的一部分
+  const tailName = text => shortName({ name: text });
+  const sameMob = (text, mob) => !!shortName(mob) && tailName(text) === shortName(mob) && String(mob.name).includes(text);
   // 結束的字要和這隻怪的名字出現在同一行才算：只看字的話，同房間別的怪或別人的戰鬥印出「某某死了」會被當成這隻死了，
   // 就去打下一隻、或最後一隻時直接離開（使用者實際遇到）。同名的怪（同一間好幾隻蒙古兵）分不出來，這是遊戲訊息本身的限制
   const endWordFor = (buffer, words, mob) => {
@@ -1053,12 +1060,13 @@ function create(deps) {
     // 被怪主動攻擊：記下來，由 tick 在能停下來的時候反擊。正在打的那一隻也會印這句（自己下 kill 後對方回殺），名字相同的不算
     const plain = state ? text.normalize('NFKC') : '';
     if (state && state.lastAim && !state.slotCmds.has(state.lastAim) && NOT_ALIVE.test(plain)) { state.slotCmds.add(state.lastAim); record(deps.room() ?? '-', '順位數到屍體', `${state.lastAim} 之後連屍體一起數`); }
+    if (state) state.buried += (plain.match(BURIED) || []).length;
     if (state) state.lootRefused += (plain.match(new RegExp(LOOT_REFUSED.source, 'g')) || []).length;
     if (state) state.hostile += (plain.match(ATTACKED_ALL) || []).length; // 這間聽到幾次「看起來X想殺死你」：fightRoom 用它判斷是不是還有別隻在打你
     const attacked = state && ATTACKED.exec(plain);
     if (attacked && !state.scan && state.settings.fightMode === 'full' && state.settings.counterAttack === 'on'
-      && (state.fight ? !(state.fight.names ?? [state.fight.name]).includes(attacked[1]) : COUNTER_PHASES.includes(state.phase))) state.attacked = attacked[1];
-    if (state) for (const [, name] of plain.matchAll(ATTACKED_ALL)) state.attackers.add(name);
+      && (state.fight ? !(state.fight.names ?? [state.fight.name]).includes(tailName(attacked[1])) : COUNTER_PHASES.includes(state.phase))) state.attacked = attacked[1];
+    if (state) for (const [, name] of plain.matchAll(ATTACKED_ALL)) state.attackers.add(tailName(name));
     if (state?.attacked && state.gate) state.wake?.(); // 原地休息時被打：馬上結束休息
     if (state && MOVE_TEXT_PHASES.includes(state.phase)) { // 走這一步到看完房間為止：抵達時印的描述可能比房間判斷晚一點到
       state.moveText = (state.moveText + text).slice(-3000);
@@ -1115,7 +1123,7 @@ function create(deps) {
     const engaged = !fight.engaged && ENGAGE.exec(fight.buffer);
     if (engaged) {
       fight.engaged = true;
-      if (fight.name && engaged[1] !== fight.name) {
+      if (fight.name && !sameMob(engaged[1], fight.mob)) {
         fight.wrong = true;
         fight.name = engaged[1];
         record(deps.room() ?? '-', '打到別隻', engaged[1]);
@@ -1163,7 +1171,7 @@ function create(deps) {
       }
       // 這場打的那一隻也算（沒勾選、但主動攻擊我們的怪：反擊、補刀的對象）
       const mine = info.monsters.filter(mob => token.mobs.includes(mob.full) || mob.full === fight.mob.full);
-      if (mine.some(mob => mob.state === '戰鬥中')) return;
+      if (mine.some(awake)) return;
       // 重送時用這次 l 看到的位置（前面的怪倒下後，第幾個會變）。補刀時找的是還昏迷著的同一種怪：補刀沒打到（例如順位數到屍體）
       // 怪還躺著，不能當成打死了
       const again = mine.find(mob => (fight.finishing ? mob.state === KNOCKED_OUT && mob.full === fight.mob.full : mob.state !== KNOCKED_OUT) && SAFE_ID.test(mob.id));
@@ -2481,7 +2489,7 @@ function create(deps) {
     return {
       round: 1, after: deps.now() + offset, allTargets: new Set(), baseSkipped: [], waiting: null, calibrating: false,
       mobs: [], area: '', offset, scan: false, prescan: false, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph: { rooms: {} }, targets: new Set(), skipped: [], fixed: [],
-      baseSettings: fields.settings, chain: null, trialRun: false, resume: null, order: null, retreat: null, retreatPending: null, slotCmds: new Set(), lastAim: null, lootRefused: 0, loadDue: false, loadFought: false, loadRooms: 0, loadEvery: 1, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: false, learned: {}, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
+      baseSettings: fields.settings, chain: null, trialRun: false, resume: null, order: null, retreat: null, retreatPending: null, slotCmds: new Set(), lastAim: null, lootRefused: 0, buried: 0, loadDue: false, loadFought: false, loadRooms: 0, loadEvery: 1, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: false, learned: {}, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
       ...roundFields(offset), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       ...fields,
     };
