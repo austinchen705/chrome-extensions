@@ -1,4 +1,4 @@
-// 地圖巡怪：map-hunt-fight（78 組；共用底座在 tests/helpers/map-hunt-world.js，整個 content script 在 jsdom 裡跑）。
+// 地圖巡怪：map-hunt-fight（99 組；共用底座在 tests/helpers/map-hunt-world.js，整個 content script 在 jsdom 裡跑）。
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ui, sleep, waitFor, fixture } = require('../../helpers/game-page');
@@ -14,6 +14,7 @@ const {
   huntText,
   click,
   alerts,
+  pinRandom,
   MOB_LINE,
   KNOCKED_LINE,
   FIGHT,
@@ -1293,7 +1294,7 @@ ui('counter: when several monsters attack in a target room, nothing is sent but 
     page.store.mapHuntSettings = SIEGE_SETTINGS;
     let fights = 0;
     // 使用者貼的工具室：三隻同名的怪一進門就打你；打死第一隻時另一隻被自動戰鬥打昏、第三隻還在打你
-    const game = world(page, { at: 'a', arrivals: { c: { lines: [MOB_LINE, MOB_LINE, MOB_LINE, GANG_ATTACK, GANG_ATTACK, GANG_ATTACK] } }, looks: { c: { lines: [] } }, script: (command, { say: tell, looks }) => {
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [MOB_LINE, MOB_LINE, MOB_LINE, GANG_ATTACK, GANG_ATTACK, GANG_ATTACK] } }, looks: { c: { lines: mobsLines(3) } }, script: (command, { say: tell, looks }) => {
       if (command === FIGHT) {
         fights += 1;
         looks.c.lines = [CORPSE_LINE, MOB_FIGHTING, KNOCKED_LINE];
@@ -1308,7 +1309,7 @@ ui('counter: when several monsters attack in a target room, nothing is sent but 
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
     assert.equal(fights, 1, 'only the first one is opened with fight');
-    assert.deepEqual(game.log.slice(2), [FIGHT, 'l', 'sp', 'l', 'gc', 'gc', 'kill 1', 'gc'], 'no fight or kill while one is still fighting; both corpses taken once l shows nobody fighting; the knocked-out one finished with kill');
+    assert.deepEqual(game.log.slice(2), ['l', FIGHT, 'l', 'sp', 'l', 'gc', 'gc', 'kill 1', 'gc'], 'the attack lines after the arrival description make it look first; no fight or kill while one is still fighting; both corpses taken once l shows nobody fighting; the knocked-out one finished with kill');
   } finally {
     page.close();
   }
@@ -1439,7 +1440,7 @@ ui('siege: the monster opened with fight is not finished when another one joins 
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
-    assert.deepEqual(game.log.slice(2), [FIGHT, 'l', 'sp', 'l', 'kill 1', 'gc', 'l', 'kill 1', 'gc'], 'no kill right after the first one fell; l confirmed the other one is fighting');
+    assert.deepEqual(game.log.slice(2), ['l', FIGHT, 'l', 'sp', 'l', 'kill 1', 'gc', 'l', 'kill 1', 'gc'], 'looks first because of the attack lines; no kill right after the first one fell; l confirmed the other one is fighting');
   } finally {
     page.close();
   }
@@ -1459,7 +1460,7 @@ ui('siege: the monster opened with fight is finished with the position of the fr
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
-    assert.deepEqual(game.log.slice(2), ['fight 2', 'l', 'kill 1', 'gc'], 'the kill uses the position of the l taken after the fight, not the old 2');
+    assert.deepEqual(game.log.slice(2), ['l', 'fight 2', 'l', 'kill 1', 'gc'], 'the kill uses the position of the l taken after the fight, not the old 2');
   } finally {
     page.close();
   }
@@ -1513,11 +1514,12 @@ ui('corpse: when the position hits a corpse, the hunt counts the corpses from th
   try {
     page.store.mapMonsters = mobsAt('c');
     const ATTACK = '看起來測試怪想殺死你！';
-    const game = world(page, { at: 'a', arrivals: { c: { lines: [MOB_LINE, MOB_LINE, MOB_LINE, ATTACK, ATTACK, ATTACK] } }, looks: { c: { lines: [] } }, script: (command, { say, looks }) => {
+    let hit = false;
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [MOB_LINE, MOB_LINE, MOB_LINE, ATTACK, ATTACK, ATTACK] } }, looks: { c: { lines: mobsLines(3) } }, script: (command, { say, looks }) => {
       const lines = looks.c.lines;
       const at = Number(command.split(' ')[1]); // 遊戲連屍體一起數
       if (/^(fight|kill) \d+$/.test(command) && game.at === 'c') {
-        if (!lines.length) { looks.c.lines = [CORPSE_LINE, MOB_LINE, MOB_LINE]; say('測試怪死了。'); return true; }
+        if (!hit) { hit = true; looks.c.lines = [CORPSE_LINE, MOB_LINE, MOB_LINE]; say('測試怪死了。'); return true; }
         if (lines[at - 1] === CORPSE_LINE) { say(NOT_ALIVE_LINE); return true; }
         if (command === 'fight 2') { lines[at - 1] = KNOCKED_LINE; say(KO_LINE); return true; } // 打昏
         lines[at - 1] = CORPSE_LINE;
@@ -1529,7 +1531,7 @@ ui('corpse: when the position hits a corpse, the hunt counts the corpses from th
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
-    assert.deepEqual(game.log.slice(2), [FIGHT, 'l', 'gc', FIGHT, 'l', 'fight 2', 'l', 'kill 1', 'l', 'fight 3', 'gc', 'l', 'kill 2', 'gc'],
+    assert.deepEqual(game.log.slice(2), ['l', FIGHT, 'l', 'gc', FIGHT, 'l', 'fight 2', 'l', 'kill 1', 'l', 'fight 3', 'gc', 'l', 'kill 2', 'gc'],
       'fight 1 on the corpse → looks again and fights 2 (knocked out); kill 1 on the corpse → looks again, fights 3, then kill 2 by the counted position; three corpses, three gc');
     const { text } = await page.ask({ type: 'HUNT_LOG' });
     assert.match(text, /順位數到屍體 fight 之後連屍體一起數/);
@@ -1545,7 +1547,7 @@ ui('corpse: a gc refused because a fight is still on is sent again after the roo
     page.store.mapMonsters = mobsAt('c');
     const ATTACK = '看起來測試怪想殺死你！';
     let gcs = 0;
-    const game = world(page, { at: 'a', arrivals: { c: { lines: [MOB_LINE, ATTACK, ATTACK] } }, looks: { c: { lines: [] } }, script: (command, { say, looks }) => {
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [MOB_LINE, ATTACK, ATTACK] } }, looks: { c: { lines: mobsLines(1) } }, script: (command, { say, looks }) => {
       if (command === FIGHT) { looks.c.lines = [CORPSE_LINE]; say('測試怪死了。'); return true; }
       if (command === 'gc') { gcs += 1; say(gcs === 1 ? '你還在戰鬥中！只能一次拿一樣。' : '你從屍體上拿到東西。'); return true; }
       return false;
@@ -1553,7 +1555,7 @@ ui('corpse: a gc refused because a fight is still on is sent again after the roo
     await pick(page, MOB);
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
-    assert.deepEqual(game.log.slice(2), [FIGHT, 'l', 'gc', 'l', 'gc']);
+    assert.deepEqual(game.log.slice(2), ['l', FIGHT, 'l', 'gc', 'l', 'gc']);
     const { text } = await page.ask({ type: 'HUNT_LOG' });
     assert.match(text, /撿屍被拒 1 次/);
   } finally {
@@ -2115,6 +2117,133 @@ ui('fight: a monster knocked out again while being finished (no wake-up seen) ge
     click(page, '.hstart');
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), `${huntText(page)} ${game.log.join(',')}`);
     assert.deepEqual(game.log.slice(game.log.indexOf(FIGHT)), [FIGHT, 'kill 1', 'kill 1', 'gc']);
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 被打一律還手：到房間的描述是舊的、休息中被打 ----
+const SIEGE_REST = { ...SIEGE_SETTINGS, healMode: 'rest', restBelow: 50, restResume: 80, dangerBelow: 10 };
+
+ui('ambush: the arrival description lists the monsters without <戰鬥中> but they attack during the pause after it and the qi is below the rest line: no rest, l, then the siege flow, finishing and loot', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...SIEGE_REST, humanize: 'on' };
+    pinRandom(page, 0.01); // 到房間後停頓，抵達描述在停頓前就印完了
+    setKee(page, 90);
+    const lines = [MOB_LINE, MOB_LINE, MOB_LINE];
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [...lines] } }, looks: { c: { lines } }, script: (command, { say: tell }) => {
+      if (command === 'e' && game.at === 'c') { // 抵達描述先印完（怪都沒標戰鬥中），停頓的期間才打過來、氣掉到休息線以下
+        setTimeout(() => { setKee(page, 40); lines.splice(0, 3, MOB_FIGHTING, MOB_FIGHTING, MOB_FIGHTING); say(page, [GANG_ATTACK, GANG_ATTACK, GANG_ATTACK].join('\n') + '\n'); }, 60);
+        return false;
+      }
+      if (command === 'sp') { setKee(page, 90); lines.splice(0, 3, KNOCKED_LINE, KNOCKED_LINE, KNOCKED_LINE); tell(KO_LINE); return true; }
+      if (command.startsWith('kill ')) { killNth(lines, command); tell('測試怪死了。'); return true; }
+      if (command === 'gc') tell('…');
+      return command === 'gc';
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), `${game.log.join(',')} ${huntText(page)}`);
+    const log = await huntLog(page);
+    assert.match(log, /t\/c 看房間 .*來源 抵達描述/, 'the stale arrival description was read');
+    assert.match(log, /t\/c 重數 休息、開打前聽到有怪打你，先看房間/, 'the attack heard made it look again instead of sitting down');
+    assert.equal(countOf(game, FIGHT), 0);
+    assert.deepEqual(game.log.slice(0, 4), ['e', 'e', 'l', 'sp'], 'looked first, then only the special while all three fight you');
+    assert.equal(countOf(game, 'kill 1'), 3, 'all three are finished');
+    assert.equal(countOf(game, 'gc'), 3, 'and looted');
+  } finally {
+    page.close();
+  }
+});
+
+ui('ambush: a monster that starts attacking while the hunt rests in the room ends the rest at once: l, siege flow, then the hunt goes on', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...SIEGE_REST, humanize: 'on' };
+    pinRandom(page, 0.01); // 到房間後停頓，氣在停頓的期間才掉下去：休息發生在房間裡（restGate），不是走路途中
+    setKee(page, 90);
+    const lines = [MOB_LINE];
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [MOB_LINE] } }, looks: { c: { lines } }, script: (command, { say: tell }) => {
+      if (command === 'e' && game.at === 'c') { setTimeout(() => setKee(page, 40), 40); return false; }
+      if (command === 'sp') { setKee(page, 90); lines[0] = KNOCKED_LINE; tell(KO_LINE); return true; }
+      if (command.startsWith('kill ')) { killNth(lines, command); tell('測試怪死了。'); return true; }
+      if (command === 'gc') tell('…');
+      return command === 'gc';
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(async () => /t\/c 看房間/.test(await huntLog(page)), 6000), `looked at the arrival description (${game.log.join(',')})`);
+    await sleep(150);
+    assert.match(await huntLog(page), /t\/c 休息 氣/, 'sits down to rest in the room');
+    assert.equal(countOf(game, 'l'), 0, 'resting, nothing was asked');
+    lines[0] = MOB_FIGHTING;
+    say(page, GANG_ATTACK);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), `${game.log.join(',')} ${huntText(page)}`);
+    assert.deepEqual(game.log.slice(2, 6), ['l', 'sp', 'l', 'kill 1'], 'the rest ended at once: l, special while it fights you, l, then the finishing');
+    assert.equal(countOf(game, FIGHT), 0);
+    assert.equal(countOf(game, 'gc'), 1);
+  } finally {
+    page.close();
+  }
+});
+
+ui('ambush: a monster that attacks while the hunt rests on the way ends the rest and is fought back', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('d');
+    page.store.mapHuntSettings = SIEGE_REST;
+    setKee(page, 40);
+    const lines = [ZOMBIE];
+    const game = world(page, { at: 'a', looks: { a: { lines }, d: { lines: [MOB_LINE] } }, script: (command, { say: tell }) => {
+      if (command === 'sp') { setKee(page, 90); lines[0] = CORPSE_LINE; tell('腐屍死了。'); return true; }
+      return command === 'gc' ? (lines.length = 0, true) : false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(async () => /休息 氣/.test(await huntLog(page)), 6000), 'rests at the start');
+    lines[0] = ZOMBIE_FIGHTING;
+    say(page, ATTACK_LINE);
+    assert.ok(await waitFor(() => countOf(game, 'sp') >= 1, 6000), `${game.log.join(',')} ${huntText(page)}`);
+    assert.equal(game.log[0], 'l', 'looked right away');
+    assert.equal(countOf(game, 'kill 1') + countOf(game, FIGHT), 0, 'nothing was sent to the one that fights you');
+  } finally {
+    page.close();
+  }
+});
+
+ui('ambush: monsters that attacked in this room are finished and looted even when the first l the hunt sees already shows them all knocked out', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = SIEGE_SETTINGS;
+    const lines = [KNOCKED_LINE, KNOCKED_LINE, KNOCKED_LINE];
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [...lines, GANG_ATTACK, GANG_ATTACK, GANG_ATTACK] } }, looks: { c: { lines } }, script: (command, { say: tell }) => {
+      if (command.startsWith('kill ')) { killNth(lines, command); tell('測試怪死了。'); return true; }
+      return command === 'gc';
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), `${game.log.join(',')} ${huntText(page)}`);
+    assert.equal(countOf(game, 'kill 1'), 3);
+    assert.equal(countOf(game, 'gc'), 3);
+  } finally {
+    page.close();
+  }
+});
+
+ui('ambush: monsters already knocked out on arrival with nobody attacking are left alone', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = SIEGE_SETTINGS;
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [KNOCKED_LINE] } }, looks: { c: { lines: [KNOCKED_LINE] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.equal(countOf(game, 'kill 1') + countOf(game, 'gc') + countOf(game, FIGHT), 0, game.log.join(','));
   } finally {
     page.close();
   }

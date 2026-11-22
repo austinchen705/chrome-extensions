@@ -687,12 +687,13 @@ function create(deps) {
   const besiegers = (info, token) => info.monsters.filter(mob => mob.state === '戰鬥中' && (state.settings.counterAttack === 'on' || token.mobs.includes(mob.full)));
 
   // 這間要打的怪（不含被圍攻的）：勾選的 → 昏迷沒打死的（補刀開著時；
-  // 這間打過、或打過你的同名怪：被打昏的不一定是你正在打的那隻，自動戰鬥會一起打所有打你的怪；剛到就昏迷的不算，可能是別人打的）。
+  // 這間打過、或打過你的同名怪（l 看過 <戰鬥中>、或這間聽到「看起來X想殺死你」的 X 同名）：被打昏的不一定是你正在打的那隻，自動戰鬥會一起打所有打你的怪，
+  // 打你到被打昏之間 l 可能一次都沒看到 <戰鬥中>；剛到就昏迷、也沒聽到有誰打你的不算，可能是別人打的）。
   // 昏迷的用「打死用的指令」補刀。圍攻處理完（finishFirst）先補刀、再打勾選但沒在打你的怪
   const roomTargets = (info, token, seen, finishFirst = false) => {
     const s = state.settings;
     const picked = info.monsters.filter(mob => mob.state !== KNOCKED_OUT && mob.state !== '戰鬥中' && token.mobs.includes(mob.full));
-    const out = s.finishKnockedOut === 'on' ? info.monsters.filter(mob => mob.state === KNOCKED_OUT && seen.has(mob.full)) : [];
+    const out = s.finishKnockedOut === 'on' ? info.monsters.filter(mob => mob.state === KNOCKED_OUT && (seen.has(mob.full) || state.attackers.has(shortName(mob)))) : [];
     return finishFirst ? [...out, ...picked] : [...picked, ...out];
   };
 
@@ -833,7 +834,11 @@ function create(deps) {
       if (spawnPause()) return;
       // 房間裡有怪在 <戰鬥中>（正在打你）時不能原地休息：氣回不來、只會一直被打；先打，戰鬥中的危險線照樣擋。沒人在打了才休息。
       // 下一隻要補刀（剩下的都昏了，例如被打時自動戰鬥把牠打昏）也先補完再休息：等回氣的期間牠會醒過來（使用者要求）
-      if (!info.monsters.some(mob => mob.state === '戰鬥中') && target.state !== KNOCKED_OUT && !(await restGate(token))) return;
+      if (!info.monsters.some(mob => mob.state === '戰鬥中') && target.state !== KNOCKED_OUT) {
+        const gate = await restGate(token);
+        if (!gate) return;
+        if (gate === 'attacked') { record(here, '重數', '休息、開打前聽到有怪打你，先看房間'); info = await lookAgain(); if (!info) return; continue; }
+      }
       if (!(await reactWait(token))) return;
       if (!(await notBusy(token))) return;
       // 撿屍指令還沒送完（一段一段等不忙碌）就先不打，免得 fight 夾在 er 和 gc 中間、gc 變成戰鬥中被拒
@@ -842,9 +847,9 @@ function create(deps) {
       // 看完房間之後有東西離開或走進來（同一份輸出裡、或等反應時間的期間）、或停下來休息過：順位已經不準，先重看一次再下 fight／kill（最多連續 MAX_STUCK 次）
       const rested = state.restedTick >= state.readTick;
       const arrived = info.arrived || state.arrivedTick >= state.readTick;
-      if ((info.moved || state.leftTick >= state.readTick || arrived || rested) && recounts < MAX_STUCK) {
+      if ((info.moved || state.leftTick >= state.readTick || arrived || rested || state.attacked) && recounts < MAX_STUCK) {
         recounts += 1;
-        record(here, '重數', rested ? '休息過，順位可能變了' : arrived ? '有東西走進來，順位可能變了' : '有東西離開房間，順位可能變了');
+        record(here, '重數', state.attacked ? '看完房間後聽到有怪打你，先看房間' : rested ? '休息過，順位可能變了' : arrived ? '有東西走進來，順位可能變了' : '有東西離開房間，順位可能變了');
         info = await lookAgain();
         if (!info) return;
         continue;
@@ -1053,6 +1058,8 @@ function create(deps) {
     const attacked = state && ATTACKED.exec(plain);
     if (attacked && !state.scan && state.settings.fightMode === 'full' && state.settings.counterAttack === 'on'
       && (state.fight ? !(state.fight.names ?? [state.fight.name]).includes(attacked[1]) : COUNTER_PHASES.includes(state.phase))) state.attacked = attacked[1];
+    if (state) for (const [, name] of plain.matchAll(ATTACKED_ALL)) state.attackers.add(name);
+    if (state?.attacked && state.gate) state.wake?.(); // 原地休息時被打：馬上結束休息
     if (state && MOVE_TEXT_PHASES.includes(state.phase)) { // 走這一步到看完房間為止：抵達時印的描述可能比房間判斷晚一點到
       state.moveText = (state.moveText + text).slice(-3000);
       state.moveTextTick = state.ticks;
@@ -1247,7 +1254,9 @@ function create(deps) {
     if (percent < state.settings.eatBelow && state.ticks - state.lastEat >= EAT_GAP_TICKS) eat();
   }
   // 打下一隻之前：自己回模式氣太低就在這裡等到回復（打完這一隻再休息）
+  // 聽到有怪打你（state.attacked）就不休息、不等，回 'attacked' 由呼叫端重看房間走圍攻的流程
   async function restGate(token) {
+    if (state.attacked) return 'attacked';
     if (state.settings.healMode === 'rest' && state.settings.fightMode === 'full') {
       const percent = deps.kee();
       if (Number.isFinite(percent)) restStep(percent);
@@ -1257,6 +1266,7 @@ function create(deps) {
     while (state.resting) {
       await new Promise(resolve => { state.wake = resolve; });
       if (state !== token) return false;
+      if (state.attacked) { state.gate = false; return 'attacked'; }
     }
     state.gate = false;
     if (rested) state.restedTick = state.ticks; // 休息過：之前看的順位可能已經不準（休息的時候怪被別人打死、走掉）
@@ -1688,7 +1698,7 @@ function create(deps) {
   }
   // stats 是每輪摘要用的統計（startAt 是這一輪開始的伺服器時間）：sends 的時間是指令真正送出的那一刻（content.js 的送出佇列送完才呼叫 noteSent），
   // 不是引擎決定要送的時間，所以排隊等指令間隔、巨集拆出來的每一步都量得到
-  const roundFields = offset => ({ slips: { typos: 0, wrongWays: 0 }, detour: null, attacked: null, counterRoom: null, hostile: 0, skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [], stats: { startAt: deps.now() + offset, sends: [], path: [], lookedCount: 0, mobRooms: 0 } });
+  const roundFields = offset => ({ slips: { typos: 0, wrongWays: 0 }, detour: null, attacked: null, counterRoom: null, hostile: 0, attackers: new Set(), skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [], stats: { startAt: deps.now() + offset, sends: [], path: [], lookedCount: 0, mobRooms: 0 } });
   const noteSent = command => { state?.stats?.sends.push({ at: deps.now(), command }); };
   // 巡怪紀錄的「送出」行：送出佇列真的送出（或玩家自己送出）的每個指令；只在巡怪進行中、設定開著時記。
   // 聊天回覆、劇本、表情的內容可能含別人的 ID 或對話，只記來源
@@ -2225,6 +2235,7 @@ function create(deps) {
       state.retreat = null;
       state.attacked = null;
       state.hostile = 0;
+      state.attackers.clear();
       record(here, '撤退', `到了可 ride 格子 ${here}，接著${RETREAT_TEXT[why]}`);
       then(here);
       return;
@@ -2260,7 +2271,7 @@ function create(deps) {
   // 學習開著時分兩張圖：嚴格圖（已知出口的房間只走出口裡有的）優先；只有寬鬆圖（純地圖圖示）走得到時，圖示的猜測可能走不通
   // 送一步移動指令並進入 move 階段（plan 與故意走錯路共用）
   function walk(here, cmd, goal, expected, text) {
-    if (!sendOrStop(cmd, () => { if (state) { state.moveText = ''; state.walkedTo = null; state.hostile = 0; } }, true)) return; // hostile：換房間，重新數這間有幾隻打你 // 指令真的送出時才開始收這一步的輸出（抵達時印的房間描述）
+    if (!sendOrStop(cmd, () => { if (state) { state.moveText = ''; state.walkedTo = null; state.hostile = 0; state.attackers.clear(); } }, true)) return; // hostile：換房間，重新數這間有幾隻打你 // 指令真的送出時才開始收這一步的輸出（抵達時印的房間描述）
     record(here, '走', text);
     state.goal = goal;
     state.expected = expected;
