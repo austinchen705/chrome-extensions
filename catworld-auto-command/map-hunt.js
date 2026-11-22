@@ -1698,7 +1698,7 @@ function create(deps) {
   }
   // stats 是每輪摘要用的統計（startAt 是這一輪開始的伺服器時間）：sends 的時間是指令真正送出的那一刻（content.js 的送出佇列送完才呼叫 noteSent），
   // 不是引擎決定要送的時間，所以排隊等指令間隔、巨集拆出來的每一步都量得到
-  const roundFields = offset => ({ slips: { typos: 0, wrongWays: 0 }, detour: null, attacked: null, counterRoom: null, hostile: 0, attackers: new Set(), skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [], stats: { startAt: deps.now() + offset, sends: [], path: [], lookedCount: 0, mobRooms: 0 } });
+  const roundFields = offset => ({ late: new Set(), lateDone: new Set(), slips: { typos: 0, wrongWays: 0 }, detour: null, attacked: null, counterRoom: null, hostile: 0, attackers: new Set(), skips: 0, tries: 0, wrong: 0, blind: 0, handled: 0, visited: [], stats: { startAt: deps.now() + offset, sends: [], path: [], lookedCount: 0, mobRooms: 0 } });
   const noteSent = command => { state?.stats?.sends.push({ at: deps.now(), command }); };
   // 巡怪紀錄的「送出」行：送出佇列真的送出（或玩家自己送出）的每個指令；只在巡怪進行中、設定開著時記。
   // 聊天回覆、劇本、表情的內容可能含別人的 ID 或對話，只記來源
@@ -2068,6 +2068,14 @@ function create(deps) {
   // 每個目標房間都處理過一次＝一輪（跨區時是整條路線的每一區）。沒開「等下一個重生」或這一輪什麼都沒處理（沒有走得到的目標）就停（第 2 輪以後警報）；
   // 否則送待命指令（是巨集的話等它跑完），用 time 校準，等到下一個重生再開始下一輪
   function endRound() {
+    // 因為地圖上有玩家而延後的房間：最後再看一次（plan 會重新讀那一格，人走了就正常去打，還有人才略過）
+    if (state.late?.size) {
+      state.targets = new Set(state.late);
+      state.late.clear();
+      state.phase = 'plan';
+      deps.notify();
+      return;
+    }
     // 第一輪走不到的房間再試一次（門還是過不去才記成走不到）
     if (state.scan && !state.retried && state.deferred.size) {
       state.retried = true;
@@ -2308,6 +2316,23 @@ function create(deps) {
     let guess = null;
     const routes = new Map();
     [...state.targets].forEach(key => {
+      // 地圖上那一格有玩家（粉紅底）：這間先延後到這一輪最後（每間每輪只延後一次，見 endRound），最後再看一次，還有人才略過。
+      // 每走一步都重算，所以走到半途出現玩家也會改走下一間。自己站的那間不看，掃描不看
+      const players = state.scan || key === here ? null : deps.mapPlayers?.(...key.split('/'));
+      if (players) {
+        const who = `地圖顯示有玩家${players.length ? ` ${players.join('、')}` : ''}`;
+        if (state.lateDone.has(key)) {
+          state.skipped.push({ key, why: who });
+          record(key, '略過', who);
+          doneWith(key);
+        } else {
+          state.lateDone.add(key);
+          state.late.add(key);
+          state.targets.delete(key);
+          record(key, '延後', `${who}，這一輪最後再看`);
+        }
+        return;
+      }
       const way = Route.route(strictGraph, here, key);
       const loose = way ?? Route.route(looseGraph, here, key);
       if (!loose) { state.targets.delete(key); state.skipped.push({ key, why: '走不到' }); record(key, '略過', '走不到'); blockScan(key); return; }

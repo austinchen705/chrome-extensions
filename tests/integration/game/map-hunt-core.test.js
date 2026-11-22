@@ -1,4 +1,4 @@
-// 地圖巡怪：map-hunt-core（60 組；共用底座在 tests/helpers/map-hunt-world.js，整個 content script 在 jsdom 裡跑）。
+// 地圖巡怪：map-hunt-core（64 組；共用底座在 tests/helpers/map-hunt-world.js，整個 content script 在 jsdom 裡跑）。
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ui, sleep, waitFor } = require('../../helpers/game-page');
@@ -11,6 +11,7 @@ const {
   mobsIn,
   mobsAt,
   MOB_B,
+  markPlayers,
   world,
   panelRoot,
   pickBoxes,
@@ -1106,6 +1107,93 @@ ui('alert: an alert carries the character name from the tab title, and a second 
     await page.ask({ type: 'HUNT_CHAIN_TRIAL' });
     assert.ok(await waitFor(() => alerts(page).length === 2, 8000), huntText(page));
     assert.equal(alerts(page)[1].character, '小明');
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: a target whose map cell shows players is deferred to the end of the round and skipped when the players are still there', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('b', 'd');
+    const game = world(page, { at: 'a', looks: { b: { lines: [MOB_LINE] }, d: { lines: [MOB_LINE] } } });
+    markPlayers(page, 'd', 'mahaha', 'abau');
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 5000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'l', 'fight 1', 'gc'], 'fought at b first, never walked on to d and never fingered');
+    assert.match(huntText(page), /略過 1 間.*t\/d 地圖顯示有玩家 mahaha、abau/);
+    const log = await huntLog(page);
+    assert.match(log, /t\/d 延後 地圖顯示有玩家 mahaha、abau，這一輪最後再看/);
+    assert.match(log, /t\/d 略過 地圖顯示有玩家 mahaha、abau/);
+    assert.equal(log.split('延後').length, 2, 'the room is deferred once only');
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: a deferred target whose players have left by the end of the round is fought last', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('b', 'd');
+    const script = command => {
+      if (command === 'fight 1') {
+        const cell = page.w.document.getElementById('m-t-d');
+        cell.classList.remove('B5');
+        cell.removeAttribute('title');
+      }
+      return false;
+    };
+    const game = world(page, { at: 'a', script, looks: { b: { lines: [MOB_LINE] }, d: { lines: [MOB_LINE] } } });
+    markPlayers(page, 'd', 'mahaha');
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 5000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'l', 'fight 1', 'gc', 'e', 'e', 'l', 'fight 1', 'gc'], 'b first, then d once its cell was clear');
+    assert.doesNotMatch(huntText(page), /略過/);
+    assert.match(await huntLog(page), /t\/d 延後 地圖顯示有玩家 mahaha/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: players showing up on the target cell mid-walk defer it and re-plan to the next target; a pink cell without a title also counts', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c', 'd');
+    const script = (command, { game }) => {
+      if (command === 'e' && game.at === 'b') markPlayers(page, 'd');
+      return false;
+    };
+    const game = world(page, { at: 'a', script, looks: { c: { lines: [MOB_LINE] }, d: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 5000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'l', 'fight 1', 'gc'], 'fought at c, d was deferred once its cell turned pink and skipped at the end');
+    assert.match(huntText(page), /略過 1 間.*t\/d 地圖顯示有玩家/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt: a target whose cell has disappeared from the map window is not deferred for lack of map information', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('d');
+    // d 的那一格在 b、c 之間暫時不在地圖視窗（區域切換中）：走到 d 時才放回去
+    const cell = () => page.w.document.getElementById('m-t-d');
+    let held = null;
+    const script = (command, { game }) => {
+      if (command === 'e' && game.at === 'b') { held = { node: cell(), parent: cell().parentNode, next: cell().nextSibling }; held.node.remove(); }
+      if (command === 'e' && game.at === 'd') held.parent.insertBefore(held.node, held.next);
+      return false;
+    };
+    const game = world(page, { at: 'a', script, looks: { d: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 5000), huntText(page));
+    assert.deepEqual(game.log, ['e', 'e', 'e', 'l', 'fight 1', 'gc'], 'walked to d and fought it');
+    assert.doesNotMatch(await huntLog(page), /地圖顯示有玩家/);
   } finally {
     page.close();
   }

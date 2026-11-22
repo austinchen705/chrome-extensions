@@ -28,6 +28,13 @@ const mobsAt = (...rooms) => mobsIn(MOB, ...rooms);
 
 const MOB_B = '另一隻怪(other mob)';
 
+// 地圖視窗上某一格有玩家：粉紅底（B5）加 title（玩家 ID 以逗號隔開，ids 留空就只有粉紅底）
+const markPlayers = (page, room, ...ids) => {
+  const cell = page.w.document.getElementById(`m-t-${room}`);
+  cell.classList.add('B5');
+  if (ids.length) cell.setAttribute('title', ids.join(','));
+};
+
 // 假遊戲：moves[現在][指令] = 下一間（沒有就留在原地）；reply 為 false 時不回任何輸出（看門狗會因為沒回應而停）
 // looks[房間] = { exits, lines }：l 的輸出（出口行與後面的怪物、人物行）；silentLook 為 true 時 l 不回應；
 // fingers[ID] = finger 的輸出，沒寫就不回應
@@ -701,6 +708,7 @@ module.exports = {
   mobsIn,
   mobsAt,
   MOB_B,
+  markPlayers,
   world,
   panelRoot,
   pickBoxes,

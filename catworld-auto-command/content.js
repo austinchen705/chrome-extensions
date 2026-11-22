@@ -1595,6 +1595,13 @@ hunt = CatworldMapHunt.create({
     return { area, mobs: CatworldMapHuntUI.pickedFor(mapHuntPicks, area).filter(mob => here.includes(mob)) };
   },
   room: () => CatworldMapCollect.currentRoom(document)?.key ?? null,
+  // 地圖視窗上那一格有玩家（B5 粉紅底、title 是玩家 ID 以逗號隔開）：回 ID 陣列（可能是空的）；沒有玩家、找不到那一格、那一區沒顯示都回 null（沒有資訊不算有人）
+  mapPlayers: (area, room) => {
+    const cell = document.getElementById(`m-${area}-${room}`);
+    if (!cell || cell.closest('.invisible')) return null;
+    const ids = (cell.getAttribute('title') ?? '').split(',').map(id => id.trim()).filter(Boolean);
+    return ids.length || cell.classList.contains('B5') ? ids : null;
+  },
   rideRooms: async () => (await chrome.storage.local.get(CatworldMapCollect.RIDE_KEY))[CatworldMapCollect.RIDE_KEY],
   areaHtml: area => document.getElementById(`m-${area}`)?.innerHTML ?? '',
   readStore: mapStore,
