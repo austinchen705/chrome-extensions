@@ -54,6 +54,7 @@ function retire() {
   cancelReward();
   captchaObserver.disconnect();
   presenceObserver?.disconnect();
+  cancelPresenceAttempt();
   stopRepeatBeep();
   try {
     globalThis.documentPictureInPicture?.window?.close();
@@ -792,13 +793,11 @@ const captchaObserver = new MutationObserver(allRecords => {
   if (anyTriggerOn()) feedKeywords(records);
 });
 // 遊戲的「真人驗證」（點選和左側範例相同的圖形，60 秒內）：伺服器推 presence.challenge 後，遊戲把 #presence 的 invisible 拿掉。
-// 圖在 #content 之外、也不會出現在文字輸出裡，而且是要真人點的（遊戲會檢查點擊是不是真的滑鼠事件、答題時間與 Turnstile），所以不辨識、不代點，
-// 只在它出現的那一刻停下一切並警報（原因含「驗證」，之後要玩家手動按開始才會再送指令）；解除後不自動恢復。只看從隱藏變成顯示，其他 class 變動或重複顯示不再警報；
-// 載入時就顯示著的不算「出現」、不警報，但開著的期間 sendCommand 一律不送（見 presenceOpen）。
+// 驗證出現時暫停送出、讀圖後點選一次；未能解除就沿用全部停止與警報。
 const presenceElement = document.getElementById('presence');
 const presenceOpen = () => !!presenceElement && !presenceElement.classList.contains('invisible');
-// 真人驗證一出現，把那一塊（#presence）的內容收進樣本表（結果欄 presence，和驗證碼樣本同一個收集網址與分頁）：只存檔，不辨識、不代點。
-// 圖的格式沒有樣本：<img> 或 <canvas> 能轉成 data URL 就嵌進去（圖是遊戲另外要的，只存網址事後多半打不開），轉不了（跨來源）就留原本的網址；
+// 真人驗證一出現，把那一塊（#presence）的內容收進樣本表（結果欄 presence，和驗證碼樣本同一個收集網址與分頁）。
+// 樣本內的圖：<img> 或 <canvas> 能轉成 data URL 就嵌進去（圖是遊戲另外要的，只存網址事後多半打不開），轉不了（跨來源）就留原本的網址；
 // 試算表一格最多 50000 字，太大就退回不嵌圖的版本。遊戲是先拿掉 invisible、圖才載入，所以等圖載好（最多 PRESENCE_IMAGE_WAIT_MS）再收。
 const PRESENCE_SAMPLE_MAX = 45000;
 const PRESENCE_IMAGE_WAIT_MS = 5000;
@@ -853,6 +852,68 @@ function reportPresenceSample() {
   };
   attempt();
 }
+// 每輪只點一次；關閉、停止或換輪後，舊計時器不得再點選或警報。
+let presenceAttempt = null;
+function cancelPresenceAttempt() {
+  if (presenceAttempt) clearTimeout(presenceAttempt.timer);
+  presenceAttempt = null;
+}
+function solvePresence() {
+  cancelPresenceAttempt();
+  const attempt = { timer: null, waited: 0, clicked: false };
+  presenceAttempt = attempt;
+  if (watchdogTimer) clearTimeout(watchdogTimer);
+  watchdogTimer = null;
+  const fail = () => {
+    cancelPresenceAttempt();
+    stopAndAlert('遊戲要求點選圖形的真人驗證（60 秒內），已全部停止；請自己完成驗證後再按開始');
+  };
+  const tick = () => {
+    if (presenceAttempt !== attempt) return;
+    if (!contextAlive(chrome)) { retire(); return; }
+    if (!presenceOpen()) {
+      cancelPresenceAttempt();
+      pumpQueue();
+      return;
+    }
+    try {
+      if (!attempt.clicked) {
+        const img = document.getElementById('presence_image');
+        if (!img) { fail(); return; }
+        if (!img.getAttribute('src') || !img.complete || !img.naturalWidth) {
+          if (attempt.waited >= PRESENCE_IMAGE_WAIT_MS) { fail(); return; }
+          attempt.waited += 200;
+          attempt.timer = setTimeout(tick, 200);
+          return;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const { best } = CatworldPresenceShape.matchImage(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        const [x, y] = best.center;
+        const rect = img.getBoundingClientRect();
+        if (!rect.width || !rect.height || !Number.isFinite(x) || !Number.isFinite(y)
+          || x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) { fail(); return; }
+        attempt.clicked = true;
+        attempt.waited = 0;
+        img.dispatchEvent(new MouseEvent('click', {
+          bubbles: true, cancelable: true, view: window,
+          clientX: rect.left + x * rect.width / canvas.width,
+          clientY: rect.top + y * rect.height / canvas.height
+        }));
+      } else if (attempt.waited >= NO_REPLY_MS) { fail(); return; }
+      attempt.waited += 200;
+      attempt.timer = setTimeout(tick, 200);
+    } catch (error) {
+      console.log('[catworld] 真人驗證自動辨識失敗', error?.message ?? error);
+      fail();
+    }
+  };
+  // 遊戲可能在顯示區塊之後才設定圖片網址。
+  attempt.timer = setTimeout(tick, 0);
+}
 let presenceShown = false;
 const presenceObserver = presenceElement ? new MutationObserver(() => {
   if (!contextAlive(chrome)) {
@@ -861,9 +922,10 @@ const presenceObserver = presenceElement ? new MutationObserver(() => {
   }
   const shown = !presenceElement.classList.contains('invisible');
   if (shown && !presenceShown) {
-    stopAndAlert('遊戲要求點選圖形的真人驗證（60 秒內），已全部停止；請自己完成驗證後再按開始');
-    reportPresenceSample(); // 警報之後才收樣本，收不到也不影響停止
+    reportPresenceSample();
+    solvePresence();
   }
+  if (!shown && presenceAttempt) { cancelPresenceAttempt(); pumpQueue(); }
   presenceShown = shown;
 }) : null;
 if (presenceElement) {
@@ -1018,7 +1080,7 @@ function pumpQueue() {
   queueTimer = setTimeout(() => {
     queueTimer = null;
     // 驗證碼辨識中先不送（通過後 endCaptcha 會再 pumpQueue）
-    if (!active() || captcha || checkCaptcha()) return;
+    if (!active() || presenceAttempt || captcha || checkCaptcha()) return;
     const at = nextQueued();
     if (at < 0) return;
     const [entry] = queue.splice(at, 1);
@@ -1332,6 +1394,7 @@ function stopTriggers(group, note = '已停止') {
 
 // 驗證碼或送出失敗：定時與兩組觸發、巨集一起停
 function stopEverything(reason) {
+  cancelPresenceAttempt();
   stopCount += 1;
   cancelIdle({ resume: false });
   groupList.forEach(group => stopTriggers(group));
