@@ -51,7 +51,8 @@ const ENGAGE = /你對著(\S+?)(?:說道|喝道)/;
 const ALREADY_DOWN = /已經無法戰鬥了/; // 開打前那隻已經昏了（使用者貼的真實輸出：被打時自動戰鬥把牠打昏，接著送的 f 2 回「扶桑浪人已經無法戰鬥了。」）
 const NOT_ALIVE = /並不是活物/; // 順位數到屍體（使用者貼的真實輸出「看清楚一點，扶桑浪人的屍體並不是活物。」）
 // 撿屍被拒（使用者貼的真實輸出）：還在打時「你還在戰鬥中！只能一次拿一樣」；撿屍指令前面的 edf 還沒做完時 gc 回「你上一個動作還沒有完成！」
-const LOOT_REFUSED = /你還在戰鬥中[!！]?只能一次拿一樣|你上一個動作還沒有完成/;
+// 特攻被忙碌擋下的「你上一個動作還沒有完成，不能施用外功。」（使用者貼的真實輸出）不是撿屍被拒，不算
+const LOOT_REFUSED = /你還在戰鬥中[!！]?只能一次拿一樣|你上一個動作還沒有完成(?!，不能施用外功)/;
 const NO_SUCH_TARGET = /你想(?:攻擊|殺)誰/; // fight 回「你想攻擊誰？」、kill 回「你想殺誰？」：順位上沒有東西（使用者貼的真實輸出），順位已經過期 // 開打時遊戲印的句子，名字是實際打到的那一隻
 const LEAVE = /往\S{1,6}離開/; // 有東西離開房間，順位會變
 const ARRIVE = /走了過來/; // 有東西走進房間（遊戲輸出「竹雞走了過來。」），順位也會變
@@ -798,7 +799,8 @@ function create(deps) {
       // 撿屍指令前面的 er 運氣時別的指令也會收到，gc 其實撿到了——朋友回報的真實 log：之後多送一次 er;gc 回「你找不到 corpse 這樣東西」）。
       // 房間裡比進來時多出來的屍體＝這間打倒的（倒下時不一定在打它，例如自動戰鬥打死的別隻），沒撿的補上
       if (state.lootRefused) {
-        const back = Math.min(state.lootRefused, Math.max(0, (info.corpses ?? 0) + state.buried - corpsesAtStart - loot));
+        // 上限只看還躺著的屍體，不加埋掉的：埋掉的已經撿過，加回來會讓手動指令的忙碌回覆又多送一次撿屍（使用者的真實 log：gc 埋完屍體後 ca 回「你上一個動作還沒有完成！」）
+        const back = Math.min(state.lootRefused, Math.max(0, (info.corpses ?? 0) - corpsesAtStart - loot));
         if (back) { record(here, '撿屍被拒', `${back} 次，等打完再撿`); loot += back; looted -= back; }
         state.lootRefused = 0;
       }

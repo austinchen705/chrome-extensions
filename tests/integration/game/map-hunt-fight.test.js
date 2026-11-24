@@ -1605,6 +1605,44 @@ ui('corpse: "previous action not done" for some other command (not the gc) does 
   }
 });
 
+ui('corpse: the special attack blocked by being busy ("cannot use outer skills") is not a refused loot, so a buried corpse is not looted again', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    // 使用者的真實戰鬥 log：打的途中特攻回「( 你上一個動作還沒有完成，不能施用外功。 )」，gc 撿完把屍體埋了，之後又多送一次 gc（「你找不到 corpse 這樣東西」）
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: (command, { say, looks }) => {
+      if (command === FIGHT) { looks.c.lines = [CORPSE_LINE]; say('( 你上一個動作還沒有完成，不能施用外功。 )'); say('測試怪死了。'); return true; }
+      if (command === 'gc') { looks.c.lines = []; say('你從屍體上拿到東西。'); say('你埋葬了測試怪的屍體。'); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.equal(game.log.filter(command => command === 'gc').length, 1, game.log.join(','));
+  } finally {
+    page.close();
+  }
+});
+
+ui('corpse: a busy reply to another command right after a gc that buried the corpse does not send another gc', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    // 通用的忙碌回覆（別的指令收到的「你上一個動作還沒有完成！」）算撿屍被拒，但補送的上限只看還躺著的屍體：埋掉的已經撿過
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script: (command, { say, looks }) => {
+      if (command === FIGHT) { looks.c.lines = [CORPSE_LINE]; say('測試怪死了。'); return true; }
+      if (command === 'gc') { looks.c.lines = []; say('你從屍體上拿到東西。'); say('你埋葬了測試怪的屍體。'); say('你上一個動作還沒有完成！'); return true; }
+      return false;
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), huntText(page));
+    assert.equal(game.log.filter(command => command === 'gc').length, 1, game.log.join(','));
+  } finally {
+    page.close();
+  }
+});
+
 ui('corpse: the parts of the after-kill command wait for the character to stop being busy (er then gc)', async () => {
   const page = await boot({ scale: SCALE });
   try {
