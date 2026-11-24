@@ -33,7 +33,7 @@ const WORN = [
 ];
 const viewBlock = ([name, category, primary]) => `此物名曰 ：${name}，${category}\n硬    度 ：80\n${category.endsWith('武器') ? '傷 害 力' : '防 禦 力'} ：${primary} / ${primary}\n佩帶條件 ：經驗 0\n`;
 
-function boot({ startResult = true, stored = {}, title = '小貓的世界 WEB' } = {}) {
+function boot({ startResult = true, stored = {}, title = '小貓的世界 WEB', enabled = true } = {}) {
   const dom = new JSDOM(`<html><head><title>${title}</title></head><body><div id="monitor"><span id="exp">414748</span></div><div id="content"><span id="message"></span></div></body></html>`, { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   // 介面裡的 setTimeout／setInterval 都縮短，Date.now 不動
@@ -41,6 +41,7 @@ function boot({ startResult = true, stored = {}, title = '小貓的世界 WEB' }
   w.setTimeout = (fn, ms, ...args) => realSet(fn, Math.max(1, Math.round((ms ?? 0) / SCALE)), ...args);
   w.setInterval = () => 0;
   const mem = { ...stored };
+  const busy = { value: false };
   const sent = [];
   w.chrome = {
     storage: {
@@ -59,15 +60,19 @@ function boot({ startResult = true, stored = {}, title = '小貓的世界 WEB' }
   w.document.documentElement.append(host);
   const exp = () => 414748;
   const zap = w.CatworldZapPanel.attach(shadow, { readExp: exp });
-  w.CatworldZapEquipmentUI.attach(shadow, {
+  const equipUI = w.CatworldZapEquipmentUI.attach(shadow, {
     overlay: { section: zap.sections.equipment, touchHint: zap.touchHint, el: zap.el },
     readExp: exp,
     startSteps: text => { sent.push(text); if (startResult === 'throw') throw new Error('boom'); return startResult; },
+    isBusy: () => busy.value,
   });
+  equipUI.setEnabled(enabled);
   const add = html => w.document.getElementById('message').appendChild(w.document.createRange().createContextualFragment(html));
   const button = () => shadow.querySelector('.eq-read');
   return {
-    w, add, sent, mem,
+    w, add, sent, mem, busy,
+    noteSent: command => equipUI.noteSent(command),
+    setEnabled: on => equipUI.setEnabled(on),
     button,
     click: () => button().dispatchEvent(new w.Event('click', { bubbles: true })),
     status: () => shadow.querySelector('.eq-status').textContent,
@@ -338,4 +343,192 @@ ui('a stored score rule changes the verdict: with the other-attribute weight at 
   await sleep(150);
   assert.deepEqual(names(page.rows()), ['留著', '相當', '差一']);
   assert.match(page.rows()[0], /比現在好，建議留下/);
+});
+
+// ---- 自動讀取穿著（登入或換裝後差異讀取）----
+// 介面裡的等待縮小 SCALE 倍：換裝去抖 3 秒→60 毫秒、登入安靜 5 秒→100 毫秒、忙碌重查 2 秒→40 毫秒
+const AUTO_ON = { equipAutoRead: { enabled: true, commands: ['wear', 'wield', 'remove', 'unwield', 'we'] } };
+const NAMED = '測試角色 - 小貓的世界 WEB';
+const baselineOf = readAt => {
+  const stores = {};
+  WORN.forEach(([name, category, primary]) => (stores[category] ??= []).push({ name, primary, attrs: [], needExp: 0, readAt }));
+  return stores;
+};
+const wornNames = page => Object.values(store(page)).flat().map(item => item.name).sort();
+const withoutSword = () => fixture('inventory.html').split('\n').filter(line => !line.includes('吳鉤劍')).join('\n');
+const LOGIN = '【注意事項】\n這個ＭＵＤ還處於玩家測試期間，請多包涵。\n';
+const autoPage = (extra = {}) => boot({ title: NAMED, stored: { wornEquipment: { 測試角色: baselineOf(1000) }, ...AUTO_ON }, ...extra });
+
+ui('an equip command (including a user alias) restarts a 3 second timer and then reads once', async () => {
+  const page = autoPage();
+  await sleep(20);
+  page.noteSent('wear ring');
+  await sleep(30);
+  page.noteSent('we sword'); // 別名：清單裡自己加的字，重新計時
+  await sleep(40);
+  assert.deepEqual(page.sent, [], 'the timer restarted, so nothing is sent yet');
+  assert.ok(await waitFor(() => page.sent.length === 1));
+  assert.deepEqual(page.sent, ['i']);
+  await sleep(150);
+  assert.deepEqual(page.sent, ['i'], 'one read, not one per equip command');
+});
+
+ui('only the first word of a sent command counts, in any segment of a ; line', async () => {
+  const page = autoPage();
+  await sleep(20);
+  page.noteSent('look');
+  page.noteSent('wearing out');
+  page.noteSent('say wear');
+  await sleep(150);
+  assert.deepEqual(page.sent, []);
+  page.noteSent('look;remove all');
+  assert.ok(await waitFor(() => page.sent.length === 1));
+});
+
+ui('a read after a change views only the newly worn piece and drops the one taken off', async () => {
+  const page = autoPage();
+  await sleep(20);
+  page.noteSent('wear ring');
+  assert.ok(await waitFor(() => page.sent.length === 1));
+  page.add(withoutSword().replace('芙蓉戒指', '光之戒').replace(/view #1790784002139296/g, 'view #777'));
+  assert.ok(await waitFor(() => page.sent.length === 2));
+  assert.equal(page.sent[1], 'view #777', 'one view, for the new ring only');
+  page.add(viewBlock(['光之戒', '戒指類防具', 9]));
+  assert.ok(await waitFor(() => wornNames(page).includes('光之戒')));
+  assert.equal(wornNames(page).length, 10);
+  assert.ok(!wornNames(page).includes('吳鉤劍'), 'the sword taken off is gone from the baseline');
+  assert.ok(!wornNames(page).includes('芙蓉戒指'), 'the ring that is no longer worn is gone');
+  assert.equal(store(page)['盾牌類防具'][0].readAt, 1000, 'unchanged pieces keep their reading');
+});
+
+ui('a piece taken off is dropped from the baseline and no view is sent', async () => {
+  const page = autoPage();
+  await sleep(20);
+  page.noteSent('remove sword');
+  assert.ok(await waitFor(() => page.sent.length === 1));
+  page.add(withoutSword());
+  assert.ok(await waitFor(() => wornNames(page).length === 10));
+  await sleep(100);
+  assert.deepEqual(page.sent, ['i']);
+  assert.ok(!wornNames(page).includes('吳鉤劍'));
+});
+
+ui('nothing changed: no view is sent and the baseline is untouched', async () => {
+  const page = autoPage();
+  await sleep(20);
+  page.noteSent('wear all');
+  assert.ok(await waitFor(() => page.sent.length === 1));
+  page.add(fixture('inventory.html'));
+  await sleep(150);
+  assert.deepEqual(page.sent, ['i']);
+  assert.equal(page.mem.wornEquipment['測試角色']['劍類武器'][0].readAt, 1000);
+  assert.equal(page.button().disabled, false, 'back to idle');
+});
+
+ui('no worn list in the output never wipes the baseline', async () => {
+  const page = autoPage();
+  await sleep(20);
+  page.noteSent('wear all');
+  assert.ok(await waitFor(() => page.sent.length === 1));
+  await sleep(300);
+  assert.equal(page.sent.length, 1);
+  assert.equal(wornNames(page).length, 11);
+});
+
+ui('the login screen text triggers one read after the output is quiet', async () => {
+  const page = autoPage();
+  await sleep(20);
+  page.add(LOGIN);
+  await sleep(50);
+  page.add('<span>更多歡迎文字</span>\n'); // 還有輸出：重新等
+  await sleep(70);
+  assert.deepEqual(page.sent, [], 'still within the quiet period');
+  assert.ok(await waitFor(() => page.sent.length === 1));
+  assert.deepEqual(page.sent, ['i']);
+});
+
+ui('the login text split across two packets still counts', async () => {
+  const page = autoPage();
+  await sleep(20);
+  page.add('【注意事項】\n');
+  await sleep(5);
+  page.add('這個ＭＵＤ還處於玩家測試期間\n');
+  assert.ok(await waitFor(() => page.sent.length === 1));
+});
+
+ui('without the login text (a page refresh) nothing is read, and half of it is not enough', async () => {
+  const page = autoPage();
+  await sleep(20);
+  page.add('<span>你看到一隻貓。</span>\n【注意事項】\n');
+  await sleep(250);
+  assert.deepEqual(page.sent, []);
+});
+
+ui('login text before the character name is in the title waits instead of sending i at the login prompt', async () => {
+  const page = autoPage({ title: '小貓的世界 WEB' });
+  await sleep(20);
+  page.add(LOGIN);
+  await sleep(250);
+  assert.deepEqual(page.sent, [], 'not logged in yet');
+  page.w.document.title = NAMED;
+  assert.ok(await waitFor(() => page.sent.length === 1));
+});
+
+ui('while busy (hunt, macro, busy status, verification) the read waits, then happens once after', async () => {
+  const page = autoPage();
+  await sleep(20);
+  page.busy.value = true;
+  page.noteSent('wield sword');
+  await sleep(250);
+  assert.deepEqual(page.sent, []);
+  page.busy.value = false;
+  assert.ok(await waitFor(() => page.sent.length === 1));
+  await sleep(150);
+  assert.deepEqual(page.sent, ['i']);
+});
+
+ui('a manual read in progress defers the auto read', async () => {
+  const page = autoPage();
+  await sleep(20);
+  page.click();
+  await sleep(10);
+  page.noteSent('wear ring');
+  await sleep(120);
+  assert.deepEqual(page.sent, ['i'], 'only the manual i so far');
+});
+
+ui('the setting off sends nothing for equip commands or the login text', async () => {
+  const page = boot({ title: NAMED, stored: { wornEquipment: { 測試角色: baselineOf(1000) }, equipAutoRead: { enabled: false, commands: ['wear'] } } });
+  await sleep(20);
+  page.noteSent('wear ring');
+  page.add(LOGIN);
+  await sleep(300);
+  assert.deepEqual(page.sent, []);
+  const fresh = boot({ title: NAMED });
+  await sleep(20);
+  fresh.noteSent('wear ring');
+  await sleep(150);
+  assert.deepEqual(fresh.sent, [], 'default is off');
+});
+
+ui('with the equipment feature off nothing is read, and turning it off cancels a pending read', async () => {
+  const off = autoPage({ enabled: false });
+  await sleep(20);
+  off.noteSent('wear ring');
+  off.add(LOGIN);
+  await sleep(300);
+  assert.deepEqual(off.sent, []);
+  const page = autoPage();
+  await sleep(20);
+  page.noteSent('wear ring');
+  page.setEnabled(false);
+  await sleep(150);
+  assert.deepEqual(page.sent, []);
+});
+
+ui('the default command list is used when none is stored', async () => {
+  const page = boot({ title: NAMED, stored: { equipAutoRead: { enabled: true } } });
+  await sleep(20);
+  page.noteSent('unwield 1');
+  assert.ok(await waitFor(() => page.sent.length === 1));
 });

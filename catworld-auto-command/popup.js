@@ -784,6 +784,18 @@ function showEquipmentKeep() {
   chrome.storage.local.set({ equipmentKeep });
 }));
 
+// 自動讀取目前穿著：存進 equipAutoRead，遊戲頁的裝備列監聽 storage 變化，馬上生效。指令清單交給 normalizeAutoRead 整理（空的就是預設），整理後寫回欄位
+let equipAutoRead = CatworldZapEquipment.normalizeAutoRead(undefined);
+function showEquipAutoRead() {
+  $('autoReadEnabled').checked = equipAutoRead.enabled;
+  $('autoReadCommands').value = equipAutoRead.commands.join('、');
+}
+['autoReadEnabled', 'autoReadCommands'].forEach(id => $(id).addEventListener('change', () => {
+  equipAutoRead = CatworldZapEquipment.normalizeAutoRead({ enabled: $('autoReadEnabled').checked, commands: $('autoReadCommands').value });
+  showEquipAutoRead();
+  chrome.storage.local.set({ equipAutoRead });
+}));
+
 // 裝備比較計分：存進 equipmentScore，遊戲頁的面板與商人、背包整理都監聽或每次重讀，馬上生效。每次改都交給 normalizeScoreRule 整理、把整理後的值寫回欄位
 // （數字填空白回到預設、清單用「、」分開；清單清空＝沒有）。「還原預設計分」直接拿掉這個鍵
 let equipmentScore = CatworldZapEquipment.normalizeScoreRule(undefined);
@@ -1554,7 +1566,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 });
 
 (async () => {
-  const data = await chrome.storage.local.get(['settings', 'idleSettings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'equipmentScore', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, CatworldChatScript.SETTINGS_KEY, CatworldChatScript.STATE_KEY, 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
+  const data = await chrome.storage.local.get(['settings', 'idleSettings', 'triggerGroupSettings', 'triggerSettings', 'popupTab', 'persistentAlert', 'zapThresholds', 'mainWeapon', 'zapFeatures', 'equipmentKeep', 'equipmentScore', 'equipAutoRead', 'autoReward', CatworldStopKeywords.KEY, CatworldChatReply.SETTINGS_KEY, CatworldChatScript.SETTINGS_KEY, CatworldChatScript.STATE_KEY, 'popupFolds', CatworldShopCollect.MIN_PRICE_KEY, CatworldShopCollect.BUY_NAMES_KEY, CatworldShopCollect.SKIP_NAMES_KEY, CatworldMapHunt.SETTINGS_KEY]);
   huntSettings = CatworldMapHunt.normalizeSettings(data[CatworldMapHunt.SETTINGS_KEY]);
   showHuntSettings();
   $('shopSkipNames').value = typeof data[CatworldShopCollect.SKIP_NAMES_KEY] === 'string' ? data[CatworldShopCollect.SKIP_NAMES_KEY] : CatworldShopCollect.DEFAULT_SKIP_NAMES;
@@ -1580,6 +1592,8 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   showEquipmentKeep();
   equipmentScore = CatworldZapEquipment.normalizeScoreRule(data.equipmentScore);
   showEquipmentScore();
+  equipAutoRead = CatworldZapEquipment.normalizeAutoRead(data.equipAutoRead);
+  showEquipAutoRead();
   zapThresholds = CatworldZapMobs.normalizeThresholds(data.zapThresholds);
   showZapThresholds();
   if (data.settings) $('commandDelayMs').value = data.settings.commandDelayMs ?? 500;

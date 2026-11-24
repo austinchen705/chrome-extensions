@@ -1,7 +1,9 @@
 // 面板的「裝備」列：讀取目前穿著（當比較的基準），並在鑑定出裝備後把每一件和基準比、標在共用浮層的「鑑定裝備」區段。
 //
-// 每次鑑定都不送任何指令；只有按「讀取目前穿著」才送：先 i（背包），從穿著的行拿到 view #編號，
+// 每次鑑定都不送任何指令；只有讀取目前穿著才送：先 i（背包），從穿著的行拿到 view #編號，
 // 再把它們組成一個巨集送出（deps.startSteps＝content.js 的 startMacro：共用佇列、間隔、驗證碼時取消）。
+// 按鈕是全部重讀；設定頁勾了「自動讀取」時，登入或換裝（noteSent）後做差異讀取：只 view 基準裡沒有的名稱，沒穿了的從基準移掉。
+// deps.isBusy 回 true（巡怪、遊戲巨集、忙碌、驗證）時先不讀，等都結束再補讀一次。
 // 解析與比較在 zap-equipment.js（不碰 DOM）；這裡負責畫面、觀察器與讀取流程。
 (() => {
 if (globalThis.CatworldZapEquipmentUI) return;
@@ -18,6 +20,14 @@ const INVENTORY_WAIT_MS = 10000;
 const READ_IDLE_MS = 20000;
 const HTML_WINDOW_MS = 3000;
 const HTML_BUFFER_CHARS = 30000;
+const AUTO_KEY = 'equipAutoRead';
+const EQUIP_DEBOUNCE_MS = 3000;
+const LOGIN_QUIET_MS = 5000;
+const LOGIN_TAIL_CHARS = 300;
+const LOGIN_GIVE_UP_MS = 120000;
+const BUSY_RECHECK_MS = 2000;
+// 登入畫面的兩段字（使用者貼的真實輸出）
+const LOGIN_TEXT = ['【注意事項】', '這個ＭＵＤ還處於玩家測試期間'];
 const RESULT_MAX = 12;
 // 結果的排序：越小越上面、越後面才被擠掉
 const VERDICT_RANK = { better: 0, keep: 0, equal: 1, none: 2, worse: 3 };
@@ -32,7 +42,7 @@ const normalizeStores = value => {
   return Object.keys(value).some(key => /類(?:武器|防具)$/.test(key)) ? {} : value;
 };
 
-function attach(root, { overlay, readExp, startSteps }) {
+function attach(root, { overlay, readExp, startSteps, isBusy = () => false }) {
   const { section, touchHint, el } = overlay;
   const button = el('button', { className: 'eq-read', textContent: '讀取目前穿著' });
   const status = el('span', { className: 's eq-status', textContent: '尚未讀取' });
@@ -44,12 +54,18 @@ function attach(root, { overlay, readExp, startSteps }) {
   let mainWeapon = '';
   let keep = E.normalizeKeepRule(undefined);
   let score = E.normalizeScoreRule(undefined);
+  let auto = E.normalizeAutoRead(undefined);
+  let readMode = 'full'; // full：按鈕，全部重讀；diff：自動讀取，只讀有變的
   let phase = 'idle'; // idle → waitingInventory → reading → idle
   let wornAcc = [];
   let expected = [];
   let got = [];
   let claimed = new Set();
-  const timers = { flush: null, inventory: null, wait: null, read: null };
+  const timers = { flush: null, inventory: null, wait: null, read: null, auto: null };
+  let equipPending = false;
+  let loginPending = false;
+  let loginSince = 0;
+  let textTail = '';
   let firstPendingAt = 0;
   let htmlBuf = '';
   let lastHtmlAt = 0;
@@ -83,11 +99,12 @@ function attach(root, { overlay, readExp, startSteps }) {
       return false;
     }
   };
-  chrome.storage.local.get([WORN_KEY, WEAPON_KEY, KEEP_KEY, SCORE_KEY]).then(data => {
+  chrome.storage.local.get([WORN_KEY, WEAPON_KEY, KEEP_KEY, SCORE_KEY, AUTO_KEY]).then(data => {
     stores = normalizeStores(data[WORN_KEY]);
     mainWeapon = validWeapon(data[WEAPON_KEY]);
     keep = E.normalizeKeepRule(data[KEEP_KEY]);
     score = E.normalizeScoreRule(data[SCORE_KEY]);
+    auto = E.normalizeAutoRead(data[AUTO_KEY]);
     updateStatus();
   }).catch(error => note(`讀取已存的基準失敗：${error.message}`, 'error'));
   chrome.storage.onChanged?.addListener((changes, area) => {
@@ -96,6 +113,10 @@ function attach(root, { overlay, readExp, startSteps }) {
     if (changes[WEAPON_KEY]) mainWeapon = validWeapon(changes[WEAPON_KEY].newValue);
     if (changes[KEEP_KEY]) keep = E.normalizeKeepRule(changes[KEEP_KEY].newValue);
     if (changes[SCORE_KEY]) score = E.normalizeScoreRule(changes[SCORE_KEY].newValue);
+    if (changes[AUTO_KEY]) {
+      auto = E.normalizeAutoRead(changes[AUTO_KEY].newValue);
+      if (!auto.enabled) cancelAuto();
+    }
     updateStatus();
   });
 
@@ -123,12 +144,13 @@ function attach(root, { overlay, readExp, startSteps }) {
     if (phase !== 'reading') return;
     phase = 'idle';
     if (!got.length) {
-      note('沒有讀到任何一件穿著的裝備，沿用原來的基準');
+      note(readMode === 'diff' ? '沒有讀到新穿上的裝備，下次再讀' : '沒有讀到任何一件穿著的裝備，沿用原來的基準');
     } else {
       // 沒回應的（被中斷、逾時）但還在穿的保留舊基準，不會把整份換成只有幾件
-      setCurrent(E.mergeBaseline(current(), got, expected.map(item => item.name), Date.now()));
+      // 差異讀取：expected 只有新穿的，舊的在 beginReading 已經整理好，這裡只加新的
+      setCurrent(readMode === 'diff' ? E.addBaseline(current(), got, Date.now()) : E.mergeBaseline(current(), got, expected.map(item => item.name), Date.now()));
       persist();
-      if (got.length < expected.length) note(`只讀到 ${got.length}/${expected.length} 件，其餘保留原來的基準`);
+      if (got.length < expected.length) note(readMode === 'diff' ? `只讀到 ${got.length}/${expected.length} 件新穿上的，其餘下次再讀` : `只讀到 ${got.length}/${expected.length} 件，其餘保留原來的基準`);
     }
     updateStatus();
   }
@@ -149,6 +171,19 @@ function attach(root, { overlay, readExp, startSteps }) {
       updateStatus();
       return;
     }
+    if (readMode === 'diff') {
+      const { kept, toView } = E.diffWorn(current(), list);
+      if (allItems().length !== Object.values(kept).flat().length) {
+        setCurrent(kept);
+        persist();
+      }
+      if (!toView.length) {
+        phase = 'idle';
+        updateStatus();
+        return;
+      }
+      list = toView;
+    }
     expected = list;
     got = [];
     claimed = new Set();
@@ -162,8 +197,8 @@ function attach(root, { overlay, readExp, startSteps }) {
     updateStatus();
   }
 
-  button.addEventListener('click', () => {
-    if (button.disabled) return;
+  function startRead(mode) {
+    readMode = mode;
     phase = 'waitingInventory';
     if (!send('i')) {
       phase = 'idle';
@@ -177,7 +212,33 @@ function attach(root, { overlay, readExp, startSteps }) {
       }, INVENTORY_WAIT_MS);
     }
     updateStatus();
+  }
+  button.addEventListener('click', () => {
+    if (!button.disabled) startRead('full');
   });
+
+  // ---- 自動讀取（登入、換裝）----
+  function cancelAuto() {
+    clearTimeout(timers.auto);
+    equipPending = false;
+    loginPending = false;
+  }
+  const scheduleAuto = ms => {
+    clearTimeout(timers.auto);
+    timers.auto = setTimeout(tryAuto, ms);
+  };
+  // 還在讀別的、鑑定中、忙著別的事，或登入後還沒進遊戲（分頁標題還沒有角色名）：先不讀，稍後再看一次；都結束了才讀一次
+  function tryAuto() {
+    if (!enabled || !auto.enabled) { cancelAuto(); return; }
+    const now = Date.now();
+    if (loginPending && !equipPending && !characterName() && now - loginSince > LOGIN_GIVE_UP_MS) { cancelAuto(); return; }
+    if (phase !== 'idle' || tracker.running(now) || isBusy() || (loginPending && !characterName())) {
+      scheduleAuto(BUSY_RECHECK_MS);
+      return;
+    }
+    cancelAuto();
+    startRead('diff');
+  }
 
   // ---- 鑑定結果的顯示 ----
   const SHORT = category => category.replace(/類(武器|防具)$/, '');
@@ -271,6 +332,15 @@ function attach(root, { overlay, readExp, startSteps }) {
       }
     }
     if (/共鑑定[^\n，。]{0,8}樣無名物/.test(text)) sawRunEnd = true;
+    // 兩段字可能分在不同的封包：留最後一小段接起來比對
+    textTail = (textTail + text).slice(-LOGIN_TAIL_CHARS);
+    if (auto.enabled && LOGIN_TEXT.every(part => textTail.includes(part))) {
+      textTail = '';
+      if (!loginPending) loginSince = now;
+      loginPending = true;
+    }
+    // 登入畫面還在輸出時一直往後延，安靜 LOGIN_QUIET_MS 才讀
+    if (loginPending && auto.enabled) scheduleAuto(LOGIN_QUIET_MS);
     tracker.feed(text, now);
     // 連續不斷的輸出（頻道洗版、定時指令）會一直重設去抖，所以設一個最長等待
     if (!firstPendingAt) firstPendingAt = now;
@@ -297,7 +367,16 @@ function attach(root, { overlay, readExp, startSteps }) {
     setEnabled(on) {
       enabled = on === true;
       row.hidden = !enabled;
-      if (!enabled) section.replaceChildren();
+      if (!enabled) {
+        section.replaceChildren();
+        cancelAuto();
+      }
+    },
+    // 送出的指令（任何來源）：開頭是換裝指令就重新計時，安靜 EQUIP_DEBOUNCE_MS 後讀一次
+    noteSent(command) {
+      if (!enabled || !auto.enabled || !E.isEquipCommand(command, auto.commands)) return;
+      equipPending = true;
+      scheduleAuto(EQUIP_DEBOUNCE_MS);
     },
   };
 }

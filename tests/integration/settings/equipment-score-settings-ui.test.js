@@ -165,3 +165,40 @@ ui('the equal also keep box is off by default, saved into equipmentKeep next to 
     again.dom.window.close();
   }
 });
+
+ui('auto read: off by default with the default equip commands shown', async () => {
+  const { dom, doc } = await boot();
+  try {
+    assert.equal(doc.getElementById('autoReadEnabled').checked, false);
+    assert.equal(value(doc, 'autoReadCommands'), 'wear、wield、remove、unwield');
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('auto read: the checkbox and the cleaned command list are saved as one equipAutoRead object and written back', async () => {
+  const { dom, doc, store, change } = await boot();
+  try {
+    change('autoReadEnabled', true);
+    assert.ok(await waitFor(() => store.equipAutoRead?.enabled === true));
+    change('autoReadCommands', 'Wear、wield, we  wi、we');
+    assert.ok(await waitFor(() => store.equipAutoRead?.commands.length === 4));
+    assert.deepEqual(store.equipAutoRead, { enabled: true, commands: ['wear', 'wield', 'we', 'wi'] });
+    assert.equal(value(doc, 'autoReadCommands'), 'wear、wield、we、wi');
+    change('autoReadCommands', '  ');
+    assert.ok(await waitFor(() => store.equipAutoRead.commands.length === 4 && store.equipAutoRead.commands[0] === 'wear' && store.equipAutoRead.commands[3] === 'unwield'));
+    assert.equal(value(doc, 'autoReadCommands'), 'wear、wield、remove、unwield', 'an empty list goes back to the default');
+  } finally {
+    dom.window.close();
+  }
+});
+
+ui('auto read: a stored setting is shown', async () => {
+  const { dom, doc } = await boot({ equipAutoRead: { enabled: true, commands: ['wear', 'un'] } });
+  try {
+    assert.equal(doc.getElementById('autoReadEnabled').checked, true);
+    assert.equal(value(doc, 'autoReadCommands'), 'wear、un');
+  } finally {
+    dom.window.close();
+  }
+});

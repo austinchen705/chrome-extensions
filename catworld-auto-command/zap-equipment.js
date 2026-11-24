@@ -207,6 +207,44 @@ function mergeBaseline(oldStore, blocks, expectedNames, now) {
   return store;
 }
 
+// 差異讀取（登入或換裝後自動讀取）：穿著清單 worn（parseWornHtml）依名稱和基準比。
+// kept＝基準裡現在還穿著的（同名多件各配一件，沒穿了的丟掉）；toView＝現在穿著、基準裡沒有的（只有這些要 view）
+function diffWorn(store, worn) {
+  const wornLeft = {};
+  worn.forEach(item => { wornLeft[item.name] = (wornLeft[item.name] ?? 0) + 1; });
+  const kept = {};
+  const have = {};
+  Object.entries(store ?? {}).forEach(([category, list]) => {
+    list.forEach(item => {
+      if (!(wornLeft[item.name] > 0)) return;
+      wornLeft[item.name] -= 1;
+      have[item.name] = (have[item.name] ?? 0) + 1;
+      (kept[category] ??= []).push(item);
+    });
+  });
+  const toView = worn.filter(item => !(have[item.name] > 0 && have[item.name]--));
+  return { kept, toView };
+}
+
+// 把新讀到的區塊加進基準（不動已有的；diffWorn 之後用，同名舊件不能被當成「更新」蓋掉）
+function addBaseline(store, blocks, now) {
+  const next = { ...store };
+  blocks.forEach(block => { next[block.category] = [...(next[block.category] ?? []), toBaselineItem(block, now)]; });
+  return next;
+}
+
+// 自動讀取穿著（設定頁，存在 chrome.storage.local.equipAutoRead）：開關預設關；換裝指令清單用「、」（或逗號）分開、轉小寫去重，
+// 空的就用預設
+const AUTO_READ_COMMANDS = ['wear', 'wield', 'remove', 'unwield'];
+function normalizeAutoRead(value) {
+  const raw = value?.commands;
+  const names = (Array.isArray(raw) ? raw : String(raw ?? '').split(/[、,，\s]+/)).map(name => String(name).trim().toLowerCase()).filter(Boolean);
+  const commands = [...new Set(names)];
+  return { enabled: value?.enabled === true, commands: commands.length ? commands : AUTO_READ_COMMANDS };
+}
+// 送出的指令（可含 ; 分開的好幾段）有任何一段的第一個字在清單裡就算換裝
+const isEquipCommand = (text, commands) => String(text ?? '').split(';').some(part => commands.includes(part.trim().split(/\s+/)[0].toLowerCase()));
+
 // 背包（i）輸出裡穿著的行：有「ˇ」標記，同一行有 view #編號 的連結（武器是 unwield）。
 // 名稱常被 <span> 拆開（「金線」＋「手套」），去掉標籤後取到「(英文 id)」之前。
 // 呼叫端給的是幾秒內所有輸出接起來的緩衝，房間一直有人說話時緩衝不會清，玩家先前自己打的 i 還留在裡面，
@@ -299,6 +337,6 @@ function createTracker({ runTimeoutMs = 30000 } = {}) {
 
 globalThis.CatworldZapEquipment = {
   PRIMARY_GAP, IGNORED_ATTRS, SCORE_DEFAULT, normalizeScoreRule, normalizeAttrName, parseEquipmentBlocks, relatedAttrNames, skillAttrNames, scoreAttrs, normalizeKeepRule, compareEquipment, pickKeepers,
-  toBaselineItem, replaceBaseline, upsertBaseline, mergeBaseline, parseWornHtml, createTracker,
+  toBaselineItem, replaceBaseline, upsertBaseline, mergeBaseline, diffWorn, addBaseline, AUTO_READ_COMMANDS, normalizeAutoRead, isEquipCommand, parseWornHtml, createTracker,
 };
 })();

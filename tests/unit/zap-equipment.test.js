@@ -519,3 +519,46 @@ test('normalizeScoreRule: an old saved rule without skillWeight gets 3; the weig
   assert.equal(E.normalizeScoreRule({ skillWeight: 'x' }).skillWeight, 3);
   assert.equal(E.normalizeScoreRule({ skillWeight: 0 }).skillWeight, 0);
 });
+
+test('diffWorn keeps what is still worn, drops what is not, and lists only unseen names to view', () => {
+  const item = name => ({ name, primary: 1, attrs: [], needExp: 0, readAt: 1 });
+  const store = { 戒指類防具: [item('甲戒'), item('乙戒')], 劍類武器: [item('舊劍')] };
+  const worn = [{ name: '甲戒', id: '1' }, { name: '新戒', id: '2' }];
+  const { kept, toView } = E.diffWorn(store, worn);
+  assert.deepEqual(kept, { 戒指類防具: [item('甲戒')] });
+  assert.deepEqual(toView, [{ name: '新戒', id: '2' }]);
+});
+
+test('diffWorn pairs same-name pieces one by one', () => {
+  const item = { name: '銅戒', primary: 1, attrs: [], needExp: 0, readAt: 1 };
+  const twice = [{ name: '銅戒', id: '1' }, { name: '銅戒', id: '2' }];
+  assert.deepEqual(E.diffWorn({ 戒指類防具: [item] }, twice).toView, [{ name: '銅戒', id: '2' }], 'the second copy is new');
+  assert.deepEqual(E.diffWorn({ 戒指類防具: [item, item] }, twice.slice(0, 1)).kept, { 戒指類防具: [item] }, 'one copy taken off');
+  assert.deepEqual(E.diffWorn({ 戒指類防具: [item, item] }, twice).toView, []);
+  assert.deepEqual(E.diffWorn(undefined, twice).toView, twice, 'no baseline: everything is new');
+});
+
+test('addBaseline appends new readings without replacing a same-name piece', () => {
+  const old = { 戒指類防具: [{ name: '銅戒', primary: 1, attrs: [], needExp: 0, readAt: 1 }] };
+  const next = E.addBaseline(old, [{ name: '銅戒', category: '戒指類防具', primary: 2, attrs: [], needExp: 0 }], 9);
+  assert.equal(next['戒指類防具'].length, 2);
+  assert.equal(old['戒指類防具'].length, 1, 'the old store is not mutated');
+});
+
+test('normalizeAutoRead: off by default, command list cleaned, empty means the default', () => {
+  assert.deepEqual(E.normalizeAutoRead(undefined), { enabled: false, commands: ['wear', 'wield', 'remove', 'unwield'] });
+  assert.deepEqual(E.normalizeAutoRead({ enabled: true, commands: ' Wear、we, WE  wi' }), { enabled: true, commands: ['wear', 'we', 'wi'] });
+  assert.deepEqual(E.normalizeAutoRead({ enabled: 'yes', commands: ['un', 'un', ''] }), { enabled: false, commands: ['un'] });
+  assert.deepEqual(E.normalizeAutoRead({ enabled: true, commands: '、 ' }).commands, ['wear', 'wield', 'remove', 'unwield']);
+});
+
+test('isEquipCommand looks at the first word of every ; segment', () => {
+  const commands = ['wear', 'we'];
+  assert.equal(E.isEquipCommand('wear ring', commands), true);
+  assert.equal(E.isEquipCommand('  WE all', commands), true);
+  assert.equal(E.isEquipCommand('look;wear sword', commands), true);
+  assert.equal(E.isEquipCommand('wearing x', commands), false);
+  assert.equal(E.isEquipCommand('say wear', commands), false);
+  assert.equal(E.isEquipCommand('', commands), false);
+  assert.equal(E.isEquipCommand(undefined, commands), false);
+});

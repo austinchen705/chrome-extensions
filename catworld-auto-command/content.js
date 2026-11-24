@@ -30,6 +30,7 @@ const macroRuns = new Set();
 let macroNote = null;
 // 地圖巡怪（map-hunt.js）：在 startMacro 之後建立；執行中算 active()
 let hunt = null;
+let equipmentUI = null; // 「裝備」列：送出的指令要通知它（登入或換裝後自動讀取穿著）
 // 設定頁開在背景分頁時自己的每秒更新會被 Chrome 降頻，所以任何功能開始或停止（面板、置頂面板裡按的也算）就主動通知它
 let panelHost = null;
 // 擴充功能重新載入後留在頁面上的舊程式（chrome.runtime.id 失效）：停掉所有計時器與送出、拿掉面板與置頂視窗，
@@ -1089,6 +1090,7 @@ function pumpQueue() {
     lastSentAt = Date.now();
     lastSentChat = isChatEntry(entry);
     if (isHuntEntry(entry)) hunt?.noteSent(entry.command);
+    equipmentUI?.noteSent(entry.command);
     // 按下的遊戲巨集（pressed）由 noteManualSend 記成手動，其餘照來源記進巡怪紀錄；quiet 是巡怪的走路指令
     if (entry.run?.owner === PRESSED_MACRO_OWNER) noteManualSend(entry.command);
     else if (!entry.quiet) hunt?.noteCommand(entry.command, sourceLabel(entry.run?.owner ?? entry.source));
@@ -1278,6 +1280,8 @@ function cooldownRunning(id) {
   const inner = document.getElementById(id)?.firstElementChild;
   try { return Boolean(inner?.getAnimations?.().some(animation => animation.playState === 'running')); } catch { return false; }
 }
+// 角色忙碌：狀態欄（#status）是「忙碌」開頭（遊戲可能寫「忙碌:3」），或忙碌冷卻條（#busy）在跑
+const charBusy = () => /^忙碌/.test(readStatus() ?? '') || cooldownRunning('busy');
 function readAllStats() {
   return Object.fromEntries(Object.keys(CatworldTriggerEngine.STATS).map(name => [name, readStat(name)]));
 }
@@ -1703,8 +1707,7 @@ hunt = CatworldMapHunt.create({
   // 遊戲的冷卻條（#perform 特攻、#busy 忙碌）：伺服器送 GMCP cooldown 時，遊戲 web.js 的 cooldown() 把元素的 innerHTML 換成一個新的子 div，
   // 帶 animation-duration（web.css 的 @keyframes cooldown 從寬 100% 跑到 0，跑一次）。子 div 的 CSS 動畫還在跑＝冷卻中；讀不到元素或動畫＝不在冷卻
   cooling: cooldownRunning,
-  // 角色忙碌：狀態欄（#status）是「忙碌」開頭（遊戲可能寫「忙碌:3」），或忙碌冷卻條（#busy）在跑
-  busy: () => /^忙碌/.test(readStatus() ?? '') || cooldownRunning('busy'),
+  busy: charBusy,
   now: () => Date.now(),
   uptimePhase: readUptimePhase,
   macroRunning: () => [...macroRuns].some(run => run.owner === 'hunt'),
@@ -1869,13 +1872,16 @@ function noteManualSend(raw) {
 // 遊戲巨集按鍵（沒有 @等待，遊戲自己一次全部送出）：那一格用 ; 分開的每一段都記成一個指令，時間都是按下的這一刻；
 // 不靠回聲（巨集送出的指令在輸出裡是單獨一行，和一般輸出分不開；使用者貼的真實樣本）
 function noteManualMacro(text) {
+  equipmentUI?.noteSent(text);
   text.split(/\s*;\s*/).forEach(noteManualSend);
 }
 // 捕獲階段：在遊戲處理送出（清空輸入框）之前讀輸入框的值
 document.addEventListener('submit', event => {
-  if ((!manualRecord && !hunt?.on()) || sendingOwn) return;
+  if (sendingOwn) return;
   const input = document.querySelector('#input');
   if (!input || event.target !== input.form) return;
+  equipmentUI?.noteSent(input.value);
+  if (!manualRecord && !hunt?.on()) return;
   noteManualSend(input.value);
 }, true);
 // 面板最上方的「數值」區塊（stats-block.js）
@@ -2029,13 +2035,14 @@ function initPanel() {
     console.error('[catworld] 拜師列初始化失敗', error);
   }
   // 「裝備」列：借用怪物列的浮層區段；讀取目前穿著送的 i／view 也走巨集
-  let equipmentUI = null;
   try {
     if (!zapPanel) throw new Error('怪物列沒有初始化，裝備列借用不到浮層');
     equipmentUI = CatworldZapEquipmentUI.attach(root, {
       overlay: { section: zapPanel.sections.equipment, touchHint: zapPanel.touchHint, el: zapPanel.el },
       readExp: () => readNumber('exp'),
       startSteps: text => startMacro(text),
+      // 自動讀取穿著要避開：巡怪、遊戲巨集在跑、角色忙碌、驗證碼或真人驗證開著
+      isBusy: () => huntRunning() || macroRuns.size > 0 || charBusy() || Boolean(captcha) || presenceOpen(),
     });
   } catch (error) {
     console.error('[catworld] 裝備列初始化失敗', error);
