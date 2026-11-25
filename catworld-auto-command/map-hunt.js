@@ -105,6 +105,7 @@ const FIELDS = [
   { key: 'refuseKeyword', group: 'fight', show: full, label: '怪不想打時遊戲回的字', hint: 'fight 被拒就改送「打死用的指令」', type: 'text', default: '並不想跟你較量' },
   { key: 'specialCommand', group: 'special', show: full, row: 'special', label: '特攻指令', hint: '可空，可以是你的別名；等特攻冷卻條跑完、角色不忙碌才送', type: 'text', default: '' },
   { key: 'specialIntervalSec', group: 'special', show: full, row: 'special', label: '最小間隔（秒）', type: 'number', default: 10, min: 1, max: 600 },
+  { key: 'specialOnce', group: 'special', show: full, label: '每場只放一次特攻', hint: '開＝每隻怪的一場戰鬥最多送一次特攻，下一隻再送一次；被圍攻（等全部打昏）算一場。被拒或忙碌沒送出去不算，等到送得出去才送；關＝照最小間隔一直送', type: 'select', options: ON_OFF, default: 'off' },
   { key: 'healMode', group: 'heal', label: '補氣方式', type: 'select', options: [['eat', '吃藥'], ['rest', '自己回']], default: 'eat' },
   { key: 'ginBelow', group: 'heal', row: 'gin', label: '精低於 %', hint: '0＝不看', type: 'number', default: 0, min: 0, max: 99 },
   { key: 'ginCommand', group: 'heal', row: 'gin', label: '精低時的指令', hint: '空白＝不看', type: 'text', default: '' },
@@ -810,7 +811,7 @@ function create(deps) {
       const attackers = besiegers(info, token);
       if (attackers.length) {
         sieged = true;
-        if (!siegeOpen) { siegeOpen = true; record(here, '被圍攻', `${attackers.map(mob => mob.name).join('、')}，等全部打昏`); }
+        if (!siegeOpen) { siegeOpen = true; state.siegeSpecialSent = false; record(here, '被圍攻', `${attackers.map(mob => mob.name).join('、')}，等全部打昏`); }
         if (state.retreat || state.retreatPending) { sendLoot(); state.phase = 'plan'; deps.notify(); return; }
         if (spawnPause()) return;
         const text = await siegeWait(token, attackers);
@@ -1306,10 +1307,14 @@ function create(deps) {
     // 角色忙碌時不送特攻，等候逾時也不算（忙碌中送的會被遊戲拒絕）；補氣照常
     if (deps.busy?.()) return;
     fight.waited += 1;
-    // 特攻：怪還活著、這場沒被告知沒有目標、距離上次已過最小間隔、而且遊戲的特攻冷卻條（#perform）跑完了才送
-    if (settings.specialCommand && !fight.finishing && !fight.noTarget && state.ticks - fight.lastSpecial >= settings.specialIntervalSec * TICKS_PER_SEC && !deps.cooling?.('perform')) {
+    // 特攻：怪還活著、這場沒被告知沒有目標、距離上次已過最小間隔、而且遊戲的特攻冷卻條（#perform）跑完了才送；
+    // 每場只放一次（specialOnce）開著時，這場送過就不再送（圍攻每次等待都是新的 fight，所以圍攻的旗標放在 state.siegeSpecialSent）
+    const onceDone = settings.specialOnce === 'on' && (fight.siege ? state.siegeSpecialSent : fight.specialSent);
+    if (settings.specialCommand && !onceDone && !fight.finishing && !fight.noTarget && state.ticks - fight.lastSpecial >= settings.specialIntervalSec * TICKS_PER_SEC && !deps.cooling?.('perform')) {
       fight.lastSpecial = state.ticks;
       state.lastSpecialTick = state.ticks;
+      fight.specialSent = true;
+      if (fight.siege) state.siegeSpecialSent = true;
       deps.send(settings.specialCommand);
     }
     if (!fight.checking && fight.waited >= settings.fightTimeoutSec * TICKS_PER_SEC) lookCheck(fight);

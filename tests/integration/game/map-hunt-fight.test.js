@@ -1923,6 +1923,52 @@ ui('fight: a special refused because nobody is fighting is not sent again in tha
   }
 });
 
+ui('special once: with 每場只放一次特攻 on, a fight lasting several intervals sends the special once and the next monster gets its own', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'pt', specialIntervalSec: 1, specialOnce: 'on', fightTimeoutSec: 600 };
+    const lines = [MOB_LINE, MOB_LINE];
+    const game = world(page, { at: 'a', looks: { c: { lines } }, script: command => {
+      if (command === FIGHT) { setTimeout(() => { lines[lines.findIndex(line => line === MOB_LINE)] = CORPSE_LINE; say(page, '測試怪死了。'); }, 2600); return true; }
+      return command === 'gc';
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 12000), huntText(page));
+    assert.equal(countOf(game, FIGHT), 2, game.log.join(' '));
+    assert.equal(countOf(game, 'pt'), 2, `one special per monster, none repeated over the 2.6 s fights: ${game.log.join(' ')}`);
+    assert.equal(game.log.indexOf('pt') > game.log.indexOf(FIGHT), true);
+  } finally {
+    page.close();
+  }
+});
+
+ui('special once: a siege with several waits counts as one fight and sends the special once in total', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...SIEGE_SETTINGS, specialOnce: 'on', fightTimeoutSec: 600 };
+    const lines = [MOB_FIGHTING, MOB_FIGHTING];
+    const game = world(page, { at: 'a', arrivals: { c: { lines: [...lines, GANG_ATTACK, GANG_ATTACK] } }, looks: { c: { lines } }, script: (command, { say: tell }) => {
+      if (command === 'sp') { lines[0] = KNOCKED_LINE; tell(KO_LINE); return true; }
+      if (command.startsWith('kill ')) { killNth(lines, command); tell('測試怪死了。'); return true; }
+      return command === 'gc';
+    } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, 'l') >= 1, 6000), game.log.join(' '));
+    await sleep(2500);
+    assert.equal(countOf(game, 'sp'), 1, `no second special in the second wait: ${game.log.join(' ')}`);
+    lines[1] = KNOCKED_LINE;
+    say(page, KO_LINE);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
+    assert.equal(countOf(game, 'sp'), 1, game.log.join(' '));
+  } finally {
+    page.close();
+  }
+});
+
 ui('assist: another monster dying in the room is not taken as mine dying', async () => {
   const page = await assistPage({ fightTimeoutSec: 60 });
   try {
