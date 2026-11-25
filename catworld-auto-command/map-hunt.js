@@ -40,6 +40,7 @@ const ARRIVAL_QUIET_TICKS = 3; // 目標房間：出口行之後要這麼多個 
 const ARRIVAL_WAIT_TICKS = PASS_WAIT_TICKS + 6; // 已經看到出口行時，等它印完（安靜）的上限，到了還沒印完就退回送 l；連出口行都沒有時只等 PASS_WAIT_TICKS
 const MOVE_TEXT_PHASES = ['move', 'pass', 'look']; // 這幾個階段把遊戲的輸出接進 moveText
 const TICKS_PER_SEC = 1000 / TICK_MS;
+const OPENER_SPECIAL_WINDOW_TICKS = 3 * TICKS_PER_SEC; // openerHasSpecial：開打指令送出後這麼久內看特攻冷卻條有沒有跑起來
 const LOOT_PART_TICKS = 2; // 撿屍指令送出一段後等遊戲回應（忙碌狀態跟著亮起來）這麼久，再看忙不忙、送下一段
 const LOOT_REPLY_TICKS = 3; // 好幾隻打你的房間，撿屍送出後再等這麼久看會不會被拒（「你還在戰鬥中」）才離開
 const CORPSE_WAIT_TICKS = 5 * TICKS_PER_SEC; // 打完最後一隻、不重數就離開時，最多等撿屍指令送完這麼久（巡怪結束會丟掉還沒送出的指令）
@@ -106,6 +107,7 @@ const FIELDS = [
   { key: 'specialCommand', group: 'special', show: full, row: 'special', label: '特攻指令', hint: '可空，可以是你的別名；等特攻冷卻條跑完、角色不忙碌才送', type: 'text', default: '' },
   { key: 'specialIntervalSec', group: 'special', show: full, row: 'special', label: '最小間隔（秒）', type: 'number', default: 10, min: 1, max: 600 },
   { key: 'specialOnce', group: 'special', show: full, label: '每場只放一次特攻', hint: '開＝每隻怪的一場戰鬥最多送一次特攻，下一隻再送一次；被圍攻（等全部打昏）算一場。被拒或忙碌沒送出去不算，等到送得出去才送；關＝照最小間隔一直送', type: 'select', options: ON_OFF, default: 'off' },
+  { key: 'openerHasSpecial', group: 'special', show: full, label: '開打指令已經含特攻', hint: '開＝開打指令（例如別名裡帶 pf）本身會放特攻：送出後 3 秒內看到特攻冷卻條在跑，就當這場特攻放過了；3 秒內沒跑，就補送一次上面的特攻指令（之後照「每場只放一次」或最小間隔）。補刀與被圍攻不受影響', type: 'select', options: ON_OFF, default: 'off' },
   { key: 'healMode', group: 'heal', label: '補氣方式', type: 'select', options: [['eat', '吃藥'], ['rest', '自己回']], default: 'eat' },
   { key: 'ginBelow', group: 'heal', row: 'gin', label: '精低於 %', hint: '0＝不看', type: 'number', default: 0, min: 0, max: 99 },
   { key: 'ginCommand', group: 'heal', row: 'gin', label: '精低時的指令', hint: '空白＝不看', type: 'text', default: '' },
@@ -1009,6 +1011,7 @@ function create(deps) {
       state.fight = { mob, name: shortName(mob), engaged: false, wrong: false, resolve, finishing, calm, hostileAt: state.hostile, knockout, knockedOut: false, killSent: finishing, buffer: '', noTarget: false, waited: 0, lastSpecial: state.ticks, checking: false, silentChecks: 0, endWords, reKills: 0 };
       deps.notify();
       if (!deps.send(aim(finishing ? killCmd() : fightCmd(), mob))) finish('指令送不出去，已停止', { alert: true });
+      else if (!finishing && state.settings.openerHasSpecial === 'on' && state.settings.specialCommand) { state.fight.openerAt = state.ticks; state.fight.openerPending = true; }
     });
   }
   // 被圍攻時的等待：不送 fight／kill（角色被打時自動還手），只靠 fightTick 放特攻、逾時 l；任一隻打你的怪的結束字出現（onText）或逾時 l 看不到醒著在打你的（lookCheck）就結束。
@@ -1304,13 +1307,26 @@ function create(deps) {
       healInFight();
       if (!state || state.fight !== fight) return;
     }
+    // 開打指令含特攻（openerHasSpecial）：視窗內看到冷卻條在跑＝開打指令的特攻放出去了（當這場送過）；視窗結束還沒看到＝沒放出去，補一次。冷卻條在忙碌檢查之前看，因為放特攻時角色多半正忙
+    if (fight.openerPending) {
+      if (deps.cooling?.('perform')) {
+        fight.openerPending = false;
+        fight.lastSpecial = state.ticks;
+        state.lastSpecialTick = state.ticks;
+        fight.specialSent = true;
+      } else if (state.ticks - fight.openerAt >= OPENER_SPECIAL_WINDOW_TICKS) {
+        fight.openerPending = false;
+        fight.topUp = true;
+      }
+    }
     // 角色忙碌時不送特攻，等候逾時也不算（忙碌中送的會被遊戲拒絕）；補氣照常
     if (deps.busy?.()) return;
     fight.waited += 1;
     // 特攻：怪還活著、這場沒被告知沒有目標、距離上次已過最小間隔、而且遊戲的特攻冷卻條（#perform）跑完了才送；
     // 每場只放一次（specialOnce）開著時，這場送過就不再送（圍攻每次等待都是新的 fight，所以圍攻的旗標放在 state.siegeSpecialSent）
     const onceDone = settings.specialOnce === 'on' && (fight.siege ? state.siegeSpecialSent : fight.specialSent);
-    if (settings.specialCommand && !onceDone && !fight.finishing && !fight.noTarget && state.ticks - fight.lastSpecial >= settings.specialIntervalSec * TICKS_PER_SEC && !deps.cooling?.('perform')) {
+    if (settings.specialCommand && !onceDone && !fight.finishing && !fight.noTarget && !fight.openerPending && (fight.topUp || state.ticks - fight.lastSpecial >= settings.specialIntervalSec * TICKS_PER_SEC) && !deps.cooling?.('perform')) {
+      if (fight.topUp) { fight.topUp = false; record(deps.room() ?? '-', '特攻補放', '開打指令的特攻沒放出去'); }
       fight.lastSpecial = state.ticks;
       state.lastSpecialTick = state.ticks;
       fight.specialSent = true;

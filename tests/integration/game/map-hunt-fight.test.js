@@ -355,6 +355,86 @@ ui('fight: the special attack waits until the game cooldown bar (#perform) has f
   }
 });
 
+// 開打指令含特攻（openerHasSpecial）：測試放一個假的 #perform 冷卻條，回傳開關
+const performBar = page => {
+  const doc = page.w.document;
+  const bar = doc.createElement('div');
+  bar.id = 'perform';
+  const inner = doc.createElement('div');
+  const state = { running: false };
+  inner.getAnimations = () => [{ playState: state.running ? 'running' : 'finished' }];
+  bar.appendChild(inner);
+  doc.body.appendChild(bar);
+  return state;
+};
+
+ui('opener special: when the opening command fires the special (the #perform bar runs), no special is sent in that fight', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'pt', specialIntervalSec: 1, specialOnce: 'on', openerHasSpecial: 'on' };
+    const bar = performBar(page);
+    const script = command => {
+      if (command === FIGHT) { say(page, '你揮拳打中測試怪。'); bar.running = true; setTimeout(() => { bar.running = false; }, 60); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, FIGHT) >= 1, 4000), 'the fight starts');
+    await sleep(600);
+    assert.equal(countOf(game, 'pt'), 0, 'the opener already fired the special, so none is sent');
+    assert.doesNotMatch(await huntLog(page), /特攻補放/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('opener special: when the bar never runs within 3 seconds the special is sent once, then not again (specialOnce)', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'pt', specialIntervalSec: 60, specialOnce: 'on', openerHasSpecial: 'on' };
+    performBar(page);
+    const script = command => {
+      if (command === FIGHT || command === 'pt') { say(page, '你揮拳打中測試怪。'); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, FIGHT) >= 1, 4000), 'the fight starts');
+    await sleep(60);
+    assert.equal(countOf(game, 'pt'), 0, 'nothing is sent inside the 3-second window');
+    assert.ok(await waitFor(() => countOf(game, 'pt') >= 1, 4000), 'the special is topped up once the window is over');
+    await sleep(400);
+    assert.equal(countOf(game, 'pt'), 1, 'exactly one special in this fight');
+    assert.match(await huntLog(page), /特攻補放/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('opener special: with the option off the special follows the interval as before, even when the bar ran after the opener', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'pt', specialIntervalSec: 1, specialOnce: 'on' };
+    const bar = performBar(page);
+    const script = command => {
+      if (command === FIGHT) { say(page, '你揮拳打中測試怪。'); bar.running = true; setTimeout(() => { bar.running = false; }, 60); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, 'pt') >= 1, 4000), 'the special goes by the interval');
+    assert.doesNotMatch(await huntLog(page), /特攻補放/);
+  } finally {
+    page.close();
+  }
+});
+
 ui('fight: the special attack repeats while the monster lives, a busy refusal is just waited out, and it stops with the end sentence', async () => {
   const page = await boot({ scale: SCALE });
   try {

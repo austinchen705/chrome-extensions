@@ -256,6 +256,17 @@ ui('the once-per-fight special switch sits in the special group and is off by de
   }
 });
 
+ui('the opener-has-special switch sits in the special group and is off by default', async () => {
+  const { dom, doc } = await boot();
+  try {
+    const select = field(doc, 'openerHasSpecial');
+    assert.ok(doc.getElementById('fold-hunt-special').contains(select));
+    assert.equal(select.value, 'off');
+  } finally {
+    dom.window.close();
+  }
+});
+
 ui('the fields are split into closed folds whose titles carry the main values', async () => {
   const { dom, doc } = await boot({ mapHuntSettings: { eatCommand: 'tn', homeCommand: 'ride', specialCommand: 'ps' } });
   try {
