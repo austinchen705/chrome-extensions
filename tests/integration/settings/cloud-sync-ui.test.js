@@ -174,19 +174,13 @@ ui('the password is kept locally and shown again next time, but never goes into 
   }
 });
 
-ui('an empty url shows a red message and sends nothing; a missing password, character or block shows an amber one', async () => {
+ui('a missing password, character or block shows an amber one and sends nothing', async () => {
   const page = await boot({ store: { ...STORE } });
   try {
-    page.input('cloudPassword', 'pw-1');
-    await page.press('cloudUpload');
-    assert.deepEqual([page.msg().text, page.msg().error], ['雲端同步網址還沒設定', true]);
-    await page.press('cloudDownload');
-    assert.deepEqual([page.msg().text, page.msg().error], ['雲端同步網址還沒設定', true]);
-    assert.equal(page.calls.length, 0);
     page.input('cloudUrl', URL_OK);
     page.input('cloudPassword', '');
     await page.press('cloudUpload');
-    assert.deepEqual([page.msg().text, page.msg().warn, page.msg().error], ['請填同步密碼', true, false], 'the red from before is cleared');
+    assert.deepEqual([page.msg().text, page.msg().warn, page.msg().error], ['請填同步密碼', true, false]);
     page.input('cloudPassword', 'pw-1');
     page.input('cloudAccount', '');
     await page.press('cloudUpload');

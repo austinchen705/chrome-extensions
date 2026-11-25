@@ -13,8 +13,9 @@ test('the character is the part of the game tab title before " - "; no separator
   assert.equal(CS.characterFromTitle(undefined), '');
 });
 
-test('the built-in url is empty until the author deploys', () => {
-  assert.equal(CS.DEFAULT_URL, '');
+test('the built-in url is the deployed Apps Script web app', () => {
+  assert.ok(CS.DEFAULT_URL.startsWith(CS.URL_PREFIX), CS.DEFAULT_URL);
+  assert.ok(CS.DEFAULT_URL.endsWith('/exec'), CS.DEFAULT_URL);
 });
 
 test('call posts text/plain JSON (no CORS preflight) with only the fields given', async () => {

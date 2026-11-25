@@ -1,8 +1,8 @@
 // 雲端同步（設定頁專用，只有 popup.html 載入）：和作者部署的 Apps Script（tools/apps-script/settings-sync.gs）說話的純函式，
 // 不碰 DOM 與 chrome.*。請求與回應格式見 docs/claude/cloud-sync.md。
 (() => {
-// 作者部署的網頁應用程式網址。空的＝還沒設定：設定頁顯示錯誤、不送任何請求；設定頁「進階」欄位填了就以欄位為準
-const DEFAULT_URL = '';
+// 作者部署的網頁應用程式網址（tools/apps-script/settings-sync.gs）。空的＝還沒設定：設定頁顯示錯誤、不送任何請求；設定頁「進階」欄位填了就以欄位為準
+const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbxa5bpxnTkJLbI0yuTI1Ilw1mtQQALEDTQTb2qWtaS9z5oqYfXXNmrRXyn18_wWBlng/exec';
 // 別的主機 manifest 沒有權限打，會悄悄失敗
 const URL_PREFIX = 'https://script.google.com/macros/';
 const TIMEOUT_MS = 30000;
