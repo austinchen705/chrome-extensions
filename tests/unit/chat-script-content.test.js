@@ -154,13 +154,13 @@ test('no week 46 script opens like any other script (first batch, evergreen, bui
   }));
 });
 
-// 棒壘球那批（docs/data/chat-scripts-baseball.csv）：10 份常青劇本（週留空）
+// 壘球那批（docs/data/chat-scripts-baseball.csv）：14 份常青劇本（週留空）
 const baseball = S.buildChatScripts(fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'data', 'chat-scripts-baseball.csv'), 'utf8').replace(/\r\n/g, '\n'), IN_WEEK46);
 
-test('the baseball batch has 10 evergreen scripts that pass the sheet rules, 8 turns each, opening with A', () => {
+test('the baseball batch has 14 evergreen scripts that pass the sheet rules, 8 turns each, opening with A', () => {
   assert.equal(baseball.ok, true);
-  assert.deepEqual([baseball.report.used, baseball.report.dropped.length, baseball.report.unmatched.length], [10, 0, 0]);
-  assert.equal(C.usableScripts(baseball.scripts).length, 10);
+  assert.deepEqual([baseball.report.used, baseball.report.dropped.length, baseball.report.unmatched.length], [14, 0, 0]);
+  assert.equal(C.usableScripts(baseball.scripts).length, 14);
   baseball.scripts.forEach(script => {
     assert.equal(turnCount(script), 8, script.id);
     assert.equal(script.lines[0].who, 'A', script.id);
