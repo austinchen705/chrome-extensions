@@ -1278,7 +1278,7 @@ async function refreshLive() {
 // 這時不能把匯入前的備份換回舊的（新的那份可能是唯一的回頭路）
 const UNREACHABLE = /Receiving end does not exist|請先切到|No tab|Could not establish connection/;
 const macroError = (error, extra = {}) => Object.assign(error instanceof Error ? error : new Error(String(error)), extra);
-CatworldMacroIOUI.attach(document.getElementById('sec-macro'), {
+const macroDeps = {
   readRaw: async () => {
     let reply;
     try { reply = await send({ type: 'MACRO_READ' }); } catch (error) { throw macroError(error, { unreachable: true }); }
@@ -1300,7 +1300,8 @@ CatworldMacroIOUI.attach(document.getElementById('sec-macro'), {
   // 匯入前自動留的一份備份（只留一層，只存在本機，不進匯出）
   readBackup: async () => (await chrome.storage.local.get('macroBackup')).macroBackup,
   writeBackup: backup => chrome.storage.local.set({ macroBackup: backup }),
-});
+};
+CatworldMacroIOUI.attach(document.getElementById('sec-macro'), macroDeps);
 
 // 地圖巡怪：欄位、預設值與檢查都由 map-hunt.js 的 FIELDS 決定；每改一個欄位就存整份（不合法的欄位退回預設並顯示回去）。
 // 欄位依 GROUPS 分成摺疊區塊（id 是 fold-hunt-<組>，展開狀態和其他摺疊一樣記在 popupFolds），收起時標題寫出重點；
@@ -1856,17 +1857,19 @@ try {
   $('cloudBlocks').append(...BLOCKS.map(block => element('label', { style: 'display:block' },
     element('input', { type: 'checkbox', checked: true, id: `cloudBlock-${block.id}` }), ` ${block.label}`)));
   const boxes = BLOCKS.map(block => $(`cloudBlock-${block.id}`));
-  const controls = [...Object.values(fields), ...boxes, ...buttons];
+  const macrosBox = $('cloudMacros');
+  const controls = [...Object.values(fields), ...boxes, macrosBox, ...buttons];
   const chosen = () => BLOCKS.filter(block => $(`cloudBlock-${block.id}`).checked);
   const setBusy = busy => controls.forEach(control => { control.disabled = busy || settingsFrozen; });
 
   // 載入完成前整區停用：否則一打字就把空欄位存回去，蓋掉已存的值；載入失敗維持停用
   setBusy(true);
   (async () => {
-    const stored = await chrome.storage.local.get(['cloudSyncUrl', 'cloudSyncAccount', 'cloudSyncPassword', 'cloudSyncBlocks']);
+    const stored = await chrome.storage.local.get(['cloudSyncUrl', 'cloudSyncAccount', 'cloudSyncPassword', 'cloudSyncBlocks', 'cloudSyncMacros']);
     fields.url.value = stored.cloudSyncUrl ?? '';
     fields.password.value = stored.cloudSyncPassword ?? '';
     if (Array.isArray(stored.cloudSyncBlocks)) boxes.forEach((box, i) => { box.checked = stored.cloudSyncBlocks.includes(BLOCKS[i].id); });
+    macrosBox.checked = stored.cloudSyncMacros === true;
     // 遊戲分頁的標題是「角色名 - …」：讀得到就用它，讀不到沿用上次存的；可以手動改
     let fromTab = '';
     try {
@@ -1882,6 +1885,8 @@ try {
   fields.password.addEventListener('input', () => chrome.storage.local.set({ cloudSyncPassword: fields.password.value }));
   boxes.forEach(box => box.addEventListener('change', () => chrome.storage.local.set({ cloudSyncBlocks: chosen().map(block => block.id) })));
 
+  macrosBox.addEventListener('change', () => chrome.storage.local.set({ cloudSyncMacros: macrosBox.checked }));
+
   // 送出前的檢查：缺什麼就停下來說明，什麼都不送
   const context = () => {
     const account = fields.account.value.trim();
@@ -1890,9 +1895,29 @@ try {
     if (!password) { say('請填同步密碼', 'warn'); return null; }
     if (!chosen().length) { say('請至少勾選一個區塊', 'warn'); return null; }
     const url = fields.url.value.trim() || CS.DEFAULT_URL;
-    return { url, account, password, ids: chosen().map(block => block.id), labels: chosen().map(block => block.label) };
+    return { url, account, password, ids: chosen().map(block => block.id), labels: chosen().map(block => block.label), macros: macrosBox.checked };
   };
   const post = (ctx, action, payload) => CS.call((...args) => fetch(...args), { url: ctx.url, action, account: ctx.account, password: ctx.password, payload });
+
+  // 和遊戲巨集「匯出」同一條讀法（macroDeps、readMacros、exportText）；讀不全就整個不上傳，免得雲端的巨集被空的或缺一半的蓋掉
+  async function readGameMacros() {
+    const M = CatworldMacroIO;
+    let raw;
+    try {
+      raw = await macroDeps.readRaw();
+    } catch (e) {
+      return { error: e?.unreachable ? `連不上遊戲分頁，請先開著遊戲再上傳（${e.message}）` : `讀不到遊戲的巨集（${e.message}）` };
+    }
+    const read = M.readMacros(raw);
+    if (read.status === 'damaged') return { error: '遊戲存的巨集資料讀不懂，為了不蓋掉雲端的巨集，什麼都沒有上傳' };
+    let notes;
+    try {
+      notes = await macroDeps.readNotes();
+    } catch (e) {
+      return { error: `讀不到巨集備註（${e.message}）` };
+    }
+    return { macros: JSON.parse(M.exportText(read.macros, notes)) };
+  }
 
   async function upload() {
     const ctx = context();
@@ -1900,9 +1925,39 @@ try {
     say('上傳中…');
     const store = await chrome.storage.local.get(BACKUP_KEYS);
     const settings = CatworldSettingsBackup.exportData(store, { blocks: ctx.ids, secrets: false, version: chrome.runtime.getManifest().version });
-    const result = await post(ctx, 'upload', { settings });
+    const payload = { settings };
+    if (ctx.macros) {
+      const game = await readGameMacros();
+      if (game.error) { say(`遊戲巨集讀不到，什麼都沒有上傳：${game.error}`, 'error'); return; }
+      payload.macros = game.macros;
+    }
+    const result = await post(ctx, 'upload', payload);
     if (!result.ok) { say(CS.errorText(result, ctx.account), 'error'); return; }
-    say(`${CS.formatTime(result.updatedAt)} 已上傳 ${ctx.ids.length} 個區塊${result.claimed ? `（已用這組密碼認領 ${ctx.account}）` : ''}`);
+    say(`${CS.formatTime(result.updatedAt)} 已上傳 ${ctx.ids.length} 個區塊${ctx.macros ? '與遊戲巨集' : ''}${result.claimed ? `（已用這組密碼認領 ${ctx.account}）` : ''}`);
+  }
+
+  // 和遊戲巨集「匯入」同一條寫入路徑：parseImport 檢查、先備份、備份寫不進去就不寫、再寫遊戲的 localStorage 與備註。
+  // 回 { level, text }；設定那邊已經寫好了，這裡的失敗只影響巨集
+  async function applyCloudMacros(data) {
+    const M = CatworldMacroIO;
+    const parsed = M.parseImport(JSON.stringify(data));
+    if (!parsed.ok) return { level: 'error', text: `雲端的遊戲巨集不能用，巨集沒有動：${parsed.error}` };
+    const backed = await CatworldMacroIOUI.backupBeforeWrite(macroDeps);
+    if (backed.unreachable) return { level: 'warn', text: '遊戲分頁沒有開，遊戲巨集沒有下載；請打開遊戲後再下載一次' };
+    if (backed.error) return { level: 'error', text: `遊戲巨集沒有下載：${backed.error}` };
+    try {
+      await macroDeps.writeMacros(JSON.stringify(parsed.macros));
+    } catch (e) {
+      if (e?.unknown) return { level: 'warn', text: `不確定遊戲的巨集有沒有寫進去（${e.message}）。請重新整理遊戲頁看看；寫入前的備份已留好，可以在「遊戲巨集匯入匯出」按「還原上一份」` };
+      if (backed.previous !== undefined) await macroDeps.writeBackup(backed.previous).catch(() => {}); // 沒寫成，新備份只是「現在的樣子」，不能蓋掉舊的
+      return { level: 'error', text: `遊戲巨集沒有下載：遊戲的儲存寫不進去（${e.message}）` };
+    }
+    try {
+      await macroDeps.writeNotes(parsed.notes);
+    } catch (e) {
+      return { level: 'warn', text: `遊戲巨集已寫入，但備註沒有寫進去（${e.message}）。請重新整理遊戲頁` };
+    }
+    return { text: '遊戲巨集與備註已寫入（寫入前的備份可以在「遊戲巨集匯入匯出」按「還原上一份」），請重新整理遊戲頁，遊戲才會讀到新的巨集' };
   }
 
   async function download() {
@@ -1911,20 +1966,39 @@ try {
     say('查詢雲端中…');
     const info = await post(ctx, 'info');
     if (!info.ok) { say(CS.errorText(info, ctx.account), 'error'); return; }
-    if (!confirm(`雲端 ${ctx.account} 的設定是 ${CS.formatTime(info.updatedAt)} 上傳的（擴充功能版本 ${info.exportedWith || '不明'}）。\n要覆蓋這些區塊：${ctx.labels.join('、')}\n覆蓋前會先備份目前的設定。要下載嗎？`)) { say('已取消'); return; }
+    if (!confirm(`雲端 ${ctx.account} 的設定是 ${CS.formatTime(info.updatedAt)} 上傳的（擴充功能版本 ${info.exportedWith || '不明'}）。\n要覆蓋這些區塊：${ctx.labels.join('、')}\n覆蓋前會先備份目前的設定。${ctx.macros ? '\n如果雲端有遊戲巨集，遊戲現在的 90 格巨集與備註會被整份取代（先備份，可以在「遊戲巨集匯入匯出」按「還原上一份」）。' : ''}\n要下載嗎？`)) { say('已取消'); return; }
     say('下載中…');
     const got = await post(ctx, 'download');
     if (!got.ok) { say(CS.errorText(got, ctx.account), 'error'); return; }
     const checked = CatworldSettingsBackup.checkImport(JSON.stringify(got.payload?.settings ?? null));
     if (!checked.ok) { say(`雲端的設定不能用，什麼都沒有動：${checked.error}`, 'error'); return; }
+    const cloudMacros = ctx.macros ? got.payload.macros : undefined;
+    const wantMacros = cloudMacros !== undefined && cloudMacros !== null;
     const ids = ctx.ids.filter(id => checked.blocks.includes(id));
-    if (!ids.length) { say('雲端的設定裡沒有你勾選的區塊，什麼都沒有動', 'warn'); return; }
-    const current = await chrome.storage.local.get([...BACKUP_KEYS, 'settingsBackup']);
-    const plan = CatworldSettingsBackup.planImport(current, checked.data, { blocks: ids, secrets: false });
-    if (!await applyImportPlan(current, plan, say, '雲端的內容和現在一樣，沒有任何變動（舊的備份沒有動）')) return;
+    let settingsNote = { text: '雲端的設定裡沒有你勾選的區塊，什麼都沒有動', level: 'warn' };
+    let applied = false;
+    let plan;
+    if (ids.length) {
+      const current = await chrome.storage.local.get([...BACKUP_KEYS, 'settingsBackup']);
+      plan = CatworldSettingsBackup.planImport(current, checked.data, { blocks: ids, secrets: false });
+      applied = await applyImportPlan(current, plan, (text, level) => { settingsNote = { text, level }; }, '雲端的內容和現在一樣，沒有任何變動（舊的備份沒有動）');
+      if (!applied && settingsNote.level === 'error') { say(settingsNote.text, 'error'); return; }
+    }
+    if (!applied && !wantMacros) { say(settingsNote.text, settingsNote.level); return; }
     // 和檔案匯入一樣：頁上的欄位是舊值，整頁停用
-    freezeSettingsPage();
-    say(`${CS.formatTime(got.updatedAt)} 的雲端設定已套用 ${plan.blocks.length} 個區塊。這個設定頁已停用：請重新整理遊戲分頁，並把設定頁關掉再重新開啟`);
+    if (applied) freezeSettingsPage();
+    const parts = [applied
+      ? `${CS.formatTime(got.updatedAt)} 的雲端設定已套用 ${plan.blocks.length} 個區塊。這個設定頁已停用：請重新整理遊戲分頁，並把設定頁關掉再重新開啟`
+      : settingsNote.text];
+    let level = applied ? undefined : settingsNote.level;
+    if (ctx.macros && !wantMacros) parts.push('雲端沒有遊戲巨集，遊戲的巨集沒有動');
+    if (wantMacros) {
+      const macros = await applyCloudMacros(cloudMacros);
+      parts.push(macros.text);
+      const rank = { error: 2, warn: 1 };
+      if ((rank[macros.level] ?? 0) > (rank[level] ?? 0)) level = macros.level;
+    }
+    say(parts.join('\n'), level);
   }
 
   const run = action => async () => {

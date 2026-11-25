@@ -100,6 +100,36 @@ function setupExport(pick, deps, messages) {
   });
 }
 
+// 寫進遊戲之前先把現在的留起來（原樣的巨集文字加備註），留不住就不寫，免得一邊沒備份一邊覆蓋；設定頁的匯入與雲端下載共用。
+// 成功回 { previous }（原本那份備份，之後寫入失敗時要放回去），失敗回 { error: 說明, unreachable }（unreachable＝連不上遊戲分頁）
+async function backupBeforeWrite(deps) {
+  const M = globalThis.CatworldMacroIO;
+  let raw;
+  try {
+    raw = await deps.readRaw();
+  } catch (error) {
+    return { error: `讀不到目前遊戲的巨集，沒辦法留備份（${describeError(error)}）`, unreachable: Boolean(error?.unreachable) };
+  }
+  let notes;
+  try {
+    notes = await deps.readNotes();
+  } catch (error) {
+    return { error: `讀不到目前的備註，沒辦法留完整的備份（${describeError(error)}）` };
+  }
+  let previous;
+  try {
+    previous = await deps.readBackup();
+  } catch {
+    previous = undefined; // 原本的備份讀不到，就沒有東西可以在失敗時放回去
+  }
+  try {
+    await deps.writeBackup(M.makeBackup(raw, notes, Date.now()));
+  } catch (error) {
+    return { error: `匯入前的備份寫不進去（${describeError(error)}），為了讓你能回頭，匯入沒有進行` };
+  }
+  return { previous };
+}
+
 function setupImport(pick, deps, messages) {
   const M = globalThis.CatworldMacroIO;
   const importBox = pick('.macro-import');
@@ -173,34 +203,14 @@ function setupImport(pick, deps, messages) {
     return true;
   }
 
-  // 匯入取代之前先把現在的留起來（原樣的巨集文字加備註），留不住就不匯入，免得一邊沒備份一邊覆蓋。
   // 成功回 { previous }（原本那份備份，之後匯入失敗時要放回去），失敗已經顯示原因並回 null
   async function backupCurrent() {
-    const current = await readCurrentRaw();
-    if (current.error) {
-      messages.show(`${IMPORT_FAILED}讀不到目前遊戲的巨集，沒辦法留備份（${describeError(current.error)}）`, { level: 'error' });
+    const backed = await backupBeforeWrite(deps);
+    if (backed.error) {
+      messages.show(`${IMPORT_FAILED}${backed.error}`, { level: 'error' });
       return null;
     }
-    let notes;
-    try {
-      notes = await deps.readNotes();
-    } catch (error) {
-      messages.show(`${IMPORT_FAILED}讀不到目前的備註，沒辦法留完整的備份（${describeError(error)}）`, { level: 'error' });
-      return null;
-    }
-    let previous;
-    try {
-      previous = await deps.readBackup();
-    } catch {
-      previous = undefined; // 原本的備份讀不到，就沒有東西可以在失敗時放回去
-    }
-    try {
-      await deps.writeBackup(M.makeBackup(current.raw, notes, Date.now()));
-    } catch (error) {
-      messages.show(`${IMPORT_FAILED}匯入前的備份寫不進去（${describeError(error)}），為了讓你能回頭，匯入沒有進行`, { level: 'error' });
-      return null;
-    }
-    return { previous };
+    return backed;
   }
 
   pick('.mimport').addEventListener('click', () => {
@@ -268,5 +278,5 @@ function attach(root, deps) {
   setupImport(pick, deps, messages);
 }
 
-globalThis.CatworldMacroIOUI = { attach };
+globalThis.CatworldMacroIOUI = { attach, backupBeforeWrite };
 })();

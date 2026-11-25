@@ -25,7 +25,7 @@ const SECRET_KEYS = ['lineNotify', 'captchaSampleUrl'];
 const EXCLUDED_KEYS = [
   'running', 'randomRunning', 'stopReason',
   'sharedCache', 'updateCheck', 'lineLastResult', 'lineThrottle', 'captchaSampleLastResult', 'chatScriptState', 'mapHuntChainTrial',
-  'cloudSyncPassword', 'cloudSyncAccount', 'cloudSyncBlocks',
+  'cloudSyncPassword', 'cloudSyncAccount', 'cloudSyncBlocks', 'cloudSyncMacros',
   'popupFolds', 'popupTab', 'panelUi', 'pipSize', 'macroWindowSize', 'statsCollapsed',
   'macroBackup', 'macroNotesWriter', 'settingsBackup',
 ];

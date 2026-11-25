@@ -600,6 +600,7 @@
         <input id="cloudPassword" type="password" autocomplete="off">
         <div class="hint tight">同步哪些區塊：</div>
         <div id="cloudBlocks"></div>
+        <label style="display:block"><input type="checkbox" id="cloudMacros"> 遊戲巨集與備註（要開著遊戲分頁；上傳讀遊戲現在的巨集，下載會整份取代遊戲的巨集）</label>
         <button id="cloudUpload" type="button">上傳到雲端</button>
         <button id="cloudDownload" type="button">從雲端下載</button>
         <div id="cloudMsg" class="hint tight"></div>
@@ -608,7 +609,7 @@
           <label for="cloudUrl">雲端同步網址（空白＝用內建的）</label>
           <input id="cloudUrl" type="text" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec">
         </details>
-        <p class="hint tight">把勾選區塊的設定存到作者的雲端，換電腦時再下載回來；下載會先備份目前的設定，覆蓋後可以在「設定備份」按「還原上一份」。LINE 憑證與樣本收集網址不會上傳，同步密碼只存在這台瀏覽器的本機，不會匯出。遊戲巨集不在這裡。</p>
+        <p class="hint tight">把勾選區塊的設定存到作者的雲端，換電腦時再下載回來；下載會先備份目前的設定，覆蓋後可以在「設定備份」按「還原上一份」。LINE 憑證與樣本收集網址不會上傳，同步密碼只存在這台瀏覽器的本機，不會匯出。勾「遊戲巨集與備註」時，遊戲的 90 格巨集與備註也一起上傳；下載時會先備份遊戲現在的巨集，可以在「遊戲巨集匯入匯出」按「還原上一份」。</p>
       </details>
     </details>
   </div>
