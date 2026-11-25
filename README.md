@@ -814,6 +814,19 @@ function doGet() {
 
 **把樣本變成字形**：`curl -L <網頁應用程式網址>` 會把全部樣本以 JSON 下載回來（或把「HTML」那一格的內容存成檔案），`node tools/captcha-grid.js <檔> --debug` 會印出每個字形的矩陣；確認後貼進 `captcha-grid.js` 的 `LIBRARY`，樣本放進 `tests/fixtures/captcha/`。
 
+## 設定雲端同步（作者部署）
+
+設定雲端同步用一支 Apps Script 網頁應用程式當倉庫：每個遊戲角色在作者的 Google Drive 存一份設定，玩家不用做任何 Google 授權，只要同步密碼。伺服器原始碼是 `tools/apps-script/settings-sync.gs`，請求與回應格式見 `docs/claude/cloud-sync.md`。**作者部署一次就好**（約 5 分鐘）：
+
+1. 到 [script.google.com](https://script.google.com) 新增專案。**要開獨立專案**，不要放進驗證碼樣本收集用的試算表（兩邊各有自己的 `doPost`）。
+2. 把 `tools/apps-script/settings-sync.gs` 的全部內容貼進去取代原本的內容，存檔。
+3. 右上角「部署 → 新增部署作業」，類型選「網頁應用程式」，「執行身分」選**我**、「誰可以存取」選**任何人**，按「部署」，第一次會要求授權這個指令碼存取你的雲端硬碟，授權一次即可。複製「網頁應用程式」的網址（`https://script.google.com/macros/s/…/exec`）。
+4. 第一次有人上傳時，會在你的雲端硬碟根目錄自動建立 `catworld-settings-sync` 資料夾，並把它的 ID 記在指令碼屬性 `FOLDER_ID`（資料夾改名、搬家都找得到）。想用現成的資料夾，到「專案設定 → 指令碼屬性」自己加 `FOLDER_ID`，值是資料夾網址最後那一段。
+5. 改過指令碼要重新部署（「部署 → 管理部署作業 → 編輯 → 版本：新版本」），網址不變。
+
+- **作者看得到朋友的設定檔**（Drive 裡每個角色一個 `<角色>.json`），但看不到密碼：只存加鹽的雜湊。
+- **朋友忘記同步密碼**：到資料夾刪掉那個角色的檔，他就能重新用新密碼上傳認領。
+
 ## 額外的遊戲網址（臨時）
 
 extension 預設只在遊戲網站（`https://catworld.muds.tw/web…`）上出現面板。要在別的網站用（例如把遊戲轉到 ngrok 的臨時網址），**不用改 extension 的檔案**，在設定頁加進去就好：

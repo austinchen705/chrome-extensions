@@ -32,6 +32,7 @@
 | 手機通知（LINE） | `docs/claude/line-notify.md` | `line-notify.js`、`background.js` 的 `ALERT` |
 | 共用資料（試算表） | `docs/claude/shared-data.md` | `shared-data.js`、`background.js` 的 `refreshShared` |
 | 巨集匯入匯出 | `docs/claude/macro-io.md` | `macro-io.js`、`macro-io-ui.js` |
+| 設定雲端同步（Apps Script 伺服器的請求與回應、認領、資料夾） | `docs/claude/cloud-sync.md` | `tools/apps-script/settings-sync.gs`、雲端同步分頁 |
 | 設定備份（新增儲存鍵也要讀） | `docs/claude/settings-backup.md` | `settings-backup.js`、任何新的 `chrome.storage` 鍵 |
 | 額外的遊戲網址 | `docs/claude/extra-game-urls.md` | `game-urls.js`、manifest 權限 |
 | 巨集視窗調整大小 | `docs/claude/macro-resize.md` | `macro-resize.js` |
