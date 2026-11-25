@@ -29,11 +29,37 @@ curl -fsSL https://raw.githubusercontent.com/austinchen705/chrome-extensions/mai
 
 | 變數 | 作用 |
 |---|---|
+| `CATWORLD_VERSION` | 安裝指定版本（例如 `1.168.0`、`v1.168.0`），不設就裝最新版 |
 | `CHROME_EXT_DIR` | 改裝到指定資料夾 |
 | `CHROME_EXT_NAME` | 指定 extension（預設 `catworld-auto-command`） |
 | `CHROME_EXT_NO_OPEN=1` | 不要自動開啟 `chrome://extensions` |
 
 PowerShell 設定方式：`$env:CHROME_EXT_DIR = 'D:\tools\catworld'` 之後再貼上面那行；macOS / Linux：`CHROME_EXT_DIR=~/tools/catworld curl -fsSL … | sh`。
+
+## 安裝指定版本
+
+每個版本都有 git tag（`v<版本>`），可用的版本列在 [tags 頁面](https://github.com/austinchen705/chrome-extensions/tags)。指定版本時安裝的是那個 tag 的程式碼；版本不存在會直接報「找不到版本」，不會改裝最新版。
+
+Windows（PowerShell 用環境變數指定，再貼安裝指令）：
+
+```powershell
+$env:CATWORLD_VERSION = '1.168.0'
+irm https://raw.githubusercontent.com/austinchen705/chrome-extensions/main/install.ps1 | iex
+```
+
+macOS / Linux（版本放在 `sh -s --` 後面，也可以用 `CATWORLD_VERSION=1.168.0` 環境變數）：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/austinchen705/chrome-extensions/main/install.sh | sh -s -- 1.168.0
+```
+
+有 Node 與 git 的人（版本寫在網址的 `#` 後面）：
+
+```sh
+npx github:austinchen705/chrome-extensions#v1.168.0
+```
+
+裝的版本比目前已安裝的低時會顯示「降版：vX → vY」，同一版則顯示「重新安裝 vX」。設定存在瀏覽器裡，換版本不會清掉；降版時，舊版不認得的設定會被它忽略（再換回新版時仍在）。
 
 ## 更新
 

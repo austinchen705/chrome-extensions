@@ -1,6 +1,6 @@
 # 不需要 Node / git 的安裝與更新腳本（Windows PowerShell 5.1 以上）：
 #   irm https://raw.githubusercontent.com/austinchen705/chrome-extensions/main/install.ps1 | iex
-# 環境變數（可省略）：CHROME_EXT_NAME 指定 extension、CHROME_EXT_DIR 指定安裝資料夾、CHROME_EXT_NO_OPEN=1 不自動開啟 chrome://extensions
+# 環境變數（可省略）：CATWORLD_VERSION 指定版本（例 1.168.0 或 v1.168.0，不設就裝最新版）、CHROME_EXT_NAME 指定 extension、CHROME_EXT_DIR 指定安裝資料夾、CHROME_EXT_NO_OPEN=1 不自動開啟 chrome://extensions
 # 用 iex 執行時不能 exit（會關掉使用者的終端機），所以全部包在函式裡，用 return 結束。
 function Install-ChromeExtension {
   $ErrorActionPreference = 'Stop'
@@ -11,6 +11,14 @@ function Install-ChromeExtension {
   $target = if ($env:CHROME_EXT_DIR) { $env:CHROME_EXT_DIR } else { Join-Path $HOME "chrome-extensions\$name" }
   $target = [IO.Path]::GetFullPath($target)
 
+  $version = ''
+  if ($env:CATWORLD_VERSION) {
+    $version = $env:CATWORLD_VERSION.Trim()
+    if ($version -notmatch '^[vV]?[0-9]+(\.[0-9]+)*$') { Write-Host "版本格式不合法：$version（例：1.168.0 或 v1.168.0）"; return }
+    $version = $version -replace '^[vV]', ''
+  }
+  $zipUrl = if ($version) { "https://github.com/austinchen705/chrome-extensions/archive/refs/tags/v$version.zip" } else { 'https://github.com/austinchen705/chrome-extensions/archive/refs/heads/main.zip' }
+
   $versionOf = {
     param($dir)
     try { (Get-Content -Raw -Encoding UTF8 (Join-Path $dir 'manifest.json') | ConvertFrom-Json).version } catch { $null }
@@ -20,8 +28,15 @@ function Install-ChromeExtension {
   New-Item -ItemType Directory -Path $work | Out-Null
   try {
     $zip = Join-Path $work 'repo.zip'
-    Write-Host '下載最新版本…'
-    Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/austinchen705/chrome-extensions/archive/refs/heads/main.zip' -OutFile $zip
+    Write-Host $(if ($version) { "下載 v${version}…" } else { '下載最新版本…' })
+    try {
+      Invoke-WebRequest -UseBasicParsing -Uri $zipUrl -OutFile $zip
+    } catch {
+      $status = $null
+      try { $status = [int]$_.Exception.Response.StatusCode } catch { }
+      if ($version -and $status -eq 404) { Write-Host "找不到版本 v$version，可用的版本見 https://github.com/austinchen705/chrome-extensions/tags"; return }
+      throw
+    }
     Expand-Archive -Path $zip -DestinationPath $work
     $source = Get-ChildItem -Path $work -Directory | ForEach-Object { Join-Path $_.FullName $name } | Where-Object { Test-Path (Join-Path $_ 'manifest.json') } | Select-Object -First 1
     if (-not $source) { Write-Host "找不到 extension：$name"; return }
@@ -40,7 +55,12 @@ function Install-ChromeExtension {
 
   $newVersion = & $versionOf $target
   Write-Host "已安裝 $name v$newVersion → $target"
-  if ($oldVersion) { Write-Host "升級：v$oldVersion → v$newVersion" }
+  if ($oldVersion) {
+    $order = try { ([version]$newVersion).CompareTo([version]$oldVersion) } catch { 1 }
+    if ($order -gt 0) { Write-Host "升級：v$oldVersion → v$newVersion" }
+    elseif ($order -lt 0) { Write-Host "降版：v$oldVersion → v$newVersion" }
+    else { Write-Host "重新安裝 v$newVersion" }
+  }
 
   # 以下兩個動作只是方便，失敗不影響安裝結果
   try { Set-Clipboard -Value $target } catch { }

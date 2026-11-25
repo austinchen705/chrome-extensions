@@ -24,6 +24,7 @@ if (flag('--help') || flag('-h')) {
 
 可安裝的 extension：${extensions.join('、')}
 預設安裝到：${path.join(os.homedir(), 'chrome-extensions', '<名稱>')}
+安裝的是 npx 取得的那份程式碼；要指定版本，在網址後面加 #v<版本>，例如 npx github:austinchen705/chrome-extensions#v1.168.0
   --dir <路徑>  指定安裝資料夾
   --no-open     不要自動開啟 chrome://extensions`);
   process.exit(0);
@@ -34,6 +35,17 @@ if (!name || !extensions.includes(name)) {
   console.error(`請指定要安裝的 extension：${extensions.join('、')}`);
   process.exit(1);
 }
+
+// 逐段比數字：回傳 -1／0／1
+const compareVersions = (a, b) => {
+  const x = a.split('.').map(Number);
+  const y = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] || 0) - (y[i] || 0);
+    if (d) return Math.sign(d);
+  }
+  return 0;
+};
 
 const versionOf = dir => {
   try {
@@ -60,7 +72,10 @@ fs.cpSync(source, target, { recursive: true });
 
 const newVersion = versionOf(target);
 console.log(`已安裝 ${name} v${newVersion} → ${target}`);
-if (oldVersion) console.log(`升級：v${oldVersion} → v${newVersion}`);
+if (oldVersion) {
+  const order = compareVersions(newVersion, oldVersion);
+  console.log(order > 0 ? `升級：v${oldVersion} → v${newVersion}` : order < 0 ? `降版：v${oldVersion} → v${newVersion}` : `重新安裝 v${newVersion}`);
+}
 
 // 以下兩個動作只是方便，失敗不影響安裝結果
 const quietly = (command, commandArgs, input) => {

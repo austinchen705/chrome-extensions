@@ -1,6 +1,7 @@
 #!/bin/sh
 # 不需要 Node / git 的安裝與更新腳本（macOS / Linux）：
 #   curl -fsSL https://raw.githubusercontent.com/austinchen705/chrome-extensions/main/install.sh | sh
+# 指定版本：curl -fsSL … | sh -s -- 1.168.0（或 v1.168.0），也可用環境變數 CATWORLD_VERSION；不指定就裝最新版
 # 環境變數（可省略）：CHROME_EXT_NAME 指定 extension、CHROME_EXT_DIR 指定安裝資料夾、CHROME_EXT_NO_OPEN=1 不自動開啟 chrome://extensions
 set -eu
 
@@ -10,6 +11,24 @@ case "$name" in
 esac
 target="${CHROME_EXT_DIR:-$HOME/chrome-extensions/$name}"
 
+version="${1:-${CATWORLD_VERSION:-}}"
+if [ -n "$version" ]; then
+  if ! printf '%s' "$version" | grep -Eq '^[vV]?[0-9]+(\.[0-9]+)*$'; then
+    echo "版本格式不合法：$version（例：1.168.0 或 v1.168.0）"; exit 1
+  fi
+  version="${version#[vV]}"
+  zip_url="https://github.com/austinchen705/chrome-extensions/archive/refs/tags/v$version.zip"
+else
+  zip_url='https://github.com/austinchen705/chrome-extensions/archive/refs/heads/main.zip'
+fi
+
+# 印出 -1／0／1：第一個版本小於／等於／大於第二個（逐段比數字）
+compare_versions() {
+  awk -v a="$1" -v b="$2" 'BEGIN { na = split(a, x, "."); nb = split(b, y, "."); n = (na > nb ? na : nb)
+    for (i = 1; i <= n; i++) { p = x[i] + 0; q = y[i] + 0; if (p < q) { print -1; exit } if (p > q) { print 1; exit } }
+    print 0 }'
+}
+
 version_of() {
   sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1/manifest.json" 2>/dev/null | head -n 1
 }
@@ -17,8 +36,13 @@ version_of() {
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-echo '下載最新版本…'
-curl -fsSL -o "$work/repo.zip" 'https://github.com/austinchen705/chrome-extensions/archive/refs/heads/main.zip'
+if [ -n "$version" ]; then echo "下載 v$version…"; else echo '下載最新版本…'; fi
+status="$(curl -sSL -o "$work/repo.zip" -w '%{http_code}' "$zip_url")" || { echo '下載失敗，請檢查網路。'; exit 1; }
+if [ "$status" = "404" ] && [ -n "$version" ]; then
+  echo "找不到版本 v$version，可用的版本見 https://github.com/austinchen705/chrome-extensions/tags"; exit 1
+elif [ "$status" != "200" ]; then
+  echo "下載失敗（HTTP $status）"; exit 1
+fi
 if command -v unzip >/dev/null 2>&1; then
   unzip -q "$work/repo.zip" -d "$work"
 else
@@ -47,7 +71,13 @@ cp -R "$source" "$target"
 
 new_version="$(version_of "$target")"
 echo "已安裝 $name v$new_version → $target"
-if [ -n "$old_version" ]; then echo "升級：v$old_version → v$new_version"; fi
+if [ -n "$old_version" ]; then
+  case "$(compare_versions "$new_version" "$old_version")" in
+    1) echo "升級：v$old_version → v$new_version" ;;
+    -1) echo "降版：v$old_version → v$new_version" ;;
+    *) echo "重新安裝 v$new_version" ;;
+  esac
+fi
 
 # 以下兩個動作只是方便，失敗不影響安裝結果
 if command -v pbcopy >/dev/null 2>&1; then printf '%s' "$target" | pbcopy || true
