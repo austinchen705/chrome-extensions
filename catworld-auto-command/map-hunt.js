@@ -1011,7 +1011,7 @@ function create(deps) {
       state.fight = { mob, name: shortName(mob), engaged: false, wrong: false, resolve, finishing, calm, hostileAt: state.hostile, knockout, knockedOut: false, killSent: finishing, buffer: '', noTarget: false, waited: 0, lastSpecial: state.ticks, checking: false, silentChecks: 0, endWords, reKills: 0 };
       deps.notify();
       if (!deps.send(aim(finishing ? killCmd() : fightCmd(), mob))) finish('指令送不出去，已停止', { alert: true });
-      else if (!finishing && state.settings.openerHasSpecial === 'on' && state.settings.specialCommand) { state.fight.openerAt = state.ticks; state.fight.openerPending = true; }
+      else if (!finishing && state.settings.openerHasSpecial === 'on' && state.settings.specialCommand) { state.fight.openerAt = state.ticks; state.fight.openerPending = true; state.fight.openerBarRunning = Boolean(deps.cooling?.('perform')); }
     });
   }
   // 被圍攻時的等待：不送 fight／kill（角色被打時自動還手），只靠 fightTick 放特攻、逾時 l；任一隻打你的怪的結束字出現（onText）或逾時 l 看不到醒著在打你的（lookCheck）就結束。
@@ -1307,9 +1307,12 @@ function create(deps) {
       healInFight();
       if (!state || state.fight !== fight) return;
     }
-    // 開打指令含特攻（openerHasSpecial）：視窗內看到冷卻條在跑＝開打指令的特攻放出去了（當這場送過）；視窗結束還沒看到＝沒放出去，補一次。冷卻條在忙碌檢查之前看，因為放特攻時角色多半正忙
+    // 開打指令含特攻（openerHasSpecial）：視窗內看到冷卻條開始跑＝開打指令的特攻放出去了（當這場送過）；視窗結束還沒看到＝沒放出去，補一次。冷卻條在忙碌檢查之前看，因為放特攻時角色多半正忙。
+    // 送開打指令時冷卻條本來就在跑（上一場的特攻）＝開打指令的特攻會被遊戲拒絕，那條冷卻條不算；要先看到它停下來、再重新跑起來才算放出去（openerBarStopped）
     if (fight.openerPending) {
-      if (deps.cooling?.('perform')) {
+      const running = Boolean(deps.cooling?.('perform'));
+      if (!running) fight.openerBarStopped = true;
+      if (running && (!fight.openerBarRunning || fight.openerBarStopped)) {
         fight.openerPending = false;
         fight.lastSpecial = state.ticks;
         state.lastSpecialTick = state.ticks;

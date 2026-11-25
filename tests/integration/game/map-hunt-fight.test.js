@@ -435,6 +435,62 @@ ui('opener special: with the option off the special follows the interval as befo
   }
 });
 
+ui('opener special: a bar that was already running when the opener went out does not count, the special is sent once after the bar has finished', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'pt', specialIntervalSec: 60, specialOnce: 'on', openerHasSpecial: 'on' };
+    const bar = performBar(page);
+    bar.running = true; // 上一場的特攻還在冷卻
+    const script = command => {
+      if (command === FIGHT || command === 'pt') { say(page, '你揮拳打中測試怪。'); return true; }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, FIGHT) >= 1, 4000), 'the fight starts');
+    await sleep(400);
+    assert.equal(countOf(game, 'pt'), 0, 'nothing is sent while the old cooldown still runs');
+    bar.running = false;
+    assert.ok(await waitFor(() => countOf(game, 'pt') >= 1, 4000), 'the special is topped up once the bar has finished');
+    await sleep(300);
+    assert.equal(countOf(game, 'pt'), 1, 'exactly one special');
+    assert.match(await huntLog(page), /特攻補放/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('opener special: a bar that stops and runs again inside the window means the opener special fired, so no top-up', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    page.store.mapMonsters = mobsAt('c');
+    page.store.mapHuntSettings = { ...REQUIRED, specialCommand: 'pt', specialIntervalSec: 60, specialOnce: 'on', openerHasSpecial: 'on' };
+    const bar = performBar(page);
+    bar.running = true;
+    const script = command => {
+      if (command === FIGHT) {
+        say(page, '你揮拳打中測試怪。');
+        setTimeout(() => { bar.running = false; }, 30);
+        setTimeout(() => { bar.running = true; }, 70);
+        setTimeout(() => { bar.running = false; }, 110);
+        return true;
+      }
+      return false;
+    };
+    const game = world(page, { at: 'a', looks: { c: { lines: mobsLines(1) } }, script });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => countOf(game, FIGHT) >= 1, 4000), 'the fight starts');
+    await sleep(600);
+    assert.equal(countOf(game, 'pt'), 0, 'the restart of the bar was the opener special');
+    assert.doesNotMatch(await huntLog(page), /特攻補放/);
+  } finally {
+    page.close();
+  }
+});
+
 ui('fight: the special attack repeats while the monster lives, a busy refusal is just waited out, and it stops with the end sentence', async () => {
   const page = await boot({ scale: SCALE });
   try {
