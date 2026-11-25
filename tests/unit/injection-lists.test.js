@@ -48,6 +48,14 @@ test('the manifest lets the extension ask for permission on any http or https si
 });
 
 // 設定備份是設定頁專用：只由 popup.html 載入，不進 content script 與 popup 的備援注入
+test('cloud-sync.js is loaded by the settings page before popup.js and by no game page', () => {
+  const html = fs.readFileSync(path.join(root, 'popup.html'), 'utf8');
+  const tag = html.indexOf('<script src="cloud-sync.js"></script>');
+  assert.ok(tag >= 0 && tag < html.indexOf('<script src="popup.js"></script>'));
+  assert.ok(!script.js.includes('cloud-sync.js'), 'not a manifest content script');
+  assert.ok(!listAfter('files:').includes('cloud-sync.js'), 'not in the popup fallback injection');
+});
+
 test('settings-backup.js is loaded by the settings page before popup.js and by no game page', () => {
   const html = fs.readFileSync(path.join(root, 'popup.html'), 'utf8');
   const tag = html.indexOf('<script src="settings-backup.js"></script>');

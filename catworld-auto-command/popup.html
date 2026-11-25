@@ -522,7 +522,7 @@
       </details>
     </details>
     <details class="group fold" id="grp-data">
-      <summary>資料與連線（巨集匯入匯出、共用資料、額外網址、設定備份）</summary>
+      <summary>資料與連線（巨集匯入匯出、共用資料、額外網址、設定備份、雲端同步）</summary>
       <details class="alertbox fold" id="sec-macro">
         <summary>遊戲巨集匯入匯出</summary>
         <p class="hint tight">匯出＝把遊戲的巨集和巨集備註複製成一段文字；匯入＝貼回那段文字，整份取代這個設定頁控制的遊戲分頁的巨集和備註，取代前會自動留一份備份，可以按「還原上一份」寫回去。</p>
@@ -592,6 +592,24 @@
         </div>
         <p class="hint tight">把設定與累積資料（地圖怪物、商人裝備、個人路線、聊天配對…）匯出成一份 JSON。預設不含 LINE 憑證與樣本收集網址；執行狀態、快取與各裝置自己的版面（面板位置、視窗大小）不會匯出。遊戲的巨集有自己的匯入匯出，不在這裡。</p>
       </details>
+      <details class="alertbox fold" id="sec-cloud">
+        <summary>雲端同步</summary>
+        <label for="cloudAccount">角色（自動帶入遊戲分頁的角色名，也可以手動改）</label>
+        <input id="cloudAccount" type="text" autocomplete="off">
+        <label for="cloudPassword">同步密碼（第一次上傳就用這組密碼認領這個角色，之後讀寫都要對）</label>
+        <input id="cloudPassword" type="password" autocomplete="off">
+        <div class="hint tight">同步哪些區塊：</div>
+        <div id="cloudBlocks"></div>
+        <button id="cloudUpload" type="button">上傳到雲端</button>
+        <button id="cloudDownload" type="button">從雲端下載</button>
+        <div id="cloudMsg" class="hint tight"></div>
+        <details class="fold" id="fold-cloud-advanced">
+          <summary>進階</summary>
+          <label for="cloudUrl">雲端同步網址（空白＝用內建的）</label>
+          <input id="cloudUrl" type="text" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec">
+        </details>
+        <p class="hint tight">把勾選區塊的設定存到作者的雲端，換電腦時再下載回來；下載會先備份目前的設定，覆蓋後可以在「設定備份」按「還原上一份」。LINE 憑證與樣本收集網址不會上傳，同步密碼只存在這台瀏覽器的本機，不會匯出。遊戲巨集不在這裡。</p>
+      </details>
     </details>
   </div>
   <details class="fold" id="fold-notes">
@@ -625,6 +643,7 @@
   <script src="mentor-data.js"></script>
   <script src="mentor-search.js"></script>
   <script src="settings-backup.js"></script>
+  <script src="cloud-sync.js"></script>
   <script src="force-cap.js"></script>
   <script src="update-check.js"></script>
   <script src="popup.js"></script>

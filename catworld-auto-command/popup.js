@@ -1785,6 +1785,24 @@ async function undoImport(backup, previousBackup, touched) {
   } catch { return '設定沒有變動，但原本的備份沒能放回去（「還原上一份」會回到這次匯入前）'; }
   return '設定沒有變動，原本的備份保留';
 }
+// 檔案匯入與雲端下載共用：先備份再寫入，回傳 true 才是真的寫了；訊息交給 say(text, level)
+async function applyImportPlan(current, plan, say, sameText) {
+  const unchanged = !plan.remove.length && Object.entries(plan.set).every(([key, value]) => JSON.stringify(value) === JSON.stringify(current[key]));
+  if (unchanged) { say(sameText); return false; }
+  const backup = CatworldSettingsBackup.makeBackup(current, plan);
+  try {
+    await chrome.storage.local.set({ settingsBackup: backup }); // 先備份，備份寫不進去就不匯入
+  } catch (e) { say(`備份寫不進去，沒有匯入：${e.message}`, 'error'); return false; }
+  let touched = false;
+  try {
+    if (Object.keys(plan.set).length) { await chrome.storage.local.set(plan.set); touched = true; }
+    if (plan.remove.length) await chrome.storage.local.remove(plan.remove);
+  } catch (e) {
+    say(`匯入失敗：${e.message}。${await undoImport(backup, current.settingsBackup, touched)}`, 'error');
+    return false;
+  }
+  return true;
+}
 $('backupImportApply').addEventListener('click', async () => {
   const pending = pendingImport; // 同步取下按確認當下檢查過的那一份，之後只用它
   if (!pending) return;
@@ -1797,20 +1815,7 @@ $('backupImportApply').addEventListener('click', async () => {
     const current = await chrome.storage.local.get([...BACKUP_KEYS, 'settingsBackup']);
     if (pendingImport !== pending) { importMessage('等待期間文字被改了，請重新檢查再匯入', 'warn'); return; }
     const plan = CatworldSettingsBackup.planImport(current, pending.data, { blocks: ids, secrets });
-    const unchanged = !plan.remove.length && Object.entries(plan.set).every(([key, value]) => JSON.stringify(value) === JSON.stringify(current[key]));
-    if (unchanged) { importMessage('檔案的內容和現在一樣，沒有任何變動（舊的備份沒有動）'); return; }
-    const backup = CatworldSettingsBackup.makeBackup(current, plan);
-    try {
-      await chrome.storage.local.set({ settingsBackup: backup }); // 先備份，備份寫不進去就不匯入
-    } catch (e) { importMessage(`備份寫不進去，沒有匯入：${e.message}`, 'error'); return; }
-    let touched = false;
-    try {
-      if (Object.keys(plan.set).length) { await chrome.storage.local.set(plan.set); touched = true; }
-      if (plan.remove.length) await chrome.storage.local.remove(plan.remove);
-    } catch (e) {
-      importMessage(`匯入失敗：${e.message}。${await undoImport(backup, current.settingsBackup, touched)}`, 'error');
-      return;
-    }
+    if (!await applyImportPlan(current, plan, importMessage, '檔案的內容和現在一樣，沒有任何變動（舊的備份沒有動）')) return;
     finishFrozen(`已匯入 ${plan.blocks.length + (plan.secrets ? 1 : 0)} 個區塊${plan.secrets ? '（含機密）' : ''}`);
   } catch (e) {
     importMessage(`匯入失敗：${e.message}`, 'error');
@@ -1838,6 +1843,99 @@ $('backupRestore').addEventListener('click', async () => {
   }
 });
 refreshRestore();
+
+// 雲端同步：請求與錯誤代碼在 cloud-sync.js。上傳送設定備份格式（不含機密），下載走和檔案匯入同一套檢查、寫入計畫與「先備份」。
+// 密碼只存本機（cloudSyncPassword，不匯出、不上傳）；網址空白時用 CatworldCloudSync.DEFAULT_URL
+try {
+  const CS = CatworldCloudSync;
+  const BLOCKS = CatworldSettingsBackup.BLOCKS;
+  const msgBox = $('cloudMsg');
+  const say = (text, level) => { msgBox.textContent = text; markLevel(msgBox, level); };
+  const fields = { account: $('cloudAccount'), password: $('cloudPassword'), url: $('cloudUrl') };
+  const buttons = [$('cloudUpload'), $('cloudDownload')];
+  $('cloudBlocks').append(...BLOCKS.map(block => element('label', { style: 'display:block' },
+    element('input', { type: 'checkbox', checked: true, id: `cloudBlock-${block.id}` }), ` ${block.label}`)));
+  const boxes = BLOCKS.map(block => $(`cloudBlock-${block.id}`));
+  const controls = [...Object.values(fields), ...boxes, ...buttons];
+  const chosen = () => BLOCKS.filter(block => $(`cloudBlock-${block.id}`).checked);
+  const setBusy = busy => controls.forEach(control => { control.disabled = busy || settingsFrozen; });
+
+  // 載入完成前整區停用：否則一打字就把空欄位存回去，蓋掉已存的值；載入失敗維持停用
+  setBusy(true);
+  (async () => {
+    const stored = await chrome.storage.local.get(['cloudSyncUrl', 'cloudSyncAccount', 'cloudSyncPassword', 'cloudSyncBlocks']);
+    fields.url.value = stored.cloudSyncUrl ?? '';
+    fields.password.value = stored.cloudSyncPassword ?? '';
+    if (Array.isArray(stored.cloudSyncBlocks)) boxes.forEach((box, i) => { box.checked = stored.cloudSyncBlocks.includes(BLOCKS[i].id); });
+    // 遊戲分頁的標題是「角色名 - …」：讀得到就用它，讀不到沿用上次存的；可以手動改
+    let fromTab = '';
+    try {
+      const tab = await getTab();
+      if (tab && CatworldGameUrls.isGameUrl(tab.url, await readExtraSites())) fromTab = CS.characterFromTitle(tab.title);
+    } catch { /* 讀不到分頁就手動填 */ }
+    fields.account.value = fromTab || stored.cloudSyncAccount || '';
+    setBusy(false);
+  })().catch(() => say('讀取設定失敗，請重新整理設定頁再試', 'error'));
+
+  fields.url.addEventListener('input', () => chrome.storage.local.set({ cloudSyncUrl: fields.url.value.trim() }));
+  fields.account.addEventListener('input', () => chrome.storage.local.set({ cloudSyncAccount: fields.account.value.trim() }));
+  fields.password.addEventListener('input', () => chrome.storage.local.set({ cloudSyncPassword: fields.password.value }));
+  boxes.forEach(box => box.addEventListener('change', () => chrome.storage.local.set({ cloudSyncBlocks: chosen().map(block => block.id) })));
+
+  // 送出前的檢查：缺什麼就停下來說明，什麼都不送
+  const context = () => {
+    const account = fields.account.value.trim();
+    const password = fields.password.value;
+    if (!account) { say('請填角色名稱', 'warn'); return null; }
+    if (!password) { say('請填同步密碼', 'warn'); return null; }
+    if (!chosen().length) { say('請至少勾選一個區塊', 'warn'); return null; }
+    const url = fields.url.value.trim() || CS.DEFAULT_URL;
+    return { url, account, password, ids: chosen().map(block => block.id), labels: chosen().map(block => block.label) };
+  };
+  const post = (ctx, action, payload) => CS.call((...args) => fetch(...args), { url: ctx.url, action, account: ctx.account, password: ctx.password, payload });
+
+  async function upload() {
+    const ctx = context();
+    if (!ctx) return;
+    say('上傳中…');
+    const store = await chrome.storage.local.get(BACKUP_KEYS);
+    const settings = CatworldSettingsBackup.exportData(store, { blocks: ctx.ids, secrets: false, version: chrome.runtime.getManifest().version });
+    const result = await post(ctx, 'upload', { settings });
+    if (!result.ok) { say(CS.errorText(result, ctx.account), 'error'); return; }
+    say(`${CS.formatTime(result.updatedAt)} 已上傳 ${ctx.ids.length} 個區塊${result.claimed ? `（已用這組密碼認領 ${ctx.account}）` : ''}`);
+  }
+
+  async function download() {
+    const ctx = context();
+    if (!ctx) return;
+    say('查詢雲端中…');
+    const info = await post(ctx, 'info');
+    if (!info.ok) { say(CS.errorText(info, ctx.account), 'error'); return; }
+    if (!confirm(`雲端 ${ctx.account} 的設定是 ${CS.formatTime(info.updatedAt)} 上傳的（擴充功能版本 ${info.exportedWith || '不明'}）。\n要覆蓋這些區塊：${ctx.labels.join('、')}\n覆蓋前會先備份目前的設定。要下載嗎？`)) { say('已取消'); return; }
+    say('下載中…');
+    const got = await post(ctx, 'download');
+    if (!got.ok) { say(CS.errorText(got, ctx.account), 'error'); return; }
+    const checked = CatworldSettingsBackup.checkImport(JSON.stringify(got.payload?.settings ?? null));
+    if (!checked.ok) { say(`雲端的設定不能用，什麼都沒有動：${checked.error}`, 'error'); return; }
+    const ids = ctx.ids.filter(id => checked.blocks.includes(id));
+    if (!ids.length) { say('雲端的設定裡沒有你勾選的區塊，什麼都沒有動', 'warn'); return; }
+    const current = await chrome.storage.local.get([...BACKUP_KEYS, 'settingsBackup']);
+    const plan = CatworldSettingsBackup.planImport(current, checked.data, { blocks: ids, secrets: false });
+    if (!await applyImportPlan(current, plan, say, '雲端的內容和現在一樣，沒有任何變動（舊的備份沒有動）')) return;
+    // 和檔案匯入一樣：頁上的欄位是舊值，整頁停用
+    freezeSettingsPage();
+    say(`${CS.formatTime(got.updatedAt)} 的雲端設定已套用 ${plan.blocks.length} 個區塊。這個設定頁已停用：請重新整理遊戲分頁，並把設定頁關掉再重新開啟`);
+  }
+
+  const run = action => async () => {
+    setBusy(true);
+    try { await action(); } catch (e) { say(`失敗：${e.message}`, 'error'); } finally { setBusy(false); }
+  };
+  $('cloudUpload').addEventListener('click', run(upload));
+  $('cloudDownload').addEventListener('click', run(download));
+} catch (error) {
+  console.error('[catworld] 雲端同步區塊初始化失敗', error.name);
+}
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;

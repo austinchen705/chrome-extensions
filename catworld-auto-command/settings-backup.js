@@ -14,7 +14,7 @@ const BLOCKS = [
   { id: 'helpers', label: '輔助功能', keys: ['zapFeatures', 'zapThresholds', 'mainWeapon', 'forceExtras', 'equipmentKeep', 'equipmentScore', 'equipAutoRead', 'whisperColor', 'shopMinPrice', 'shopBuyNames', 'shopSkipNames'] },
   { id: 'chat', label: '聊天', keys: ['chatReply', 'chatScript'] },
   { id: 'hunt', label: '巡怪', keys: ['mapHuntSettings', 'mapHuntPicks', 'mapHuntChain', 'mapHuntRideRooms', 'mapHuntProfile'] },
-  { id: 'sources', label: '共用與網址', keys: ['sharedSources', 'extraGameUrls'] },
+  { id: 'sources', label: '共用與網址', keys: ['sharedSources', 'extraGameUrls', 'cloudSyncUrl'] },
   {
     id: 'data',
     label: '累積資料',
@@ -25,6 +25,7 @@ const SECRET_KEYS = ['lineNotify', 'captchaSampleUrl'];
 const EXCLUDED_KEYS = [
   'running', 'randomRunning', 'stopReason',
   'sharedCache', 'updateCheck', 'lineLastResult', 'lineThrottle', 'captchaSampleLastResult', 'chatScriptState', 'mapHuntChainTrial',
+  'cloudSyncPassword', 'cloudSyncAccount', 'cloudSyncBlocks',
   'popupFolds', 'popupTab', 'panelUi', 'pipSize', 'macroWindowSize', 'statsCollapsed',
   'macroBackup', 'macroNotesWriter', 'settingsBackup',
 ];
