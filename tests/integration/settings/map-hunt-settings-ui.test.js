@@ -271,7 +271,7 @@ ui('the fields are split into closed folds whose titles carry the main values', 
   const { dom, doc } = await boot({ mapHuntSettings: { eatCommand: 'tn', homeCommand: 'ride', specialCommand: 'ps' } });
   try {
     const folds = [...doc.querySelectorAll('#huntFields > details.fold')];
-    assert.deepEqual(folds.map(box => box.id), ['fold-hunt-move', 'fold-hunt-fight', 'fold-hunt-special', 'fold-hunt-heal', 'fold-hunt-sort', 'fold-hunt-rounds', 'fold-hunt-human', 'fold-hunt-advanced']);
+    assert.deepEqual(folds.map(box => box.id), ['fold-hunt-move', 'fold-hunt-fight', 'fold-hunt-special', 'fold-hunt-heal', 'fold-hunt-sort', 'fold-hunt-rounds', 'fold-hunt-human', 'fold-hunt-scholar', 'fold-hunt-advanced']);
     assert.ok(folds.every(box => !box.open), 'all closed at first');
     assert.ok(doc.getElementById('fold-hunt-heal').contains(field(doc, 'ginCommand')), 'jing sits with healing');
     assert.match(doc.querySelector('#fold-hunt-heal > summary').textContent, /補氣與安全.*吃藥 tn <50%.*回家 ride/);

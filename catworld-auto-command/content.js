@@ -1928,6 +1928,9 @@ hunt = CatworldMapHunt.create({
   visited: async () => (await chrome.storage.local.get(CatworldMapHunt.VISITED_KEY))[CatworldMapHunt.VISITED_KEY] ?? {},
   markVisited: markHuntVisited,
   markOutdoor: markHuntOutdoor,
+  outdoor: async () => (await chrome.storage.local.get(CatworldScholar.OUTDOOR_KEY))[CatworldScholar.OUTDOOR_KEY] ?? {},
+  scholarOn: () => scholarHelper.on,
+  scholarBusy: () => scholarFlow.state !== 'idle',
   ask: askGame,
   // 整理用：從鑑定輸出裡挑出要留的裝備（比現在穿的好或屬性達門檻的；沒基準可比的不留，武器只留主要武器職業的）。
   // 回 { total: 鑑定出幾件, mainWeapon, kept: [{ name, category, why }] }，巡怪紀錄寫留了什麼、為什麼
@@ -2212,7 +2215,7 @@ function initPanel() {
         <div class="line macro-line"><span class="t">巨集</span><span class="s macro-text"></span>
           <span class="mini"><button class="mstop">停止</button></span></div>
         <div class="line hunt-line"><span class="t">巡怪</span><span class="s hunt-text"></span>
-          <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hscan" title="街景模式：不用選怪，走這一區還沒走過的每一間，看一眼並記下有哪些怪（不打）">掃描</button><button class="hstop">停止</button><button class="hride" title="可 ride：把角色現在站的這一格記成可以 ride 的格子（再按一次取消）。巡怪要整理時先走到這一區最近的可 ride 格子才送前往指令">可 ride</button><button class="hmanual" title="記錄手動：記下你自己送出的指令（輸入框打的、遊戲巨集鍵送出的），每個重生整點與關掉時寫一段「手動摘要」到巡怪紀錄，和巡怪的輪摘要對照">● 記錄</button></span></div>
+          <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hscan" title="街景模式：不用選怪，走這一區還沒走過的每一間，看一眼並記下有哪些怪（不打）">掃描</button><button class="hscholar" title="找書生：每個重生整點起，在時間窗內（設定頁「六脈神劍」）照最近的先走巡這一區記成戶外的格子；遇到書生交給書生助手，沒遇到就送待命指令等下一個重生。不打怪、不撿屍；要先掃描過這一區">找書生</button><button class="hstop">停止</button><button class="hride" title="可 ride：把角色現在站的這一格記成可以 ride 的格子（再按一次取消）。巡怪要整理時先走到這一區最近的可 ride 格子才送前往指令">可 ride</button><button class="hmanual" title="記錄手動：記下你自己送出的指令（輸入框打的、遊戲巨集鍵送出的），每個重生整點與關掉時寫一段「手動摘要」到巡怪紀錄，和巡怪的輪摘要對照">● 記錄</button></span></div>
         <div class="line scholar-line"><span class="t">書生</span><span class="mini"><button class="sbtn" title="書生助手：打開時先檢查技能數有沒有超過靈性上限（只檢查這一次，不會自動 abandon）">書生助手</button></span><span class="s scholar-text"></span></div>
         <div class="line reward-line" hidden><span class="t">獎勵</span><span class="s reward-text"></span></div>
         <div class="line script-line" hidden><span class="t">劇本</span><span class="s script-text"></span></div>
@@ -2230,7 +2233,7 @@ function initPanel() {
     randomText: $('.random-text'), rstart: $('.rstart'), rstop: $('.rstop'),
     idleText: $('.idle-text'), istart: $('.istart'), istop: $('.istop'),
     macroText: $('.macro-text'), mstop: $('.mstop'),
-    huntText: $('.hunt-text'), hstart: $('.hstart'), hscan: $('.hscan'), hstop: $('.hstop'), hride: $('.hride'), hmanual: $('.hmanual'),
+    huntText: $('.hunt-text'), hstart: $('.hstart'), hscan: $('.hscan'), hscholar: $('.hscholar'), hstop: $('.hstop'), hride: $('.hride'), hmanual: $('.hmanual'),
     sbtn: $('.sbtn'), scholarText: $('.scholar-text'),
     rewardLine: $('.reward-line'), rewardText: $('.reward-text'),
     scriptLine: $('.script-line'), scriptText: $('.script-text'),
@@ -2390,6 +2393,14 @@ function initPanel() {
     if (hunt.on()) return;
     armDetection();
     await hunt.start({ scan: true });
+  });
+  // 找書生：書生助手沒開就先走開啟流程（檢查不過就不開始）
+  panel.hscholar.addEventListener('click', async () => {
+    if (hunt.on() || scholarHelper.checking) return;
+    if (!scholarHelper.on) await toggleScholarHelper();
+    if (!scholarHelper.on || hunt.on()) return;
+    armDetection();
+    await hunt.start({ scholar: true });
   });
   panel.hstop.addEventListener('click', () => hunt.stop());
   panel.hride.addEventListener('click', toggleRideHere);
@@ -2651,6 +2662,7 @@ function renderPanel() {
   panel.huntText.title = huntInfo.detail || '';
   panel.hstart.disabled = hunt.on();
   panel.hscan.disabled = hunt.on();
+  panel.hscholar.disabled = hunt.on() || scholarHelper.checking;
   panel.hstop.disabled = !hunt.on();
   panel.hride.textContent = rideHere() ? '可 ride ✓' : '可 ride';
   panel.hmanual.textContent = manualRecord ? '● 記錄中' : '● 記錄';

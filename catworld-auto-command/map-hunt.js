@@ -72,6 +72,8 @@ const QI_WAIT_TICKS = 60 * TICKS_PER_SEC; // 試出口前等氣回復最多等�
 const RETURN_QI_WAIT_TICKS = 120 * TICKS_PER_SEC; // 休息結束要走回去時，氣沒回到「回到 %」最多等這麼久，再沒回到就停止並警報
 const RETURN_WALK_TICKS = 60 * TICKS_PER_SEC; // 送出回程指令、巨集跑完之後，地圖房間還不在巡怪區最多等這麼久，再沒回到就停止並警報（不重送）
 const RETURN_SETTLE_TICKS = 3 * TICKS_PER_SEC; // 回到巡怪區後再等這麼久，讓地圖的房間穩定下來（家在巡怪區的地圖上時，送出回程指令的當下房間還是舊的）
+const SCHOLAR_LINE = /※落魄書生\(dire scholar\)/; // 房間描述裡書生的那一行
+const SCHOLAR_GRACE_TICKS = 3 * TICKS_PER_SEC; // 讀到書生的描述後，等書生助手開始處理的寬限（它和引擎讀的是同一份輸出）
 const SCAN_STALL_TICKS = 180 * TICKS_PER_SEC; // 掃描這麼久沒換過房間、沒處理完任何一間，就當成卡住，停下來並說明在等什麼
 const SORT_STEP_TICKS = 120 * TICKS_PER_SEC; // 整理的單一步驟（走一趟、鑑定、回程）最久等這麼久
 const SORT_QUIET_MS = 1000; // 鑑定的指令送完後，再等這麼久沒有新輸出才當成鑑定結束
@@ -157,6 +159,7 @@ const FIELDS = [
   { key: 'restEveryMax', group: 'human', show: s => s.humanize === 'on', row: 'restEvery', label: '最多', hint: '要有填「輪與重生」的「回到巡怪區的指令」才會休息', type: 'number', default: 12, min: 1, max: 100 },
   { key: 'restSkipMin', group: 'human', show: s => s.humanize === 'on', row: 'restSkip', label: '一次休息跳過幾輪 最少', hint: '一輪＝一個 15 分鐘的重生，每次在最少與最多之間隨機抽（整數輪）', type: 'number', default: 1, min: 1, max: 20 },
   { key: 'restSkipMax', group: 'human', show: s => s.humanize === 'on', row: 'restSkip', label: '最多', hint: '休息大約是跳過的輪數 × 15 分鐘', type: 'number', default: 3, min: 1, max: 20 },
+  { key: 'scholarWindowSec', group: 'scholar', label: '重生後找書生的時間窗（秒）', hint: '「找書生」從每個重生整點起，在這段時間內照最近的先走巡這一區記成戶外的格子；到了還沒遇到書生就送待命指令、等下一個重生', type: 'number', default: 180, min: 30, max: 900 },
   { key: 'logCommands', group: 'advanced', label: '巡怪紀錄記下送出的指令', hint: '開＝巡怪進行中，每個送出的指令（巡怪、觸發、定時、隨機、巨集、手動…）都記一行「時間 房間 送出 指令（來源）」；走路的指令不記，聊天回覆、劇本、表情只記來源不記內容', type: 'select', options: ON_OFF, default: 'on' },
   { key: 'npcWhitelist', group: 'advanced', label: 'NPC 白名單', hint: '英文 ID，用、分隔', type: 'text', default: '' },
 ];
@@ -179,6 +182,7 @@ const GROUPS = [
   { id: 'sort', title: '負重與自動整理', summary: s => (sorting(s) ? (s.overloadAction === 'stop' ? `>${s.loadMaxPercent}% 停止巡怪` : `>${s.loadMaxPercent}% 整理｜${s.sortKeep === 'none' ? '全賣' : '留好裝備'}`) : '不檢查') },
   { id: 'rounds', title: '輪與重生', summary: s => [s.loopRounds === 'on' ? '等重生' : '巡完就停', s.chain === 'on' ? '跨區' : '', s.stopBeforeSpawnSec > 0 ? `重生前 ${s.stopBeforeSpawnSec} 秒停打` : ''].filter(Boolean).join('｜') },
   { id: 'human', title: '擬人化', summary: s => (s.humanize === 'on' ? (s.restReturnCommand ? '開' : '開｜沒填回程指令，不會掛機休息') : '關') },
+  { id: 'scholar', title: '六脈神劍', summary: s => `找書生時間窗 ${s.scholarWindowSec} 秒` },
   { id: 'advanced', title: '進階', summary: s => (s.npcWhitelist ? `白名單 ${s.npcWhitelist}` : '') },
 ];
 const fieldShown = (field, settings) => !field.show || field.show(settings);
@@ -543,6 +547,15 @@ function create(deps) {
     if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
     record(here, '看房間', `${lookText(info)}（來源 ${source}）`);
     if (deps.markOutdoor) Promise.resolve().then(() => deps.markOutdoor(here, text)).catch(() => {}); // 戶外／室內是附帶紀錄，存不進去不影響巡怪
+    if (state.scholar) {
+      // 找書生：只看描述，不 finger、不打、不撿
+      learnExits(here, info.exits);
+      state.skips = 0;
+      if (SCHOLAR_LINE.test(text.normalize('NFKC'))) scholarFound(here, '房間描述有書生');
+      else record(here, '找書生', '這間沒有書生');
+      doneWith(here, here);
+      return;
+    }
     await humanHabit(token, here, '到房間後');
     if (state !== token) return;
     const wanted = info.monsters.some(mob => token.mobs.includes(mob.full));
@@ -1816,7 +1829,7 @@ function create(deps) {
     });
     return drawn.total > nearest.total * ORDER_STEPS_CAP ? null : drawn.order;
   }
-  const humanizeOn = () => state.baseSettings.humanize === 'on' && !state.scan;
+  const humanizeOn = () => state.baseSettings.humanize === 'on' && !state.scan && !state.scholar;
   // 每一輪開始時呼叫（按開始、打怪前補掃完、等完重生）：換這一輪用的設定、排這一輪的順序，寫一行紀錄。
   // state.settings 是這一輪用的設定：擬人化開著時是 baseSettings（使用者存的）抖動過的副本，關著時就是 baseSettings 本身
   function humanizeRound(from) {
@@ -2100,9 +2113,58 @@ function create(deps) {
     retreat('roundSort', token, next);
   }
 
+  // ---- 找書生模式（start({ scholar: true })）----
+  // 每個重生整點起的時間窗內，照最近的先走巡這一區記成戶外的格子，只讀描述；遇到書生（描述有他、或書生助手在處理）就停步，等助手處理完；
+  // 時間窗到了（或遇到書生處理完）就送待命指令、等下一個重生。跟隨、給物品是 content.js 的書生助手，這裡不重做
+  function beginScholarWindow(after, offset) {
+    const sc = state.scholar;
+    Object.assign(sc, { active: true, found: null, idle: false, busySeen: false, offset, startAt: Math.floor(after / RESPAWN_MS) * RESPAWN_MS });
+    sc.endAt = sc.startAt + state.baseSettings.scholarWindowSec * 1000;
+    record(state.area, '找書生', `時間窗開始（${state.baseSettings.scholarWindowSec} 秒，從 ${hhmm(sc.startAt)} 重生起）；戶外格子 ${state.allTargets.size} 間：${[...state.allTargets].join(' ')}`);
+  }
+  function scholarFound(where, why) {
+    const sc = state.scholar;
+    if (sc.found) return;
+    sc.found = { tick: state.ticks };
+    record(where, '找書生', `遇到書生（${why}），停止走路，等書生助手處理完`);
+    deps.notify();
+  }
+  function endScholarWindow(found) {
+    const sc = state.scholar;
+    sc.active = false;
+    sc.idle = false;
+    state.walkedTo = null;
+    state.detour = null;
+    record('-', '找書生', found ? `這次重生遇到書生，處理完了（看過 ${state.visited.length} 間），送待命指令` : `這次重生沒遇到書生（時間窗 ${state.baseSettings.scholarWindowSec} 秒，看過 ${state.visited.length} 間），送待命指令`);
+    standbyAfterRound({ countRest: false });
+  }
+  // 每個 tick 的檢查；回 true＝這個 tick 不再走路
+  function scholarTick() {
+    const sc = state.scholar;
+    if (deps.scholarOn && !deps.scholarOn()) { finish('書生助手關了（解滿六脈或手動關閉），已停止找書生'); return true; }
+    if (!sc.active) return false;
+    const busy = deps.scholarBusy?.() ?? false;
+    if (busy) { sc.busySeen = true; scholarFound(deps.room() ?? '-', '書生助手正在處理'); }
+    // 現在不在走路、看房間、試出口的半途，才能收尾（收尾會改 phase）
+    const quiet = !state.trial && !state.learning && !state.retreat && !state.retreatPending && (state.phase === 'plan' || state.phase === 'move');
+    if (sc.found) {
+      if (busy) return true;
+      if (!sc.busySeen && state.ticks - sc.found.tick < SCHOLAR_GRACE_TICKS) return true;
+      if (!quiet) return false;
+      endScholarWindow(true);
+      return true;
+    }
+    if (quiet && deps.now() + sc.offset >= sc.endAt) { endScholarWindow(false); return true; }
+    return sc.idle;
+  }
   // 每個目標房間都處理過一次＝一輪（跨區時是整條路線的每一區）。沒開「等下一個重生」或這一輪什麼都沒處理（沒有走得到的目標）就停（第 2 輪以後警報）；
   // 否則送待命指令（是巨集的話等它跑完），用 time 校準，等到下一個重生再開始下一輪
   function endRound() {
+    if (state.scholar) {
+      // 戶外格子都看過了（或剩下的走不到）：不再走，等時間窗結束
+      if (state.scholar.active && !state.scholar.idle) { state.scholar.idle = true; record('-', '找書生', '戶外格子都看過了，等時間窗結束'); deps.notify(); }
+      return;
+    }
     // 因為地圖上有玩家而延後的房間：最後再看一次（plan 會重新讀那一格，人走了就正常去打，還有人才略過）
     if (state.late?.size) {
       state.targets = new Set(state.late);
@@ -2138,7 +2200,7 @@ function create(deps) {
   // 這一輪已經算進那個重生（after ≥ 它，例如等完重生才開始的這一輪）就不停，否則會一直停。停了之後和一輪結束一樣待命、等那個重生
   function spawnPause() {
     const sec = state.settings.stopBeforeSpawnSec;
-    if (!(sec > 0) || state.scan) return false;
+    if (!(sec > 0) || state.scan || state.scholar) return false;
     const now = deps.now() + state.offset;
     const spawn = nextSpawn(now);
     if (state.after >= spawn || spawn - now > sec * 1000) return false;
@@ -2183,6 +2245,7 @@ function create(deps) {
     humanizeRound(deps.room()); // 先決定這一輪的設定（補掃中不抖動，掃完照這一份打）
     const pending = state.chain?.pendingScan;
     if (pending) { state.chain.pendingScan = null; scanArea(pending); }
+    if (state.scholar) beginScholarWindow(after, offset);
     state.phase = 'plan';
     deps.notify();
   }
@@ -2353,7 +2416,7 @@ function create(deps) {
     [...state.targets].forEach(key => {
       // 地圖上那一格有玩家（粉紅底）：這間先延後到這一輪最後（每間每輪只延後一次，見 endRound），最後再看一次，還有人才略過。
       // 每走一步都重算，所以走到半途出現玩家也會改走下一間。自己站的那間不看，掃描不看
-      const players = state.scan || key === here ? null : deps.mapPlayers?.(...key.split('/'));
+      const players = state.scan || state.scholar || key === here ? null : deps.mapPlayers?.(...key.split('/'));
       if (players) {
         const who = `地圖顯示有玩家${players.length ? ` ${players.join('、')}` : ''}`;
         if (state.lateDone.has(key)) {
@@ -2460,6 +2523,7 @@ function create(deps) {
         return;
       }
     }
+    if (state.scholar && scholarTick()) return;
     if (state.phase === 'wait' || state.phase === 'standby') { waitTick(); return; }
     if (state.phase === 'sort' || state.phase === 'return' || state.phase === 'area' || state.phase === 'slip' || state.phase === 'counter') return;
     if (state.trial) { trialTick(); return; }
@@ -2515,7 +2579,7 @@ function create(deps) {
     const offset = fields.offset ?? 0;
     return {
       round: 1, after: deps.now() + offset, allTargets: new Set(), baseSkipped: [], waiting: null, calibrating: false,
-      mobs: [], area: '', offset, scan: false, prescan: false, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph: { rooms: {} }, targets: new Set(), skipped: [], fixed: [],
+      mobs: [], area: '', offset, scholar: null, scan: false, prescan: false, progressAt: 0, lastRoom: null, badEdges: new Set(), deferred: new Set(), retried: false, graph: { rooms: {} }, targets: new Set(), skipped: [], fixed: [],
       baseSettings: fields.settings, chain: null, trialRun: false, resume: null, order: null, retreat: null, retreatPending: null, slotCmds: new Set(), lastAim: null, lootRefused: 0, buried: 0, loadDue: false, loadFought: false, loadRooms: 0, loadEvery: 1, load: null, assist: null, sorted: false, sortTimes: [], sortCount: 0, sortStage: null, checkingLoad: false, learn: false, learned: {}, dirty: new Set(), saving: Promise.resolve(), looked: new Set(), tried: {}, trial: null, cmd: null, learning: false, ticks: 0, moveText: '', moveTextTick: 0, walkedTo: null, passRoom: null, arriveWait: 0, lastEat: -Infinity, lastTopUp: {}, restSent: false, resting: false, restPercent: NaN, wake: null, gate: false, eating: null, fight: null, lastRoute: null, sinceRest: 0, restAfter: null, rest: null, restReturn: null, returnStage: null,
       ...roundFields(offset), phase: 'plan', goal: null, expected: null, from: null, waited: 0,
       ...fields,
@@ -2601,6 +2665,7 @@ function create(deps) {
   // options.scan＝街景模式：不用勾怪，走這一區還沒走過的每一間，每間 l 一次記下怪與走過（不打、不問人、不等重生）
   async function start(options = {}) {
     const scan = options.scan === true;
+    const scholar = options.scholar === true;
     if (state || starting) return { ok: false, error: '已經在巡怪' };
     starting = true;
     cancelled = false;
@@ -2616,12 +2681,12 @@ function create(deps) {
       const graph = Route.parseArea(deps.areaHtml(target.area));
       if (!Object.keys(graph.rooms).length) return fail('讀不到這個區域的地圖');
       const store = await deps.readStore();
-      const settings = scan ? { ...await deps.settings(), loopRounds: 'off' } : await deps.settings();
+      const settings = scan ? { ...await deps.settings(), loopRounds: 'off' } : scholar ? { ...await deps.settings(), loopRounds: 'on', stopBeforeSpawnSec: 0, chain: 'off' } : await deps.settings();
       if (cancelled) return fail('已取消', false);
       const missing = missingFields(settings).map(field => field.label);
       if (missing.length) return fail(`請先到設定頁「地圖巡怪」填：${missing.join('、')}`);
       // 跨區巡怪：開關開著、路線有兩區以上才作用；從角色所在的那一區開始，每段換區指令都要有填（空的指令送不出去，走到一半才停）
-      const route = !scan && settings.chain === 'on' ? normalizeChain(await deps.chain?.()) : null;
+      const route = !scan && !scholar && settings.chain === 'on' ? normalizeChain(await deps.chain?.()) : null;
       if (cancelled) return fail('已取消', false);
       const chain = route?.areas.length >= 2 ? route : null;
       if (chain) {
@@ -2630,7 +2695,15 @@ function create(deps) {
         if (problem) return fail(problem);
       }
       // 跨區時這一區沒勾怪也照樣開始（這一區略過，走下一段）
-      if (!scan && !chain && !target?.mobs?.length) return fail('請先按「選怪」勾選要巡的怪');
+      if (!scan && !scholar && !chain && !target?.mobs?.length) return fail('請先按「選怪」勾選要巡的怪');
+      // 找書生：沒有戶外紀錄的區域不開始（放在讀伺服器時間之前，免得白送 time）
+      let outdoorTargets = null;
+      if (scholar) {
+        const outdoor = await deps.outdoor?.();
+        if (cancelled) return fail('已取消', false);
+        outdoorTargets = new Set(Object.keys(graph.rooms).filter(key => outdoor?.[key]?.outdoor === true));
+        if (!outdoorTargets.size) return fail('這一區還沒有戶外格子的紀錄，先掃描這一區');
+      }
       const learn = settings.learnExits === 'on' || scan; // 掃描一定會碰到圖上畫不準的房間（圖上往 s、實際是 su），所以一律照 l 的出口行走
       const learned = learn || settings.prescan === 'on' ? forgetOut(normalizeLearned(await deps.exits())) : {};
       if (cancelled) return fail('已取消', false);
@@ -2650,6 +2723,8 @@ function create(deps) {
         // 走過（seen）的不再走；上次走不到（blocked）的每次掃描都再試一次（門可能開了、怪散了），不必清掉紀錄
         targets = new Set(Object.keys(graph.rooms).filter(key => visited[key]?.state !== 'seen'));
         if (!targets.size) return fail('這一區的房間都走過了（要全部重掃，請到設定頁清除「已走過的房間」）', false);
+      } else if (scholar) {
+        targets = outdoorTargets;
       } else {
         ({ targets, baseSkipped } = huntTargets(store, target.mobs, target.area, graph));
         // 這一區有還沒走過、也沒記成走不到的房間＝沒有圖資：先掃它們，掃完再用補好的資料打（資料還沒補，勾選的怪可能一間都找不到，所以先不擋）
@@ -2664,6 +2739,7 @@ function create(deps) {
       state = freshState({
         after: deps.now() + offset, allTargets: new Set(targets), baseSkipped,
         mobs: scan ? [] : target.mobs ?? [], area: target.area, offset, scan: scan || prescan, prescan, graph, targets, skipped: [...baseSkipped],
+        scholar: scholar ? { active: false, found: null, idle: false, busySeen: false, offset, startAt: 0, endAt: 0 } : null,
         settings, chain: chain ? { ...chain, index: chain.areas.findIndex(item => item.area === target.area), to: null, pendingScan: null, partial: target.area !== chain.areas[0].area } : null, learn: learn || prescan, learned,
       });
       humanizeRound(here);
@@ -2671,7 +2747,20 @@ function create(deps) {
       record(target.area, '目標房間', `${[...targets].join(' ') || '（沒有）'}`);
       baseSkipped.forEach(item => record(item.key, '略過', item.why));
       if (chain && !prescan && !targets.size) record(target.area, '略過區', '這一區沒有勾選的怪的房間');
-      record(target.area, prescan ? '開始（打怪前補掃）' : scan ? '開始（掃描）' : '開始', `怪 ${scan ? '-' : state.mobs.join('、')}；目標 ${targets.size} 間；從 ${here}；${['fightMode', 'loopRounds', 'stopBeforeSpawnSec', 'healMode', 'prescan', 'learnExits', 'finishKnockedOut', 'humanize'].map(key => `${key}=${settings[key]}`).join(' ')}`);
+      record(target.area, prescan ? '開始（打怪前補掃）' : scan ? '開始（掃描）' : scholar ? '開始（找書生）' : '開始', `怪 ${scan || scholar ? '-' : state.mobs.join('、')}；目標 ${targets.size} 間；從 ${here}；${['fightMode', 'loopRounds', 'stopBeforeSpawnSec', 'healMode', 'prescan', 'learnExits', 'finishKnockedOut', 'humanize'].map(key => `${key}=${settings[key]}`).join(' ')}`);
+      if (scholar) {
+        // 現在還在這個重生的時間窗內就馬上開始，否則等下一個重生
+        const server = deps.now() + offset;
+        const boundary = Math.floor(server / RESPAWN_MS) * RESPAWN_MS;
+        if (server - boundary < settings.scholarWindowSec * 1000) { state.after = boundary; beginScholarWindow(boundary, offset); }
+        else {
+          const spawn = nextSpawn(server);
+          state.after = server;
+          state.phase = 'wait';
+          state.waiting = { startAt: spawn, spawn, offset, calibratedAt: deps.now(), asking: false, rounds: state.round, visited: 0 };
+          record('-', '找書生', `不在時間窗內，等 ${hhmm(spawn)} 的重生`);
+        }
+      }
       unwatch = deps.watch(onText);
       timer = setInterval(tick, TICK_MS);
       tick();
@@ -2700,7 +2789,7 @@ function create(deps) {
     if (!state) return { text: note || '未啟動', alert: noteAlert };
     // 面板那一行要短：怪只寫名稱（拿掉括號 ID），房間只寫房間代號（區域在地圖上看得到）；完整的放在 title
     const chainAt = state.chain ? `（第 ${state.chain.index + 1}／${state.chain.areas.length} 區）` : '';
-    const who = (state.prescan ? '打怪前先掃描' : state.scan ? '掃描' : state.mobs.length === 1 ? state.mobs[0].replace(/\s*\([^()]*\)\s*$/, '') : `${state.mobs.length} 種怪`) + chainAt;
+    const who = (state.prescan ? '打怪前先掃描' : state.scan ? '掃描' : state.scholar ? '找書生' : state.mobs.length === 1 ? state.mobs[0].replace(/\s*\([^()]*\)\s*$/, '') : `${state.mobs.length} 種怪`) + chainAt;
     const room = key => (typeof key === 'string' ? key.split('/').pop() : key);
     if (state.trialRun) return { text: `試跑（第 ${state.chain.index + 1}／${state.chain.areas.length} 段）：走向 ${state.chain.areas[state.chain.to].area}…`, alert: noteAlert };
     if (state.phase === 'area') return { text: `${who}：換區，走向 ${state.chain.areas[state.chain.to].area}…`, alert: noteAlert };
@@ -2710,6 +2799,8 @@ function create(deps) {
       return { text: `${who}：休息中，${state.waiting ? `約 ${hhmm(state.waiting.spawn)} 回來` : '等待指令送完…'}（跳過 ${state.rest.skip} 輪）${skippedShort(state.skipped)}`, alert: noteAlert };
     }
     if (state.resting) return { text: `${who}：休息中 ${Math.round(state.restPercent)}%→${state.settings.restResume}%${skippedShort(state.skipped)}`, alert: noteAlert };
+    if (state.scholar?.active && state.scholar.found) return { text: `${who}：遇到書生，等書生助手處理完…`, alert: noteAlert };
+    if (state.scholar?.active && state.scholar.idle) return { text: `${who}：戶外格子都看過了，等時間窗結束`, alert: noteAlert };
     if (state.waiting) return { text: `${who}：等下一個重生 ${hhmm(state.waiting.spawn)}（第 ${state.waiting.rounds} 輪到過 ${state.waiting.visited} 間）${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.phase === 'sort') return { text: `${who}：負重 ${state.load}%，整理中（${SORT_PHASE_TEXT[state.sortStage] ?? '…'}，第 ${state.sortCount + 1} 次）${skippedShort(state.skipped)}`, alert: noteAlert };
     if (state.checkingLoad) return { text: `${who}：看負重…${skippedShort(state.skipped)}`, alert: noteAlert };
