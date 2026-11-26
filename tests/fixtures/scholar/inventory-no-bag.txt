@@ -1,0 +1,12 @@
+你身上帶著下列這些東西( 載重 28% ):
+    一個在線獎勵禮盒(reward box)
+    烤雞腿(fried chicken leg) [view][wield]
+ *  六十根珍品．人蔘(treasure ginseng)
+ *  紙皮水袋(waterskin)
+ *  二捆苜蓿草(alfalfa)
+ *  九瓶高麗人蔘茶(ginseng tea)
+ *  一顆失憶丹(noint bonus)
+ *  四十四瓶蠻牛(bull energy)
+  ˇ布條(cloth piece) [view][remove]
+ *ˇ布衣(cloth) [view][remove]
+ *ˇ十三個小石頭(small stone) [view][unwield]

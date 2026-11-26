@@ -76,6 +76,7 @@
         "move-fx.js",
         "skill-moves.js",
         "force-cap.js",
+        "scholar.js",
         "content.js"
       ],
       "css": [

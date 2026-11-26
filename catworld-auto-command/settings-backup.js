@@ -18,7 +18,7 @@ const BLOCKS = [
   {
     id: 'data',
     label: '累積資料',
-    keys: ['mapMonsters', 'shopItems', 'shopNonEquip', 'chatPairs', 'mentorRoutes', 'mobRoutes', 'riddleCommands', 'riddleDone', 'macroNotes', 'wornEquipment', 'mapHuntNpcs', 'mapHuntExits', 'mapVisited', 'forceLevels'],
+    keys: ['mapMonsters', 'shopItems', 'shopNonEquip', 'chatPairs', 'mentorRoutes', 'mobRoutes', 'riddleCommands', 'riddleDone', 'macroNotes', 'wornEquipment', 'mapHuntNpcs', 'mapHuntExits', 'mapVisited', 'forceLevels', 'scholarSuccess'],
   },
 ];
 const SECRET_KEYS = ['lineNotify', 'captchaSampleUrl'];

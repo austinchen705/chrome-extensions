@@ -1069,7 +1069,7 @@ const switchGapMs = () => Math.round(SWITCH_GAP_MS[0] + (SWITCH_GAP_MS[1] - SWIT
 // 巡怪的指令（單一指令或巡怪巨集拆出來的）另外再隔巡怪自己設的隨機間隔，和共用的 commandDelayMs 取較大的
 let huntSettings = CatworldMapHunt.normalizeSettings(undefined);
 // 巡怪紀錄「送出」行的來源；對不到的照原字串
-const SOURCE_LABELS = { hunt: '巡怪', 'hunt-home': '巡怪回家', timer: '定時', random: '隨機', macro: '巨集', user: '巨集', manual: '手動', chat: '聊天回覆', script: '劇本', emote: '表情', alias: '別名', shop: '商人' };
+const SOURCE_LABELS = { hunt: '巡怪', 'hunt-home': '巡怪回家', timer: '定時', random: '隨機', macro: '巨集', user: '巨集', manual: '手動', chat: '聊天回覆', script: '劇本', emote: '表情', alias: '別名', shop: '商人', scholar: '書生' };
 const sourceLabel = source => (String(source).startsWith('trigger:') ? '觸發' : SOURCE_LABELS[source] ?? source);
 const isHuntEntry = entry => entry.source === 'hunt' || entry.run?.owner === 'hunt';
 function pumpQueue() {
@@ -1571,6 +1571,8 @@ const ASK = {
   give: { pattern: /你給|沒有|找不到|什麼|不在|太重/, quietMs: 250 },
   sell: { pattern: /賣掉|沒有|什麼|不能/, quietMs: 1000 },
   alias: { pattern: /你目前設定的 alias 有/, quietMs: 600 },
+  sc: { pattern: /靈性\s*[：:]\s*\d+/, quietMs: 250 },
+  sk: { pattern: /你目前所學過的技能/, quietMs: 600 },
   aliasPage: { pattern: /\s=\s|未完繼續/, quietMs: 600 }, // 別名列表的第二頁以後：沒有標題，有別名行或分頁提示就算到了
 };
 const ASK_MAX_MS = 8000;
@@ -1625,6 +1627,46 @@ async function readAliasList() {
     text += `\n${page}`;
   }
   return { text, tooLong: false };
+}
+// 面板「書生助手」開關：打開時做一次開始前檢查（sc 讀靈性、sk 讀第一行的技能數，sk 會分頁所以讀完送 q 離開），技能數超過上限就不開並警告，不自動 abandon。
+// 每次重新整理頁面都是關的，要再打開才會再檢查；用巨集送（和 alias 一樣閒置時也送得出去）
+const SCHOLAR_SUCCESS_KEY = 'scholarSuccess';
+const SCHOLAR_GOAL = 3;
+let scholarHelper = { on: false, checking: false, text: '', level: '' };
+const sendScholarStep = command => onSent => { if (startMacro(command, 'scholar')) onSent(); };
+async function checkScholarStart() {
+  const S = CatworldScholar;
+  const spirit = S.parseSpirit(await askGame('sc', 'sc', sendScholarStep('sc')));
+  if (spirit === null) return { ok: false, text: '讀不到 sc 的靈性，沒有開啟' };
+  const skText = await askGame('sk', 'sk', sendScholarStep('sk'));
+  if (skText) startMacro('q', 'scholar');
+  const skills = S.parseSkillCount(skText);
+  if (!skills) return { ok: false, text: '讀不到 sk 的技能數，沒有開啟' };
+  const verdict = S.canStart({ spirit, skills: skills.count, hasSixVein: skills.hasSixVein });
+  if (!verdict.ok) return { ok: false, text: `技能數 ${skills.count}、靈性 ${spirit}，要先 abandon ${verdict.abandon} 個技能` };
+  return { ok: true };
+}
+async function toggleScholarHelper() {
+  if (scholarHelper.checking) return;
+  if (scholarHelper.on) {
+    scholarHelper = { on: false, checking: false, text: '', level: '' };
+    renderPanel();
+    return;
+  }
+  scholarHelper = { on: false, checking: true, text: '檢查技能數與靈性…', level: '' };
+  renderPanel();
+  try {
+    const result = await checkScholarStart();
+    if (!result.ok) {
+      scholarHelper = { on: false, checking: false, text: result.text, level: 'warn' };
+    } else {
+      const done = (await chrome.storage.local.get(SCHOLAR_SUCCESS_KEY))[SCHOLAR_SUCCESS_KEY]?.[characterName()] ?? 0;
+      scholarHelper = { on: true, checking: false, text: `已成功 ${done}／${SCHOLAR_GOAL}`, level: '' };
+    }
+  } catch (error) {
+    scholarHelper = { on: false, checking: false, text: '檢查失敗，沒有開啟', level: 'warn' };
+  }
+  renderPanel();
 }
 // 不算「別人」的 ID：設定頁的白名單加上自動學到的 NPC
 async function learnedNpcs() {
@@ -1941,6 +1983,10 @@ function initPanel() {
       .hunt-line .mini button.hmanual, .hunt-line .mini button.hride { padding: 3px 4px; }
       .mini button.hmanual.on { background: #8a2b2b; }
       .macro-line .s:empty { display: none; }
+      .line.scholar-line { flex-wrap: wrap; row-gap: 2px; }
+      .scholar-line .s { order: 3; flex: 1 1 100%; padding-top: 0; }
+      .scholar-line .s:empty { display: none; }
+      .mini button.sbtn.on { background: #2f7d4a; }
       .mini { display: flex; gap: 6px; flex: none; }
       .mini button { all: unset; text-align: center; padding: 3px 12px; border-radius: 6px;
         background: #3a3a3e; cursor: pointer; font-size: 14px; font-weight: 600; }
@@ -1970,6 +2016,7 @@ function initPanel() {
           <span class="mini"><button class="mstop">停止</button></span></div>
         <div class="line hunt-line"><span class="t">巡怪</span><span class="s hunt-text"></span>
           <span class="mini"><button class="hstart" title="巡視勾選的怪出現過的房間">開始</button><button class="hscan" title="街景模式：不用選怪，走這一區還沒走過的每一間，看一眼並記下有哪些怪（不打）">掃描</button><button class="hstop">停止</button><button class="hride" title="可 ride：把角色現在站的這一格記成可以 ride 的格子（再按一次取消）。巡怪要整理時先走到這一區最近的可 ride 格子才送前往指令">可 ride</button><button class="hmanual" title="記錄手動：記下你自己送出的指令（輸入框打的、遊戲巨集鍵送出的），每個重生整點與關掉時寫一段「手動摘要」到巡怪紀錄，和巡怪的輪摘要對照">● 記錄</button></span></div>
+        <div class="line scholar-line"><span class="t">書生</span><span class="mini"><button class="sbtn" title="書生助手：打開時先檢查技能數有沒有超過靈性上限（只檢查這一次，不會自動 abandon）">書生助手</button></span><span class="s scholar-text"></span></div>
         <div class="line reward-line" hidden><span class="t">獎勵</span><span class="s reward-text"></span></div>
         <div class="line script-line" hidden><span class="t">劇本</span><span class="s script-text"></span></div>
       </div>
@@ -1987,6 +2034,7 @@ function initPanel() {
     idleText: $('.idle-text'), istart: $('.istart'), istop: $('.istop'),
     macroText: $('.macro-text'), mstop: $('.mstop'),
     huntText: $('.hunt-text'), hstart: $('.hstart'), hscan: $('.hscan'), hstop: $('.hstop'), hride: $('.hride'), hmanual: $('.hmanual'),
+    sbtn: $('.sbtn'), scholarText: $('.scholar-text'),
     rewardLine: $('.reward-line'), rewardText: $('.reward-text'),
     scriptLine: $('.script-line'), scriptText: $('.script-text'),
     confirm: $('.confirm'),
@@ -2153,6 +2201,7 @@ function initPanel() {
     else startManual();
     renderPanel();
   });
+  panel.sbtn.addEventListener('click', toggleScholarHelper);
   panel.confirm.addEventListener('click', confirmAlert);
   // ⚙：交給背景腳本在新分頁開啟設定頁，再按一次關閉
   $('.gear').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'TOGGLE_SETTINGS' }));
@@ -2405,6 +2454,14 @@ function renderPanel() {
   panel.hride.textContent = rideHere() ? '可 ride ✓' : '可 ride';
   panel.hmanual.textContent = manualRecord ? '● 記錄中' : '● 記錄';
   panel.hmanual.classList.toggle('on', !!manualRecord);
+  panel.sbtn.classList.toggle('on', scholarHelper.on);
+  panel.sbtn.textContent = scholarHelper.on ? '書生助手 ✓' : '書生助手';
+  panel.sbtn.disabled = scholarHelper.checking;
+  if (panel.scholarText.textContent !== scholarHelper.text) {
+    panel.scholarText.textContent = scholarHelper.text;
+    panel.replace();
+  }
+  panel.scholarText.classList.toggle('warn', scholarHelper.level === 'warn');
   panel.mstop.disabled = !macroRuns.size;
   panel.avoidMap();
   panel.timerText.classList.toggle('alert', captchaStopped);
