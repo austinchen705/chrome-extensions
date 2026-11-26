@@ -25,18 +25,19 @@ function canStart({ spirit, skills, hasSixVein }) {
 // 一行遊戲文字 → { kind, ... } 或 null。kind：appear（房間行 ※落魄書生(dire scholar)）、request（要東西，item＝「誰能給我」與「呢？」中間的原文，line＝整句）、
 // vanish、leave（direction＝「往」與「離開」中間）、followed（跟隨）、given（你給落魄書生…）、success（領悟六脈）、failed（沒解成）、already（已經領悟）
 function classifyLine(line) {
-  const text = String(line ?? '').trim();
-  if (!text.includes('落魄書生') && !text.includes('六脈神劍') && !text.includes('可惜啊')) return null;
+  // 只認行首（前面可能黏著提示符「> 」）：頻道轉貼的「【幫】某人：落魄書生說道：…」不算，書生不在身邊
+  const text = String(line ?? '').trim().replace(/^>\s*/, '');
+  if (!/^(落魄書生|※落魄書生|恭喜你對六脈神劍|你決定開始跟隨落魄書生|你給落魄書生)/.test(text)) return null;
   let m;
-  if ((m = /落魄書生說道[：:]\s*誰能給我(.*?)呢[？?]/.exec(text))) return { kind: 'request', item: m[1], line: m[0] };
-  if (text.includes('你已經對六脈有相當的領悟了')) return { kind: 'already' };
-  if (text.includes('落魄書生突然身形一晃，便漸漸消逸了')) return { kind: 'vanish' };
-  if ((m = /落魄書生往(.+?)離開/.exec(text))) return { kind: 'leave', direction: m[1] };
-  if (text.includes('可惜啊！看來我們有緣無份了。')) return { kind: 'failed' };
-  if (text.includes('恭喜你對六脈神劍有所領悟了。')) return { kind: 'success' };
-  if (text.includes('你決定開始跟隨落魄書生一起行動。')) return { kind: 'followed' };
-  if (/你給落魄書生/.test(text)) return { kind: 'given' };
-  if (/落魄書生\(dire scholar\)/.test(text)) return { kind: 'appear' };
+  if ((m = /^落魄書生說道[：:]\s*誰能給我(.*?)呢[？?]/.exec(text))) return { kind: 'request', item: m[1], line: m[0] };
+  if (/^落魄書生說道[：:]\s*你已經對六脈有相當的領悟了/.test(text)) return { kind: 'already' };
+  if (text.startsWith('落魄書生突然身形一晃，便漸漸消逸了')) return { kind: 'vanish' };
+  if ((m = /^落魄書生往(.+?)離開/.exec(text))) return { kind: 'leave', direction: m[1] };
+  if (/^落魄書生向你打聽有關『可惜啊！看來我們有緣無份了。』/.test(text)) return { kind: 'failed' };
+  if (text.startsWith('恭喜你對六脈神劍有所領悟了。')) return { kind: 'success' };
+  if (text.startsWith('你決定開始跟隨落魄書生一起行動。')) return { kind: 'followed' };
+  if (text.startsWith('你給落魄書生')) return { kind: 'given' };
+  if (/^※落魄書生\(dire scholar\)/.test(text)) return { kind: 'appear' };
   return null;
 }
 

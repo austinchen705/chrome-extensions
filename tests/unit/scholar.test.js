@@ -53,6 +53,10 @@ test('classifyLine recognises each scholar message from the real samples', () =>
 test('a request keeps the raw middle part (garbled item names included) and the whole sentence', () => {
   assert.deepEqual(S.classifyLine('落魄書生說道：誰能給我蟹珠玄鐵q石a呢？'), { kind: 'request', item: '蟹珠玄鐵q石a', line: '落魄書生說道：誰能給我蟹珠玄鐵q石a呢？' });
   assert.equal(S.classifyLine('你看到一個房間。'), null);
+  // 頻道轉貼（論壇樣本）：書生不在身邊，不算
+  assert.equal(S.classifyLine('【臥龍谷】老衲(oldna)：落魄書生說道：誰能給我q銀菩d猴靴信呢？'), null);
+  assert.equal(S.classifyLine('ct 落魄書生說道：誰能給我q銀菩d猴靴信呢？'), null);
+  assert.deepEqual(S.classifyLine('> 落魄書生說道：你已經對六脈有相當的領悟了，我不能再教你什麼了。'), { kind: 'already' });
   assert.equal(S.classifyLine(''), null);
   assert.equal(S.classifyLine(undefined), null);
 });
