@@ -36,7 +36,7 @@ const markPlayers = (page, room, ...ids) => {
 };
 
 // 假遊戲：moves[現在][指令] = 下一間（沒有就留在原地）；reply 為 false 時不回任何輸出（看門狗會因為沒回應而停）
-// looks[房間] = { exits, lines }：l 的輸出（出口行與後面的怪物、人物行）；silentLook 為 true 時 l 不回應；
+// looks[房間] = { exits, lines, weather }：l 的輸出（出口行與後面的怪物、人物行；weather 是描述後面縮排的天氣句，有就是戶外）；silentLook 為 true 時 l 不回應；
 // fingers[ID] = finger 的輸出，沒寫就不回應
 function world(page, { at, moves = MOVES, reply = true, stuck = false, looks = {}, fingers = {}, silentLook = false, arrivals = {}, arrivalDelayMs = 0, lookDelayMs = 0, script = null, row = ROW, arrivalSplitMs = 0 } = {}) {
   const doc = page.w.document;
@@ -57,7 +57,7 @@ function world(page, { at, moves = MOVES, reply = true, stuck = false, looks = {
     if (script?.(command, { game: state, say: tell, looks })) return;
     if (command === 'l') {
       const info = looks[state.at] || {};
-      const show = () => page.output(`<span>${['測試房間 - ', '    這裡是房間。', `    這裡明顯的出口是 ${info.exits ?? 'east'}。`, ...(info.lines || [])].join('\n')}\n</span>`);
+      const show = () => page.output(`<span>${['測試房間 - ', '    這裡是房間。', ...(info.weather ? [`    ${info.weather}`] : []), `    這裡明顯的出口是 ${info.exits ?? 'east'}。`, ...(info.lines || [])].join('\n')}\n</span>`);
       if (!silentLook) {
         if (lookDelayMs) setTimeout(show, lookDelayMs);
         else show();

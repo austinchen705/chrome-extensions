@@ -601,3 +601,19 @@ ui('the manual collector pauses while a hunt or scan is running, and works again
     page.close();
   }
 });
+
+ui('scan: each looked-at room is stored as outdoor when its description has an indented weather line and indoor when not', async () => {
+  const page = await boot({ scale: SCALE });
+  try {
+    world(page, { at: 'a', looks: { a: { weather: '天空中烏雲密佈，下著大雨。' }, b: {}, c: { weather: '晴空萬里。' }, d: {} } });
+    await sleep(150);
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 6000), huntText(page));
+    assert.ok(await waitFor(() => Object.keys(page.store.mapOutdoor ?? {}).length === 4), JSON.stringify(page.store.mapOutdoor));
+    const outdoor = Object.fromEntries(Object.entries(page.store.mapOutdoor).map(([key, row]) => [key, row.outdoor]));
+    assert.deepEqual(outdoor, { 't/a': true, 't/b': false, 't/c': true, 't/d': false });
+    assert.equal(typeof page.store.mapOutdoor['t/a'].at, 'number');
+  } finally {
+    page.close();
+  }
+});

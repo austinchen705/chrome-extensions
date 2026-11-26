@@ -512,17 +512,18 @@ function create(deps) {
         const info = Parse.parseLook(state.moveText);
         const waited = state.ticks - begin;
         if (info.exits.length) {
-          if (state.ticks - state.moveTextTick >= ARRIVAL_QUIET_TICKS) { state.readTick = state.ticks; return { info, source: '抵達描述' }; }
+          if (state.ticks - state.moveTextTick >= ARRIVAL_QUIET_TICKS) { state.readTick = state.ticks; return { info, source: '抵達描述', text: state.moveText }; }
           if (waited > ARRIVAL_WAIT_TICKS) break;
         } else if (waited > PASS_WAIT_TICKS) break;
         await sleepTick();
         if (state !== token) return null;
       }
     }
-    const info = Parse.parseLook(await askHuman(token, 'l', 'look'));
+    const text = await askHuman(token, 'l', 'look');
+    const info = Parse.parseLook(text);
     if (state !== token) return null;
     state.readTick = state.ticks;
-    return { info, source: 'l' };
+    return { info, source: 'l', text };
   }
 
   // 到了目標房間：看房間（見 lookRoom）。沒有勾選的怪就直接換下一間（不必問人）；有別人就略過這間；沒見過的 ID 用 finger 分辨
@@ -535,12 +536,13 @@ function create(deps) {
     if (state !== token) return;
     const seen = await lookRoom(token, here, walked);
     if (!seen) return;
-    const { info, source } = seen;
+    const { info, source, text } = seen;
     // 回應回來時人已經不在這間了（例如自己手動跑掉）：這份輸出是別間的，不能記給這間，丟掉、重新規劃
     const now = deps.room();
     if (now && now !== here) { state.phase = 'plan'; return; }
     if (!info.exits.length) { skipTarget(here, '讀不到房間'); return; }
     record(here, '看房間', `${lookText(info)}（來源 ${source}）`);
+    if (deps.markOutdoor) Promise.resolve().then(() => deps.markOutdoor(here, text)).catch(() => {}); // 戶外／室內是附帶紀錄，存不進去不影響巡怪
     await humanHabit(token, here, '到房間後');
     if (state !== token) return;
     const wanted = info.monsters.some(mob => token.mobs.includes(mob.full));

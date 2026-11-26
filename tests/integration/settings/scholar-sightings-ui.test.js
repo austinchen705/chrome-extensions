@@ -89,3 +89,22 @@ ui('clear removes the sightings only after the confirm', async () => {
     dom.window.close();
   }
 });
+
+ui('the map section lists outdoor and indoor room counts per area, and clear removes them only after the confirm', async () => {
+  const outdoor = { 'plain/a1': { outdoor: true, at: T }, 'plain/a2': { outdoor: true, at: T }, 'plain/a3': { outdoor: false, at: T }, 'hall/h1': { outdoor: false, at: T } };
+  const { dom, doc, store } = await boot({ mapOutdoor: outdoor });
+  try {
+    assert.ok(await waitFor(() => doc.querySelectorAll('#mapOutdoorList li').length === 2));
+    assert.deepEqual([...doc.querySelectorAll('#mapOutdoorList li')].map(li => li.textContent), ['plain：戶外 2 格、室內 1 格', 'hall：戶外 0 格、室內 1 格']);
+    dom.window.confirm = () => false;
+    doc.getElementById('mapOutdoorClear').click();
+    await sleep(50);
+    assert.equal(Object.keys(store.mapOutdoor).length, 4);
+    dom.window.confirm = () => true;
+    doc.getElementById('mapOutdoorClear').click();
+    assert.ok(await waitFor(() => !('mapOutdoor' in store) && doc.querySelectorAll('#mapOutdoorList li').length === 0));
+    assert.match(doc.getElementById('mapOutdoorInfo').textContent, /尚無紀錄/);
+  } finally {
+    dom.window.close();
+  }
+});

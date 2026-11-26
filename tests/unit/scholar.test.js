@@ -121,3 +121,25 @@ test('addSighting and endSighting do not change the input', () => {
   assert.doesNotThrow(() => S.addSighting(records, { kind: 'request', line: '甲' }, T0 + 1000));
   assert.doesNotThrow(() => S.endSighting(records));
 });
+
+test('isOutdoor: an indented time-of-day or weather line between the description and the exits line means outdoor', () => {
+  const outdoor = fs.readdirSync(path.join(__dirname, '..', 'fixtures', 'scholar')).filter(name => /^look-outdoor-/.test(name));
+  assert.ok(outdoor.length >= 4);
+  outdoor.forEach(name => assert.equal(S.isOutdoor(sample(name.replace(/\.txt$/, ''))), true, name));
+  assert.equal(S.isOutdoor(sample('look-scholar-plain')), true);
+});
+
+test('isOutdoor: indoor rooms stay false even with a P.S. line or a hint after the exits line', () => {
+  const indoor = fs.readdirSync(path.join(__dirname, '..', 'fixtures', 'scholar')).filter(name => /^look-indoor-/.test(name));
+  assert.ok(indoor.length >= 5);
+  indoor.forEach(name => assert.equal(S.isOutdoor(sample(name.replace(/\.txt$/, ''))), false, name));
+});
+
+test('isOutdoor: no exits line is unknown, and only the last description counts', () => {
+  assert.equal(S.isOutdoor('測試房間 - \n    這裡是房間。'), null);
+  assert.equal(S.isOutdoor(''), null);
+  assert.equal(S.isOutdoor(undefined), null);
+  const text = `${sample('look-outdoor-street')}\n${sample('look-indoor-temple')}`;
+  assert.equal(S.isOutdoor(text), false);
+  assert.equal(S.isOutdoor(`${sample('look-indoor-temple')}\n${sample('look-outdoor-street')}`), true);
+});

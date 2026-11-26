@@ -1731,6 +1731,19 @@ function markHuntVisited(key, state) {
   });
   return visitedWrite;
 }
+// 巡怪、掃描讀到的房間描述 → 戶外／室內（見 scholar.js 的 isOutdoor）：{ "區域/房間": { outdoor, at } }，後讀的蓋掉先讀的；讀不出來（null）不記。讀改寫同樣排成一條佇列
+let outdoorWrite = Promise.resolve();
+function markHuntOutdoor(key, lookText) {
+  const outdoor = CatworldScholar.isOutdoor(lookText);
+  if (outdoor === null) return Promise.resolve();
+  outdoorWrite = outdoorWrite.catch(() => {}).then(async () => {
+    const storageKey = CatworldScholar.OUTDOOR_KEY;
+    const stored = (await chrome.storage.local.get(storageKey))[storageKey];
+    const rows = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+    await chrome.storage.local.set({ [storageKey]: { ...rows, [key]: { outdoor, at: Date.now() } } });
+  });
+  return outdoorWrite;
+}
 // 手動蒐集的觀察器在巡怪、掃描進行中暫停（見 map-collect.js 的 setSuspended）
 CatworldMapCollect.setSuspended(() => hunt?.on() ?? false);
 // 地圖巡怪：目標是面板「選怪」勾選的怪（map-hunt-ui.js，依區域記在 mapHuntPicks）與地圖目前顯示的區域；指令走共用送出佇列（來源 hunt）
@@ -1770,6 +1783,7 @@ hunt = CatworldMapHunt.create({
   },
   visited: async () => (await chrome.storage.local.get(CatworldMapHunt.VISITED_KEY))[CatworldMapHunt.VISITED_KEY] ?? {},
   markVisited: markHuntVisited,
+  markOutdoor: markHuntOutdoor,
   ask: askGame,
   // 整理用：從鑑定輸出裡挑出要留的裝備（比現在穿的好或屬性達門檻的；沒基準可比的不留，武器只留主要武器職業的）。
   // 回 { total: 鑑定出幾件, mainWeapon, kept: [{ name, category, why }] }，巡怪紀錄寫留了什麼、為什麼

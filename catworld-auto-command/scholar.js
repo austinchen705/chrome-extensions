@@ -76,5 +76,24 @@ function endSighting(records) {
   return [...list.slice(0, -1), { ...last, ended: true }];
 }
 
-globalThis.CatworldScholar = { parseSpirit, parseSkillCount, canStart, classifyLine, addSighting, endSighting, SIGHTINGS_KEY: 'scholarSightings', CAP };
+// 房間描述 → 戶外 true／室內 false／讀不到 null。房間名稱行（結尾 " -" 或 " --"）之後第一段是描述（第一行縮排、後續行不縮排）；
+// 描述段之後、出口行之前只要有一行縮排開頭有字（時辰、天氣句）就是戶外。出口行之後、沒縮排、空白的行都不算。有兩份描述只看最後一份
+const EXITS_LINE = /^\s*這裡(?:明顯的出口是|唯一的出口是)/;
+const TITLE_LINE = /\s-{1,2}\s*$/;
+const indented = line => /^\s/.test(line) && line.trim() !== '';
+function isOutdoor(lookText) {
+  const lines = String(lookText ?? '').split(/\r?\n/);
+  let exits = -1;
+  lines.forEach((line, index) => { if (EXITS_LINE.test(line)) exits = index; });
+  if (exits < 0) return null;
+  let title = -1;
+  for (let i = exits - 1; i >= 0; i -= 1) if (TITLE_LINE.test(lines[i])) { title = i; break; }
+  if (title < 0) return null;
+  let i = title + 1;
+  if (i < exits && indented(lines[i])) i += 1; // 描述第一行
+  while (i < exits && lines[i].trim() !== '' && !indented(lines[i])) i += 1; // 後續行
+  return lines.slice(i, exits).some(indented);
+}
+
+globalThis.CatworldScholar = { parseSpirit, parseSkillCount, canStart, classifyLine, addSighting, endSighting, isOutdoor, SIGHTINGS_KEY: 'scholarSightings', OUTDOOR_KEY: 'mapOutdoor', CAP };
 })();

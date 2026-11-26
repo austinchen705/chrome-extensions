@@ -693,6 +693,35 @@ $('mapVisitedClear').addEventListener('click', async () => {
 showMapCollect();
 chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && (changes[MAP_KEY] || changes[VISITED_KEY])) showMapCollect(); });
 
+// 各區記到幾格戶外、幾格室內（掃描、巡怪讀房間描述時 content.js 寫入 mapOutdoor：{ "區域/房間": { outdoor, at } }）
+const OUTDOOR_KEY = 'mapOutdoor';
+async function showMapOutdoor() {
+  const stored = (await chrome.storage.local.get([OUTDOOR_KEY, MAP_KEY]));
+  const raw = stored[OUTDOOR_KEY];
+  const rooms = raw && typeof raw === 'object' && !Array.isArray(raw) ? Object.entries(raw).filter(([, row]) => typeof row?.outdoor === 'boolean') : [];
+  const names = new Map(mapRows(stored[MAP_KEY]).map(row => [row.area, row.areaName]));
+  const areas = new Map();
+  rooms.forEach(([key, row]) => {
+    const area = key.slice(0, Math.max(key.indexOf('/'), 0)) || key;
+    const count = areas.get(area) ?? { outdoor: 0, indoor: 0 };
+    count[row.outdoor ? 'outdoor' : 'indoor'] += 1;
+    areas.set(area, count);
+  });
+  $('mapOutdoorInfo').textContent = rooms.length ? `戶外／室內：${areas.size} 區、${rooms.length} 格` : '戶外／室內：尚無紀錄';
+  $('mapOutdoorList').replaceChildren(...[...areas].map(([area, count]) => {
+    const item = document.createElement('li');
+    item.textContent = `${names.get(area) || area}：戶外 ${count.outdoor} 格、室內 ${count.indoor} 格`;
+    return item;
+  }));
+}
+$('mapOutdoorClear').addEventListener('click', async () => {
+  if (!confirm('清除各格的戶外／室內紀錄？清掉就回不來了（下次掃描、巡怪會重新記）。')) return;
+  await chrome.storage.local.remove(OUTDOOR_KEY);
+  await showMapOutdoor();
+});
+showMapOutdoor();
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && (changes[OUTDOOR_KEY] || changes[MAP_KEY])) showMapOutdoor(); });
+
 // 書生出沒紀錄（content.js 的 watchScholar 寫入，最近的在上）：時間、距重生 m:ss、區域／房間、書生說的話
 const SIGHTINGS_KEY = 'scholarSightings';
 const pad2 = n => String(n).padStart(2, '0');
