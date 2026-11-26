@@ -2080,7 +2080,7 @@ ui('special once: with 每場只放一次特攻 on, a fight lasting several inte
   }
 });
 
-ui('special once: a siege with several waits counts as one fight and sends the special once in total', async () => {
+ui('special once: a siege is not limited, the special keeps going by the interval while monsters are still fighting you', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
@@ -2095,11 +2095,10 @@ ui('special once: a siege with several waits counts as one fight and sends the s
     click(page, '.hstart');
     assert.ok(await waitFor(() => countOf(game, 'l') >= 1, 6000), game.log.join(' '));
     await sleep(2500);
-    assert.equal(countOf(game, 'sp'), 1, `no second special in the second wait: ${game.log.join(' ')}`);
+    assert.ok(countOf(game, 'sp') >= 2, `the special is sent again in the second wait: ${game.log.join(' ')}`);
     lines[1] = KNOCKED_LINE;
     say(page, KO_LINE);
     assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), huntText(page));
-    assert.equal(countOf(game, 'sp'), 1, game.log.join(' '));
   } finally {
     page.close();
   }
