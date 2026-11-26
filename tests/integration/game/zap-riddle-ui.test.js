@@ -26,7 +26,7 @@ const waitFor = async (condition, ms = 3000) => {
 const riddles = [{ id: 'a/獨孤九劍', category: 'a', name: '獨孤九劍', condition: '無', difficulty: '易', reward: '技能', hint: '', page: 'qu1.htm', shared: [] }];
 const pages = { 'qu1.htm': { preamble: '', text: '', steps: [{ no: 1, text: '第一步', commands: 'run site' }, { no: 2, text: '第二步', commands: '' }, { no: 3, text: '第三步', commands: 'run site3' }] } };
 
-function boot({ shared, personal = {}, calls = [], started = [], sharedGate = null, changeListeners = [], sharedNow = () => shared, startResult = true, inventory = null, who = '小貓', store = {}, runMacro = null, stopMacros = () => {} }) {
+function boot({ shared, personal = {}, calls = [], started = [], sharedGate = null, changeListeners = [], sharedNow = () => shared, startResult = true, inventory = null, who = '小貓', store = {}, runMacro = null, stopMacros = () => {}, readBags = null }) {
   const dom = new JSDOM('<html><body></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   w.chrome = {
@@ -48,7 +48,7 @@ function boot({ shared, personal = {}, calls = [], started = [], sharedGate = nu
   const shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = '<div class="panel"><div class="head"></div><div class="body"></div></div>';
   w.document.documentElement.append(host);
-  const api = w.CatworldZapRiddleUI.attach(shadow, { readStats: () => ({ exp: 1000000, force: 1000 }), startSteps: text => { started.push(text); return startResult; }, readInventory: async () => { started.push('i'); return inventory ?? ''; }, characterName: () => who, runMacro: runMacro ?? (async text => { started.push(text); return true; }), stopMacros });
+  const api = w.CatworldZapRiddleUI.attach(shadow, { readStats: () => ({ exp: 1000000, force: 1000 }), startSteps: text => { started.push(text); return startResult; }, readInventory: async () => { started.push('i'); return inventory ?? ''; }, characterName: () => who, ...(readBags ? { readBags: async () => { started.push('bags'); return readBags; } } : {}), runMacro: runMacro ?? (async text => { started.push(text); return true; }), stopMacros });
   api.setEnabled(true);
   shadow.querySelector('.rd-open').click();
   return { shadow, started, calls, changeListeners };
@@ -342,5 +342,32 @@ ui('stop cancels the running macro and nothing more is sent, no re-read', async 
     assert.deepEqual(page.dom.started, [], 'no i read after stop');
     assert.equal(stops, 1);
     assert.equal(page.button('停止').hidden, true);
+  } finally { page.restore(); }
+});
+
+ui('read body with bags: rows show where the item is (身上 / 袋子 bag 2) and the quantity, the bag-only ids are stored', async () => {
+  const store = {};
+  const bagText = ['一個綠色布袋(bag)。', '裡面有：', '      一顆桃符紙(talisman)', '      二顆燒酒螺(snail)'].join('\n');
+  const page = await openItems({ store, readBags: [{ bag: 'bag', text: '一個綠色布袋(bag)。\n裡面有：\n      錐心杵(staff)' }, { bag: 'bag 2', text: bagText }] });
+  try {
+    page.button('讀身上').click();
+    assert.ok(await waitFor(() => /袋子/.test(page.dom.shadow.querySelector('.rd-main').textContent)));
+    assert.deepEqual(page.dom.started, ['i', 'bags']);
+    assert.match(page.row('桃符紙').textContent, /✓ 袋子 bag 2 ×1/);
+    assert.match(page.row('燒酒螺').textContent, /✓ 袋子 bag 2 ×2/);
+    assert.match(page.row('玄鐵石').textContent, /✓ ×1/);
+    assert.doesNotMatch(page.row('玄鐵石').textContent, /袋子/);
+    assert.match(message(page.dom.shadow).textContent, /身上和袋子有 [0-9]+ 樣/);
+    assert.equal(store.scholarItemIds.小貓.桃符紙, 'talisman');
+  } finally { page.restore(); }
+});
+
+ui('read body with a bag that does not answer: the message says so in warn', async () => {
+  const page = await openItems({ readBags: [{ bag: 'bag 2', text: '' }] });
+  try {
+    page.button('讀身上').click();
+    assert.ok(await waitFor(() => /沒有回應/.test(message(page.dom.shadow).textContent)));
+    assert.match(message(page.dom.shadow).textContent, /袋子 bag 2 沒有回應/);
+    assert.equal(levelOfNote(message(page.dom.shadow)), 'warn');
   } finally { page.restore(); }
 });

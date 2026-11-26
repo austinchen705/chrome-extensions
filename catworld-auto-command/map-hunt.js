@@ -160,6 +160,7 @@ const FIELDS = [
   { key: 'restSkipMin', group: 'human', show: s => s.humanize === 'on', row: 'restSkip', label: '一次休息跳過幾輪 最少', hint: '一輪＝一個 15 分鐘的重生，每次在最少與最多之間隨機抽（整數輪）', type: 'number', default: 1, min: 1, max: 20 },
   { key: 'restSkipMax', group: 'human', show: s => s.humanize === 'on', row: 'restSkip', label: '最多', hint: '休息大約是跳過的輪數 × 15 分鐘', type: 'number', default: 3, min: 1, max: 20 },
   { key: 'scholarWindowSec', group: 'scholar', label: '重生後找書生的時間窗（秒）', hint: '「找書生」從每個重生整點起，在這段時間內照最近的先走巡這一區記成戶外的格子；到了還沒遇到書生就送待命指令、等下一個重生', type: 'number', default: 180, min: 30, max: 900 },
+  { key: 'scholarBags', group: 'scholar', label: '袋子', hint: '書生要的東西不在身上時，去這些袋子裡拿（get 物品 from 袋子）；第一個袋子填 bag、第二個填 bag 2，用、或逗號分開；空白＝不看袋子。遊戲的 help bag 說袋子和裡面的東西不會存檔，登出後可能不見', type: 'text', default: '' },
   { key: 'logCommands', group: 'advanced', label: '巡怪紀錄記下送出的指令', hint: '開＝巡怪進行中，每個送出的指令（巡怪、觸發、定時、隨機、巨集、手動…）都記一行「時間 房間 送出 指令（來源）」；走路的指令不記，聊天回覆、劇本、表情只記來源不記內容', type: 'select', options: ON_OFF, default: 'on' },
   { key: 'npcWhitelist', group: 'advanced', label: 'NPC 白名單', hint: '英文 ID，用、分隔', type: 'text', default: '' },
 ];
@@ -182,7 +183,7 @@ const GROUPS = [
   { id: 'sort', title: '負重與自動整理', summary: s => (sorting(s) ? (s.overloadAction === 'stop' ? `>${s.loadMaxPercent}% 停止巡怪` : `>${s.loadMaxPercent}% 整理｜${s.sortKeep === 'none' ? '全賣' : '留好裝備'}`) : '不檢查') },
   { id: 'rounds', title: '輪與重生', summary: s => [s.loopRounds === 'on' ? '等重生' : '巡完就停', s.chain === 'on' ? '跨區' : '', s.stopBeforeSpawnSec > 0 ? `重生前 ${s.stopBeforeSpawnSec} 秒停打` : ''].filter(Boolean).join('｜') },
   { id: 'human', title: '擬人化', summary: s => (s.humanize === 'on' ? (s.restReturnCommand ? '開' : '開｜沒填回程指令，不會掛機休息') : '關') },
-  { id: 'scholar', title: '六脈神劍', summary: s => `找書生時間窗 ${s.scholarWindowSec} 秒` },
+  { id: 'scholar', title: '六脈神劍', summary: s => `找書生時間窗 ${s.scholarWindowSec} 秒${s.scholarBags ? `｜袋子 ${s.scholarBags}` : ''}` },
   { id: 'advanced', title: '進階', summary: s => (s.npcWhitelist ? `白名單 ${s.npcWhitelist}` : '') },
 ];
 const fieldShown = (field, settings) => !field.show || field.show(settings);
@@ -202,6 +203,20 @@ function giveList(settings) {
     if (!id || id.length > GIVE_ID_MAX || !SAFE_ID.test(id) || seen.has(id.toLowerCase()) || out.length >= GIVE_ITEMS_MAX) return;
     seen.add(id.toLowerCase());
     out.push(id);
+  });
+  return out;
+}
+
+// 六脈神劍的袋子：用、或逗號分開，只留「bag」「bag 2」「green bag」這種能放進指令的寫法（英文字母與空格、可接一個數字），不分大小寫去重，最多 BAGS_MAX 個
+const BAGS_MAX = 5;
+const BAG_REF = /^[a-z][a-z ]*( \d+)?$/i;
+function bagList(settings) {
+  const seen = new Set();
+  const out = [];
+  String(settings?.scholarBags ?? '').split(/[、,，]/).map(part => part.trim().replace(/\s+/g, ' ')).forEach(ref => {
+    if (!BAG_REF.test(ref) || ref.length > GIVE_ID_MAX || seen.has(ref.toLowerCase()) || out.length >= BAGS_MAX) return;
+    seen.add(ref.toLowerCase());
+    out.push(ref);
   });
   return out;
 }
@@ -251,6 +266,7 @@ function normalizeSettings(rawSettings) {
   if (out.reactMaxMs < out.reactMinMs) out.reactMaxMs = out.reactMinMs;
   if (out.sortLookMaxSec < out.sortLookMinSec) out.sortLookMaxSec = out.sortLookMinSec;
   out.giveItems = giveList(out).join('、');
+  out.scholarBags = bagList(out).join('、');
   out.habitAfterArrive = habitText(out.habitAfterArrive);
   out.habitAfterKill = habitText(out.habitAfterKill);
   out.loadCheckEveryMin = Math.round(out.loadCheckEveryMin);
@@ -2881,5 +2897,5 @@ function create(deps) {
   return { start, trialRun, stop, on, summary, snapshot, exportLog, noteSent, noteCommand, recordLine };
 }
 
-globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, CHAIN_KEY, CHAIN_TRIAL_KEY, FIELDS, GROUPS, fieldShown, isWideField, missingFields, normalizeSettings, habitList, habitText, normalizeVisited, normalizeChain, rearrangeChain, chainStatus, gapMs, splitIds, summaryLines, RESPAWN_MS, create };
+globalThis.CatworldMapHunt = { SETTINGS_KEY, NPCS_KEY, EXITS_KEY, VISITED_KEY, CHAIN_KEY, CHAIN_TRIAL_KEY, FIELDS, GROUPS, fieldShown, isWideField, missingFields, normalizeSettings, bagList, habitList, habitText, normalizeVisited, normalizeChain, rearrangeChain, chainStatus, gapMs, splitIds, summaryLines, RESPAWN_MS, create };
 })();

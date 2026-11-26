@@ -317,3 +317,95 @@ ui('auto give: no result after give -> timeout record and warn alert', async () 
     page.close();
   }
 });
+
+// ---- 袋子：東西不在身上時從設定「袋子」裡拿 ----
+const BAG_TEXT = items => `一個綠色布袋(green bag)。\n裡面有：\n${items.map(([name, id]) => `      ${name}(${id})`).join('\n')}\n`;
+const TAKEN = '你從山本由伸的綠色布袋中拿出一顆玄鐵石。';
+// 假遊戲：i 回 body（拿出東西後 body 多一樣 taken）、l <袋子> 回 bags[袋子]、get … from … 回拿出的句子（take 給 null 就不回）、give 回成功
+function bagGame(page, { body, bags, take = TAKEN, taken = null }) {
+  const onBody = [...body];
+  page.w.document.getElementById('f').addEventListener('submit', () => {
+    const command = page.w.document.getElementById('input').value;
+    if (command === 'follow dire') say(page, FOLLOWED);
+    if (command === 'i') say(page, BODY(onBody));
+    if (command.startsWith('l ') && bags[command.slice(2)]) say(page, BAG_TEXT(bags[command.slice(2)]));
+    if (command.startsWith('get ') && take) { if (taken) onBody.push(taken); say(page, take); }
+    if (command.startsWith('give dire')) say(page, SUCCESS);
+  });
+}
+async function bagPage(setting, game) {
+  const page = await boot({ scale: 10, initialStore: { mapHuntSettings: { scholarBags: setting } } });
+  page.w.document.title = '山本由伸 - 小貓的世界';
+  fakeGame(page, { sc: 'sc-spirit-31', sk: 'sk-28', more: ['sk-page2'] });
+  button(page).click();
+  assert.ok(await waitFor(() => button(page).classList.contains('on'), 6000), text(page).textContent);
+  page.sent.length = 0;
+  bagGame(page, game);
+  appear(page);
+  assert.ok(await waitFor(() => page.sent.includes('follow dire'), 6000));
+  say(page, REQ_STONE);
+  return page;
+}
+
+ui('bag: the item is only in the bag -> i, l bag, get stone from bag, then give dire stone', async () => {
+  const page = await bagPage('bag', { body: [['紙皮水袋', 'waterskin']], bags: { bag: [['錐心杵', 'staff'], ['一顆玄鐵石', 'stone']] } });
+  try {
+    assert.ok(await waitFor(() => page.sent.includes('give dire stone'), 6000), page.sent.join());
+    assert.deepEqual(page.sent, ['follow dire', 'i', 'l bag', 'get stone from bag', 'give dire stone']);
+    assert.ok(await waitFor(() => sightings(page)[0]?.result === 'success', 6000), JSON.stringify(sightings(page)));
+  } finally {
+    page.close();
+  }
+});
+
+ui('bag: the item is in the second bag -> both bags are read, get … from bag 2', async () => {
+  const page = await bagPage('bag, bag 2', { body: [['紙皮水袋', 'waterskin']], bags: { bag: [['錐心杵', 'staff']], 'bag 2': [['不知名藥草', 'unknown herb'], ['一顆玄鐵石', 'stone']] } });
+  try {
+    assert.ok(await waitFor(() => page.sent.includes('give dire stone'), 6000), page.sent.join());
+    assert.deepEqual(page.sent, ['follow dire', 'i', 'l bag', 'l bag 2', 'get stone from bag 2', 'give dire stone']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('bag: the item is on the body -> the bags are not read at all', async () => {
+  const page = await bagPage('bag', { body: STONE, bags: { bag: [['一顆玄鐵石', 'stone']] } });
+  try {
+    assert.ok(await waitFor(() => page.sent.includes('give dire stone'), 6000), page.sent.join());
+    assert.deepEqual(page.sent, ['follow dire', 'i', 'give dire stone']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('bag: nothing comes out (no 拿出 line within 4 s) -> nothing is given, warn alert, the helper keeps following', async () => {
+  const page = await bagPage('bag', { body: [['紙皮水袋', 'waterskin']], bags: { bag: [['一顆玄鐵石', 'stone']] }, take: null });
+  try {
+    assert.ok(await waitFor(() => alerts(page).some(message => /從袋子拿不出玄鐵石/.test(message.reason)), 6000), JSON.stringify(page.messages));
+    assert.deepEqual(page.sent, ['follow dire', 'i', 'l bag', 'get stone from bag']);
+    assert.ok(await waitFor(() => sightings(page)[0]?.result === 'missing', 6000));
+    assert.ok(button(page).classList.contains('on'));
+  } finally {
+    page.close();
+  }
+});
+
+ui('bag: in neither the body nor the bags -> the warn says both', async () => {
+  const page = await bagPage('bag', { body: [['紙皮水袋', 'waterskin']], bags: { bag: [['錐心杵', 'staff']] } });
+  try {
+    assert.ok(await waitFor(() => alerts(page).some(message => /身上和袋子都沒有/.test(message.reason)), 6000), JSON.stringify(page.messages));
+    assert.deepEqual(page.sent, ['follow dire', 'i', 'l bag']);
+  } finally {
+    page.close();
+  }
+});
+
+ui('bag: the body already has another item with the same id -> i is read again and the ref comes from it (stone 2)', async () => {
+  const page = await bagPage('bag', { body: [['銀戒指', 'stone']], bags: { bag: [['一顆玄鐵石', 'stone']] }, taken: ['一顆玄鐵石', 'stone'] });
+  try {
+    assert.ok(await waitFor(() => page.sent.includes('give dire stone 2'), 6000), page.sent.join());
+    assert.deepEqual(page.sent, ['follow dire', 'i', 'l bag', 'get stone from bag', 'i', 'give dire stone 2']);
+  } finally {
+    page.close();
+  }
+});

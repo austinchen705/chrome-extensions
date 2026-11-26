@@ -1,0 +1,22 @@
+人妖無敵的綠色布袋(green bag)。
+--
+這是一口普通的布袋，可以暫時裝一些雜物(help bag)。
+上面繡著四個小字『大理段氏』，似乎有點不尋常。
+裡面有：
+      無名物品(unknown object)
+      不知名藥草(unknown herb)
+      無名物品(unknown object)
+      特殊物品(unknown object)
+      無名物品(unknown object)
+      不知名藥草(unknown herb)
+      不知名藥草(unknown herb)
+      不知名藥草(unknown herb)
+      老舊物品(unknown object)
+      奇形怪狀的物品(unknown object)
+      不知名藥草(unknown herb)
+      奇形怪狀的物品(unknown object)
+      特殊物品(unknown object)
+      特殊物品(unknown object)
+      錐心杵(staff)
+      無名物品(unknown object)
+      無名物品(unknown object)

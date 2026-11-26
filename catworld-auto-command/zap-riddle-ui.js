@@ -65,7 +65,7 @@ function selectable(node) {
   return node;
 }
 
-function attach(root, { readStats, startSteps, readInventory, characterName, runMacro, stopMacros }) {
+function attach(root, { readStats, startSteps, readInventory, readBags, characterName, runMacro, stopMacros }) {
   const style = el('style', { textContent: STYLE });
   const row = el('div', { className: 'line' },
     el('span', { className: 't', textContent: '解謎' }),
@@ -169,7 +169,10 @@ function attach(root, { readStats, startSteps, readInventory, characterName, run
       say('沒有讀到身上物品（i 沒有回應）', 'error');
       return;
     }
-    const matches = globalThis.CatworldScholar.matchInventory(globalThis.CatworldScholarItems, text);
+    // 設定了袋子就接著讀 l <袋子>；袋子沒回應的列在最後的訊息裡
+    const bags = readBags ? await readBags() : [];
+    const silent = bags.filter(entry => !entry.text.trim()).map(entry => entry.bag);
+    const matches = globalThis.CatworldScholar.matchInventory(globalThis.CatworldScholarItems, text, bags);
     owned = Object.fromEntries(matches.map(match => [match.name, match]));
     const ids = Object.fromEntries(matches.filter(match => match.id).map(match => [match.name, match.id]));
     const who = characterName();
@@ -184,7 +187,8 @@ function attach(root, { readStats, startSteps, readInventory, characterName, run
     }
     const missing = matches.filter(match => !match.have).length;
     if (current) renderDetail();
-    say(`身上有 ${matches.length - missing} 樣，缺 ${missing} 樣`, missing ? 'warn' : 'info');
+    const silentNote = silent.length ? `；袋子 ${silent.join('、')} 沒有回應` : '';
+    say(`身上${bags.length ? '和袋子' : ''}有 ${matches.length - missing} 樣，缺 ${missing} 樣${silentNote}`, missing || silent.length ? 'warn' : 'info');
   }
 
   // 購買指令：每一樣先 recall、再跑那一列，等巨集送完才跑下一樣；全部跑完重讀 i。停止後不再送任何指令、也不重讀
@@ -237,7 +241,7 @@ function attach(root, { readStats, startSteps, readInventory, characterName, run
     main.append(el('div', { className: 'rd-actions' }, read, runMissing, stop));
     globalThis.CatworldScholarItems.forEach(([name, category, ways]) => {
       const mine = owned?.[name];
-      const mark = !mine ? '' : mine.have ? `✓ ×${mine.qty}　` : '缺　';
+      const mark = !mine ? '' : mine.have ? `${mine.qty ? `✓ ×${mine.qty}　` : '✓ '}${(mine.bags ?? []).map(entry => `袋子 ${entry.bag} ×${entry.qty}　`).join('')}` : '缺　';
       const field = typable(el('input', { className: 'rd-buy', type: 'text', value: buyMacros[name] ?? '', placeholder: '購買指令（; 分隔，可寫 @巨集 N）' }));
       const go = el('button', { className: 'rd-btn', textContent: '執行', hidden: !field.value.trim(), disabled: running });
       field.addEventListener('input', () => { go.hidden = !field.value.trim(); });

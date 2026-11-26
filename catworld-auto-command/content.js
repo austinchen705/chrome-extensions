@@ -1616,6 +1616,8 @@ const ASK = {
   finger: { pattern: /權限等級|沒有這個玩家/, quietMs: 250 },
   time: { pattern: /台北時間為/, quietMs: 250 },
   inventory: { pattern: /載重\s*\d+/, quietMs: 400 },
+  bag: { pattern: /裡面有\s*[：:]|[(（][^()（）]*bag[^()（）]*[)）]|沒有|找不到|看不到/i, quietMs: 400 }, // l <袋子>：有東西時是「裡面有：」之後一行一樣；空袋或沒這個袋子的字樣沒有樣本，靠表頭那行的 (… bag) 與常見的否定字
+  take: { pattern: /(^|\n)\s*你從.+?中拿出/, quietMs: 100, maxMs: 4000 }, // get <物品> from <袋子> 成功的字樣（論壇樣本）；失敗的字樣不知道，4 秒內沒看到就算失敗
   secure: { pattern: /標記|沒有|找不到|什麼/, quietMs: 250 },
   give: { pattern: /你給|沒有|找不到|什麼|不在|太重/, quietMs: 250 },
   sell: { pattern: /賣掉|沒有|什麼|不能/, quietMs: 1000 },
@@ -1652,7 +1654,7 @@ function askGame(command, kind, send = onSent => enqueue(command, 'hunt', null, 
       }
     });
     observer.observe(document.getElementById('content'), { subtree: true, childList: true, characterData: true });
-    limit = setTimeout(done, ASK_MAX_MS);
+    limit = setTimeout(done, ASK[kind].maxMs ?? ASK_MAX_MS);
     send(() => { sent = true; });
   });
 }
@@ -1804,6 +1806,15 @@ function scholarEvent(hit) {
     if (flow.state !== 'idle') scholarStop();
   }
 }
+// 設定「袋子」裡每個袋子的 l 輸出 [{ bag, text }]（沒設定回 []）；袋子沒回應 text 是空字串
+const SCHOLAR_TAKEN = ASK.take.pattern;
+async function readScholarBags() {
+  const key = CatworldMapHunt.SETTINGS_KEY;
+  const refs = CatworldMapHunt.bagList(CatworldMapHunt.normalizeSettings((await chrome.storage.local.get(key))[key]));
+  const bags = [];
+  for (const bag of refs) bags.push({ bag, text: await askGame(`l ${bag}`, 'bag', sendScholarStep(`l ${bag}`)) });
+  return bags;
+}
 async function scholarRequest(hit) {
   const flow = scholarFlow;
   if (hit.line === flow.lastLine) return;
@@ -1821,19 +1832,47 @@ async function scholarRequest(hit) {
     const read = await askGame('i', 'inventory', sendScholarStep('i'));
     if (/載重\s*\d+/.test(read)) scholarBody = { at: Date.now(), text: read };
   }
-  if (scholarFlow !== flow || flow.state !== 'handling') return;
-  const item = scholarBody.text ? CatworldScholar.findOwned(scholarBody.text, match.name) : null;
-  if (!item) {
+  const stale = () => scholarFlow !== flow || flow.state !== 'handling';
+  if (stale()) return;
+  let found = CatworldScholar.locateItem(match.name, scholarBody.text, []);
+  let bagCount = 0;
+  if (!found) { // 身上沒有才去讀袋子
+    const bags = await readScholarBags();
+    if (stale()) return;
+    bagCount = bags.length;
+    found = CatworldScholar.locateItem(match.name, scholarBody.text, bags);
+  }
+  if (!found) {
     flow.state = 'following';
     annotateScholar({ matched: match.name, result: 'missing' });
-    scholarNotify(`書生要${match.name}，身上沒有，沒有給`, 'warn');
+    scholarNotify(`書生要${match.name}，${bagCount ? '身上和袋子都沒有' : '身上沒有'}，沒有給`, 'warn');
     return;
+  }
+  let ref = found.ref;
+  if (found.where === 'bag') {
+    const take = `get ${found.ref} from ${found.bag}`;
+    const out = await askGame(take, 'take', sendScholarStep(take));
+    if (stale()) return;
+    if (!SCHOLAR_TAKEN.test(out)) {
+      flow.state = 'following';
+      annotateScholar({ matched: match.name, result: 'missing' });
+      scholarNotify(`從袋子拿不出${match.name}（${take}），沒有給`, 'warn');
+      return;
+    }
+    // 拿出來後用單純的 id 給；身上本來就有同 id 的別樣東西時，重讀 i 用它算出的 ref
+    ref = found.id;
+    if (CatworldHuntParse.parseInventory(scholarBody.text).some(item => item.id.toLowerCase() === found.id.toLowerCase())) {
+      const read = await askGame('i', 'inventory', sendScholarStep('i'));
+      if (stale()) return;
+      const again = /載重\s*\d+/.test(read) ? CatworldScholar.findOwned(read, match.name) : null;
+      if (again) ref = again.ref;
+    }
   }
   annotateScholar({ matched: match.name });
   scholarBody.at = 0; // 給出去之後背包的順序會變，下次重讀
   flow.state = 'giving';
-  scholarSend(`give dire ${item.ref}`);
-  scholarNotify(`書生要${match.name}（${hit.item}），give dire ${item.ref}`, '', scholarHelper.text);
+  scholarSend(`give dire ${ref}`);
+  scholarNotify(`書生要${match.name}（${hit.item}），${found.where === 'bag' ? `從${found.bag}拿出來，` : ''}give dire ${ref}`, '', scholarHelper.text);
   flow.timers.give = setTimeout(() => scholarTimeout(`給了${match.name}，20 秒沒有結果`), SCHOLAR_GIVE_MS);
 }
 async function scholarSucceeded() {
@@ -2302,6 +2341,7 @@ function initPanel() {
       readStats: () => ({ exp: readNumber('exp'), force: readNumber('max_force') }),
       startSteps: text => startMacro(text),
       readInventory: () => askGame('i', 'inventory', sendScholarStep('i')),
+      readBags: readScholarBags,
       runMacro: runScholarMacro,
       stopMacros: () => cancelMacros('scholar'),
       characterName,

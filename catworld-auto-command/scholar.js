@@ -110,13 +110,42 @@ function ownedLines(owned, name) {
   });
   return lines;
 }
-function matchInventory(listItems, inventoryText) {
+// l <袋子> 的輸出 → 「裡面有：」之後的物品 [{ name, id, ref }]（同 id 第 N 個的 ref 是「id N」，和 i 同一套）；沒有「裡面有」（空袋或讀不到）回 []
+function parseBag(text) {
+  const all = String(text ?? '');
+  const from = all.search(/裡面有\s*[：:]/);
+  return from < 0 ? [] : globalThis.CatworldHuntParse.parseInventory(all.slice(from).replace(/^[^\n]*/, ''))
+    .map(({ name, id, ref }) => ({ name, id, ref }));
+}
+// bags：[{ bag, text }]（text 是 l <bag> 的輸出）。有給袋子時每筆多一個 bags：[{ bag, qty }]（只列有的），have 身上或袋子有一個就算；qty 與 id 仍以身上為主，身上沒有時 id 取袋子裡的
+function matchInventory(listItems, inventoryText, bags) {
   const owned = globalThis.CatworldHuntParse.parseInventory(inventoryText);
+  const bagItems = Array.isArray(bags) && bags.length ? bags.map(({ bag, text }) => ({ bag, items: parseBag(text) })) : null;
   return listItems.map(([name]) => {
     const lines = ownedLines(owned, name);
     const qty = lines.reduce((sum, line) => sum + line.qty, 0);
-    return { name, have: qty > 0, qty, id: lines.length ? lines[0].item.id : null };
+    const out = { name, have: qty > 0, qty, id: lines.length ? lines[0].item.id : null };
+    if (!bagItems) return out;
+    out.bags = [];
+    bagItems.forEach(({ bag, items }) => {
+      const inBag = ownedLines(items, name);
+      if (!inBag.length) return;
+      out.bags.push({ bag, qty: inBag.reduce((sum, line) => sum + line.qty, 0) });
+      out.have = true;
+      out.id ??= inBag[0].item.id;
+    });
+    return out;
   });
+}
+// 給書生用：東西在哪裡。身上優先，再依序看各個袋子（[{ bag, text }]）→ { where: 'body', ref, id } | { where: 'bag', bag, ref, id } | null；ref 是 give／get 用的寫法
+function locateItem(name, inventoryText, bags) {
+  const onBody = findOwned(inventoryText, name);
+  if (onBody) return { where: 'body', ref: onBody.ref, id: onBody.id };
+  for (const { bag, text } of Array.isArray(bags) ? bags : []) {
+    const lines = ownedLines(parseBag(text), name);
+    if (lines.length) return { where: 'bag', bag, ref: lines[0].item.ref, id: lines[0].item.id };
+  }
+  return null;
 }
 // 給書生用：身上第一行是這一樣的物品 → parseInventory 的那一筆（ref 是 give 要用的寫法，同 ID 有好幾樣時是「ID N」）；沒有回 null
 function findOwned(inventoryText, name) {
@@ -166,5 +195,5 @@ function missingToRun(listItems, owned, macros) {
   return listItems.map(([name]) => name).filter(name => owned?.[name] && !owned[name].have && buyMacroText(macros?.[name]));
 }
 
-globalThis.CatworldScholar = { parseSpirit, parseSkillCount, canStart, classifyLine, addSighting, endSighting, annotateSighting, isOutdoor, matchInventory, findOwned, matchRequest, buyMacroText, missingToRun, BUY_KEY: 'scholarBuyMacros', SIGHTINGS_KEY: 'scholarSightings', OUTDOOR_KEY: 'mapOutdoor', ITEM_IDS_KEY: 'scholarItemIds', CAP };
+globalThis.CatworldScholar = { parseSpirit, parseSkillCount, canStart, classifyLine, addSighting, endSighting, annotateSighting, isOutdoor, matchInventory, parseBag, locateItem, findOwned, matchRequest, buyMacroText, missingToRun, BUY_KEY: 'scholarBuyMacros', SIGHTINGS_KEY: 'scholarSightings', OUTDOOR_KEY: 'mapOutdoor', ITEM_IDS_KEY: 'scholarItemIds', CAP };
 })();

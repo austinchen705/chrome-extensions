@@ -17,3 +17,10 @@
 - 結果：成功計入 `scholarSuccess[角色]`、面板「已成功 N／3」，滿 3 或「已經對六脈有相當的領悟」就關助手、`follow none`；沒解成不計次；書生消失送 `follow none`。認不出、身上沒有、各種逾時（跟隨 8 秒、給了 20 秒、出現後 3 分鐘沒說話也沒消失）是 warn：響鈴、閃標題、`ALERT`（系統與 LINE 通知）；遇到、成功、沒解成、解滿是 info：只送 `ALERT`，不響。逾時與 warn 都回 idle（逾時會送 `follow none`）。
 - 出沒紀錄（`scholarSightings`）最後一筆補 `matched`（認成什麼，認不出是 null）與 `result`（`success`／`failed`／`already`／`unrecognised`／`missing`／`timeout`），補寫走 `annotateScholar`，和出沒事件同一條有順序的佇列（`CatworldScholar.annotateSighting`）。巡怪跑著時每個動作也寫進巡怪紀錄（`hunt.recordLine('書生', …)`）。
 - 不處理：跟著書生時被怪打（遊戲角色自己還手）。測試：`tests/unit/scholar.test.js`（`matchRequest`、`findOwned`、`annotateSighting`）、`tests/integration/game/scholar.test.js`（假遊戲演整段流程）。
+
+## 袋子（東西不在身上時）
+
+- 設定頁「地圖巡怪」→「六脈神劍」組的「袋子」（`scholarBags`，文字，預設空＝不看袋子）：用、或逗號分開的袋子寫法，第一個袋子是 `bag`、第二個是 `bag 2`。`map-hunt.js` 的 `bagList` 在 `normalizeSettings` 整理：只留 `/^[a-z][a-z ]*( \d+)?$/i`（英文字母與空格、可接一個數字）、不分大小寫去重、最多 5 個，不合的靜默丟掉（和 `giveItems` 一樣，設定頁存檔時被整理掉）。遊戲的 help bag 說袋子和裡面的東西不會存檔，登出後東西可能不見。
+- `scholar.js`：`parseBag(l 袋子的輸出)` 取「裡面有：」之後的行（格式和 `i` 一樣「中文名(english id)」，同 id 第 N 個的 ref 是「id N」，樣本 `tests/fixtures/scholar/look-bag.txt`），沒有「裡面有」（空袋、讀不到）回空陣列；`locateItem(名稱, i 文字, [{ bag, text }])` 身上優先、再依設定順序找各袋子，回 `{ where: 'body' | 'bag', bag?, ref, id }` 或 null；`matchInventory(清單, i 文字, 袋子們)` 有給袋子時每筆多 `bags: [{ bag, qty }]`，`have` 身上或袋子有一個就算。
+- 給書生（`content.js` 的 `scholarRequest`）：先照以前在身上找；**身上沒有才**用 `readScholarBags` 對每個袋子送 `l <袋子>`（`ASK.bag`，走共用送出佇列、來源 `scholar`）。東西在袋子裡就送 `get <ref> from <袋子>`（`ASK.take`），等 `/^你從.+中拿出/`（論壇樣本「你從金毛黑皮男的白色布袋中拿出一顆玄鐵石。」；失敗的字樣沒有樣本，4 秒內沒看到就算失敗）；拿出後送 `give dire <id>`，只有身上本來就有同 id 的別樣東西時才重讀 `i`、改用 `findOwned` 的 ref。拿不出來是 warn（「從袋子拿不出 X」），什麼都不給、繼續跟著，紀錄 `result: 'missing'`；身上和袋子都沒有時 warn 寫「身上和袋子都沒有」（沒設定袋子仍是「身上沒有」）。
+- 物品清單的「讀身上」（`readBody`）：`i` 之後經 `deps.readBags`（`content.js` 的 `readScholarBags`）依序讀各袋子；每列標「✓ ×數量」（身上）與「袋子 bag 2 ×數量」（各袋子），只有袋子有時是「✓ 袋子 bag ×N」；英文 id 身上沒有時取袋子裡的，照樣記進 `scholarItemIds`；某個袋子完全沒回應（空字串）時訊息用 warn 列出。測試：`tests/unit/scholar-bag.test.js`、`tests/integration/game/scholar.test.js` 的 `bag:`、`zap-riddle-ui.test.js` 的 `read body with…`。

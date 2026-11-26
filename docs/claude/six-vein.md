@@ -6,6 +6,7 @@
 |---|---|---|---|
 | 書生助手開關與開始前檢查 | 面板「書生助手」；開之前讀 `sc`（靈性）與 `sk`（技能數，分頁送 Enter 讀到最後），技能數超過靈性（已有六脈神劍則 +1）就不開、提示要 abandon 幾個 | `content.js` 的 `toggleScholarHelper`、`scholar.js`（純函式，不碰 DOM） | `zap-riddles.md` 的「書生助手」 |
 | 遇到書生自動給 | 看到書生就 `follow dire`、認出他要的物品（`matchRequest`）、`i` 讀身上、`give` 給、判讀結果；消失時 `follow none` | `content.js` 的 `scholarStep`、`scholarFlow` | `zap-riddles.md` 的「書生助手」 |
+| 袋子 | 書生要的東西不在身上時，去設定「袋子」（`scholarBags`，`bag, bag 2`）的袋子拿出來再給；解謎物品清單的「讀身上」也讀袋子 | `scholar.js` 的 `parseBag`、`locateItem`，`content.js` 的 `readScholarBags`、`scholarRequest` | `zap-riddles.md` 的「袋子」 |
 | 成功次數與通知 | `scholarSuccess[角色]`，滿 3 次或已領悟就關助手；LINE 與響鈴，標題 `CatWorld 六脈神劍` | `content.js` 的 `alertOnly`（走既有的 LINE 與響鈴） | `zap-riddles.md`、`line-notify.md` |
 | 物品清單與讀身上 | 六脈神劍詳情的「物品清單」分頁，標記身上有沒有（`i`） | `scholar-items-data.js`（產生的資料）、`zap-riddle-ui.js` | `zap-riddles.md`、`builtin-data.md` |
 | 購買巨集 | 清單每列的購買指令（`scholarBuyMacros`）、執行與全部缺的一起買 | `zap-riddle-ui.js` | `zap-riddles.md` |
