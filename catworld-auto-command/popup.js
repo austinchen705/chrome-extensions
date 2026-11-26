@@ -696,7 +696,13 @@ chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' &
 // 各區記到幾格戶外、幾格室內（掃描、巡怪讀房間描述時 content.js 寫入 mapOutdoor：{ "區域/房間": { outdoor, at } }）
 const OUTDOOR_KEY = 'mapOutdoor';
 async function showMapOutdoor() {
-  const stored = (await chrome.storage.local.get([OUTDOOR_KEY, MAP_KEY]));
+  let stored;
+  try { stored = await chrome.storage.local.get([OUTDOOR_KEY, MAP_KEY]); } catch (error) {
+    $('mapOutdoorInfo').textContent = `戶外／室內：讀不到紀錄（${error.message}）`;
+    markLevel($('mapOutdoorInfo'), 'error');
+    return;
+  }
+  markLevel($('mapOutdoorInfo'), '');
   const raw = stored[OUTDOOR_KEY];
   const rooms = raw && typeof raw === 'object' && !Array.isArray(raw) ? Object.entries(raw).filter(([, row]) => typeof row?.outdoor === 'boolean') : [];
   const names = new Map(mapRows(stored[MAP_KEY]).map(row => [row.area, row.areaName]));
