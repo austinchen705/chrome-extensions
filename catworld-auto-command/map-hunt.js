@@ -452,12 +452,12 @@ function create(deps) {
     Promise.resolve().then(() => deps.markVisited(key, kind)).catch(() => {});
   };
 
-  // 掃描時走不到的房間：第一輪先不記（可能只是被怪纏住、被別人擋住，之後就走得過了），放進 deferred，掃完一輪後再試一次（endRound）；
-  // 第二輪還走不到才記成走不到
-  const blockScan = key => {
+  // 掃描時走不到的房間：走不過去、走錯房間、門後算不出路的，當場記成走不到（同一步已經重送過一次；使用者要求不再整輪重試，
+  // 以前第二輪再試一次，同一道門要等約 20 秒）；只有「試不出路」（從這裡找不到出口通往目標，別的房間學到出口後可能就有路）放進 deferred，掃完一輪後再試一次（endRound）
+  const blockScan = (key, why) => {
     if (!state?.scan) return;
-    if (state.retried) markScan(key, 'blocked');
-    else state.deferred.add(key);
+    if (why === '試不出路' && !state.retried) state.deferred.add(key);
+    else markScan(key, 'blocked');
   };
 
   const skipTarget = (key, why) => {
@@ -469,7 +469,7 @@ function create(deps) {
     // 掃描時走不過去的那一步（鎖著的門）從圖裡拿掉，門後面的房間一下子就判定走不到，不必一間一間等逾時
     if (state.scan) {
       if ((why === '走不過去' || why === '走錯房間') && state.from && state.cmd) state.badEdges.add(`${state.from}|${state.cmd}`);
-      if (why !== '讀不到房間') blockScan(key);
+      if (why !== '讀不到房間') blockScan(key, why);
     }
     state.targets.delete(key);
     state.skipped.push({ key, why });
@@ -2484,7 +2484,7 @@ function create(deps) {
       }
       const way = Route.route(strictGraph, here, key);
       const loose = way ?? Route.route(looseGraph, here, key);
-      if (!loose) { state.targets.delete(key); state.skipped.push({ key, why: '走不到' }); record(key, '略過', '走不到'); blockScan(key); return; }
+      if (!loose) { state.targets.delete(key); state.skipped.push({ key, why: '走不到' }); record(key, '略過', '走不到'); blockScan(key, '走不到'); return; }
       const route = way ? { key, way, graph: strictGraph, strict: true } : { key, way: loose, graph: looseGraph, strict: false };
       routes.set(key, route);
       if (way) { if (!best || way.length < best.way.length) best = route; }
@@ -2772,8 +2772,8 @@ function create(deps) {
       if (scan) {
         const visited = normalizeVisited(await deps.visited?.());
         if (cancelled) return fail('已取消', false);
-        // 走過（seen）的不再走；上次走不到（blocked）的每次掃描都再試一次（門可能開了、怪散了），不必清掉紀錄
-        targets = new Set(Object.keys(graph.rooms).filter(key => visited[key]?.state !== 'seen'));
+        // 走過（seen）與走不到（blocked）的都不再走；要重試走不到的，到設定頁清除「已走過的房間」
+        targets = new Set(Object.keys(graph.rooms).filter(key => !visited[key]));
         if (!targets.size) return fail('這一區的房間都走過了（要全部重掃，請到設定頁清除「已走過的房間」）', false);
       } else if (scholar) {
         targets = outdoorTargets;

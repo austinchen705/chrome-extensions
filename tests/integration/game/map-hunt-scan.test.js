@@ -330,7 +330,7 @@ ui('scan: rooms already visited are not walked again, and a fully visited area s
   }
 });
 
-ui('scan: a door that still cannot be passed on the second try marks the rooms behind it as blocked, does not stop the scan and is not an alarm', async () => {
+ui('scan: a door that cannot be passed on the second try marks the rooms behind it as blocked straight away (no second round), does not stop the scan and is not an alarm', async () => {
   const page = await boot({ scale: SCALE });
   try {
     const game = world(page, { at: 'a', moves: { a: { e: 'b' }, b: { w: 'a' }, c: { w: 'b', e: 'd' }, d: { w: 'c' } } });
@@ -341,7 +341,7 @@ ui('scan: a door that still cannot be passed on the second try marks the rooms b
     assert.equal(seenState(page, 't/a'), 'seen');
     assert.equal(seenState(page, 't/b'), 'seen');
     assert.equal(seenState(page, 't/c'), 'blocked');
-    assert.equal(game.log.filter(command => command === 'e').length, 5, 'a to b, then the door tried twice, and once more (twice) at the end; d is never tried because the door edge is dropped');
+    assert.equal(game.log.filter(command => command === 'e').length, 3, 'a to b, then the door tried twice; no second round, and d is never tried because the door edge is dropped');
     assert.equal(alerts(page).length, 0);
   } finally {
     page.close();
@@ -379,22 +379,25 @@ ui('scan: a qi below the danger line while only walking goes home, stops and rai
   }
 });
 
-ui('scan: a block that goes away (for example the fight that held you is over) is not remembered, because the failed rooms get a second try at the end', async () => {
+ui('scan: a block that goes away later (for example the fight that held you is over) stays remembered: the next scan does not try those rooms until the visited record is cleared', async () => {
   const page = await boot({ scale: SCALE });
   try {
     const moves = { a: { e: 'b' }, b: { w: 'a' }, c: { w: 'b', e: 'd' }, d: { w: 'c' } };
-    let attempts = 0;
-    const script = (command, { game }) => {
-      // a 走到 b 的那一個 e 也算一次（world 先移動才呼叫 script，game.at 已經是 b），所以第 3 次（門的第二次嘗試）之後才打開
-      if (command === 'e' && game.at === 'b') { attempts += 1; if (attempts >= 3) moves.b.e = 'c'; }
-      return false;
-    };
-    world(page, { at: 'a', moves, script });
+    const game = world(page, { at: 'a', moves });
     await sleep(150);
     scanClick(page);
-    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 10000), huntText(page));
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 8000), huntText(page));
+    assert.ok(await waitFor(() => seenState(page, 't/c') === 'blocked' && seenState(page, 't/d') === 'blocked'), JSON.stringify(page.store.mapVisited));
+    moves.b.e = 'c'; // 門開了
+    game.at = 'a';
+    game.log.length = 0;
+    scanClick(page);
+    assert.ok(await waitFor(() => /都走過了/.test(huntText(page)), 3000), huntText(page));
+    assert.deepEqual(game.log, [], 'blocked rooms are not tried again on their own');
+    page.store.mapVisited = {};
+    scanClick(page);
+    assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 8000), huntText(page));
     assert.ok(await waitFor(() => ['a', 'b', 'c', 'd'].every(room => seenState(page, `t/${room}`) === 'seen')), JSON.stringify(page.store.mapVisited));
-    assert.ok(!Object.values(page.store.mapVisited).some(row => row.state === 'blocked'), 'nothing is remembered as blocked');
   } finally {
     page.close();
   }
@@ -498,17 +501,18 @@ ui('scan: with no progress for a long time (stuck resting) it stops with an alar
   }
 });
 
-ui('scan: rooms remembered as blocked are tried again on the next scan (no need to clear anything), and become visited once they work', async () => {
+ui('scan: rooms remembered as blocked are not tried on the next scan; only the rooms never visited are walked', async () => {
   const page = await boot({ scale: SCALE });
   try {
-    page.store.mapVisited = { 't/a': { at: 1, state: 'seen' }, 't/b': { at: 1, state: 'seen' }, 't/c': { at: 1, state: 'blocked' }, 't/d': { at: 1, state: 'blocked' } };
+    page.store.mapVisited = { 't/a': { at: 1, state: 'seen' }, 't/b': { at: 1, state: 'seen' }, 't/c': { at: 1, state: 'blocked' } };
     const looks = { a: { exits: 'east' }, b: { exits: 'west 和 east' }, c: { exits: 'west 和 east' }, d: { exits: 'west' } };
     const game = world(page, { at: 'a', looks });
     await sleep(150);
     scanClick(page);
     assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 8000), huntText(page));
-    assert.ok(await waitFor(() => seenState(page, 't/c') === 'seen' && seenState(page, 't/d') === 'seen'), JSON.stringify(page.store.mapVisited));
-    assert.ok(game.log.filter(command => command === 'l').length >= 2, game.log.join());
+    assert.ok(await waitFor(() => seenState(page, 't/d') === 'seen'), JSON.stringify(page.store.mapVisited));
+    assert.equal(seenState(page, 't/c'), 'blocked', 'c is only walked through on the way, it stays remembered as blocked');
+    assert.ok(game.log.includes('e'), game.log.join());
   } finally {
     page.close();
   }
