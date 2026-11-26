@@ -38,3 +38,82 @@ test('real samples: spirit 31 with 28 skills and spirit 20 with 29 skills', () =
   assert.equal(S.canStart({ spirit: S.parseSpirit(sample('sc-spirit-31')), skills: sk28.count, hasSixVein: sk28.hasSixVein }).ok, true);
   assert.deepEqual(S.canStart({ spirit: S.parseSpirit(sample('sc-spirit-20')), skills: sk29.count, hasSixVein: sk29.hasSixVein }), { ok: false, limit: 21, abandon: 8 });
 });
+
+test('classifyLine recognises each scholar message from the real samples', () => {
+  const lines = name => sample(name).split('\n').map(line => S.classifyLine(line)).filter(Boolean);
+  assert.deepEqual(S.classifyLine('  ※落魄書生(dire scholar)'), { kind: 'appear' });
+  assert.deepEqual(S.classifyLine(sample('look-scholar-plain').trimEnd().split('\n').at(-1)), { kind: 'appear' });
+  assert.deepEqual(lines('scholar-leaves').map(hit => hit.kind), ['request', 'leave', 'leave', 'leave']);
+  assert.deepEqual(lines('scholar-leaves').filter(hit => hit.kind === 'leave').map(hit => hit.direction), ['東邊', '東北', '北']);
+  assert.deepEqual(lines('scholar-fail').map(hit => hit.kind), ['followed', 'request', 'given', 'failed', 'vanish']);
+  assert.deepEqual(lines('scholar-success').map(hit => hit.kind), ['given', 'success', 'vanish']);
+  assert.deepEqual(lines('scholar-already').map(hit => hit.kind), ['request', 'given', 'already']);
+});
+
+test('a request keeps the raw middle part (garbled item names included) and the whole sentence', () => {
+  assert.deepEqual(S.classifyLine('落魄書生說道：誰能給我蟹珠玄鐵q石a呢？'), { kind: 'request', item: '蟹珠玄鐵q石a', line: '落魄書生說道：誰能給我蟹珠玄鐵q石a呢？' });
+  assert.equal(S.classifyLine('你看到一個房間。'), null);
+  assert.equal(S.classifyLine(''), null);
+  assert.equal(S.classifyLine(undefined), null);
+});
+
+const MIN = 60 * 1000;
+const T0 = 1_000_000_000_000;
+const here = { area: 'plain', areaName: '平原', room: 'a1' };
+
+test('addSighting: appear opens a record, later requests append to the same encounter without repeating the last sentence', () => {
+  let records = S.addSighting([], { kind: 'appear', sinceSpawnSec: 42, ...here }, T0);
+  assert.deepEqual(records, [{ at: T0, sinceSpawnSec: 42, area: 'plain', areaName: '平原', room: 'a1', said: [], matched: null, result: null }]);
+  records = S.addSighting(records, { kind: 'request', line: '甲', ...here }, T0 + 3000);
+  records = S.addSighting(records, { kind: 'request', line: '甲', ...here }, T0 + 4000);
+  records = S.addSighting(records, { kind: 'request', line: '乙', ...here }, T0 + 5000);
+  records = S.addSighting(records, { kind: 'appear', ...here }, T0 + 6000);
+  assert.equal(records.length, 1);
+  assert.deepEqual(records[0].said, ['甲', '乙']);
+  assert.equal(records[0].at, T0, 'the first sighting time is kept');
+});
+
+test('addSighting: a request with no record yet opens one; an unreadable room is filled in later', () => {
+  let records = S.addSighting([], { kind: 'request', line: '甲', sinceSpawnSec: null }, T0);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].room, null);
+  assert.equal(records[0].sinceSpawnSec, null);
+  assert.deepEqual(records[0].said, ['甲']);
+  records = S.addSighting(records, { kind: 'appear', ...here }, T0 + 1000);
+  assert.equal(records[0].room, 'a1');
+});
+
+test('endSighting: after the vanish line the next sighting is a new record', () => {
+  let records = S.addSighting([], { kind: 'appear', sinceSpawnSec: 10, ...here }, T0);
+  records = S.endSighting(records);
+  assert.equal(records[0].ended, true);
+  assert.equal(S.endSighting(records), records, 'ending twice changes nothing');
+  assert.deepEqual(S.endSighting([]), []);
+  records = S.addSighting(records, { kind: 'appear', sinceSpawnSec: 100, ...here }, T0 + 90_000);
+  assert.equal(records.length, 2);
+});
+
+test('addSighting: passing the next 15-minute respawn starts a new record even without a vanish line', () => {
+  // respawn was at T0 - 100s, so the next one is at T0 + 800s
+  const first = S.addSighting([], { kind: 'appear', sinceSpawnSec: 100, ...here }, T0);
+  assert.equal(S.addSighting(first, { kind: 'appear', ...here }, T0 + 799_000).length, 1);
+  assert.equal(S.addSighting(first, { kind: 'appear', ...here }, T0 + 800_000).length, 2);
+  // unreadable respawn seconds: a new record only after 15 minutes since the last sighting
+  const blind = S.addSighting([], { kind: 'appear', sinceSpawnSec: null, ...here }, T0);
+  assert.equal(S.addSighting(blind, { kind: 'appear', ...here }, T0 + 15 * MIN - 1).length, 1);
+  assert.equal(S.addSighting(blind, { kind: 'appear', ...here }, T0 + 15 * MIN).length, 2);
+});
+
+test('addSighting keeps at most 200 records and drops the oldest', () => {
+  let records = [];
+  for (let i = 0; i < 205; i++) records = S.endSighting(S.addSighting(records, { kind: 'appear', sinceSpawnSec: 0, ...here }, T0 + i * 1000));
+  assert.equal(records.length, 200);
+  assert.equal(records[0].at, T0 + 5000);
+  assert.equal(records.at(-1).at, T0 + 204_000);
+});
+
+test('addSighting and endSighting do not change the input', () => {
+  const records = Object.freeze([Object.freeze({ at: T0, sinceSpawnSec: 1, area: null, areaName: '', room: null, said: Object.freeze([]), matched: null, result: null })]);
+  assert.doesNotThrow(() => S.addSighting(records, { kind: 'request', line: '甲' }, T0 + 1000));
+  assert.doesNotThrow(() => S.endSighting(records));
+});

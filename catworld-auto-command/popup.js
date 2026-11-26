@@ -693,6 +693,31 @@ $('mapVisitedClear').addEventListener('click', async () => {
 showMapCollect();
 chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && (changes[MAP_KEY] || changes[VISITED_KEY])) showMapCollect(); });
 
+// 書生出沒紀錄（content.js 的 watchScholar 寫入，最近的在上）：時間、距重生 m:ss、區域／房間、書生說的話
+const SIGHTINGS_KEY = 'scholarSightings';
+const pad2 = n => String(n).padStart(2, '0');
+async function showScholarSightings() {
+  const stored = (await chrome.storage.local.get(SIGHTINGS_KEY))[SIGHTINGS_KEY];
+  const records = Array.isArray(stored) ? [...stored].reverse() : [];
+  $('scholarSightingsInfo').textContent = records.length ? `書生出沒：${records.length} 筆（最近的在上）` : '書生出沒：尚無紀錄';
+  $('scholarSightingsList').replaceChildren(...records.map(record => {
+    const when = new Date(record.at);
+    const clock = `${when.getMonth() + 1}/${when.getDate()} ${pad2(when.getHours())}:${pad2(when.getMinutes())}:${pad2(when.getSeconds())}`;
+    const since = Number.isFinite(record.sinceSpawnSec) ? `${Math.floor(record.sinceSpawnSec / 60)}:${pad2(record.sinceSpawnSec % 60)}` : '--:--';
+    const place = record.room ? `${record.areaName || record.area}／${record.room}` : '位置不明';
+    const item = document.createElement('li');
+    item.textContent = `${clock}　距重生 ${since}　${place}` + (record.said?.length ? `　${record.said.join(' ／ ')}` : '');
+    return item;
+  }));
+}
+$('scholarSightingsClear').addEventListener('click', async () => {
+  if (!confirm('清除所有書生出沒紀錄？清掉就回不來了。')) return;
+  await chrome.storage.local.remove(SIGHTINGS_KEY);
+  await showScholarSightings();
+});
+showScholarSightings();
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[SIGHTINGS_KEY]) showScholarSightings(); });
+
 // 內力可練上限的其他加成（force-cap.js 讀 forceExtras）：五個欄位每次 change 存成一個物件，存的是檢查過的值，欄位也改成存下來的樣子
 const FORCE_EXTRAS_KEY = 'forceExtras';
 const FORCE_NUMBER_FIELDS = { forceLevel: 'level', forceZhuguo: 'zhuguo', forceEquip: 'equip' };

@@ -735,6 +735,38 @@ function feedKeywords(records) {
     .join('');
   if (text.trim() && !idlePaused) groupList.forEach(group => { if (group.on) group.engine.onText(text); });
 }
+// 書生出沒紀錄（不管在做什麼都記，不送指令）：畫面出現書生的房間行、說話、消失，等 SCHOLAR_SETTLE_MS 再讀目前房間（地圖捲動比印文字晚），依序併進 chrome.storage.local.scholarSightings；
+// 距重生的秒數在看到那一行當下讀（readUptimePhase，讀不到留空）。判讀與合併規則在 scholar.js
+const SCHOLAR_SETTLE_MS = 600;
+let scholarEvents = [];
+let scholarTimer = null;
+let scholarWrite = Promise.resolve();
+function watchScholar(text) {
+  if (!text.includes('落魄書生')) return;
+  for (const line of text.split(/\r?\n/)) {
+    const hit = CatworldScholar.classifyLine(line);
+    if (!hit || !['appear', 'request', 'vanish'].includes(hit.kind)) continue;
+    const phase = readUptimePhase();
+    scholarEvents.push({ ...hit, at: Date.now(), sinceSpawnSec: phase === null ? null : Math.floor(phase / 1000) });
+  }
+  if (scholarEvents.length && !scholarTimer) scholarTimer = setTimeout(flushScholar, SCHOLAR_SETTLE_MS);
+}
+function flushScholar() {
+  const events = scholarEvents;
+  scholarEvents = [];
+  scholarTimer = null;
+  const spot = CatworldMapCollect.currentRoom(document);
+  const key = CatworldScholar.SIGHTINGS_KEY;
+  scholarWrite = scholarWrite.then(async () => {
+    let records = (await chrome.storage.local.get(key))[key];
+    for (const event of events) {
+      records = event.kind === 'vanish'
+        ? CatworldScholar.endSighting(records)
+        : CatworldScholar.addSighting(records, { ...event, area: spot?.area, areaName: spot?.areaName, room: spot?.room }, event.at);
+    }
+    await chrome.storage.local.set({ [key]: records });
+  }).catch(() => {});
+}
 const captchaObserver = new MutationObserver(allRecords => {
   if (!contextAlive(chrome)) {
     retire();
@@ -749,6 +781,7 @@ const captchaObserver = new MutationObserver(allRecords => {
   if (meaningful && watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
   const addedText = addedTexts.join('');
   watchReward(addedText);
+  watchScholar(addedText);
   noteManualOutput(addedText);
   // 停止關鍵字閒置時也作用（只看新出現的、不是自己打的回聲）
   const keywordHit = stopKeywords.enabled ? stopKeywordWatcher.feed(addedText, stopKeywords.words) : null;
