@@ -10,7 +10,7 @@
 | 物品清單與讀身上 | 六脈神劍詳情的「物品清單」分頁，標記身上有沒有（`i`） | `scholar-items-data.js`（產生的資料）、`zap-riddle-ui.js` | `zap-riddles.md`、`builtin-data.md` |
 | 購買巨集 | 清單每列的購買指令（`scholarBuyMacros`）、執行與全部缺的一起買 | `zap-riddle-ui.js` | `zap-riddles.md` |
 | 書生出沒紀錄 | 出現、要的話、消失，含重生後幾秒與房間（`scholarSightings`） | `content.js` 的 `watchScholar` | `map-collect.md` |
-| 戶外格子紀錄 | 掃描與巡怪讀房間時記戶外／室內（`mapOutdoor`），設定頁顯示各區數量、可清除 | `scholar.js` 的 `isOutdoor`、`map-hunt.js` 的 `deps.markOutdoor` | `map-hunt-scan.md` |
+| 戶外格子紀錄 | 掃描、巡怪讀房間時與手動一步一步走時記戶外／室內（`mapOutdoor`），地圖上藍色虛線框標出，設定頁顯示各區數量、可清除 | `scholar.js` 的 `isOutdoor`、`map-hunt.js` 的 `deps.markOutdoor` | `map-hunt-scan.md` |
 | 找書生模式 | 面板「找書生」：每個重生整點起，時間窗內照最近的先走巡戶外格子、只讀描述，遇到書生就停；窗到了送待命指令 | `map-hunt.js` 的 `start({ scholar: true })`、設定頁「六脈神劍」組 | `map-hunt-scan.md` |
 | 巡怪中遇到書生 | 一般巡怪與掃描遇到書生暫停，助手處理完接著巡；被帶出巡怪區用 `restReturnCommand` 走回來 | `map-hunt.js` 的 `scholarHoldTick` | `map-hunt.md` |
 

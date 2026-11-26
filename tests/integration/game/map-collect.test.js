@@ -252,6 +252,37 @@ ui('ride rooms: toggling adds and removes a room per area, bad data is dropped o
   }
 });
 
+// 手動走路也記戶外格子：玩家自己送一個指令（走一步或 l）之後印出的房間描述記給地圖目前那一格；run 或用 ; 接的一串不記（好幾段描述連著印，地圖還在捲）
+const scholarSample = name => fs.readFileSync(path.join(__dirname, '..', '..', 'fixtures', 'scholar', `${name}.txt`), 'utf8');
+const typeIn = (page, text) => {
+  const input = page.w.document.getElementById('input');
+  input.value = text;
+  input.form.requestSubmit();
+};
+const outdoorOf = async (page, key) => (await page.w.chrome.storage.local.get('mapOutdoor')).mapOutdoor?.[key];
+ui('outdoor rooms: walking by hand records the room the map shows, one step or l at a time; run and chains are not recorded', async () => {
+  const page = await boot({ scale: 10 });
+  try {
+    setup(page);
+    typeIn(page, 'e');
+    page.output(`<span>${scholarSample('look-outdoor-plaza-clear')}\n</span>`);
+    assert.ok(await waitFor(async () => (await outdoorOf(page, 'wudon/2i'))?.outdoor === true, 3000), 'a step into an outdoor room is recorded');
+    typeIn(page, 'l');
+    page.output(`<span>${scholarSample('look-indoor-temple')}\n</span>`);
+    assert.ok(await waitFor(async () => (await outdoorOf(page, 'wudon/2i'))?.outdoor === false, 3000), 'l in an indoor room overwrites it');
+    await page.w.chrome.storage.local.set({ mapOutdoor: {} });
+    for (const command of ['run e 5n', 'e;n']) {
+      typeIn(page, command);
+      page.output(`<span>${scholarSample('look-outdoor-street')}\n</span>`);
+    }
+    typeIn(page, 'say 天空中萬里無雲');
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    assert.equal(await outdoorOf(page, 'wudon/2i'), undefined, 'run and ; chains are not recorded');
+  } finally {
+    page.close();
+  }
+});
+
 ui('outdoor rooms: rooms recorded as outdoor in the visible area get a dashed blue outline, indoor and other areas do not, alongside the ride frame', async () => {
   const page = await boot({ scale: 10 });
   try {

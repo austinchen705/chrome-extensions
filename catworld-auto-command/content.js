@@ -796,6 +796,7 @@ const captchaObserver = new MutationObserver(allRecords => {
   watchScholar(addedText);
   if (scholarHelper.on) scholarStep(addedText);
   noteManualOutput(addedText);
+  watchManualOutdoor(addedText);
   // 停止關鍵字閒置時也作用（只看新出現的、不是自己打的回聲）
   const keywordHit = stopKeywords.enabled ? stopKeywordWatcher.feed(addedText, stopKeywords.words) : null;
   if (keywordHit && Date.now() - lastStopKeywordAt > STOP_KEYWORD_COOLDOWN_MS) {
@@ -1890,6 +1891,33 @@ function markHuntOutdoor(key, lookText) {
   });
   return outdoorWrite;
 }
+// 手動走路也記戶外格子：玩家自己從輸入框（或遊戲巨集按鍵）送出「一個指令」（不是用 ; 接的一串、沒有空白，所以 run、enter crack 都不算）之後
+// MANUAL_OUTDOOR_WINDOW_MS 內出現出口行，就把這段期間的輸出交給 isOutdoor，等地圖捲到那一格（MANUAL_OUTDOOR_SETTLE_MS）再用目前那一格記。
+// 一次只有一段描述、地圖也停在那一格，不會記錯格子；巡怪、掃描進行中不記（它們自己會記）。先看有沒有「出口是」，大部分輸出在這一步就跳過
+const MANUAL_OUTDOOR_WINDOW_MS = 4000;
+const MANUAL_OUTDOOR_SETTLE_MS = 600;
+const MANUAL_OUTDOOR_TEXT_MAX = 6000;
+let manualOutdoor = null; // { at, text, exits, timer }
+function armManualOutdoor(raw) {
+  const command = String(raw ?? '').trim();
+  if (manualOutdoor) clearTimeout(manualOutdoor.timer);
+  manualOutdoor = command && !/[;\s]/.test(command) ? { at: Date.now(), text: '', exits: false, timer: null } : null;
+}
+function watchManualOutdoor(text) {
+  const watch = manualOutdoor;
+  if (!watch || !text) return;
+  if (hunt?.on() || (!watch.exits && Date.now() - watch.at > MANUAL_OUTDOOR_WINDOW_MS)) { manualOutdoor = null; return; }
+  watch.text = (watch.text + text).slice(-MANUAL_OUTDOOR_TEXT_MAX);
+  if (!watch.exits && !/出口是/.test(text)) return;
+  watch.exits = true;
+  clearTimeout(watch.timer);
+  watch.timer = setTimeout(() => {
+    if (manualOutdoor !== watch) return;
+    manualOutdoor = null;
+    const key = CatworldMapCollect.currentRoom(document)?.key;
+    if (key && !hunt?.on()) markHuntOutdoor(key, watch.text).catch(() => {});
+  }, MANUAL_OUTDOOR_SETTLE_MS);
+}
 // 手動蒐集的觀察器在巡怪、掃描進行中暫停（見 map-collect.js 的 setSuspended）
 CatworldMapCollect.setSuspended(() => hunt?.on() ?? false);
 // 地圖巡怪：目標是面板「選怪」勾選的怪（map-hunt-ui.js，依區域記在 mapHuntPicks）與地圖目前顯示的區域；指令走共用送出佇列（來源 hunt）
@@ -2115,6 +2143,7 @@ function noteManualSend(raw) {
 // 不靠回聲（巨集送出的指令在輸出裡是單獨一行，和一般輸出分不開；使用者貼的真實樣本）
 function noteManualMacro(text) {
   equipmentUI?.noteSent(text);
+  armManualOutdoor(text);
   text.split(/\s*;\s*/).forEach(noteManualSend);
 }
 // 捕獲階段：在遊戲處理送出（清空輸入框）之前讀輸入框的值
@@ -2123,6 +2152,7 @@ document.addEventListener('submit', event => {
   const input = document.querySelector('#input');
   if (!input || event.target !== input.form) return;
   equipmentUI?.noteSent(input.value);
+  armManualOutdoor(input.value);
   if (!manualRecord && !hunt?.on()) return;
   noteManualSend(input.value);
 }, true);
