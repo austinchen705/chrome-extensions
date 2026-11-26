@@ -569,11 +569,13 @@ function stopAndAlert(reason) {
   }
   return stopEverything(reason);
 }
-// 只有某條觸發規則被停用：響一次、閃標題、跳通知，其他功能照常；原因文字不含「驗證」，不會被當成驗證碼停止
-function alertOnly(reason, title = '⚠ 觸發已停用') {
+// 只有某條觸發規則被停用：響一次、閃標題、跳通知，其他功能照常；原因文字不含「驗證」，不會被當成驗證碼停止。silent：只送通知，不響、不閃
+function alertOnly(reason, title = '⚠ 觸發已停用', { silent = false } = {}) {
   const character = alertAccount(); // 要在閃標題之前讀
-  beep();
-  flashTitle(title);
+  if (!silent) {
+    beep();
+    flashTitle(title);
+  }
   try {
     chrome.runtime.sendMessage({ type: 'ALERT', reason, character });
   } catch {
@@ -751,6 +753,11 @@ function watchScholar(text) {
   }
   if (scholarEvents.length && !scholarTimer) scholarTimer = setTimeout(flushScholar, SCHOLAR_SETTLE_MS);
 }
+// 助手認出書生要什麼、給了之後的結果：照順序排進同一條佇列，補在出沒紀錄最後一筆
+function annotateScholar(fields) {
+  scholarEvents.push({ kind: 'annotate', fields });
+  if (!scholarTimer) scholarTimer = setTimeout(flushScholar, SCHOLAR_SETTLE_MS);
+}
 function flushScholar() {
   const events = scholarEvents;
   scholarEvents = [];
@@ -760,6 +767,10 @@ function flushScholar() {
   scholarWrite = scholarWrite.then(async () => {
     let records = (await chrome.storage.local.get(key))[key];
     for (const event of events) {
+      if (event.kind === 'annotate') {
+        records = CatworldScholar.annotateSighting(records, event.fields);
+        continue;
+      }
       records = event.kind === 'vanish'
         ? CatworldScholar.endSighting(records)
         : CatworldScholar.addSighting(records, { ...event, area: spot?.area, areaName: spot?.areaName, room: spot?.room }, event.at);
@@ -782,6 +793,7 @@ const captchaObserver = new MutationObserver(allRecords => {
   const addedText = addedTexts.join('');
   watchReward(addedText);
   watchScholar(addedText);
+  if (scholarHelper.on) scholarStep(addedText);
   noteManualOutput(addedText);
   // 停止關鍵字閒置時也作用（只看新出現的、不是自己打的回聲）
   const keywordHit = stopKeywords.enabled ? stopKeywordWatcher.feed(addedText, stopKeywords.words) : null;
@@ -1693,6 +1705,7 @@ async function toggleScholarHelper() {
   if (scholarHelper.checking) return;
   if (scholarHelper.on) {
     scholarHelper = { on: false, checking: false, text: '', level: '' };
+    scholarStop();
     renderPanel();
     return;
   }
@@ -1710,6 +1723,134 @@ async function toggleScholarHelper() {
     scholarHelper = { on: false, checking: false, text: '檢查失敗，沒有開啟', level: 'warn' };
   }
   renderPanel();
+}
+// 書生助手開著時（手動走路、巡怪、掃描都算）遇到書生就自動處理，狀態：idle → pending（送了 follow dire，等「跟隨」）→ following → handling（認東西、讀 i）→ giving（送了 give，等結果）→ following。
+// 判讀在 scholar.js（classifyLine、matchRequest、findOwned）；只看行首的書生句，頻道轉貼不算。逾時：跟隨 8 秒沒回應、給了 20 秒沒結果、出現後 3 分鐘沒說話也沒消失，都記錄、警報、回 idle。
+// 巡怪中被怪打時的處理不在這裡（遊戲角色自己會還手）
+const SCHOLAR_FOLLOW_MS = 8000;
+const SCHOLAR_GIVE_MS = 20000;
+const SCHOLAR_SILENT_MS = 3 * 60 * 1000;
+const SCHOLAR_BODY_FRESH_MS = 60 * 1000;
+let scholarFlow = { state: 'idle', request: null, lastLine: null, timers: {} };
+let scholarBody = { at: 0, text: '' };
+const scholarSend = command => startMacro(command, 'scholar', { priority: true });
+function scholarClear(...names) {
+  names.forEach(name => { clearTimeout(scholarFlow.timers[name]); delete scholarFlow.timers[name]; });
+}
+function scholarStop() {
+  scholarClear('follow', 'give', 'silent');
+  if (scholarFlow.state !== 'idle') scholarSend('follow none');
+  scholarFlow = { state: 'idle', request: null, lastLine: null, timers: {} };
+}
+// 紀錄（巡怪跑著才寫進巡怪紀錄）、面板那一行、警報：warn 響鈴＋閃標題＋系統與 LINE 通知；info 只送通知（不響）
+function scholarNotify(text, level = '', panelText = text) {
+  console.log('[catworld] 書生：', text);
+  if (hunt?.on()) hunt.recordLine('書生', text);
+  scholarHelper = { ...scholarHelper, text: panelText, level };
+  renderPanel();
+  alertOnly(`書生：${text}`, '⚠ 書生', { silent: level !== 'warn' });
+}
+function scholarTimeout(text) {
+  annotateScholar({ result: 'timeout' });
+  scholarNotify(text, 'warn');
+  scholarStop();
+}
+function scholarFollow() {
+  scholarFlow.state = 'pending';
+  scholarSend('follow dire');
+  scholarFlow.timers.follow = setTimeout(() => scholarTimeout('送了 follow dire，8 秒沒看到跟隨的回應'), SCHOLAR_FOLLOW_MS);
+  scholarFlow.timers.silent = setTimeout(() => scholarTimeout('書生出現 3 分鐘沒說話也沒消失，不等了'), SCHOLAR_SILENT_MS);
+}
+function scholarStep(text) {
+  if (!/書生|六脈/.test(text)) return;
+  text.split(/\r?\n/).forEach(line => {
+    const hit = CatworldScholar.classifyLine(line);
+    if (hit) scholarEvent(hit);
+  });
+}
+function scholarEvent(hit) {
+  const flow = scholarFlow;
+  if (hit.kind === 'appear') {
+    if (flow.state !== 'idle') return;
+    scholarNotify('遇到落魄書生，跟上去');
+    scholarFollow();
+  } else if (hit.kind === 'followed') {
+    if (flow.state !== 'pending') return;
+    scholarClear('follow');
+    flow.state = 'following';
+    if (flow.request) scholarRequest(flow.request);
+    flow.request = null;
+  } else if (hit.kind === 'request') {
+    if (flow.state === 'idle') scholarFollow();
+    if (flow.state === 'pending') flow.request = hit;
+    else if (flow.state === 'following') scholarRequest(hit);
+  } else if (hit.kind === 'success') {
+    if (flow.state === 'giving') scholarSucceeded();
+  } else if (hit.kind === 'failed') {
+    if (flow.state !== 'giving') return;
+    scholarClear('give');
+    flow.state = 'following';
+    flow.lastLine = null;
+    annotateScholar({ result: 'failed' });
+    scholarNotify('沒解成（有緣無份），不算次數');
+  } else if (hit.kind === 'already') {
+    scholarHelper = { on: false, checking: false, text: '', level: '' };
+    scholarStop();
+    annotateScholar({ result: 'already' });
+    scholarNotify('已經解滿六脈，助手關閉', '', '已解滿');
+  } else if (hit.kind === 'vanish') {
+    if (flow.state !== 'idle') scholarStop();
+  }
+}
+async function scholarRequest(hit) {
+  const flow = scholarFlow;
+  if (hit.line === flow.lastLine) return;
+  flow.lastLine = hit.line;
+  flow.state = 'handling';
+  scholarClear('silent');
+  const match = CatworldScholar.matchRequest(hit.item, CatworldScholarItems.map(item => item[0]));
+  if (!match.name) {
+    flow.state = 'following';
+    annotateScholar({ matched: null, result: 'unrecognised' });
+    scholarNotify(`認不出書生要什麼（${hit.item}），沒有給`, 'warn');
+    return;
+  }
+  if (Date.now() - scholarBody.at > SCHOLAR_BODY_FRESH_MS) {
+    const read = await askGame('i', 'inventory', sendScholarStep('i'));
+    if (/載重\s*\d+/.test(read)) scholarBody = { at: Date.now(), text: read };
+  }
+  if (scholarFlow !== flow || flow.state !== 'handling') return;
+  const item = scholarBody.text ? CatworldScholar.findOwned(scholarBody.text, match.name) : null;
+  if (!item) {
+    flow.state = 'following';
+    annotateScholar({ matched: match.name, result: 'missing' });
+    scholarNotify(`書生要${match.name}，身上沒有，沒有給`, 'warn');
+    return;
+  }
+  annotateScholar({ matched: match.name });
+  scholarBody.at = 0; // 給出去之後背包的順序會變，下次重讀
+  flow.state = 'giving';
+  scholarSend(`give dire ${item.ref}`);
+  scholarNotify(`書生要${match.name}（${hit.item}），give dire ${item.ref}`, '', scholarHelper.text);
+  flow.timers.give = setTimeout(() => scholarTimeout(`給了${match.name}，20 秒沒有結果`), SCHOLAR_GIVE_MS);
+}
+async function scholarSucceeded() {
+  const flow = scholarFlow;
+  scholarClear('give');
+  flow.state = 'following';
+  flow.lastLine = null;
+  annotateScholar({ result: 'success' });
+  const who = characterName();
+  const all = (await chrome.storage.local.get(SCHOLAR_SUCCESS_KEY))[SCHOLAR_SUCCESS_KEY] ?? {};
+  const done = (all[who] ?? 0) + 1;
+  await chrome.storage.local.set({ [SCHOLAR_SUCCESS_KEY]: { ...all, [who]: done } });
+  if (done >= SCHOLAR_GOAL) {
+    scholarHelper = { on: false, checking: false, text: '', level: '' };
+    scholarStop();
+    scholarNotify(`成功 ${done}／${SCHOLAR_GOAL}，六脈解滿，助手關閉`, '', `已成功 ${done}／${SCHOLAR_GOAL}`);
+  } else {
+    scholarNotify(`成功 ${done}／${SCHOLAR_GOAL}`, '', `已成功 ${done}／${SCHOLAR_GOAL}`);
+  }
 }
 // 不算「別人」的 ID：設定頁的白名單加上自動學到的 NPC
 async function learnedNpcs() {

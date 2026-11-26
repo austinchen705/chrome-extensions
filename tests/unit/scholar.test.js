@@ -143,3 +143,42 @@ test('isOutdoor: no exits line is unknown, and only the last description counts'
   assert.equal(S.isOutdoor(text), false);
   assert.equal(S.isOutdoor(`${sample('look-indoor-temple')}\n${sample('look-outdoor-street')}`), true);
 });
+
+require(path.join(__dirname, '..', '..', 'catworld-auto-command', 'scholar-items-data.js'));
+const itemNames = globalThis.CatworldScholarItems.map(item => item[0]);
+
+test('matchRequest: ordered subsequence with junk in between, longest hit wins', () => {
+  assert.deepEqual(S.matchRequest('蟹珠玄鐵q石a', itemNames), { name: '玄鐵石' });
+  assert.deepEqual(S.matchRequest('化棍白u金盔唐銹甲', itemNames), { name: '白金盔甲' });
+  assert.deepEqual(S.matchRequest('q銀菩d猴靴信', itemNames), { name: '銀猴靴' });
+  assert.deepEqual(S.matchRequest('全長狗膽白山唐人探蔘狼', itemNames), { name: '長白山人蔘' });
+});
+
+test('matchRequest: whole sentence works too; full-width letters are normalised', () => {
+  assert.deepEqual(S.matchRequest('落魄書生說道：誰能給我蟹珠玄鐵ｑ石ａ呢？', itemNames), { name: '玄鐵石' });
+});
+
+test('matchRequest: same-length hits tie and nothing hits are both unrecognised', () => {
+  assert.deepEqual(S.matchRequest('熊虎皮', itemNames), { name: null, candidates: ['熊皮', '虎皮'] });
+  assert.deepEqual(S.matchRequest('xyz', itemNames), { name: null, candidates: [] });
+  assert.deepEqual(S.matchRequest('', itemNames), { name: null, candidates: [] });
+});
+
+test('annotateSighting fills the latest open record and leaves ended ones and the input alone', () => {
+  const records = [{ at: 1, matched: null, result: null }, { at: 2, matched: null, result: null }];
+  const out = S.annotateSighting(records, { matched: '玄鐵石', result: 'success' });
+  assert.deepEqual(out[1], { at: 2, matched: '玄鐵石', result: 'success' });
+  assert.equal(records[1].result, null);
+  assert.equal(out[0], records[0]);
+  const ended = [{ at: 1, ended: true, result: null }];
+  assert.equal(S.annotateSighting(ended, { result: 'x' }), ended);
+  assert.deepEqual(S.annotateSighting([], { result: 'x' }), []);
+});
+
+test('findOwned returns the inventory entry with the ref give needs (same id twice -> "id 2")', () => {
+  require(path.join(__dirname, '..', '..', 'catworld-auto-command', 'hunt-parse.js'));
+  const text = '你身上帶著下列這些東西( 載重 28% ):\n    銀戒指(armor) [view][wear]\n    一顆玄鐵石(armor) [view]\n    紙皮水袋(waterskin)\n';
+  assert.equal(S.findOwned(text, '玄鐵石').ref, 'armor 2');
+  assert.equal(S.findOwned(text, '紙皮水袋').ref, 'waterskin');
+  assert.equal(S.findOwned(text, '三字經'), null);
+});

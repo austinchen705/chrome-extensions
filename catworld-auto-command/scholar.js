@@ -98,21 +98,62 @@ function isOutdoor(lookText) {
 // 物品清單對照 i 的輸出（要先載入 hunt-parse.js）：清單每一樣 → { name, have, qty, id }。身上的物品名＝清單名，或「數詞＋量詞」加清單名（「一顆玄鐵石」「四十四瓶蠻牛」）；
 // 只比對這種前綴，免得「三字經」被當成「三」加「字經」。同一樣有好幾疊就加總
 const QTY_PREFIX = /^([零一二三四五六七八九十兩]+)[^零一二三四五六七八九十兩\s]$/;
-function matchInventory(listItems, inventoryText) {
+// 身上的哪幾行是這一樣：回 [{ item（parseInventory 的一筆，含給指令用的 ref）, qty }]
+function ownedLines(owned, name) {
   const Parse = globalThis.CatworldHuntParse;
-  const owned = Parse.parseInventory(inventoryText);
-  return listItems.map(([name]) => {
-    let qty = 0;
-    let id = null;
-    owned.forEach(item => {
-      const own = item.name.replace(/^[*ˇ]+/, ''); // 又標記又穿著的行，parseInventory 會把 ˇ 留在名稱前
-      const prefix = own.endsWith(name) ? own.slice(0, own.length - name.length) : null;
-      if (prefix === null || (prefix !== '' && !QTY_PREFIX.test(prefix))) return;
-      qty += prefix === '' ? 1 : Parse.quantityOf(prefix);
-      id = id ?? item.id;
-    });
-    return { name, have: qty > 0, qty, id };
+  const lines = [];
+  owned.forEach(item => {
+    const own = item.name.replace(/^[*ˇ]+/, ''); // 又標記又穿著的行，parseInventory 會把 ˇ 留在名稱前
+    const prefix = own.endsWith(name) ? own.slice(0, own.length - name.length) : null;
+    if (prefix === null || (prefix !== '' && !QTY_PREFIX.test(prefix))) return;
+    lines.push({ item, qty: prefix === '' ? 1 : Parse.quantityOf(prefix) });
   });
+  return lines;
+}
+function matchInventory(listItems, inventoryText) {
+  const owned = globalThis.CatworldHuntParse.parseInventory(inventoryText);
+  return listItems.map(([name]) => {
+    const lines = ownedLines(owned, name);
+    const qty = lines.reduce((sum, line) => sum + line.qty, 0);
+    return { name, have: qty > 0, qty, id: lines.length ? lines[0].item.id : null };
+  });
+}
+// 給書生用：身上第一行是這一樣的物品 → parseInventory 的那一筆（ref 是 give 要用的寫法，同 ID 有好幾樣時是「ID N」）；沒有回 null
+function findOwned(inventoryText, name) {
+  const lines = ownedLines(globalThis.CatworldHuntParse.parseInventory(inventoryText), name);
+  return lines.length ? lines[0].item : null;
+}
+
+// 書生要的東西：「誰能給我…呢？」中間的原文（或整句）夾著亂碼，物品名的每個字依序都出現（中間可以夾雜別的字）就算命中；
+// 取字數最多的那一樣，一樣長的有好幾個、或一個都沒有就認不出：{ name: null, candidates }
+function matchRequest(sentence, names) {
+  const text = String(sentence ?? '').normalize('NFKC');
+  const hit = name => {
+    let from = 0;
+    for (const char of name.normalize('NFKC')) {
+      const at = text.indexOf(char, from);
+      if (at < 0) return false;
+      from = at + 1;
+    }
+    return true;
+  };
+  let best = [];
+  let length = 0;
+  new Set(names).forEach(name => {
+    const size = [...name.normalize('NFKC')].length;
+    if (!size || size < length || !hit(name)) return;
+    if (size > length) { length = size; best = []; }
+    best.push(name);
+  });
+  return best.length === 1 ? { name: best[0] } : { name: null, candidates: best };
+}
+
+// 出沒紀錄最後一筆（還沒結束的）補欄位（matched、result）；回傳新陣列，不改輸入
+function annotateSighting(records, fields) {
+  const list = Array.isArray(records) ? records : [];
+  const last = list[list.length - 1];
+  if (!last || last.ended) return list;
+  return [...list.slice(0, -1), { ...last, ...fields }];
 }
 
 // 購買指令（欄位裡用 ; 或換行分隔，可含 @巨集 N）→ 一個巨集文字：先 recall 回客棧，再跑那一列；欄位是空的回 ''（不執行）
@@ -125,5 +166,5 @@ function missingToRun(listItems, owned, macros) {
   return listItems.map(([name]) => name).filter(name => owned?.[name] && !owned[name].have && buyMacroText(macros?.[name]));
 }
 
-globalThis.CatworldScholar = { parseSpirit, parseSkillCount, canStart, classifyLine, addSighting, endSighting, isOutdoor, matchInventory, buyMacroText, missingToRun, BUY_KEY: 'scholarBuyMacros', SIGHTINGS_KEY: 'scholarSightings', OUTDOOR_KEY: 'mapOutdoor', ITEM_IDS_KEY: 'scholarItemIds', CAP };
+globalThis.CatworldScholar = { parseSpirit, parseSkillCount, canStart, classifyLine, addSighting, endSighting, annotateSighting, isOutdoor, matchInventory, findOwned, matchRequest, buyMacroText, missingToRun, BUY_KEY: 'scholarBuyMacros', SIGHTINGS_KEY: 'scholarSightings', OUTDOOR_KEY: 'mapOutdoor', ITEM_IDS_KEY: 'scholarItemIds', CAP };
 })();
