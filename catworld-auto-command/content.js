@@ -1574,6 +1574,7 @@ const ASK = {
   sc: { pattern: /靈性\s*[：:]\s*\d+/, quietMs: 250 },
   sk: { pattern: /你目前所學過的技能/, quietMs: 600 },
   aliasPage: { pattern: /\s=\s|未完繼續/, quietMs: 600 }, // 別名列表的第二頁以後：沒有標題，有別名行或分頁提示就算到了
+  skPage: { pattern: /\(\s*[\w.-]+\s*\)\s*-|未完繼續/, quietMs: 600 }, // sk 的第二頁以後：有技能行或分頁提示就算到了
 };
 const ASK_MAX_MS = 8000;
 const addedText = records => CatworldZapMobs.textFromAdded(records.flatMap(record => (record.type === 'characterData'
@@ -1628,7 +1629,7 @@ async function readAliasList() {
   }
   return { text, tooLong: false };
 }
-// 面板「書生助手」開關：打開時做一次開始前檢查（sc 讀靈性、sk 讀第一行的技能數，sk 會分頁所以讀完送 q 離開），技能數超過上限就不開並警告，不自動 abandon。
+// 面板「書生助手」開關：打開時做一次開始前檢查（sc 讀靈性、sk 第一行的技能數；有沒有六脈要看全部技能，six-vein-sword 照字母排在後面的頁，所以和 alias 一樣送 Enter 讀到最後一頁，滿頁數才送 q），技能數超過上限就不開並警告，不自動 abandon。
 // 每次重新整理頁面都是關的，要再打開才會再檢查；用巨集送（和 alias 一樣閒置時也送得出去）
 const SCHOLAR_SUCCESS_KEY = 'scholarSuccess';
 const SCHOLAR_GOAL = 3;
@@ -1638,8 +1639,13 @@ async function checkScholarStart() {
   const S = CatworldScholar;
   const spirit = S.parseSpirit(await askGame('sc', 'sc', sendScholarStep('sc')));
   if (spirit === null) return { ok: false, text: '讀不到 sc 的靈性，沒有開啟' };
-  const skText = await askGame('sk', 'sk', sendScholarStep('sk'));
-  if (skText) startMacro('q', 'scholar');
+  let page = await askGame('sk', 'sk', sendScholarStep('sk'));
+  let skText = page;
+  for (let pages = 1; ALIAS_PAGE_PROMPT.test(page); pages += 1) {
+    if (pages >= ALIAS_MAX_PAGES) { startMacro('q', 'scholar'); break; }
+    page = await askGame('<enter>', 'skPage', sendScholarStep('<enter>'));
+    skText += `\n${page}`;
+  }
   const skills = S.parseSkillCount(skText);
   if (!skills) return { ok: false, text: '讀不到 sk 的技能數，沒有開啟' };
   const verdict = S.canStart({ spirit, skills: skills.count, hasSixVein: skills.hasSixVein });
