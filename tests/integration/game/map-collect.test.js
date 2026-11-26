@@ -185,48 +185,44 @@ ui('the built-in map monsters are merged with the player records at read time: t
   }
 });
 
-ui('visit: a monster that is not seen on MISS_LIMIT visits in a row is dropped from the room, a sighting resets the count and a new sighting is added', async () => {
+ui('visit: a new sighting is added, and a recorded monster that is not seen stays (killed by someone else or not respawned yet does not mean the place is wrong)', async () => {
   const page = await boot({ scale: 10 });
   try {
-    const { visit, MISS_LIMIT } = page.w.CatworldMapCollect;
+    const { visit } = page.w.CatworldMapCollect;
     const plain = value => JSON.parse(JSON.stringify(value));
     const spot = { key: 'x/1', area: 'x', room: '1' };
     const A = '甲怪(a)';
     const B = '乙怪(b)';
-    let store = { 'x/1': { area: 'x', room: '1', areaName: 'X', mobs: [A, B], seen: 1 } };
-    const go = (seen, picked = [A]) => { const result = plain(visit(store, spot, seen, picked, 9)); store = result.store; return result; };
-    for (let i = 1; i < MISS_LIMIT; i++) assert.deepEqual(go([]).removed, [], `visit ${i} only counts`);
-    assert.equal(store['x/1'].miss[A], MISS_LIMIT - 1);
-    assert.deepEqual(go([A]).removed, [], 'seeing it again resets the count');
-    assert.equal(store['x/1'].miss, undefined);
-    for (let i = 1; i < MISS_LIMIT; i++) go([]);
-    const dropped = go([]);
-    assert.deepEqual(dropped.removed, [A]);
-    assert.deepEqual(store['x/1'].mobs, [B], 'only the picked monster that kept missing is removed');
+    let store = { 'x/1': { area: 'x', room: '1', areaName: 'X', mobs: [A, B], seen: 1, miss: { [A]: 2 } } };
+    const go = seen => { const result = plain(visit(store, spot, seen, 9)); store = result.store; return result; };
+    for (let i = 0; i < 5; i++) go([]);
+    assert.deepEqual(store['x/1'].mobs, [A, B], 'never seen five times in a row: still recorded');
+    go([A]);
+    assert.equal(store['x/1'].miss, undefined, 'a miss count left by the old version is cleared when the monster is seen');
     const learned = go([B, '丙怪(c)']);
     assert.deepEqual(learned.added, ['丙怪(c)']);
-    assert.deepEqual(store['x/1'].mobs, [B, '丙怪(c)']);
+    assert.deepEqual(store['x/1'].mobs, [A, B, '丙怪(c)']);
     assert.equal(go([B, '丙怪(c)']).changed, false, 'nothing new means no write');
-    assert.equal(visit({}, spot, [], [A], 1).changed, false, 'a room that was never recorded is not created from nothing');
+    assert.equal(visit({}, spot, [], 1).changed, false, 'a room that was never recorded is not created from nothing');
   } finally {
     page.close();
   }
 });
 
-ui('visit: a built-in monster that is never seen is hidden with gone (the built-in data is not written), seeing it brings it back, and collecting by hand clears the marks', async () => {
+ui('visit: a built-in monster hidden with gone by the old version comes back when seen, and collecting by hand clears the marks', async () => {
   const page = await boot({ scale: 10, builtin: true });
   try {
-    const { visit, withBuiltin, merge, MISS_LIMIT, builtinStore } = page.w.CatworldMapCollect;
+    const { visit, withBuiltin, merge, builtinStore } = page.w.CatworldMapCollect;
     const mob = builtinStore()['wudon/2c'].mobs[0];
     const spot = { key: 'wudon/2c', area: 'wudon', room: '2c' };
-    let store = {};
-    for (let i = 0; i < MISS_LIMIT; i++) store = visit(store, spot, [], [mob], 5).store;
-    assert.deepEqual(JSON.parse(JSON.stringify(store['wudon/2c'].gone)), [mob]);
-    assert.equal(withBuiltin(store)['wudon/2c'].mobs.includes(mob), false, 'hidden when read');
-    assert.equal(builtinStore()['wudon/2c'].mobs.includes(mob), true, 'the built-in data itself is untouched');
-    store = visit(store, spot, [mob], [mob], 6).store;
+    let store = { 'wudon/2c': { area: 'wudon', room: '2c', areaName: '', mobs: [], seen: 1, gone: [mob] } };
+    assert.equal(withBuiltin(store)['wudon/2c'].mobs.includes(mob), false, 'hidden while gone');
+    for (let i = 0; i < 5; i++) store = visit(store, spot, [], 5).store;
+    assert.equal(withBuiltin(store)['wudon/2c'].mobs.includes(mob), false, 'not seen: nothing changes');
+    store = visit(store, spot, [mob], 6).store;
     assert.equal(withBuiltin(store)['wudon/2c'].mobs.includes(mob), true, 'seen again: it is back');
-    for (let i = 0; i < MISS_LIMIT; i++) store = visit(store, spot, [], [mob], 7).store;
+    assert.equal(builtinStore()['wudon/2c'].mobs.includes(mob), true, 'the built-in data itself is untouched');
+    store = { 'wudon/2c': { area: 'wudon', room: '2c', areaName: '', mobs: [], seen: 1, gone: [mob] } };
     store = merge(store, { ...spot, areaName: '' }, [mob], 8).store;
     assert.equal(store['wudon/2c'].gone, undefined, 'collecting by hand clears gone');
     assert.equal(withBuiltin(store)['wudon/2c'].mobs.includes(mob), true);

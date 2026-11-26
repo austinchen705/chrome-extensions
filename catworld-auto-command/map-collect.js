@@ -44,36 +44,24 @@ function merge(store, spot, mobs, now) {
   return { store: { ...store, [spot.key]: withExtras({ area: spot.area, room: spot.room, areaName, mobs: all, seen: now }, gone, miss) }, changed: true };
 }
 
-// 巡怪走進房間、看過 l 之後修正位置（回傳 { store, changed, added, removed }，不改輸入）：
-// seen＝房間裡現在有的怪（名稱(ID)），picked＝巡怪勾選的怪。看到沒記過的就補上；勾選的怪記在這間卻沒看到，累計一次，
-// 連續 MISS_LIMIT 次到訪都沒看到就判定位置不對、從這間拿掉（內建資料裡的用 gone 扣掉，因為內建資料不寫回），之後再看到就恢復。
-// 只數勾選的怪：其他怪的位置沒有被這次巡怪驗證。路線是遊戲實際走到的房間，不會有蒐集時「地圖還沒捲動」的誤判
-const MISS_LIMIT = 3;
-function visit(store, spot, seen, picked, now) {
+// 巡怪走進房間、看過 l 之後補位置（回傳 { store, changed, added }，不改輸入）：seen＝房間裡現在有的怪（名稱(ID)），
+// 看到沒記過的就補上，舊版留下的 gone、miss 看到就清掉。只補不刪：沒看到不代表位置錯（被別人打掉、還沒重生），
+// 以前連續三次沒看到就拿掉，跨區巡怪的目標房間會一輪比一輪少（使用者的巡怪紀錄證實）。路線是遊戲實際走到的房間，不會有蒐集時「地圖還沒捲動」的誤判
+function visit(store, spot, seen, now) {
   const old = store[spot.key];
   const listed = withBuiltin(store)[spot.key]?.mobs || [];
-  const builtin = builtinStore()[spot.key]?.mobs || [];
-  let mobs = [...(old?.mobs || [])];
+  const mobs = [...(old?.mobs || [])];
   let gone = [...(old?.gone || [])];
   const miss = { ...(old?.miss || {}) };
   const added = [];
-  const removed = [];
   seen.filter(isMob).forEach(mob => {
     delete miss[mob];
     if (gone.includes(mob)) gone = gone.filter(known => known !== mob);
     else if (!listed.includes(mob)) { mobs.push(mob); added.push(mob); }
   });
-  picked.filter(mob => listed.includes(mob) && !seen.includes(mob)).forEach(mob => {
-    const count = (miss[mob] || 0) + 1;
-    if (count < MISS_LIMIT) { miss[mob] = count; return; }
-    delete miss[mob];
-    mobs = mobs.filter(known => known !== mob);
-    if (builtin.includes(mob) && !gone.includes(mob)) gone.push(mob);
-    removed.push(mob);
-  });
   const row = withExtras({ area: spot.area, room: spot.room, areaName: old?.areaName || '', mobs, seen: added.length ? now : (old?.seen ?? now) }, gone, miss);
-  if (JSON.stringify(row) === JSON.stringify(old ?? null) || (!old && !mobs.length && !gone.length && !Object.keys(miss).length)) return { store, changed: false, added, removed };
-  return { store: { ...store, [spot.key]: row }, changed: true, added, removed };
+  if (JSON.stringify(row) === JSON.stringify(old ?? null) || (!old && !mobs.length && !gone.length && !Object.keys(miss).length)) return { store, changed: false, added };
+  return { store: { ...store, [spot.key]: row }, changed: true, added };
 }
 
 // 怪物一律是「名稱(ID)」。舊版（讀地圖房間 title）記下的是房間裡的玩家，只有英文 ID、沒有括號，不能當怪物複製出去
@@ -198,7 +186,7 @@ function markRideRooms(doc, keys) {
 let suspended = () => false;
 const setSuspended = fn => { suspended = typeof fn === 'function' ? fn : () => false; };
 
-globalThis.CatworldMapCollect = { setSuspended, currentRoom, merge, visit, MISS_LIMIT, withBuiltin, builtinStore, rows, isMob, locate, whereIs, markRooms, clearMarks, STORAGE_KEY, RIDE_KEY, normalizeRideRooms, toggleRideRoom };
+globalThis.CatworldMapCollect = { setSuspended, currentRoom, merge, visit, withBuiltin, builtinStore, rows, isMob, locate, whereIs, markRooms, clearMarks, STORAGE_KEY, RIDE_KEY, normalizeRideRooms, toggleRideRoom };
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.CatworldZapMobs) return;
 

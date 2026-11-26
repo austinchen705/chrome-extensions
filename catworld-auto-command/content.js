@@ -1768,16 +1768,14 @@ hunt = CatworldMapHunt.create({
   readStore: mapStore,
   chain: async () => (await chrome.storage.local.get(CatworldMapHunt.CHAIN_KEY))[CatworldMapHunt.CHAIN_KEY],
   saveTrial: results => chrome.storage.local.set({ [CatworldMapHunt.CHAIN_TRIAL_KEY]: results }),
-  learnVisit: async (key, seen, picked) => {
+  learnVisit: async (key, seen) => {
     const storageKey = CatworldMapCollect.STORAGE_KEY;
     const at = key.indexOf('/');
     const store = (await chrome.storage.local.get(storageKey))[storageKey] || {};
-    // picked 是 null＝掃描：這間記錄的每一隻怪都要驗證（沒看到就累計，連續三次才拿掉）
-    const checked = picked ?? (CatworldMapCollect.withBuiltin(store)[key]?.mobs || []);
-    const result = CatworldMapCollect.visit(store, { key, area: key.slice(0, at), room: key.slice(at + 1) }, seen, checked, Date.now());
+    const result = CatworldMapCollect.visit(store, { key, area: key.slice(0, at), room: key.slice(at + 1) }, seen, Date.now());
     if (result.changed) {
       await chrome.storage.local.set({ [storageKey]: result.store });
-      console.log('[catworld] 巡怪修正位置：', key, result.removed.length ? `移除 ${result.removed.join('、')}` : '', result.added.length ? `新增 ${result.added.join('、')}` : '');
+      if (result.added.length) console.log('[catworld] 巡怪補上位置：', key, result.added.join('、'));
     }
     return result;
   },

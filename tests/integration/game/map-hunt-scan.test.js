@@ -260,21 +260,19 @@ ui('learn: when the qi stays under the eat line it gives up on the target instea
   }
 });
 
-ui('learn places: a chosen monster that is not in the room on three visits is dropped from it, and a monster seen there that was never recorded is added', async () => {
+ui('learn places: a chosen monster that is not in the room stays recorded however many times it is missed (cross-area rounds used to lose rooms), and a monster seen there that was never recorded is added', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
     const game = world(page, { at: 'a', looks: { c: { lines: [`  ※${MOB_B}`] } } });
     await pick(page, MOB);
-    for (let visit = 1; visit <= 3; visit++) {
-      assert.deepEqual(page.store.mapMonsters['t/c'].mobs.includes(MOB), true, `still recorded before visit ${visit}`);
+    for (let visit = 1; visit <= 4; visit++) {
       click(page, '.hstart');
       assert.ok(await waitFor(() => /巡完了/.test(huntText(page)) && !panelRoot(page).querySelector('.hstart').disabled, 6000), huntText(page));
       game.at = 'a';
     }
-    assert.ok(await waitFor(() => !page.store.mapMonsters['t/c'].mobs.includes(MOB), 2000), 'dropped after the third visit');
-    assert.ok(page.store.mapMonsters['t/c'].mobs.includes(MOB_B), 'the monster that was there is learned');
-    assert.match(huntText(page), /修正位置/);
+    assert.ok(await waitFor(() => page.store.mapMonsters['t/c'].mobs.includes(MOB_B), 2000), 'the monster that was there is learned');
+    assert.ok(page.store.mapMonsters['t/c'].mobs.includes(MOB), 'missed on four visits: still recorded');
   } finally {
     page.close();
   }
@@ -296,7 +294,7 @@ ui('scan: needs no chosen monster, walks every room of the area, looks at each, 
   }
 });
 
-ui('scan: monsters seen in a room are recorded there, and a recorded monster that is not seen there starts counting misses', async () => {
+ui('scan: monsters seen in a room are recorded there, and a recorded monster that is not seen there stays recorded', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('b');
@@ -305,8 +303,8 @@ ui('scan: monsters seen in a room are recorded there, and a recorded monster tha
     scanClick(page);
     assert.ok(await waitFor(() => /掃描完成/.test(huntText(page)), 6000), huntText(page));
     assert.ok(await waitFor(() => page.store.mapMonsters['t/c']?.mobs.includes(MOB)), 'the monster seen in c is recorded');
-    assert.equal(page.store.mapMonsters['t/b']?.miss?.[MOB], 1, 'the monster recorded in b but not seen there has one miss (removed only after three)');
-    assert.ok(page.store.mapMonsters['t/b'].mobs.includes(MOB), 'one miss does not remove it');
+    assert.ok(page.store.mapMonsters['t/b'].mobs.includes(MOB), 'not seen in b: still recorded there');
+    assert.equal(page.store.mapMonsters['t/b'].miss, undefined, 'no miss counting');
   } finally {
     page.close();
   }

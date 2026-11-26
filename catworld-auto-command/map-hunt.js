@@ -487,14 +487,14 @@ function create(deps) {
     state.phase = 'plan';
   };
 
-  // 走進房間看過 l：房間裡有哪些怪就是這間的實際情形，交給 deps.learnVisit 修正蒐集到的位置（補上沒記過的、
-  // 勾選的怪連續幾次到訪都沒看到就拿掉），修正了就記進 state.fixed。存不進去不影響巡怪
+  // 走進房間看過 l：房間裡看到、還沒記過的怪交給 deps.learnVisit 補進蒐集到的位置（只補不刪，見 map-collect.js 的 visit），
+  // 補了就記進 state.fixed。存不進去不影響巡怪
   async function learnPlaces(token, here, info) {
     if (!deps.learnVisit) return;
     try {
-      const result = await deps.learnVisit(here, info.monsters.map(mob => mob.full), token.scan ? null : token.mobs);
+      const result = await deps.learnVisit(here, info.monsters.map(mob => mob.full));
       if (state !== token || !result) return;
-      [...(result.removed || []).map(mob => `${here} 沒有 ${mob}`), ...(result.added || []).map(mob => `${here} 有 ${mob}`)].forEach(text => state.fixed.push(text));
+      (result.added || []).forEach(mob => state.fixed.push(`${here} 有 ${mob}`));
     } catch {
       // 讀寫儲存失敗（例如孤兒程式）：只是沒學到
     }
