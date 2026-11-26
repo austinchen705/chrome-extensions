@@ -29,6 +29,7 @@
 | 拜師導師搜尋 | `docs/claude/mentor-search.md` | `mentor-*.js`、`tools/gen-mentor-data.js` |
 | 無名物品 | `docs/claude/zap-items.md` | `zap-items.js` |
 | 解謎 | `docs/claude/zap-riddles.md` | `zap-riddles.js`、`zap-riddle-ui.js` |
+| 六脈神劍（書生助手各塊的位置） | `docs/claude/six-vein.md` | `scholar.js`、`scholar-items-data.js`、`content.js` 的書生助手、找書生與巡怪中遇到書生 |
 | 手機通知（LINE） | `docs/claude/line-notify.md` | `line-notify.js`、`background.js` 的 `ALERT` |
 | 共用資料（試算表） | `docs/claude/shared-data.md` | `shared-data.js`、`background.js` 的 `refreshShared` |
 | 巨集匯入匯出 | `docs/claude/macro-io.md` | `macro-io.js`、`macro-io-ui.js` |

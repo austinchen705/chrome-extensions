@@ -20,6 +20,12 @@ const {
   at,
   lookTimer,
   huntLog,
+  pick,
+  mobsAt,
+  MOB,
+  MOB_LINE,
+  FIGHT,
+  addOtherArea,
   ZOMBIE,
   ZOMBIE_FIGHTING,
   ATTACK_LINE,
@@ -227,6 +233,91 @@ ui('find scholar: a monster that attacks on the way is fought back as in a norma
     assert.equal(game.log.filter(command => /^(fight|kill)/.test(command)).length, 0, game.log.join());
     assert.equal(game.at, 'c', 'then walked on to the outdoor target');
     await page.ask({ type: 'STOP' });
+  } finally {
+    page.close();
+  }
+});
+
+// ---- 一般巡怪中遇到書生（票 08）：助手開著時暫停，助手處理完才接著巡 ----
+// 巡 c、d 兩間有怪的房間；走到非目標的 b 時，抵達描述有書生
+async function huntWithScholar({ settings = {}, script = () => false } = {}) {
+  const page = await scholarPage({ outdoor: {}, settings });
+  page.store.mapMonsters = mobsAt('c', 'd');
+  await helperOn(page);
+  const game = world(page, {
+    at: 'a',
+    arrivals: { b: { lines: [SCHOLAR_LINE] } },
+    looks: { c: { lines: [MOB_LINE] }, d: { lines: [MOB_LINE] } },
+    script,
+  });
+  addOtherArea(page, game);
+  await pick(page, MOB);
+  click(page, '.hstart');
+  return { page, game };
+}
+
+ui('hunt with the helper on: a scholar on the way pauses the hunt (no move, fight or loot) until the helper is idle, then the remaining monsters are fought', async () => {
+  const { page, game } = await huntWithScholar();
+  try {
+    assert.ok(await waitFor(() => game.log.includes('follow dire'), 6000), game.log.join());
+    await sleep(800);
+    assert.deepEqual(game.log, ['e', 'follow dire'], 'stopped in b: no step to c, no l, fight or gc while the scholar is being followed');
+    assert.match(await huntLog(page), /書生出現，暫停巡怪/);
+    say(page, VANISH);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), `${huntText(page)} ${game.log.join()}`);
+    assert.deepEqual(game.log.slice(0, 5), ['e', 'follow dire', 'follow none', 'e', 'l'], game.log.join());
+    assert.equal(game.log.filter(command => command === FIGHT).length >= 2, true, game.log.join());
+    assert.equal(game.at, 'd');
+    const log = await huntLog(page);
+    assert.match(log, /書生出現，暫停巡怪/);
+    assert.match(log, /書生處理完，繼續巡怪/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt with the helper off: the scholar line changes nothing (the hunt walks on)', async () => {
+  const page = await scholarPage({ outdoor: {} });
+  page.store.mapMonsters = mobsAt('c', 'd');
+  try {
+    const game = world(page, { at: 'a', arrivals: { b: { lines: [SCHOLAR_LINE] } }, looks: { c: { lines: [MOB_LINE] }, d: { lines: [MOB_LINE] } } });
+    await pick(page, MOB);
+    click(page, '.hstart');
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 8000), `${huntText(page)} ${game.log.join()}`);
+    assert.equal(game.log.includes('follow dire'), false);
+    assert.doesNotMatch(await huntLog(page), /暫停巡怪/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt with the helper on: taken out of the hunt area by the scholar, the restReturnCommand walks back and the hunt goes on', async () => {
+  const { page, game } = await huntWithScholar({ settings: { restReturnCommand: 'back' }, script: command => {
+    if (command === 'back') { game.at = 'b'; return false; }
+    return false;
+  } });
+  try {
+    assert.ok(await waitFor(() => game.log.includes('follow dire'), 6000), game.log.join());
+    game.at = 'r1';
+    say(page, VANISH);
+    assert.ok(await waitFor(() => /巡完了/.test(huntText(page)), 10000), `${huntText(page)} ${game.log.join()}`);
+    assert.ok(game.log.indexOf('back') > game.log.indexOf('follow none'), game.log.join());
+    assert.equal(game.log.filter(command => command === FIGHT).length >= 2, true, game.log.join());
+    assert.match(await huntLog(page), /書生 回到巡怪區/);
+  } finally {
+    page.close();
+  }
+});
+
+ui('hunt with the helper on: taken out of the hunt area without a restReturnCommand, it stops with a clear message', async () => {
+  const { page, game } = await huntWithScholar();
+  try {
+    assert.ok(await waitFor(() => game.log.includes('follow dire'), 6000), game.log.join());
+    game.at = 'r1';
+    say(page, VANISH);
+    assert.ok(await waitFor(() => /跟著書生離開了巡怪區，沒填回到巡怪區的指令，已停止/.test(huntText(page)), 6000), huntText(page));
+    assert.equal(await hunting(page), false);
+    assert.equal(game.log.includes('back'), false);
   } finally {
     page.close();
   }

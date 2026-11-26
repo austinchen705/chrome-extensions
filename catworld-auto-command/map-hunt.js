@@ -591,6 +591,8 @@ function create(deps) {
       return;
     }
     state.skips = 0;
+    // 書生助手正在處理書生：不開打，回規劃、等 tick 的暫停（scholarHoldTick）放行後再從頭看這間
+    if (scholarBusyInHunt()) { state.phase = 'plan'; return; }
     if (state.settings.fightMode === 'assist') { assistStart(here, info); return; }
     await fightRoom(token, here, info);
   }
@@ -2157,6 +2159,55 @@ function create(deps) {
     if (quiet && deps.now() + sc.offset >= sc.endAt) { endScholarWindow(false); return true; }
     return sc.idle;
   }
+  // ---- 一般巡怪與掃描中遇到書生（書生助手開著）----
+  // 書生助手（content.js）一看到書生就跟隨、認物品、給；它處理的時候（deps.scholarBusy）巡怪不開始新的動作：不走路、不開打、不撿屍，
+  // 打到一半的戰鬥照原本的流程打完。處理完（助手回到閒置）才接著巡；跟著書生可能被帶出巡怪區，回來的方式和等完重生時人不在巡怪區一樣
+  const scholarBusyInHunt = () => !state.scholar && !!deps.scholarOn?.() && !!deps.scholarBusy?.();
+  function scholarHoldTick() {
+    if (state.scholar) return false;
+    const hold = state.scholarHold;
+    if (!hold) {
+      // 只在還沒開始下一個動作的階段暫停；戰鬥、整理、回程這類一段一段進行的流程不打斷
+      if (!['plan', 'move', 'pass', 'wait', 'standby'].includes(state.phase) || state.trial || !scholarBusyInHunt()) return false;
+      state.scholarHold = { tick: state.ticks, blind: 0 };
+      record(deps.room() ?? '-', '書生', '書生出現，暫停巡怪');
+      deps.notify();
+      return true;
+    }
+    if (deps.scholarBusy?.()) return true;
+    // 處理完了：人在哪裡要讀得到才能決定接著巡還是走回巡怪區（地圖捲動中讀不到就再等一下）
+    const here = deps.room();
+    if (!here && (hold.blind += 1) <= MOVE_TIMEOUT_TICKS) return true;
+    state.scholarHold = null;
+    record(here ?? '-', '書生', '書生處理完，繼續巡怪');
+    if (state.phase === 'wait' || state.phase === 'standby') return false; // 待命中：等重生時 startRound 自己會看人在不在巡怪區
+    if (!here || awayFromHunt() || !state.graph.rooms[here]) {
+      if (!state.baseSettings.restReturnCommand) { finish('跟著書生離開了巡怪區，沒填回到巡怪區的指令，已停止', { alert: true }); return true; }
+      const token = state;
+      returnFromScholar(token).catch(() => { if (state === token) finish('跟著書生離開後走回巡怪區時出錯，已停止', { alert: true }); });
+      return true;
+    }
+    // 還在巡怪區：從現在的房間重新規劃（走到一半被帶走的那一步不算數）
+    state.phase = 'plan';
+    state.moveText = '';
+    state.walkedTo = null;
+    state.detour = null;
+    deps.notify();
+    return true;
+  }
+  async function returnFromScholar(token) {
+    state.phase = 'return';
+    state.returnStage = 'walk';
+    const secs = RETURN_WALK_TICKS / TICKS_PER_SEC;
+    const walkMs = await walkToArea(token, state.baseSettings.restReturnCommand, state.area, {
+      unsent: `跟著書生離開後，回到巡怪區的指令 ${secs} 秒內沒有送出（指令被擋住，或 @巨集 讀不到），已停止`,
+      missed: `跟著書生離開後，送出回到巡怪區的指令，${secs} 秒內沒有回到巡怪區（${state.area}），已停止`,
+    });
+    if (walkMs === null) return;
+    record('-', '書生', `回到巡怪區，回程花了 ${secText(walkMs)} 秒`);
+    Object.assign(state, { returnStage: null, moveText: '', walkedTo: null, detour: null, phase: 'plan' });
+    deps.notify();
+  }
   // 每個目標房間都處理過一次＝一輪（跨區時是整條路線的每一區）。沒開「等下一個重生」或這一輪什麼都沒處理（沒有走得到的目標）就停（第 2 輪以後警報）；
   // 否則送待命指令（是巨集的話等它跑完），用 time 校準，等到下一個重生再開始下一輪
   function endRound() {
@@ -2524,6 +2575,7 @@ function create(deps) {
       }
     }
     if (state.scholar && scholarTick()) return;
+    if (scholarHoldTick()) return;
     if (state.phase === 'wait' || state.phase === 'standby') { waitTick(); return; }
     if (state.phase === 'sort' || state.phase === 'return' || state.phase === 'area' || state.phase === 'slip' || state.phase === 'counter') return;
     if (state.trial) { trialTick(); return; }
