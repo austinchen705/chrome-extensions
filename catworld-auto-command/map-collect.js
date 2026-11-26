@@ -181,6 +181,25 @@ function markRideRooms(doc, keys) {
   });
 }
 
+// 戶外格子（掃描、巡怪讀房間描述時記下的 mapOutdoor，見 scholar.js 的 isOutdoor）：地圖上用藍色虛線外框標出，
+// 和可 ride 的綠色內框、選怪的紅底都能在同一格並存；記成室內或還沒記的格子不標
+const OUTDOOR_ATTR = 'data-catworld-outdoor';
+function markOutdoorRooms(doc, area, outdoor) {
+  doc.querySelectorAll(`[${OUTDOOR_ATTR}]`).forEach(node => {
+    node.style.removeProperty('outline');
+    node.style.removeProperty('outline-offset');
+    node.removeAttribute(OUTDOOR_ATTR);
+  });
+  Object.entries(outdoor && typeof outdoor === 'object' ? outdoor : {}).forEach(([key, row]) => {
+    if (row?.outdoor !== true || !key.startsWith(`${area}/`)) return;
+    const node = doc.getElementById(`m-${area}-${key.slice(area.length + 1)}`);
+    if (!node) return;
+    node.style.setProperty('outline', '1px dashed #4cc9f0', 'important');
+    node.style.setProperty('outline-offset', '-1px', 'important');
+    node.setAttribute(OUTDOOR_ATTR, '');
+  });
+}
+
 // 巡怪、掃描進行中要暫停（content.js 注入）：這個觀察器等 SETTLE_MS 才看地圖捲到哪一間，巡怪走得快時會記錯房間；
 // 巡怪自己走進房間看過 l 之後的記錄（visit）才準。暫停時看到的怪不記（也不留到之後）
 let suspended = () => false;
@@ -257,10 +276,13 @@ async function refreshMarkUi() {
   if (!header) return;
   let store;
   let rides;
+  let outdoor;
   try {
-    const data = await chrome.storage.local.get([STORAGE_KEY, RIDE_KEY]);
+    const outdoorKey = globalThis.CatworldScholar?.OUTDOOR_KEY;
+    const data = await chrome.storage.local.get([STORAGE_KEY, RIDE_KEY, ...(outdoorKey ? [outdoorKey] : [])]);
     store = withBuiltin(data[STORAGE_KEY]);
     rides = normalizeRideRooms(data[RIDE_KEY]);
+    outdoor = outdoorKey ? data[outdoorKey] : null;
   } catch {
     clearInterval(markTimer);
     return;
@@ -268,6 +290,7 @@ async function refreshMarkUi() {
   const visible = document.querySelector('#map_wrapper > div[id^="m-"]:not(.invisible)');
   const area = visible ? visible.id.slice(2) : '';
   markRideRooms(document, rides[area] || []);
+  markOutdoorRooms(document, area, outdoor);
   const mobs = [...new Set(rows(store).filter(row => row.area === area).flatMap(row => row.mobs))].sort((a, b) => a.localeCompare(b));
   const select = ensureSelect(header);
   select.style.display = mobs.length ? '' : 'none';

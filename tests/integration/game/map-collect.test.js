@@ -252,6 +252,28 @@ ui('ride rooms: toggling adds and removes a room per area, bad data is dropped o
   }
 });
 
+ui('outdoor rooms: rooms recorded as outdoor in the visible area get a dashed blue outline, indoor and other areas do not, alongside the ride frame', async () => {
+  const page = await boot({ scale: 10 });
+  try {
+    setup(page);
+    await page.w.chrome.storage.local.set({
+      mapMonsters: MOBS,
+      mapHuntRideRooms: { wudon: ['wudon/2i'] },
+      mapOutdoor: { 'wudon/2i': { outdoor: true, at: 1 }, 'wudon/2c': { outdoor: false, at: 1 }, 'godforest/w6': { outdoor: true, at: 1 } },
+    });
+    const outdoor = () => [...page.w.document.querySelectorAll('[data-catworld-outdoor]')].map(node => node.id);
+    assert.ok(await waitFor(() => outdoor().length === 1, 2000));
+    assert.deepEqual(outdoor(), ['m-wudon-2i'], 'only outdoor rooms of the visible area');
+    assert.match(page.w.document.getElementById('m-wudon-2i').style.outline, /dashed/);
+    assert.match(page.w.document.getElementById('m-wudon-2i').style.boxShadow, /inset/, 'the ride frame is still there');
+    await page.w.chrome.storage.local.set({ mapOutdoor: {} });
+    assert.ok(await waitFor(() => outdoor().length === 0, 2000));
+    assert.equal(page.w.document.getElementById('m-wudon-2i').style.outline, '');
+  } finally {
+    page.close();
+  }
+});
+
 ui('ride rooms: recorded rooms of the visible area get a green frame on the map, alongside the red monster mark', async () => {
   const page = await boot({ scale: 10 });
   try {
