@@ -570,14 +570,15 @@ function stopAndAlert(reason) {
   return stopEverything(reason);
 }
 // 只有某條觸發規則被停用：響一次、閃標題、跳通知，其他功能照常；原因文字不含「驗證」，不會被當成驗證碼停止。silent：只送通知，不響、不閃
-function alertOnly(reason, title = '⚠ 觸發已停用', { silent = false } = {}) {
+// heading：系統通知標題「CatWorld ＿＿」，沒給就是「已停止」（書生的成功、遇到等通知並沒有停止任何東西）
+function alertOnly(reason, title = '⚠ 觸發已停用', { silent = false, heading } = {}) {
   const character = alertAccount(); // 要在閃標題之前讀
   if (!silent) {
     beep();
     flashTitle(title);
   }
   try {
-    chrome.runtime.sendMessage({ type: 'ALERT', reason, character });
+    chrome.runtime.sendMessage({ type: 'ALERT', reason, character, ...(heading ? { heading } : {}) });
   } catch {
     // 擴充功能剛重新載入，通知送不出去
   }
@@ -1748,7 +1749,7 @@ function scholarNotify(text, level = '', panelText = text) {
   if (hunt?.on()) hunt.recordLine('書生', text);
   scholarHelper = { ...scholarHelper, text: panelText, level };
   renderPanel();
-  alertOnly(`書生：${text}`, '⚠ 書生', { silent: level !== 'warn' });
+  alertOnly(`書生：${text}`, '⚠ 書生', { silent: level !== 'warn', heading: '六脈神劍' });
 }
 function scholarTimeout(text) {
   annotateScholar({ result: 'timeout' });
@@ -1785,7 +1786,7 @@ function scholarEvent(hit) {
     if (flow.state === 'pending') flow.request = hit;
     else if (flow.state === 'following') scholarRequest(hit);
   } else if (hit.kind === 'success') {
-    if (flow.state === 'giving') scholarSucceeded();
+    scholarSucceeded(); // 「恭喜你對六脈神劍有所領悟了」只對自己說：玩家手動給的也算一次
   } else if (hit.kind === 'failed') {
     if (flow.state !== 'giving') return;
     scholarClear('give');

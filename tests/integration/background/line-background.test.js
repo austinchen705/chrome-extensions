@@ -74,10 +74,10 @@ function loadBackground({ local = {}, session = {}, fetchImpl = okFetch, notifyT
 
   const setNow = time => { context.__now = time; };
   // 模擬遊戲分頁的 content script 送來一則警報；回傳處理過程中有沒有丟例外
-  const alert = (reason, tab = { id: 1, windowId: 1 }, character) => {
+  const alert = (reason, tab = { id: 1, windowId: 1 }, character, heading) => {
     let thrown = null;
     for (const listener of listeners) {
-      try { listener({ type: 'ALERT', reason, ...(character === undefined ? {} : { character }) }, { tab, id: EXT, url: GAME }, () => {}); } catch (error) { thrown = error; }
+      try { listener({ type: 'ALERT', reason, ...(character === undefined ? {} : { character }), ...(heading === undefined ? {} : { heading }) }, { tab, id: EXT, url: GAME }, () => {}); } catch (error) { thrown = error; }
     }
     return thrown;
   };
@@ -129,6 +129,17 @@ test('an alert names the account it came from: in the notification title and bef
   bg.alert('偵測到驗證碼', { id: 3, windowId: 1 }, '');
   await sleep(40);
   assert.equal(bg.notifications[2][1].title, 'CatWorld 已停止', 'no name, no change');
+});
+
+test('an alert that did not stop anything (the six-vein scholar) gives its own heading for the notification title', async () => {
+  const bg = loadBackground({ local: ON });
+  bg.setNow(T0);
+  bg.alert('書生：成功一次（1／3）', { id: 1, windowId: 1 }, '小明', '六脈神劍');
+  assert.ok(await waitFor(() => bg.notifications.length === 1));
+  assert.equal(bg.notifications[0][1].title, 'CatWorld 六脈神劍（小明）');
+  bg.alert('書生：成功一次（2／3）', { id: 1, windowId: 1 }, undefined, '   ');
+  assert.ok(await waitFor(() => bg.notifications.length === 2));
+  assert.equal(bg.notifications[1][1].title, 'CatWorld 已停止', 'a blank heading falls back to the usual title');
 });
 
 test('the same reason within the dedupe window is pushed once, but every alert still gets its system notification', async () => {

@@ -158,10 +158,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // 哪個帳號的警報：遊戲頁送來的角色名（分頁標題「角色名 - …」），手機通知寫在原因前面（去重也就分帳號），系統通知寫在標題；讀不到就不寫
   const who = typeof message.character === 'string' ? message.character.trim().slice(0, ALERT_NAME_MAX) : '';
   notifyLine(who ? `${who}：${message.reason}` : message.reason).catch(() => {});
+  // 系統通知的標題：沒給 heading 就是「已停止」（驗證碼、看門狗、規則停用）；書生的通知會給「六脈神劍」
+  const heading = typeof message.heading === 'string' && message.heading.trim() ? message.heading.trim().slice(0, 20) : '已停止';
   chrome.notifications.create(`catworld-${sender.tab.id}-${sender.tab.windowId}`, {
     type: 'basic',
     iconUrl: 'icon.png',
-    title: who ? `CatWorld 已停止（${who}）` : 'CatWorld 已停止',
+    title: `CatWorld ${heading}${who ? `（${who}）` : ''}`,
     message: message.reason,
     priority: 2,
     requireInteraction: true,
