@@ -8,7 +8,7 @@
 if (globalThis.CatworldZapRiddleUI) return;
 
 const R = globalThis.CatworldZapRiddles;
-const S = new Proxy({}, { get: (_, key) => globalThis.CatworldScholar[key] }); // scholar.js 比這個檔晚載入，用到才取
+const S = globalThis.CatworldScholar;
 const EDITS_KEY = 'riddleCommands';
 const DONE_KEY = 'riddleDone';
 const ITEM_PAGE = 'qu1-7.htm'; // 六脈神劍（書生物品表）那一頁
