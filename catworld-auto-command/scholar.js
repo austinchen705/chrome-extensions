@@ -115,5 +115,15 @@ function matchInventory(listItems, inventoryText) {
   });
 }
 
-globalThis.CatworldScholar = { parseSpirit, parseSkillCount, canStart, classifyLine, addSighting, endSighting, isOutdoor, matchInventory, SIGHTINGS_KEY: 'scholarSightings', OUTDOOR_KEY: 'mapOutdoor', ITEM_IDS_KEY: 'scholarItemIds', CAP };
+// 購買指令（欄位裡用 ; 或換行分隔，可含 @巨集 N）→ 一個巨集文字：先 recall 回客棧，再跑那一列；欄位是空的回 ''（不執行）
+function buyMacroText(command) {
+  const pieces = String(command ?? '').split(/[;；\r\n]+/).map(piece => piece.trim()).filter(Boolean);
+  return pieces.length ? ['recall', ...pieces].join(';') : '';
+}
+// 「把缺的都跑一遍」要跑的物品名（照清單順序）：最近一次讀身上（owned：{ 名稱: { have } }）缺的、而且有填指令的；沒填的不管哪一類都不跑
+function missingToRun(listItems, owned, macros) {
+  return listItems.map(([name]) => name).filter(name => owned?.[name] && !owned[name].have && buyMacroText(macros?.[name]));
+}
+
+globalThis.CatworldScholar = { parseSpirit, parseSkillCount, canStart, classifyLine, addSighting, endSighting, isOutdoor, matchInventory, buyMacroText, missingToRun, BUY_KEY: 'scholarBuyMacros', SIGHTINGS_KEY: 'scholarSightings', OUTDOOR_KEY: 'mapOutdoor', ITEM_IDS_KEY: 'scholarItemIds', CAP };
 })();

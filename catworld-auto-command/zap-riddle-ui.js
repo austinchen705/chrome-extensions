@@ -8,6 +8,7 @@
 if (globalThis.CatworldZapRiddleUI) return;
 
 const R = globalThis.CatworldZapRiddles;
+const S = new Proxy({}, { get: (_, key) => globalThis.CatworldScholar[key] }); // scholar.js 比這個檔晚載入，用到才取
 const EDITS_KEY = 'riddleCommands';
 const DONE_KEY = 'riddleDone';
 const ITEM_PAGE = 'qu1-7.htm'; // 六脈神劍（書生物品表）那一頁
@@ -35,6 +36,8 @@ const STYLE = `
   .rd-text { white-space: pre-wrap; color: #ccc; font-size: 13px; }
   .rd-edit textarea, .rd-io textarea { all: unset; box-sizing: border-box; width: 100%; min-height: 54px; padding: 4px 6px; border-radius: 6px; background: #3a3a3e; color: #eee; font: 13px ui-monospace, Consolas, monospace; white-space: pre-wrap; user-select: text; }
   .rd-actions { display: flex; gap: 6px; padding-top: 3px; }
+  .rd-buy { all: unset; box-sizing: border-box; flex: 1; min-width: 0; padding: 2px 6px; border-radius: 6px; background: #3a3a3e; color: #eee; font: 13px ui-monospace, Consolas, monospace; user-select: text; }
+  .rd-buy::placeholder { color: #777; }
   .rd-note { color: #ffb347; font-size: 13px; padding-top: 4px; }
   .rd-note.rd-bad { color: #ff8a7a; font-weight: 600; }
   .rd-note.rd-ok { color: #bbb; }
@@ -62,7 +65,7 @@ function selectable(node) {
   return node;
 }
 
-function attach(root, { readStats, startSteps, readInventory, characterName }) {
+function attach(root, { readStats, startSteps, readInventory, characterName, runMacro, stopMacros }) {
   const style = el('style', { textContent: STYLE });
   const row = el('div', { className: 'line' },
     el('span', { className: 't', textContent: '解謎' }),
@@ -91,6 +94,9 @@ function attach(root, { readStats, startSteps, readInventory, characterName }) {
   let fullPage = false;
   let tab = 'page'; // 六脈神劍那一頁：page（網站文字）或 items（物品清單）
   let owned = null; // 讀過身上後：{ 物品名: { have, qty, id } }
+  let buyMacros = {}; // 物品名 → 購買指令（所有角色共用）
+  let running = false; // 正在跑購買指令
+  let stopped = false; // 按了停止：後面的都不送
 
   const send = async message => {
     try {
@@ -177,9 +183,39 @@ function attach(root, { readStats, startSteps, readInventory, characterName }) {
       }
     }
     const missing = matches.filter(match => !match.have).length;
-    renderDetail();
+    if (current) renderDetail();
     say(`身上有 ${matches.length - missing} 樣，缺 ${missing} 樣`, missing ? 'warn' : 'info');
   }
+
+  // 購買指令：每一樣先 recall、再跑那一列，等巨集送完才跑下一樣；全部跑完重讀 i。停止後不再送任何指令、也不重讀
+  async function runNames(names) {
+    running = true;
+    stopped = false;
+    renderDetail();
+    let ok = true;
+    for (const name of names) {
+      if (stopped) break;
+      say(`執行：${name}…`);
+      ok = await runMacro(S.buyMacroText(buyMacros[name]));
+      if (!ok || stopped) break;
+    }
+    running = false;
+    if (stopped) say('已停止，後面的沒有送', 'warn');
+    else if (!ok) say('沒有執行完：巨集格式不對，或被取消（驗證碼、停止一切）', 'error');
+    if (stopped || !ok) {
+      if (current) renderDetail();
+      return;
+    }
+    if (current) renderDetail();
+    await readBody();
+  }
+  const saveBuyMacros = async () => {
+    try {
+      await chrome.storage.local.set({ [S.BUY_KEY]: buyMacros });
+    } catch (error) {
+      say(`儲存失敗：${error.message}`, 'error');
+    }
+  };
 
   function renderItems() {
     const read = el('button', { className: 'rd-btn', textContent: '讀身上' });
@@ -187,13 +223,36 @@ function attach(root, { readStats, startSteps, readInventory, characterName }) {
       read.disabled = true;
       readBody().finally(() => { read.disabled = false; });
     });
-    main.append(read);
+    const runMissing = el('button', { className: 'rd-btn', textContent: '把缺的都跑一遍', disabled: running });
+    runMissing.addEventListener('click', () => {
+      if (running) return;
+      if (!owned) { say('先按「讀身上」，才知道缺什麼', 'warn'); return; }
+      const names = S.missingToRun(globalThis.CatworldScholarItems, owned, buyMacros);
+      if (!names.length) { say('沒有要跑的：缺的物品都沒有填指令，或都已經有了', 'warn'); return; }
+      runNames(names);
+    });
+    const stop = el('button', { className: 'rd-btn', textContent: '停止', hidden: !running });
+    stop.addEventListener('click', () => { stopped = true; stopMacros(); });
+    read.disabled = running;
+    main.append(el('div', { className: 'rd-actions' }, read, runMissing, stop));
     globalThis.CatworldScholarItems.forEach(([name, category, ways]) => {
       const mine = owned?.[name];
       const mark = !mine ? '' : mine.have ? `✓ ×${mine.qty}　` : '缺　';
+      const field = typable(el('input', { className: 'rd-buy', type: 'text', value: buyMacros[name] ?? '', placeholder: '購買指令（; 分隔，可寫 @巨集 N）' }));
+      const go = el('button', { className: 'rd-btn', textContent: '執行', hidden: !field.value.trim(), disabled: running });
+      field.addEventListener('input', () => { go.hidden = !field.value.trim(); });
+      field.addEventListener('change', () => {
+        buyMacros = { ...buyMacros };
+        if (field.value.trim()) buyMacros[name] = field.value.trim();
+        else delete buyMacros[name];
+        go.hidden = !field.value.trim();
+        saveBuyMacros();
+      });
+      go.addEventListener('click', () => { if (!running) runNames([name]); });
       main.append(el('div', { className: 'rd-step' },
         el('div', { className: mine && !mine.have ? 'rd-warn' : '', textContent: `${mark}${name}　[${CATEGORY_LABEL[category]}]` }),
-        el('div', { className: 'rd-meta', textContent: ways.map(([region, how]) => `${region}：${how}`).join('；') })));
+        el('div', { className: 'rd-meta', textContent: ways.map(([region, how]) => `${region}：${how}`).join('；') }),
+        el('div', { className: 'rd-actions' }, field, go)));
     });
   }
 
@@ -319,6 +378,7 @@ function attach(root, { readStats, startSteps, readInventory, characterName }) {
     if (area !== 'local') return;
     if (changes[EDITS_KEY]) edits = changes[EDITS_KEY].newValue ?? {};
     if (changes[DONE_KEY]) done = changes[DONE_KEY].newValue ?? {};
+    if (changes[S.BUY_KEY]) buyMacros = changes[S.BUY_KEY].newValue ?? {};
     if (changes.sharedCache && data) loadShared();
     if (data && !current && !box.hidden) renderList();
   });
@@ -343,9 +403,10 @@ function attach(root, { readStats, startSteps, readInventory, characterName }) {
       }
       data = { riddles: reply.riddles, pages: reply.pages };
       try {
-        const saved = await chrome.storage.local.get([EDITS_KEY, DONE_KEY]);
+        const saved = await chrome.storage.local.get([EDITS_KEY, DONE_KEY, S.BUY_KEY]);
         edits = saved[EDITS_KEY] ?? {};
         done = saved[DONE_KEY] ?? {};
+        buyMacros = saved[S.BUY_KEY] ?? {};
       } catch (error) {
         say(`讀取已存的資料失敗：${error.message}`, 'error');
       }

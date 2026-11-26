@@ -26,7 +26,7 @@ const waitFor = async (condition, ms = 3000) => {
 const riddles = [{ id: 'a/獨孤九劍', category: 'a', name: '獨孤九劍', condition: '無', difficulty: '易', reward: '技能', hint: '', page: 'qu1.htm', shared: [] }];
 const pages = { 'qu1.htm': { preamble: '', text: '', steps: [{ no: 1, text: '第一步', commands: 'run site' }, { no: 2, text: '第二步', commands: '' }, { no: 3, text: '第三步', commands: 'run site3' }] } };
 
-function boot({ shared, personal = {}, calls = [], started = [], sharedGate = null, changeListeners = [], sharedNow = () => shared, startResult = true, inventory = null, who = '小貓', store = {} }) {
+function boot({ shared, personal = {}, calls = [], started = [], sharedGate = null, changeListeners = [], sharedNow = () => shared, startResult = true, inventory = null, who = '小貓', store = {}, runMacro = null, stopMacros = () => {} }) {
   const dom = new JSDOM('<html><body></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   w.chrome = {
@@ -48,7 +48,7 @@ function boot({ shared, personal = {}, calls = [], started = [], sharedGate = nu
   const shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = '<div class="panel"><div class="head"></div><div class="body"></div></div>';
   w.document.documentElement.append(host);
-  const api = w.CatworldZapRiddleUI.attach(shadow, { readStats: () => ({ exp: 1000000, force: 1000 }), startSteps: text => { started.push(text); return startResult; }, readInventory: async () => { started.push('i'); return inventory ?? ''; }, characterName: () => who });
+  const api = w.CatworldZapRiddleUI.attach(shadow, { readStats: () => ({ exp: 1000000, force: 1000 }), startSteps: text => { started.push(text); return startResult; }, readInventory: async () => { started.push('i'); return inventory ?? ''; }, characterName: () => who, runMacro: runMacro ?? (async text => { started.push(text); return true; }), stopMacros });
   api.setEnabled(true);
   shadow.querySelector('.rd-open').click();
   return { shadow, started, calls, changeListeners };
@@ -257,4 +257,90 @@ ui('a read that gets no inventory is an error and marks nothing', async () => {
     riddles.splice(0, riddles.length, ...savedRiddles);
     delete pages['qu1-7.htm'];
   }
+});
+
+const INVENTORY = ['你身上帶著下列這些東西( 載重 28% ):', ' *  一顆玄鐵石(stone)', ' *  四十四把竹劍(bamboo sword)'].join('\n');
+async function openItems(options) {
+  const savedRiddles = riddles.slice();
+  riddles[0] = { ...riddles[0], name: '習得六脈神劍', page: 'qu1-7.htm' };
+  pages['qu1-7.htm'] = { preamble: '', text: '網站原文', steps: [] };
+  const dom = boot({ shared: {}, inventory: INVENTORY, ...options });
+  const restore = () => { riddles.splice(0, riddles.length, ...savedRiddles); delete pages['qu1-7.htm']; };
+  assert.ok(await waitFor(() => dom.shadow.querySelector('.rd-row')));
+  dom.shadow.querySelector('.rd-row').click();
+  assert.ok(await waitFor(() => dom.shadow.querySelector('.rd-text')));
+  const button = label => [...dom.shadow.querySelectorAll('.rd-btn')].find(item => item.textContent === label);
+  button('物品清單').click();
+  const row = name => [...dom.shadow.querySelectorAll('.rd-step')].find(item => item.textContent.includes(name));
+  const fill = (name, value) => {
+    const input = row(name).querySelector('.rd-buy');
+    input.value = value;
+    input.dispatchEvent(new dom.shadow.ownerDocument.defaultView.Event('input'));
+    input.dispatchEvent(new dom.shadow.ownerDocument.defaultView.Event('change'));
+  };
+  const runButton = name => [...row(name).querySelectorAll('.rd-btn')].find(item => item.textContent === '執行');
+  return { dom, restore, button, row, fill, runButton };
+}
+
+ui('item list rows have a command field that is saved, the run button shows only when it is filled', async () => {
+  const store = {};
+  const page = await openItems({ store });
+  try {
+    assert.equal(page.runButton('燒酒螺').hidden, true);
+    page.fill('燒酒螺', ' buy a;@巨集 3 ');
+    assert.equal(page.runButton('燒酒螺').hidden, false);
+    assert.deepEqual(JSON.parse(JSON.stringify(store.scholarBuyMacros)), { 燒酒螺: 'buy a;@巨集 3' });
+    page.fill('燒酒螺', '');
+    assert.equal(page.runButton('燒酒螺').hidden, true);
+    assert.deepEqual(JSON.parse(JSON.stringify(store.scholarBuyMacros)), {});
+  } finally { page.restore(); }
+});
+
+ui('the run button sends recall and the command as one macro, then reads i again', async () => {
+  const page = await openItems({ store: { scholarBuyMacros: { 燒酒螺: 'nw;buy a' } } });
+  try {
+    page.runButton('燒酒螺').click();
+    assert.ok(await waitFor(() => page.dom.started.includes('i')));
+    assert.deepEqual(page.dom.started, ['recall;nw;buy a', 'i']);
+    assert.ok(await waitFor(() => /身上有/.test(message(page.dom.shadow).textContent)));
+  } finally { page.restore(); }
+});
+
+ui('run all missing skips owned rows and rows without a command, runs the rest in list order, then reads i', async () => {
+  const store = { scholarBuyMacros: { 燒酒螺: 'buy a', 熊皮: 'kill bear', 竹劍: 'buy sword', 唐詩三百首: ' ' } };
+  const page = await openItems({ store });
+  try {
+    page.button('把缺的都跑一遍').click();
+    assert.match(message(page.dom.shadow).textContent, /先按「讀身上」/);
+    assert.deepEqual(page.dom.started, []);
+    page.button('讀身上').click();
+    assert.ok(await waitFor(() => /身上有/.test(message(page.dom.shadow).textContent)));
+    page.dom.started.length = 0;
+    page.button('把缺的都跑一遍').click();
+    assert.ok(await waitFor(() => page.dom.started.length === 3));
+    assert.deepEqual(page.dom.started, ['recall;kill bear', 'recall;buy a', 'i'], 'list order: 熊皮 comes before 燒酒螺; 竹劍 is owned; 唐詩三百首 has no command');
+  } finally { page.restore(); }
+});
+
+ui('stop cancels the running macro and nothing more is sent, no re-read', async () => {
+  const sent = [];
+  let release = null;
+  let stops = 0;
+  const runMacro = text => { sent.push(text); return new Promise(resolve => { release = resolve; }); };
+  const page = await openItems({ store: { scholarBuyMacros: { 燒酒螺: 'buy a', 熊皮: 'kill bear' } }, runMacro, stopMacros: () => { stops += 1; release(false); } });
+  try {
+    page.button('讀身上').click();
+    assert.ok(await waitFor(() => /身上有/.test(message(page.dom.shadow).textContent)));
+    page.dom.started.length = 0;
+    page.button('把缺的都跑一遍').click();
+    assert.ok(await waitFor(() => sent.length === 1));
+    assert.equal(page.button('停止').hidden, false);
+    page.button('停止').click();
+    assert.ok(await waitFor(() => /已停止/.test(message(page.dom.shadow).textContent)));
+    await sleep(50);
+    assert.deepEqual(sent, ['recall;kill bear']);
+    assert.deepEqual(page.dom.started, [], 'no i read after stop');
+    assert.equal(stops, 1);
+    assert.equal(page.button('停止').hidden, true);
+  } finally { page.restore(); }
 });

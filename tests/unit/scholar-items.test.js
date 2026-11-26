@@ -94,3 +94,16 @@ test('matchInventory handles synthetic lines: one stone, one armor, a name that 
   assert.deepEqual(find(text, '三字經'), { name: '三字經', have: true, qty: 1, id: 'sanzijing' });
   assert.equal(find('', '玄鐵石').have, false);
 });
+
+test('buyMacroText puts recall first and normalises separators; an empty field gives nothing', () => {
+  assert.equal(S.buyMacroText('buy a; @巨集 3\nbuy b；'), 'recall;buy a;@巨集 3;buy b');
+  assert.equal(S.buyMacroText('  ; '), '');
+  assert.equal(S.buyMacroText(undefined), '');
+});
+
+test('missingToRun keeps list order and only rows that are missing and have a command', () => {
+  const list = [['甲'], ['乙'], ['丙'], ['丁']];
+  const owned = { 甲: { have: false }, 乙: { have: true }, 丙: { have: false } };
+  assert.deepEqual(S.missingToRun(list, owned, { 甲: 'x', 乙: 'y', 丙: ' ', 丁: 'z' }), ['甲']);
+  assert.deepEqual(S.missingToRun(list, null, { 甲: 'x' }), [], 'not read yet');
+});

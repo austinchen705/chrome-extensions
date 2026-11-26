@@ -1446,7 +1446,7 @@ function stopEverything(reason) {
 // 遊戲巨集的 @等待：按下有等待的巨集鍵時，在遊戲處理之前攔下來，自己照順序執行。
 // 指令走同一個送出佇列（遵守指令間隔、驗證碼偵測、看門狗），等待時不擋住其他功能，別的來源的指令可以插進來。
 // 一個巨集的「執行」要到最後一個指令真的送出才算結束（active() 才不會在最後一個指令還在排隊時就變成 false）
-function startMacro(text, owner = 'user', { priority = false } = {}) {
+function startMacro(text, owner = 'user', { priority = false, onEnd = null } = {}) {
   const parsed = CatworldMacro.parseSteps(text);
   if (parsed.error) {
     macroNote = { text: `巨集沒有執行：${parsed.error}`, until: Date.now() + 8000 };
@@ -1455,7 +1455,7 @@ function startMacro(text, owner = 'user', { priority = false } = {}) {
   }
   armDetection();
   macroNote = null;
-  const run = { owner, priority, steps: parsed.steps, index: 0, pending: 0, timer: null, waitUntil: null, nextCommand: null, frozen: false, remaining: 0 };
+  const run = { owner, priority, steps: parsed.steps, index: 0, pending: 0, timer: null, waitUntil: null, nextCommand: null, frozen: false, remaining: 0, onEnd };
   macroRuns.add(run);
   syncHold();
   advanceMacro(run);
@@ -1492,6 +1492,7 @@ function finishMacroIfDone(run) {
     macroRuns.delete(run);
     syncHold();
     pumpQueue();
+    run.onEnd?.(true);
   }
 }
 
@@ -1505,6 +1506,7 @@ function cancelMacros(owner) {
   }
   if (owner === undefined) dropQueue('macro');
   pumpQueue();
+  gone.forEach(run => run.onEnd?.(false));
 }
 
 // 隨機表情（emote-pick.js）：一組 1～3 個相關的表情接成一個巨集送出（owner emote，停止一切、驗證碼、retire 都會取消）。
@@ -1668,6 +1670,8 @@ const SCHOLAR_SUCCESS_KEY = 'scholarSuccess';
 const SCHOLAR_GOAL = 3;
 let scholarHelper = { on: false, checking: false, text: '', level: '' };
 const sendScholarStep = command => onSent => { if (startMacro(command, 'scholar')) onSent(); };
+// 書生的購買指令（解謎面板物品清單）：整串當一個巨集送（@巨集 N 送出當下展開），等到最後一個指令送出才回 true；沒有啟動或被取消（停止、驗證碼）回 false
+const runScholarMacro = text => new Promise(resolve => { if (!startMacro(expandHuntCommand(text), 'scholar', { onEnd: resolve })) resolve(false); });
 async function checkScholarStart() {
   const S = CatworldScholar;
   const spirit = S.parseSpirit(await askGame('sc', 'sc', sendScholarStep('sc')));
@@ -2123,6 +2127,8 @@ function initPanel() {
       readStats: () => ({ exp: readNumber('exp'), force: readNumber('max_force') }),
       startSteps: text => startMacro(text),
       readInventory: () => askGame('i', 'inventory', sendScholarStep('i')),
+      runMacro: runScholarMacro,
+      stopMacros: () => cancelMacros('scholar'),
       characterName,
     });
   } catch (error) {
