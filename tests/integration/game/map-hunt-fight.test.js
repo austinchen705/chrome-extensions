@@ -2059,7 +2059,7 @@ ui('fight: a special refused because nobody is fighting is not sent again in tha
   }
 });
 
-ui('special once: with 每場只放一次特攻 on, a fight lasting several intervals sends the special once and the next monster gets its own', async () => {
+ui('special once: with 每隻怪只放一次特攻 on, a fight lasting several intervals sends the special once and the next monster gets its own', async () => {
   const page = await boot({ scale: SCALE });
   try {
     page.store.mapMonsters = mobsAt('c');
