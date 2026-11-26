@@ -95,5 +95,25 @@ function isOutdoor(lookText) {
   return lines.slice(i, exits).some(indented);
 }
 
-globalThis.CatworldScholar = { parseSpirit, parseSkillCount, canStart, classifyLine, addSighting, endSighting, isOutdoor, SIGHTINGS_KEY: 'scholarSightings', OUTDOOR_KEY: 'mapOutdoor', CAP };
+// 物品清單對照 i 的輸出（要先載入 hunt-parse.js）：清單每一樣 → { name, have, qty, id }。身上的物品名＝清單名，或「數詞＋量詞」加清單名（「一顆玄鐵石」「四十四瓶蠻牛」）；
+// 只比對這種前綴，免得「三字經」被當成「三」加「字經」。同一樣有好幾疊就加總
+const QTY_PREFIX = /^([零一二三四五六七八九十兩]+)[^零一二三四五六七八九十兩\s]$/;
+function matchInventory(listItems, inventoryText) {
+  const Parse = globalThis.CatworldHuntParse;
+  const owned = Parse.parseInventory(inventoryText);
+  return listItems.map(([name]) => {
+    let qty = 0;
+    let id = null;
+    owned.forEach(item => {
+      const own = item.name.replace(/^[*ˇ]+/, ''); // 又標記又穿著的行，parseInventory 會把 ˇ 留在名稱前
+      const prefix = own.endsWith(name) ? own.slice(0, own.length - name.length) : null;
+      if (prefix === null || (prefix !== '' && !QTY_PREFIX.test(prefix))) return;
+      qty += prefix === '' ? 1 : Parse.quantityOf(prefix);
+      id = id ?? item.id;
+    });
+    return { name, have: qty > 0, qty, id };
+  });
+}
+
+globalThis.CatworldScholar = { parseSpirit, parseSkillCount, canStart, classifyLine, addSighting, endSighting, isOutdoor, matchInventory, SIGHTINGS_KEY: 'scholarSightings', OUTDOOR_KEY: 'mapOutdoor', ITEM_IDS_KEY: 'scholarItemIds', CAP };
 })();

@@ -62,6 +62,7 @@
         "zap-riddles.js",
         "zap-equipment.js",
         "shop-data.js",
+        "scholar-items-data.js",
         "shop-collect.js",
         "zap-panel.js",
         "zap-riddle-ui.js",

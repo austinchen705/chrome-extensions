@@ -2124,6 +2124,8 @@ function initPanel() {
     riddleUI = CatworldZapRiddleUI.attach(root, {
       readStats: () => ({ exp: readNumber('exp'), force: readNumber('max_force') }),
       startSteps: text => startMacro(text),
+      readInventory: () => askGame('i', 'inventory', sendScholarStep('i')),
+      characterName,
     });
   } catch (error) {
     console.error('[catworld] 解謎列初始化失敗', error);

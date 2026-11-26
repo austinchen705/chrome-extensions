@@ -26,11 +26,11 @@ const waitFor = async (condition, ms = 3000) => {
 const riddles = [{ id: 'a/獨孤九劍', category: 'a', name: '獨孤九劍', condition: '無', difficulty: '易', reward: '技能', hint: '', page: 'qu1.htm', shared: [] }];
 const pages = { 'qu1.htm': { preamble: '', text: '', steps: [{ no: 1, text: '第一步', commands: 'run site' }, { no: 2, text: '第二步', commands: '' }, { no: 3, text: '第三步', commands: 'run site3' }] } };
 
-function boot({ shared, personal = {}, calls = [], started = [], sharedGate = null, changeListeners = [], sharedNow = () => shared, startResult = true }) {
+function boot({ shared, personal = {}, calls = [], started = [], sharedGate = null, changeListeners = [], sharedNow = () => shared, startResult = true, inventory = null, who = '小貓', store = {} }) {
   const dom = new JSDOM('<html><body></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   w.chrome = {
-    storage: { local: { get: async () => ({ riddleCommands: personal, riddleDone: {} }), set: async () => {} }, onChanged: { addListener: fn => changeListeners.push(fn) } },
+    storage: { local: { get: async () => ({ riddleCommands: personal, riddleDone: {}, ...store }), set: async values => { Object.assign(store, values); } }, onChanged: { addListener: fn => changeListeners.push(fn) } },
     runtime: {
       sendMessage: async message => {
         calls.push(message.type);
@@ -43,12 +43,12 @@ function boot({ shared, personal = {}, calls = [], started = [], sharedGate = nu
       },
     },
   };
-  ['zap-riddles.js', 'zap-riddle-ui.js'].forEach(file => w.eval(fs.readFileSync(path.join(root, file), 'utf8')));
+  ['zap-riddles.js', 'hunt-parse.js', 'scholar-items-data.js', 'scholar.js', 'zap-riddle-ui.js'].forEach(file => w.eval(fs.readFileSync(path.join(root, file), 'utf8')));
   const host = w.document.createElement('div');
   const shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = '<div class="panel"><div class="head"></div><div class="body"></div></div>';
   w.document.documentElement.append(host);
-  const api = w.CatworldZapRiddleUI.attach(shadow, { readStats: () => ({ exp: 1000000, force: 1000 }), startSteps: text => { started.push(text); return startResult; } });
+  const api = w.CatworldZapRiddleUI.attach(shadow, { readStats: () => ({ exp: 1000000, force: 1000 }), startSteps: text => { started.push(text); return startResult; }, readInventory: async () => { started.push('i'); return inventory ?? ''; }, characterName: () => who });
   api.setEnabled(true);
   shadow.querySelector('.rd-open').click();
   return { shadow, started, calls, changeListeners };
@@ -197,4 +197,64 @@ ui('a step that could not be sent is an error line, and a sent one is plain', as
   [...okSteps[0].querySelectorAll('.rd-btn')].find(button => button.textContent === '送出').click();
   assert.match(message(sent.shadow).textContent, /已送出第/);
   assert.equal(levelOfNote(message(sent.shadow)), 'info');
+});
+
+ui('the six-vein page has an item list tab: rows show how and category, read-body sends i and marks what is on the character and stores the ids per character', async () => {
+  const savedRiddles = riddles.slice();
+  const savedPages = pages['qu1-7.htm'];
+  riddles[0] = { ...riddles[0], name: '習得六脈神劍', page: 'qu1-7.htm' };
+  pages['qu1-7.htm'] = { preamble: '', text: '網站原文', steps: [] };
+  try {
+    const store = { scholarItemIds: { 別人: { 玄鐵石: 'xx' } } };
+    const dom = boot({ shared: {}, store, inventory: ['你身上帶著下列這些東西( 載重 28% ):', ' *  一顆玄鐵石(stone)', '  紙皮水袋(waterskin)', ' *  四十四把竹劍(bamboo sword)', ' *ˇ一件粗布衣(cloth) [view][remove]'].join('\n') });
+    assert.ok(await waitFor(() => dom.shadow.querySelector('.rd-row')));
+    dom.shadow.querySelector('.rd-row').click();
+    assert.ok(await waitFor(() => dom.shadow.querySelector('.rd-text')));
+    assert.match(dom.shadow.querySelector('.rd-text').textContent, /網站原文/, 'the page text tab is first');
+    const tab = label => [...dom.shadow.querySelectorAll('.rd-btn')].find(button => button.textContent === label);
+    tab('物品清單').click();
+    const rows = () => [...dom.shadow.querySelectorAll('.rd-step')];
+    assert.ok(rows().length >= 65);
+    const row = name => rows().find(item => item.textContent.includes(name));
+    assert.match(row('玄鐵石').textContent, /\[解謎\]/);
+    assert.match(row('玄鐵石').textContent, /火燄山：漁夫/);
+    assert.match(row('桃符紙').textContent, /長安：.*華山：/, 'every way of a merged item');
+    assert.doesNotMatch(row('玄鐵石').textContent, /✓|缺/, 'not read yet');
+    tab('讀身上').click();
+    assert.ok(await waitFor(() => /✓/.test(dom.shadow.querySelector('.rd-step').parentNode.textContent)));
+    assert.deepEqual(dom.started, ['i']);
+    assert.match(row('玄鐵石').textContent, /✓ ×1/);
+    assert.match(row('竹劍').textContent, /✓ ×44/);
+    assert.match(row('白金盔甲').textContent, /缺/);
+    assert.match(row('白金盔甲').querySelector('.rd-warn').textContent, /缺/);
+    assert.match(message(dom.shadow).textContent, /身上有 4 樣，缺 \d+ 樣/);
+    assert.equal(levelOfNote(message(dom.shadow)), 'warn');
+    assert.deepEqual(JSON.parse(JSON.stringify(store.scholarItemIds)), { 別人: { 玄鐵石: 'xx' }, 小貓: { 玄鐵石: 'stone', 紙皮水袋: 'waterskin', 竹劍: 'bamboo sword', 粗布衣: 'cloth' } });
+    tab('網站文字').click();
+    assert.match(dom.shadow.querySelector('.rd-text').textContent, /網站原文/);
+  } finally {
+    riddles.splice(0, riddles.length, ...savedRiddles);
+    if (savedPages) pages['qu1-7.htm'] = savedPages;
+    else delete pages['qu1-7.htm'];
+  }
+});
+
+ui('a read that gets no inventory is an error and marks nothing', async () => {
+  const savedRiddles = riddles.slice();
+  riddles[0] = { ...riddles[0], page: 'qu1-7.htm' };
+  pages['qu1-7.htm'] = { preamble: '', text: '網站原文', steps: [] };
+  try {
+    const dom = boot({ shared: {}, inventory: '' });
+    assert.ok(await waitFor(() => dom.shadow.querySelector('.rd-row')));
+    dom.shadow.querySelector('.rd-row').click();
+    assert.ok(await waitFor(() => dom.shadow.querySelector('.rd-text')));
+    [...dom.shadow.querySelectorAll('.rd-btn')].find(button => button.textContent === '物品清單').click();
+    [...dom.shadow.querySelectorAll('.rd-btn')].find(button => button.textContent === '讀身上').click();
+    assert.ok(await waitFor(() => /沒有讀到/.test(message(dom.shadow).textContent)));
+    assert.equal(levelOfNote(message(dom.shadow)), 'error');
+    assert.doesNotMatch(dom.shadow.querySelector('.rd-main').textContent, /✓|缺　/);
+  } finally {
+    riddles.splice(0, riddles.length, ...savedRiddles);
+    delete pages['qu1-7.htm'];
+  }
 });

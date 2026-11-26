@@ -10,6 +10,8 @@ if (globalThis.CatworldZapRiddleUI) return;
 const R = globalThis.CatworldZapRiddles;
 const EDITS_KEY = 'riddleCommands';
 const DONE_KEY = 'riddleDone';
+const ITEM_PAGE = 'qu1-7.htm'; // 六脈神劍（書生物品表）那一頁
+const CATEGORY_LABEL = { buy: '買', pick: '撿', kill: '殺怪', identify: '鑑定', riddle: '解謎' };
 const GROUP_LABEL = { ok: '條件夠', check: '條件需自行確認', unmet: '條件未達' };
 
 const STYLE = `
@@ -60,7 +62,7 @@ function selectable(node) {
   return node;
 }
 
-function attach(root, { readStats, startSteps }) {
+function attach(root, { readStats, startSteps, readInventory, characterName }) {
   const style = el('style', { textContent: STYLE });
   const row = el('div', { className: 'line' },
     el('span', { className: 't', textContent: '解謎' }),
@@ -87,6 +89,8 @@ function attach(root, { readStats, startSteps }) {
   let done = {};
   let current = null;
   let fullPage = false;
+  let tab = 'page'; // 六脈神劍那一頁：page（網站文字）或 items（物品清單）
+  let owned = null; // 讀過身上後：{ 物品名: { have, qty, id } }
 
   const send = async message => {
     try {
@@ -127,6 +131,7 @@ function attach(root, { readStats, startSteps }) {
       if (event.target === check) return;
       current = riddle;
       fullPage = false;
+      tab = 'page';
       say('');
       renderDetail();
     });
@@ -146,6 +151,49 @@ function attach(root, { readStats, startSteps }) {
     ['ok', 'check', 'unmet'].forEach(key => {
       main.append(el('div', { className: 'rd-group', textContent: `${GROUP_LABEL[key]}（${groups[key].length}）` }));
       groups[key].forEach(riddle => main.append(riddleRow(riddle)));
+    });
+  }
+
+  // ---- 六脈神劍的物品清單 ----
+  // 讀 i、對照清單打勾；同時依角色記下每樣物品的英文 id（之後給書生用），不同分頁改同一個鍵時以最新讀到的為準
+  async function readBody() {
+    say('讀取身上物品…');
+    const text = await readInventory();
+    if (!/載重\s*\d+/.test(text)) {
+      say('沒有讀到身上物品（i 沒有回應）', 'error');
+      return;
+    }
+    const matches = globalThis.CatworldScholar.matchInventory(globalThis.CatworldScholarItems, text);
+    owned = Object.fromEntries(matches.map(match => [match.name, match]));
+    const ids = Object.fromEntries(matches.filter(match => match.id).map(match => [match.name, match.id]));
+    const who = characterName();
+    if (who) {
+      try {
+        const key = globalThis.CatworldScholar.ITEM_IDS_KEY;
+        const all = (await chrome.storage.local.get(key))[key] ?? {};
+        await chrome.storage.local.set({ [key]: { ...all, [who]: { ...all[who], ...ids } } });
+      } catch (error) {
+        say(`儲存物品 id 失敗：${error.message}`, 'error');
+      }
+    }
+    const missing = matches.filter(match => !match.have).length;
+    renderDetail();
+    say(`身上有 ${matches.length - missing} 樣，缺 ${missing} 樣`, missing ? 'warn' : 'info');
+  }
+
+  function renderItems() {
+    const read = el('button', { className: 'rd-btn', textContent: '讀身上' });
+    read.addEventListener('click', () => {
+      read.disabled = true;
+      readBody().finally(() => { read.disabled = false; });
+    });
+    main.append(read);
+    globalThis.CatworldScholarItems.forEach(([name, category, ways]) => {
+      const mine = owned?.[name];
+      const mark = !mine ? '' : mine.have ? `✓ ×${mine.qty}　` : '缺　';
+      main.append(el('div', { className: 'rd-step' },
+        el('div', { className: mine && !mine.have ? 'rd-warn' : '', textContent: `${mark}${name}　[${CATEGORY_LABEL[category]}]` }),
+        el('div', { className: 'rd-meta', textContent: ways.map(([region, how]) => `${region}：${how}`).join('；') })));
     });
   }
 
@@ -204,6 +252,18 @@ function attach(root, { readStats, startSteps }) {
       back,
       el('div', { className: 'rd-group', textContent: riddle.name }),
       el('div', { className: 'rd-meta', textContent: [`條件：${riddle.condition}`, `難度：${riddle.difficulty}`, `獎勵：${riddle.reward}`].join('　') }));
+    if (riddle.page === ITEM_PAGE) {
+      const tabs = [['page', '網站文字'], ['items', '物品清單']].map(([key, label]) => {
+        const button = el('button', { className: 'rd-btn', textContent: label, disabled: tab === key });
+        button.addEventListener('click', () => { tab = key; say(''); renderDetail(); });
+        return button;
+      });
+      main.append(el('div', { className: 'rd-actions' }, ...tabs));
+      if (tab === 'items') {
+        renderItems();
+        return;
+      }
+    }
     const page = riddle.page ? data.pages[riddle.page] : null;
     // 共用頁只顯示這個謎自己的那一段；認不出來就是整頁。可以切換看整頁（萬一分段分錯了）
     const mine = page ? R.sectionSteps(riddle, page) : [];
