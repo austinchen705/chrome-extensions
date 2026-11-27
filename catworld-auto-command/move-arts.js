@@ -1,5 +1,5 @@
-// 悟招圖：玩家悟出新招時，遊戲會印一塊字元圖（蛇、人、牛…）加上「<人名(id)悟出了新武功>」「<之中的一招:『招式名』>」。
-// 這裡把那一塊解析出來存起來（chrome.storage.local.moveArts），招式列表與招式動畫再拿去上色與播放；也能匯出給別人、匯入別人的。
+// 悟招圖：玩家悟出新招時，遊戲會印一塊帶 class X 的字元圖（蛇、人、牛…）加上招式名；各武功的句型不同，所以不靠句型，
+// 而是把整塊的文字交給 background 比對 skills-data 裡的招式名，比到唯一一招才存。這裡把那一塊整理起來存起來（chrome.storage.local.moveArts），招式列表與招式動畫再拿去上色與播放；也能匯出給別人、匯入別人的。
 // 純函式（解析、檢查、合併）不碰 DOM 與 chrome.*，設定頁與遊戲頁共用；遊戲頁的觀察器在檔案最後，只在有 #content 的頁面啟動。
 // 解析吃的是片段 [{ text, classes }]（遊戲頁由 DOM 的 span 轉、測試由 HTML 轉），顏色碼取第一個 H0–H7／N0–N7 的 class。
 (() => {
@@ -43,53 +43,92 @@ function checkEntry(key, entry) {
   return { ok: true, entry: { skill, move, lines: cleanLines, nameCodes: [...nameCodes], at: Number.isFinite(entry.at) && entry.at >= 0 ? entry.at : 0 } };
 }
 
-// 片段 → 悟招圖 { skill, move, lines, nameCodes } 或 null（不是悟招訊息、找不到招式名、悟招人名換不掉都回 null：人名絕不存）
-function parseLearn(spans) {
+// 片段 → 行 [[文字, 顏色碼]…]：換行在片段裡面，頭尾的空行去掉
+function linesOf(spans) {
   const lines = [[]];
   for (const span of spans ?? []) {
     const code = codeOf(span.classes);
-    const pieces = String(span.text ?? '').split(/\r?\n/);
-    pieces.forEach((piece, index) => {
+    String(span.text ?? '').split(/\r?\n/).forEach((piece, index) => {
       if (index) lines.push([]);
       if (piece) lines.at(-1).push([piece, code]);
     });
   }
-  const text = line => line.map(segment => segment[0]).join('');
-  const start = lines.findIndex(line => text(line).includes(MARK));
-  if (start < 0) return null;
-  let end = lines.findIndex((line, index) => index > start && text(line).includes(MARK));
-  if (end < 0) end = lines.length;
-  const block = lines.slice(start, Math.min(end, start + MAX_LINES));
-  while (block.length && !block.at(-1).length) block.pop();
+  while (lines.length && !lines.at(-1).length) lines.pop();
+  while (lines.length && !lines[0].length) lines.shift();
+  return lines;
+}
+const textOf = line => line.map(segment => segment[0]).join('');
 
-  // 第一行：<人名(id)悟出了新武功> → <你悟出了新武功>；人名與 id 可能分在好幾個 span
-  const first = block[0];
-  const markAt = first.findIndex(segment => segment[0].includes(MARK));
-  let openAt = -1;
-  for (let i = markAt; i >= 0; i -= 1) if (first[i][0].includes('<')) { openAt = i; break; }
-  if (openAt < 0) return null;
-  const skill = /悟出了新(.+?)>/.exec(text(first))?.[1];
-  if (!skill) return null;
-  const head = first[openAt][0].slice(0, first[openAt][0].indexOf('<'));
-  const tail = first[markAt][0].slice(first[markAt][0].indexOf(MARK));
-  block[0] = [
-    ...first.slice(0, openAt),
-    ...(head ? [[head, first[openAt][1]]] : []),
-    [`<你${tail}`, first[openAt][1]],
-    ...first.slice(markAt + 1),
-  ];
+// 一整塊的純文字，與 『…』「…」 裡的字串（給 background 比對招式名用，招式名多半在引號裡）
+const blockText = spans => linesOf(spans).map(textOf).join('\n');
+function quotedIn(text) {
+  return [...String(text ?? '').matchAll(/『([^』\n]*)』|「([^」\n]*)」/g)].map(match => match[1] ?? match[2]).filter(Boolean);
+}
 
-  // 招式名：「之中的一招:『…』」那一行，逐字記顏色
-  const moveLine = block.find(line => text(line).includes('之中的一招'));
-  if (!moveLine) return null;
-  const chars = moveLine.flatMap(([chunk, code]) => [...chunk].map(char => ({ char, code })));
-  const open = chars.findIndex(item => item.char === '『');
-  const close = chars.findIndex((item, index) => index > open && item.char === '』');
-  if (open < 0 || close <= open + 1) return null;
-  const named = chars.slice(open + 1, close);
-  const move = named.map(item => item.char).join('');
-  const entry = { skill, move, lines: block, nameCodes: named.map(item => item.code) };
-  const checked = checkEntry(keyOf(skill, move), entry);
+// 一行裡把 [from, from + length) 的字換成 repl，換掉的字用起點那段的顏色
+function replaceRange(line, from, length, repl) {
+  const units = line.flatMap(([chunk, code]) => [...chunk].map(char => [char, code]));
+  units.splice(from, length, [repl, units[from][1]]);
+  const out = [];
+  for (const [char, code] of units) {
+    if (out.length && out.at(-1)[1] === code) out.at(-1)[0] += char;
+    else out.push([char, code]);
+  }
+  return out;
+}
+
+// 悟招人名換成「你」：先看「<人名(id)悟出了新武功>」那一行（人名與 id 可能分在好幾個 span）；
+// 沒有那一行就找至少兩行開頭（跳過左邊的字元圖）相同的 2–8 字，換掉那些行的人名。換成功或沒有人名回 lines，換不掉回 null（人名絕不存）
+const WORDY = /^[^\p{L}\p{N}_]*/u;
+function anonymise(lines) {
+  const at = lines.findIndex(line => textOf(line).includes(MARK));
+  if (at >= 0) {
+    const first = lines[at];
+    const markAt = first.findIndex(segment => segment[0].includes(MARK));
+    let openAt = -1;
+    for (let i = markAt; i >= 0; i -= 1) if (first[i][0].includes('<')) { openAt = i; break; }
+    if (openAt < 0) return null;
+    const head = first[openAt][0].slice(0, first[openAt][0].indexOf('<'));
+    const tail = first[markAt][0].slice(first[markAt][0].indexOf(MARK));
+    return lines.map((line, index) => (index !== at ? line : [
+      ...first.slice(0, openAt),
+      ...(head ? [[head, first[openAt][1]]] : []),
+      [`<你${tail}`, first[openAt][1]],
+      ...first.slice(markAt + 1),
+    ]));
+  }
+  const starts = lines.map(line => {
+    const text = textOf(line);
+    const offset = WORDY.exec(text)[0].length;
+    return { offset, rest: text.slice(offset) };
+  });
+  for (let i = 0; i < starts.length; i += 1) {
+    for (let j = i + 1; j < starts.length; j += 1) {
+      let n = 0;
+      while (n < starts[i].rest.length && n < starts[j].rest.length && starts[i].rest[n] === starts[j].rest[n]) n += 1;
+      if (n < 2 || n > 8 || !/^[\p{L}\p{N}_]+$/u.test(starts[i].rest.slice(0, n)) || n >= starts[i].rest.length || n >= starts[j].rest.length) continue;
+      const name = starts[i].rest.slice(0, n);
+      return lines.map((line, index) => (starts[index].rest.startsWith(name) ? replaceRange(line, starts[index].offset, n, '你') : line));
+    }
+  }
+  return lines;
+}
+
+// 片段 + 比對到的招式 → 悟招圖 { skill, move, lines, nameCodes } 或 null（招式名不在這一塊裡、人名換不掉、超過行數與大小限制）
+function buildArt(spans, skill, move) {
+  const lines = anonymise(linesOf(spans));
+  if (!lines || !move) return null;
+  const want = [...move];
+  const found = [];
+  for (const line of lines) {
+    const chars = line.flatMap(([chunk, code]) => [...chunk].map(char => ({ char, code })));
+    for (let i = 0; i + want.length <= chars.length; i += 1) {
+      if (want.every((char, k) => chars[i + k].char === char)) found.push({ quoted: '『「'.includes(chars[i - 1]?.char ?? ''), codes: chars.slice(i, i + want.length).map(item => item.code) });
+    }
+  }
+  const pick = found.find(item => item.quoted) ?? found[0];
+  if (!pick) return null;
+  const checked = checkEntry(keyOf(skill, move), { skill, move, lines, nameCodes: pick.codes });
   return checked.ok ? { skill, move, lines: checked.entry.lines, nameCodes: checked.entry.nameCodes } : null;
 }
 
@@ -140,12 +179,12 @@ function mergeArts(existing, incoming) {
   return { next, added, skipped };
 }
 
-globalThis.CatworldMoveArts = { FORMAT, VERSION, MAX_ENTRIES, keyOf, checkEntry, parseLearn, addCapture, exportText, checkImport, mergeArts };
+globalThis.CatworldMoveArts = { FORMAT, VERSION, MAX_ENTRIES, keyOf, checkEntry, blockText, quotedIn, buildArt, addCapture, exportText, checkImport, mergeArts };
 
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
-if (!content || !globalThis.chrome?.storage?.local) return;
+if (!content || !globalThis.chrome?.storage?.local || !globalThis.chrome?.runtime?.sendMessage) return;
 
-// ---- 遊戲頁：看到悟招訊息就抓 ----
+// ---- 遊戲頁：看到一塊帶 X 的字元圖，問 background 裡面是哪一招，是的話就抓 ----
 const OWN = '[data-catworld-skills], [data-catworld-moveart], [data-catworld-movefx]';
 const isOwn = node => Boolean((node.nodeType === 1 ? node : node.parentElement)?.closest?.(OWN));
 const isX = node => node?.nodeType === 1 && node.classList.contains('X');
@@ -162,25 +201,30 @@ function runAround(trigger) {
 }
 
 async function scan() {
-  const found = [...content.querySelectorAll('span.X')].filter(span => !done.has(span) && !isOwn(span) && span.textContent.includes(MARK));
-  if (!found.length) return;
-  found.forEach(span => done.add(span));
+  const found = [...content.querySelectorAll('span.X')].filter(span => !done.has(span) && !isOwn(span));
   try {
     for (const trigger of found) {
-      const learned = parseLearn(runAround(trigger).map(span => ({ text: span.textContent, classes: [...span.classList] })));
+      if (done.has(trigger)) continue;
+      const run = runAround(trigger);
+      run.forEach(span => done.add(span));
+      const spans = run.map(span => ({ text: span.textContent, classes: [...span.classList] }));
+      const text = blockText(spans);
+      const reply = await chrome.runtime.sendMessage({ type: 'MOVE_FIND', text, quoted: quotedIn(text) });
+      if (!reply?.ok || !reply.found) continue;
+      const learned = buildArt(spans, reply.found.skill, reply.found.move);
       if (!learned) continue;
       const { moveArts } = await chrome.storage.local.get('moveArts');
       const next = addCapture(moveArts, learned);
       if (next) await chrome.storage.local.set({ moveArts: next });
     }
   } catch {
-    // 連不上儲存（孤兒程式）：什麼都不做
+    // 連不上 background 或儲存（孤兒程式）：什麼都不做
   }
 }
 
+const hasX = node => node.nodeType === 1 && !isOwn(node) && (isX(node) || Boolean(node.querySelector?.('span.X')));
 new MutationObserver(records => {
-  const hit = records.some(record => Array.from(record.addedNodes).some(node => !isOwn(node) && (node.textContent || '').includes(MARK)));
-  if (!hit) return;
+  if (!records.some(record => Array.from(record.addedNodes).some(hasX))) return;
   clearTimeout(timer);
   timer = setTimeout(scan, SETTLE_MS);
 }).observe(content, { subtree: true, childList: true });

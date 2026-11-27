@@ -11,14 +11,17 @@ const SKILLS_DATA = new Function(`${fs.readFileSync(path.join(root, 'skills-data
 require('../../../catworld-auto-command/skill-moves.js');
 const S = globalThis.CatworldSkillMoves;
 const COW_HTML = fs.readFileSync(path.join(__dirname, '..', '..', 'fixtures', 'moves', 'learn-cow.html'), 'utf8');
+const fixture = name => fs.readFileSync(path.join(__dirname, '..', '..', 'fixtures', 'moves', name + '.html'), 'utf8');
 const KEY = '牛蛇生死搏/對牛彈琴';
 
 async function movesPage(initialStore = {}) {
   const page = await boot({ initialStore: { zapFeatures: { skills: true }, ...initialStore } });
   const original = page.w.chrome.runtime.sendMessage;
-  page.w.chrome.runtime.sendMessage = async message => (message?.type === 'SKILL_MOVES'
-    ? { ok: true, skills: S.lookup(SKILLS_DATA, message.names) }
-    : original(message));
+  page.w.chrome.runtime.sendMessage = async message => {
+    if (message?.type === 'SKILL_MOVES') return { ok: true, skills: S.lookup(SKILLS_DATA, message.names) };
+    if (message?.type === 'MOVE_FIND') return { ok: true, found: S.findMoveIn(SKILLS_DATA, message.text, message.quoted) };
+    return original(message);
+  };
   return page;
 }
 const box = page => page.w.document.querySelector('[data-catworld-skills]');
@@ -41,6 +44,29 @@ ui('a learn announcement is stored once with the art and the move-name colours; 
   } finally {
     page.close();
   }
+});
+
+ui('the 連城劍法 announcements (no 悟出了新 in them) are stored under the poem, once each, with the learner turned into 你', async () => {
+  const page = await movesPage();
+  try {
+    page.output(fixture('learn-liancheng-4'));
+    assert.ok(await waitFor(() => page.store.moveArts?.['連城劍法/每逢佳節近，遊子倍思親'], 3000), 'the 4th move is stored');
+    page.output(fixture('learn-liancheng-3'));
+    assert.ok(await waitFor(() => page.store.moveArts?.['連城劍法/案前焚香牘，操琴譜新曲'], 3000), 'the 3rd move is stored');
+    page.output(fixture('learn-liancheng-4'));
+    await sleep(900);
+    assert.deepEqual([...Object.keys(page.store.moveArts)].sort(), ['連城劍法/每逢佳節近，遊子倍思親', '連城劍法/案前焚香牘，操琴譜新曲'].sort());
+    const stored = page.store.moveArts['連城劍法/每逢佳節近，遊子倍思親'];
+    assert.equal(JSON.stringify(stored.nameCodes), JSON.stringify(Array(11).fill('H2')));
+    assert.ok(!JSON.stringify(stored).includes('有氣質'), 'the learner name is not stored');
+    assert.ok(JSON.stringify(stored.lines).includes('你順利地透過連城訣'));
+  } finally {
+    page.close();
+  }
+});
+
+ui('the background answers MOVE_FIND with findMoveIn, and the game page only stores when it finds one move', () => {
+  assert.match(fs.readFileSync(path.join(root, 'background.js'), 'utf8'), /message\?\.type === 'MOVE_FIND'[\s\S]*findMoveIn\(SKILLS_DATA/);
 });
 
 ui('an X block that is not a learn announcement, and the extension\'s own art block, are not stored', async () => {

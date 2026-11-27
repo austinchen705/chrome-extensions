@@ -32,6 +32,24 @@ function lookup(data, names) {
   return skills;
 }
 
+// 悟招訊息裡是哪一招（各武功的句型不同，所以拿整塊文字比對所有武功的招式名，名字至少 2 字）：
+// 有招式名出現在 quoted（『…』「…」裡的字串）就只看那些；多招都比到取名字最長的；最長的還有不同的兩招就回 null。回 { skill, move } 或 null
+function findMoveIn(data, text, quoted = []) {
+  const body = String(text ?? '');
+  const hits = [];
+  for (const skill of data?.skills ?? []) {
+    for (const move of skill.moves ?? []) {
+      if ([...String(move.name)].length >= 2 && body.includes(move.name)) hits.push({ skill: skill.name, move: move.name });
+    }
+  }
+  const inQuotes = hits.filter(hit => quoted.some(piece => String(piece).includes(hit.move)));
+  const pool = inQuotes.length ? inQuotes : hits;
+  const longest = Math.max(0, ...pool.map(hit => hit.move.length));
+  const best = pool.filter(hit => hit.move.length === longest);
+  const first = best[0];
+  return first && best.every(hit => hit.skill === first.skill && hit.move === first.move) ? first : null;
+}
+
 // 傷害分級（顏色）：沒有傷害數字的（加內力、特效）另一色
 const TIERS = [
   { min: 300, color: '#ff6b6b', second: '#ffd166', label: '300 以上紅金' },
@@ -94,7 +112,7 @@ function moveDetail(move) {
 }
 const moveText = move => `${move.no}. ${move.name}${moveDetail(move)}`;
 
-globalThis.CatworldSkillMoves = { parseLearned, lookup, describe, moveText, tierOf, cleanType, nameChunks, MOVE_NAME_COLORS, TIERS, FORCE_COLOR, FORCE_SECOND };
+globalThis.CatworldSkillMoves = { parseLearned, lookup, findMoveIn, describe, moveText, tierOf, cleanType, nameChunks, MOVE_NAME_COLORS, TIERS, FORCE_COLOR, FORCE_SECOND };
 
 const content = typeof document === 'undefined' ? null : document.getElementById('content');
 if (!content || !globalThis.chrome?.storage?.local || !globalThis.chrome?.runtime?.sendMessage || !globalThis.CatworldZapMobs) return;

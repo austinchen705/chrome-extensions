@@ -351,6 +351,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     refreshSharedOnce(true).then(cache => sendResponse({ ok: true, cache }), error => sendResponse({ ok: false, error: error.message }));
     return true;
   }
+  // 悟招圖：整塊悟招訊息的文字，比對出是哪一招（比不到唯一一招就回 found: null）
+  if (message?.type === 'MOVE_FIND' && typeof message.text === 'string') {
+    const quoted = Array.isArray(message.quoted) ? message.quoted.filter(item => typeof item === 'string').slice(0, 20) : [];
+    sendResponse({ ok: true, found: CatworldSkillMoves.findMoveIn(SKILLS_DATA, message.text.slice(0, 2000), quoted) });
+    return;
+  }
   // 招式列表：只回被問到的武功（資料在 skills-data.js，不隨每個遊戲分頁載入）
   if (message?.type === 'SKILL_MOVES' && Array.isArray(message.names)) {
     sendResponse({ ok: true, skills: CatworldSkillMoves.lookup(SKILLS_DATA, message.names.filter(name => typeof name === 'string')) });
