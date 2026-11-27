@@ -47,6 +47,7 @@ const nameChunks = name => String(name ?? '').match(/[\s\S]{1,2}/g) ?? [];
 const MOVE_NAME_COLORS = {
   打隨棍: ['#ff00ff', '#ff0000', '#e5e5e5'],
   打蛇隨棍: ['#ff00ff', '#00ff00', '#ff0000', '#e5e5e5'], // 技能資料裡的寫法多一個蛇
+  對牛彈琴: ['#ff00ff', '#ffffff', '#e5e5e5', '#e5e5e5'], // 悟招訊息裡的『對牛彈琴』：H5、H7、N7、N7
 };
 const tierOf = damage => TIERS.find(tier => damage >= tier.min) ?? TIERS.at(-1);
 // 傷害類型欄有時混著一長段說明（「傷勢。\n本來無效的一招…」），只留第一句

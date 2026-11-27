@@ -456,6 +456,19 @@ function pick(text, weapon) {
   return { fx: P.strike.id, label: P.strike.label, layers: P.layers.map(l => l.label), count: P.count };
 }
 
+// 遊戲悟出這一招時自己印的字元圖（使用者貼的 HTML，ansi.css XTerm 色碼：H1 紅、H2 綠、H3 黃、H4 藍、H5 洋紅、H6 青、H7 白、N7 灰白），
+// 有圖的招式播放時在畫布上方由左往右掃出；悟招的人名換成「你」。每列是 [文字, 顏色] 片段
+const ART_COLOR = { H1: '#ff0000', H2: '#00ff00', H3: '#ffff00', H4: 'rgb(92,92,255)', H5: '#ff00ff', H6: '#00ffff', H7: '#ffffff', N7: '#e5e5e5' };
+const MOVE_ART = {
+  對牛彈琴: [
+    [['   ︿＿︿      ', 'H2'], ['●    ', 'H1'], ['～╮   ', 'H4'], ['Λ  Λ ', 'H7'], ['<你悟出了新牛蛇生死搏>', 'H5']],
+    [[' ＜‵  ′＞  ', 'H2'], ['∕█﹨', 'H1'], ['～～╯ ', 'H4'], ['＜  ︺  ＞ ', 'H7'], ['只見天地同鳴 ～哞哞～哞～哞～', 'H6']],
+    [['    ＶＶ       ', 'H2'], ['▼-          ', 'H1'], ['[‵′]   ', 'H7'], ['<之中的一招:『對', 'H5'], ['牛', 'H7'], ['彈琴', 'N7'], ['』>', 'H5']],
+    [['====└┘     ', 'H2'], ['∕ ∕        ', 'H1'], ['//╰oo╯|| ', 'H7'], ['同時山海齊嘯 ～嘶～～～嘶嘶嘶', 'H3']],
+  ],
+};
+const ART_SWEEP = 0.4; // 前 40% 的時間把圖掃完
+
 // 在 container 裡放一個播放器並播一次；回傳 { stop, replay, chosen, node }。move＝{ name, action, damage, type, weapon }
 function mount(container, move) {
   const doc = container.ownerDocument;
@@ -472,7 +485,25 @@ function mount(container, move) {
   const foot = doc.createElement('div');
   Object.assign(foot.style, { padding: '4px 10px 8px', color: '#7f8892', fontSize: '0.85em' });
   foot.textContent = `出招：${chosen.label}${chosen.count > 1 ? ` ×${chosen.count}` : ''}${chosen.layers.length ? `　意象：${chosen.layers.join('、')}` : ''}　點招式名再看一次，點別招換一招`;
-  wrap.append(canvas, text, foot);
+  const artLines = MOVE_ART[move.name];
+  let art = null;
+  if (artLines) {
+    art = doc.createElement('pre');
+    art.setAttribute('data-catworld-moveart', '');
+    // 細明體：全形符號（︿＿︿、●、Λ）是兩格寬、英數是一格，和遊戲一樣對得齊（Consolas 會把符號畫成半形，圖就歪了，截圖比對過）
+    Object.assign(art.style, { margin: '0', padding: '8px 10px 2px', background: '#000', fontFamily: '"MingLiU", "細明體", monospace', fontSize: '13px', lineHeight: '1.25', whiteSpace: 'pre', overflowX: 'auto' });
+    wrap.style.maxWidth = '540px';
+    artLines.forEach((parts, index) => {
+      if (index) art.append('\n');
+      parts.forEach(([chunk, code]) => {
+        const span = doc.createElement('span');
+        span.textContent = chunk;
+        span.style.color = ART_COLOR[code] ?? C.fg;
+        art.append(span);
+      });
+    });
+  }
+  wrap.append(...(art ? [art] : []), canvas, text, foot);
   container.append(wrap);
 
   let ctx = null;
@@ -483,6 +514,7 @@ function mount(container, move) {
   const caf = win.cancelAnimationFrame?.bind(win) ?? (id => win.clearTimeout(id));
   const duration = DURATION_MS * P.tempo;
   let frame = 0;
+  let artFrame = 0;
   let typer = 0;
   let W = 0;
 
@@ -505,10 +537,20 @@ function mount(container, move) {
     }
   }
 
-  function stop() { caf(frame); win.clearInterval(typer); }
+  function stop() { caf(frame); caf(artFrame); win.clearInterval(typer); }
 
   function play() {
     stop();
+    if (art) {
+      const start = win.performance?.now?.() ?? Date.now();
+      const sweep = now => {
+        const p = Math.min((now - start) / (duration * ART_SWEEP), 1);
+        art.style.clipPath = `inset(0 ${Math.round((1 - p) * 100)}% 0 0)`;
+        if (p < 1) artFrame = raf(sweep);
+      };
+      art.style.clipPath = 'inset(0 100% 0 0)';
+      artFrame = raf(sweep);
+    }
     if (ctx) {
       const ratio = win.devicePixelRatio || 1;
       W = canvas.getBoundingClientRect().width || 400;
@@ -531,5 +573,5 @@ function mount(container, move) {
   return { stop, replay: play, chosen, node: wrap };
 }
 
-globalThis.CatworldMoveFx = { STRIKES, MOTIFS, WEAPON_STRIKE, plan, pick, actionText, mount, DURATION_MS };
+globalThis.CatworldMoveFx = { STRIKES, MOTIFS, WEAPON_STRIKE, MOVE_ART, plan, pick, actionText, mount, DURATION_MS };
 })();

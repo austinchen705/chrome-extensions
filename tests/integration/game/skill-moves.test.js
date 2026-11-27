@@ -213,7 +213,36 @@ test('打蛇隨棍 carries the game\'s per-character colours, other moves do not
   const snake = S.lookup(SKILLS_DATA, ['牛蛇生死搏'])['牛蛇生死搏'];
   const info = S.describe(snake, 2);
   assert.deepEqual(info.moves[0].chars, ['#ff00ff', '#00ff00', '#ff0000', '#e5e5e5']); // H5 H2 H1 N7
-  assert.equal(info.moves[1].chars, undefined, '對牛彈琴 keeps the tier colours');
+  assert.deepEqual(info.moves[1].chars, ['#ff00ff', '#ffffff', '#e5e5e5', '#e5e5e5'], '對牛彈琴 in the game colours too: H5 H7 N7 N7');
+  const plain = S.describe(S.lookup(SKILLS_DATA, ['雪山劍法'])['雪山劍法'], 1);
+  assert.equal(plain.moves[0].chars, undefined, 'a move without game colours keeps the tier colours');
+});
+
+ui('對牛彈琴 plays the game\'s own art (the cow and the snake) above the animation, coloured as the game prints it; other moves have no art', async () => {
+  const page = await boot();
+  try {
+    const F = page.w.CatworldMoveFx;
+    const snake = SKILLS_DATA.skills.find(s => s.name === '牛蛇生死搏');
+    const move = snake.moves.find(m => m.name === '對牛彈琴');
+    const box = page.w.document.createElement('div');
+    page.w.document.body.append(box);
+    const player = F.mount(box, { ...move, weapon: snake.type });
+    const art = player.node.querySelector('[data-catworld-moveart]');
+    assert.ok(art, 'the art is shown');
+    const lines = art.textContent.split('\n');
+    assert.equal(lines.length, 4);
+    assert.match(lines[3], /\/\/╰oo╯\|\|/, 'the cow');
+    assert.match(lines[0], /︿＿︿/, 'the snake');
+    assert.match(art.textContent, /<你悟出了新牛蛇生死搏>/, 'the learner is "you", not the player in the sample');
+    const cow = [...art.querySelectorAll('span')].find(span => span.textContent === '牛');
+    assert.equal(cow.style.color, 'rgb(255, 255, 255)');
+    player.stop();
+    const other = F.mount(box, { ...snake.moves[0], weapon: snake.type });
+    assert.equal(other.node.querySelector('[data-catworld-moveart]'), null);
+    other.stop();
+  } finally {
+    page.close();
+  }
 });
 
 test('打隨棍 (three characters) also gets the game colours', () => {
