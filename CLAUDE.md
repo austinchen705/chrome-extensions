@@ -25,7 +25,7 @@
 | 警報提示音 | `docs/claude/alert-sound.md` | `content.js` 的響鈴 |
 | 怪物查詢 | `docs/claude/zap-mobs.md` | `zap-mobs.js`、`zap-panel.js`、`tools/gen-zap-data.js` |
 | 裝備比較 | `docs/claude/zap-equipment.md` | `zap-equipment.js`、`zap-equipment-ui.js` |
-| 招式列表、招式動畫 | `docs/claude/skill-moves.md` | `skill-moves.js`、`move-fx.js` |
+| 招式列表、招式動畫 | `docs/claude/skill-moves.md` | `skill-moves.js`、`move-fx.js`、`move-arts.js`（悟招圖）、設定頁「悟招圖」 |
 | 拜師導師搜尋 | `docs/claude/mentor-search.md` | `mentor-*.js`、`tools/gen-mentor-data.js` |
 | 無名物品 | `docs/claude/zap-items.md` | `zap-items.js` |
 | 解謎 | `docs/claude/zap-riddles.md` | `zap-riddles.js`、`zap-riddle-ui.js` |

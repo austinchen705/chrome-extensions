@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CatWorld Auto Command",
-  "version": "1.173.1",
+  "version": "1.174.0",
   "description": "Configurable commands with immediate stop on verification prompts.",
   "permissions": [
     "storage",
@@ -75,6 +75,7 @@
         "stats-view.js",
         "stats-block.js",
         "whisper-block.js",
+        "move-arts.js",
         "move-fx.js",
         "skill-moves.js",
         "force-cap.js",

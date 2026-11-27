@@ -457,8 +457,13 @@ function pick(text, weapon) {
 }
 
 // 遊戲悟出這一招時自己印的字元圖（使用者貼的 HTML，ansi.css XTerm 色碼：H1 紅、H2 綠、H3 黃、H4 藍、H5 洋紅、H6 青、H7 白、N7 灰白），
-// 有圖的招式播放時在畫布上方由左往右掃出；悟招的人名換成「你」。每列是 [文字, 顏色] 片段
-const ART_COLOR = { H1: '#ff0000', H2: '#00ff00', H3: '#ffff00', H4: 'rgb(92,92,255)', H5: '#ff00ff', H6: '#00ffff', H7: '#ffffff', N7: '#e5e5e5' };
+// 有圖的招式播放時在畫布上方由左往右掃出；悟招的人名換成「你」。每列是 [文字, 顏色] 片段。
+// 玩家自己悟出的招由 move-arts.js 存進 storage，招式列表把那份圖放在 move.art，優先於這裡內建的 MOVE_ART。
+// 色碼是遊戲 ansi.css 的 XTerm 色（N0 黑在深色底看不到，畫成 #666）
+const ART_COLOR = {
+  N0: '#666666', N1: 'rgb(205,0,0)', N2: 'rgb(0,205,0)', N3: 'rgb(205,205,0)', N4: 'rgb(0,0,238)', N5: 'rgb(205,0,205)', N6: 'rgb(0,205,205)', N7: '#e5e5e5',
+  H0: 'rgb(127,127,127)', H1: '#ff0000', H2: '#00ff00', H3: '#ffff00', H4: 'rgb(92,92,255)', H5: '#ff00ff', H6: '#00ffff', H7: '#ffffff',
+};
 const MOVE_ART = {
   對牛彈琴: [
     [['   ︿＿︿      ', 'H2'], ['●    ', 'H1'], ['～╮   ', 'H4'], ['Λ  Λ ', 'H7'], ['<你悟出了新牛蛇生死搏>', 'H5']],
@@ -485,7 +490,7 @@ function mount(container, move) {
   const foot = doc.createElement('div');
   Object.assign(foot.style, { padding: '4px 10px 8px', color: '#7f8892', fontSize: '0.85em' });
   foot.textContent = `出招：${chosen.label}${chosen.count > 1 ? ` ×${chosen.count}` : ''}${chosen.layers.length ? `　意象：${chosen.layers.join('、')}` : ''}　點招式名再看一次，點別招換一招`;
-  const artLines = MOVE_ART[move.name];
+  const artLines = move.art ?? MOVE_ART[move.name];
   let art = null;
   if (artLines) {
     art = doc.createElement('pre');
@@ -573,5 +578,5 @@ function mount(container, move) {
   return { stop, replay: play, chosen, node: wrap };
 }
 
-globalThis.CatworldMoveFx = { STRIKES, MOTIFS, WEAPON_STRIKE, MOVE_ART, plan, pick, actionText, mount, DURATION_MS };
+globalThis.CatworldMoveFx = { STRIKES, MOTIFS, WEAPON_STRIKE, MOVE_ART, ART_COLOR, plan, pick, actionText, mount, DURATION_MS };
 })();

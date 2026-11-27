@@ -251,3 +251,8 @@ test('makeBackup treats a stored null as absent, so the backup it makes can alwa
   assert.deepEqual(backup.absent, ['settings']);
   assert.equal(B.checkBackup(backup).ok, true);
 });
+
+test('the captured move arts are part of the exported accumulated data', () => {
+  const data = B.exportData({ moveArts: { 'a/b': { skill: 'a' } } }, { blocks: ['data'] });
+  assert.deepEqual(data.blocks.data.moveArts, { 'a/b': { skill: 'a' } });
+});

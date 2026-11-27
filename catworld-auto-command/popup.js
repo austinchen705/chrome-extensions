@@ -106,7 +106,7 @@ async function send(message) {
     if (String(e?.message || e).includes('Receiving end does not exist')) {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'presence-shape.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'chat-script.js', 'emote-data.js', 'emote-pick.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'hunt-profile.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'scholar-items-data.js', 'scholar.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'whisper-block.js', 'move-fx.js', 'skill-moves.js', 'force-cap.js', 'content.js']
+        files: ['trigger-engine.js', 'timer-settings.js', 'macro-wait.js', 'macro-notes.js', 'macro-io.js', 'macro-resize.js', 'captcha-art.js', 'captcha-grid.js', 'presence-shape.js', 'instance-guard.js', 'stop-keywords.js', 'chat-reply.js', 'chat-script.js', 'emote-data.js', 'emote-pick.js', 'zap-mobs.js', 'map-data.js', 'map-collect.js', 'map-route.js', 'hunt-parse.js', 'map-hunt.js', 'hunt-profile.js', 'map-hunt-ui.js', 'zap-items.js', 'zap-riddles.js', 'zap-equipment.js', 'shop-data.js', 'scholar-items-data.js', 'scholar.js', 'shop-collect.js', 'zap-panel.js', 'zap-riddle-ui.js', 'mentor-data.js', 'mentor-search.js', 'mentor-ui.js', 'zap-equipment-ui.js', 'pip-panel.js', 'stats-view.js', 'stats-block.js', 'whisper-block.js', 'move-arts.js', 'move-fx.js', 'skill-moves.js', 'force-cap.js', 'content.js']
       });
       await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['macro-notes.css'] });
       return await chrome.tabs.sendMessage(tab.id, message);
@@ -1727,6 +1727,57 @@ function updateHints() {
 document.addEventListener('change', updateHints);
 document.addEventListener('input', updateHints);
 
+// 悟招圖（move-arts.js 抓的、存在 moveArts）：列表、刪除、匯出成檔、匯入合併（已有的招跳過）
+function moveArtMessage(text, level) { $('moveArtMsg').textContent = text; markLevel($('moveArtMsg'), level); }
+async function showMoveArts() {
+  const { moveArts } = await chrome.storage.local.get('moveArts');
+  const entries = Object.entries(moveArts ?? {});
+  $('moveArtCount').textContent = `已存 ${entries.length} 招`;
+  $('moveArtExport').disabled = !entries.length;
+  $('moveArtList').replaceChildren(...entries.map(([key, entry]) => element('div', { className: 'row-line', style: 'display:flex;gap:6px;align-items:center' },
+    element('span', { textContent: `${entry.skill}／${entry.move}`, style: 'flex:1' }),
+    element('button', { type: 'button', textContent: '刪除', onclick: async () => {
+      const current = (await chrome.storage.local.get('moveArts')).moveArts ?? {};
+      delete current[key];
+      await chrome.storage.local.set({ moveArts: current });
+      showMoveArts();
+    } }))));
+}
+$('moveArtExport').addEventListener('click', async () => {
+  try {
+    const { moveArts } = await chrome.storage.local.get('moveArts');
+    const text = CatworldMoveArts.exportText(moveArts, { version: chrome.runtime.getManifest().version });
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const link = element('a', { href: url, download: 'catworld-move-arts.json' });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    moveArtMessage(`已下載 ${Object.keys(moveArts ?? {}).length} 招`);
+  } catch (e) { moveArtMessage(`匯出失敗：${e.message}`, 'error'); }
+});
+$('moveArtImport').addEventListener('click', () => $('moveArtFile').click());
+$('moveArtFile').addEventListener('change', () => {
+  const file = $('moveArtFile').files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const checked = CatworldMoveArts.checkImport(String(reader.result ?? ''));
+    if (!checked.ok) { moveArtMessage(`匯入失敗，沒有改動任何資料：${checked.error}`, 'error'); return; }
+    try {
+      const { moveArts } = await chrome.storage.local.get('moveArts');
+      const { next, added, skipped } = CatworldMoveArts.mergeArts(moveArts, checked.arts);
+      if (added) await chrome.storage.local.set({ moveArts: next });
+      moveArtMessage(`新增 ${added} 招、略過 ${skipped} 招（已有）`);
+      showMoveArts();
+    } catch (e) { moveArtMessage(`匯入失敗：${e.message}`, 'error'); }
+    $('moveArtFile').value = '';
+  };
+  reader.onerror = () => moveArtMessage('讀不到這個檔案', 'error');
+  reader.readAsText(file);
+});
+showMoveArts().catch(() => {});
+
 // 設定備份：匯出（區塊與機密的清單、格式在 settings-backup.js）
 function backupMessage(text, level) { $('backupMsg').textContent = text; markLevel($('backupMsg'), level); }
 $('backupBlocks').append(...CatworldSettingsBackup.BLOCKS.map(block => element('label', { style: 'display:block' },
@@ -2074,6 +2125,7 @@ try {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes.settingsBackup) refreshRestore();
+  if (changes.moveArts) showMoveArts().catch(() => {});
   if (changes.stopReason?.newValue) setStatus(changes.stopReason.newValue, stopLevel(changes.stopReason.newValue));
   else if (changes.running) setStatus(changes.running.newValue ? '執行中' : '已停止');
 });

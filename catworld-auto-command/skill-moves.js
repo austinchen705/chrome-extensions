@@ -53,10 +53,13 @@ const tierOf = damage => TIERS.find(tier => damage >= tier.min) ?? TIERS.at(-1);
 // 傷害類型欄有時混著一長段說明（「傷勢。\n本來無效的一招…」），只留第一句
 const cleanType = text => String(text ?? '').split(/。|\\n|\n/)[0].trim();
 
-// 一門武功、已悟 count 招 → 畫面要的資料
-function describe(skill, count) {
+// 一門武功、已悟 count 招 → 畫面要的資料。arts：這門武功已存的悟招圖（招式名 → { lines, nameCodes }，move-arts.js 抓的），
+// 有的話招式名用存的逐字顏色、動畫用存的字元圖，優先於內建的 MOVE_NAME_COLORS 與 move-fx.js 的 MOVE_ART
+function describe(skill, count, arts = {}) {
+  const artColors = code => globalThis.CatworldMoveFx?.ART_COLOR?.[code];
   const learned = skill.moves.slice(0, count).map(move => {
     const hasDamage = Number.isFinite(move.damage);
+    const art = Object.hasOwn(arts, move.name) ? arts[move.name] : null;
     return {
       no: move.level,
       name: move.name,
@@ -68,7 +71,7 @@ function describe(skill, count) {
       weapon: skill.weapon ?? '',
       color: hasDamage ? tierOf(move.damage).color : FORCE_COLOR,
       second: hasDamage ? tierOf(move.damage).second : FORCE_SECOND,
-      ...(MOVE_NAME_COLORS[move.name] ? { chars: MOVE_NAME_COLORS[move.name] } : {}),
+      ...(art ? { art: art.lines, chars: art.nameCodes.map(artColors) } : MOVE_NAME_COLORS[move.name] ? { chars: MOVE_NAME_COLORS[move.name] } : {}),
     };
   });
   const next = skill.moves[count];
@@ -152,7 +155,14 @@ function moveRow(box, move) {
   box.append(row);
 }
 
-function render(learned, reply) {
+// 已存的悟招圖裡屬於這門武功的：招式名 → 圖
+function artsOf(moveArts, skillName) {
+  const found = {};
+  Object.values(moveArts ?? {}).forEach(entry => { if (entry?.skill === skillName) found[entry.move] = entry; });
+  return found;
+}
+
+function render(learned, reply, moveArts) {
   const box = document.createElement('div');
   box.setAttribute(OWN, '');
   Object.assign(box.style, { padding: '6px 0', margin: '6px 0', whiteSpace: 'pre-wrap' });
@@ -163,7 +173,7 @@ function render(learned, reply) {
     learned.forEach(({ name, count }) => {
       const skill = reply.skills?.[name];
       if (!skill) { line(box, `${name}：資料裡沒有這門武功`, '#9aa5b1'); return; }
-      const info = describe(skill, count);
+      const info = describe(skill, count, artsOf(moveArts, name));
       line(box, `${name}　已悟 ${info.count}／${info.total} 招`);
       info.moves.forEach(move => moveRow(box, move));
       if (info.next) line(box, `下一招 ${info.next.no}. ${info.next.name}：${name} ≥ ${info.next.self}、${info.next.forceName} ≥ ${info.next.force}`, '#9aa5b1', true);
@@ -180,7 +190,7 @@ async function flush() {
   const learned = parseLearned(text);
   if (!learned.length) return;
   try {
-    const data = await chrome.storage.local.get('zapFeatures');
+    const data = await chrome.storage.local.get(['zapFeatures', 'moveArts']);
     console.log('[catworld] 招式列表：偵測到招式數目的輸出', learned, data.zapFeatures?.skills === true ? '' : '（設定頁「輔助功能」的「招式列表」沒勾，所以不顯示）');
     if (data.zapFeatures?.skills !== true) return;
     let reply;
@@ -189,7 +199,7 @@ async function flush() {
     } catch (error) {
       reply = { ok: false, error: error?.message };
     }
-    render(learned, reply);
+    render(learned, reply, data.moveArts);
   } catch {
     // 連不上儲存（孤兒程式）：什麼都不做
   }

@@ -323,6 +323,15 @@
         <label class="check"><input id="featureSkills" type="checkbox"> 招式列表（打 careers 時，把已悟的招式依資料列出來並上色）</label>
         <button id="skills">悟招清單（新分頁開啟）</button>
       </details>
+      <details class="alertbox fold" id="sec-movearts">
+        <summary>悟招圖（招式列表的招式名顏色與動畫的字元圖）</summary>
+        <p class="hint tight">悟出新招時，遊戲印的字元圖會自動存下來（不受「招式列表」開關影響），招式列表與招式動畫會用它。可以匯出給朋友、匯入別人的；匯入只新增沒有的招，已有的略過。</p>
+        <div id="moveArtCount" class="hint tight"></div>
+        <div id="moveArtList"></div>
+        <div class="addrow"><button id="moveArtExport" type="button">匯出</button><button id="moveArtImport" type="button">匯入</button></div>
+        <input type="file" id="moveArtFile" accept=".json,application/json" hidden>
+        <div id="moveArtMsg" class="hint tight"></div>
+      </details>
       <details class="alertbox fold" id="sec-grade">
         <summary>怪物分級</summary>
         <div class="row">
@@ -649,6 +658,7 @@
   <script src="macro-io-ui.js"></script>
   <script src="mentor-data.js"></script>
   <script src="mentor-search.js"></script>
+  <script src="move-arts.js"></script>
   <script src="settings-backup.js"></script>
   <script src="cloud-sync.js"></script>
   <script src="force-cap.js"></script>
